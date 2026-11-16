@@ -82,6 +82,13 @@ radius, 3.3 AU)`. The aim and the distance follow separately, so zooming keeps
 the destination centred; only a drag stops the aiming. If the orbit would put
 the camera inside a body, it is pulled in toward the ship.
 
+The next step for this layer is
+[The system map and route preview](/technical/system-map.md): a zoom-driven
+blend to a top-down map at the local sphere of influence, panning, and a
+plotted route with a Begin button. The plain-C# map state (`MapView`) and its
+tests are built; the rig integration, map drawing, and route preview are not
+yet.
+
 # The focus transition (debug jump)
 
 The details screen has two actions: **Go To**, which starts a real flight

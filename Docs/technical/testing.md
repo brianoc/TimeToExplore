@@ -64,10 +64,11 @@ the predefined `Assembly-CSharp`.
 | `FlightReportTests` | the phase table, live rows, arrival rows, status labels, countdown formatting |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, and the plan line's width-to-distance rule |
+| `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, and the extended zoom clamp |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, and the debug jump is refused in flight |
 
-The suite currently has **212 tests**. It deliberately tests the shipped
+The suite currently has **220 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -121,6 +122,11 @@ the suggested initial warp of 10,000×:
 | Mid-cruise plan-event cap | 8,673 s (100,000×) |
 | Flip point | 3.3 hours after departure |
 | Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 05:53, clock never ahead of the ship |
+
+The map state has three anchors at the epoch: the Moon's SOI radius is 66,194 km
+(the design quotes 66,200), so Gateway is inside it and the Moon is the
+dominant body there; the map zoom ceiling is 12,000,000 units (12 billion km,
+about 80 AU); and the pan cap is 60 AU, or 8,975,872 units.
 
 The gravity ceiling is asserted for every planet and moon in the catalogue: the
 parking gravity is at most 40% of the drive unless the Hill sphere caps the orbit

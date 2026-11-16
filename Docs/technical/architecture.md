@@ -132,6 +132,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
+| `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, map range, pan offset |
 | `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit, wheel zoom, destination framing, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |

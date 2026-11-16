@@ -27,7 +27,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite
-  (212 tests).
+  (220 tests).
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -99,6 +99,33 @@ rather than a model; the camera can still be orbited inside a planet (it is
 pulled out, but as a rescue); there is no manual thrust; and a second Go To
 replans from scratch rather than correcting the existing plan.
 
+# Milestone 2.5 — the system map and route preview (next)
+
+**Goal: one continuous zoom from the ship to the whole system, a top-down map
+the player can pan and click, and a route they can see before they fly it.**
+
+This is the next work. The design is
+[The system map and route preview](/technical/system-map.md); its
+implementation steps are the task list, each with its tests. In order:
+
+1. The zoom-driven blend from the local orbit view to a top-down map at the
+   local sphere of influence, with the remembered angle restored on the way
+   back in, and panning on the map. **Step 1 is done:** the plain-C#
+   `MapView` holds the blend, the dominant-body choice, the 12-billion-km
+   range, and the 60 AU pan cap, with `MapViewTests`. The rig integration is
+   next.
+2. Map reading rules: bigger markers, label density by zoom, class-priority
+   picking — the map selects big things.
+3. The local view stops inflating distant bodies; the marker aid becomes
+   neighbourhood-aware.
+4. **Plot route** draws the plan as a smooth preview curve with an arrival
+   ghost; **Begin** replans from the current state and flies it. The preview
+   is a promise of shape, not a contract: time passes between Plot and Begin.
+
+**Acceptance:** zoom from a parking orbit to the whole system and back to the
+exact prior angle; pan to Jupiter and click it; plot a route, see the curve,
+press Begin, and arrive with the existing exactness.
+
 # Milestone 3 — fuel and the delta-v economy
 
 * Charge `PlanArc.DeltaVMps` against a finite budget.
@@ -134,14 +161,18 @@ milestone 2 so the scene work is not blocked on a new propagator.
 
 # Immediate next tasks
 
-1. Close the gap to the ideal profile with a bang-bang planner once fuel makes
+1. **Build the system map and route preview (milestone 2.5, above).** This is
+   the next work; the design doc's implementation steps are the ordered task
+   list.
+2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
    time and delta-v compete. A transfer conic (above) closes part of it in
    delta-v rather than time.
-2. Add a mid-course correction that keeps the current plan instead of replanning
-   from the current state.
-3. Give warp a continuous scale so the drop near a body is smooth rather than a
+3. Add a mid-course correction that keeps the current plan instead of replanning
+   from the current state. Begin's replan is the first place this matters: a
+   correction would keep the plotted curve instead of solving a new one.
+4. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-4. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
+5. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
 
 # Risks
