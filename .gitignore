@@ -1,0 +1,48 @@
+# Unity generated folders
+/[Tt]ime[Tt]o[Ee]xplore/[Ll]ibrary/
+/[Tt]ime[Tt]o[Ee]xplore/[Tt]emp/
+/[Tt]ime[Tt]o[Ee]xplore/[Oo]bj/
+/[Tt]ime[Tt]o[Ee]xplore/[Bb]uild/
+/[Tt]ime[Tt]o[Ee]xplore/[Bb]uilds/
+/[Tt]ime[Tt]o[Ee]xplore/[Ll]ogs/
+/[Tt]ime[Tt]o[Ee]xplore/[Uu]ser[Ss]ettings/
+/[Tt]ime[Tt]o[Ee]xplore/[Mm]emoryCaptures/
+/[Tt]ime[Tt]o[Ee]xplore/[Rr]ecordings/
+
+# Keep Unity asset metadata
+!/[Tt]ime[Tt]o[Ee]xplore/[Aa]ssets/**/*.meta
+
+# Editor and IDE files
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vs/
+.idea/
+.vscode/
+
+# Build artefacts
+*.apk
+*.aab
+*.unitypackage
+*.app
+sysinfo.txt
+crashlytics-build.properties
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
