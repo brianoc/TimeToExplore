@@ -51,7 +51,7 @@ the predefined `Assembly-CSharp`.
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, smoothstep/slerp transition, approach offset |
-| `SceneSmokeTests` | the shipped scene still resolves the bootstrap; the catalogue resource imports |
+| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
 | `PlanGeometryTests` | quintic endpoint conditions and peak factors, parking radius and its gravity ceiling across the catalogue, circular/equatorial/prograde orbits, SOI radii |
@@ -63,12 +63,12 @@ the predefined `Assembly-CSharp`.
 | `PlanPathTests` | arc boundary walking and the flip point's sign change |
 | `FlightReportTests` | the phase table, live rows, arrival rows, status labels, countdown formatting |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing |
-| `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, and the plan line's width-to-distance rule |
-| `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, and the extended zoom clamp |
+| `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the plan line's width-to-distance rule, the map pose and its stored-pose round trip, input routing and both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
+| `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
-| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, and the debug jump is refused in flight |
+| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, and the map switch reaches the rig and raises the far clip |
 
-The suite currently has **220 tests**. It deliberately tests the shipped
+The suite currently has **236 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -123,10 +123,14 @@ the suggested initial warp of 10,000×:
 | Flip point | 3.3 hours after departure |
 | Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 05:53, clock never ahead of the ship |
 
-The map state has three anchors at the epoch: the Moon's SOI radius is 66,194 km
+The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the
 dominant body there; the map zoom ceiling is 12,000,000 units (12 billion km,
-about 80 AU); and the pan cap is 60 AU, or 8,975,872 units.
+about 80 AU); the pan cap is 60 AU, or 8,975,872 units; the map pose's up
+vector at yaw 0 is `(0, 0, −1)` in Unity space; the map near plane at the
+ceiling is 12,000 units (12 million km); and the map far plane is 40,000,000
+units (40 billion km, about 267 AU). The pan ease is 3/s, so ten seconds leaves
+less than a metre of a 60 AU offset.
 
 The gravity ceiling is asserted for every planet and moon in the catalogue: the
 parking gravity is at most 40% of the drive unless the Hill sphere caps the orbit

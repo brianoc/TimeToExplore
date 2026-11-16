@@ -132,16 +132,16 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
-| `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, map range, pan offset |
-| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit, wheel zoom, destination framing, camera placement |
+| `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
+| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit locally and pan on the map, wheel zoom on both ranges, destination framing, blended pose, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, countdown, and formatting |
 | `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | IMGUI panels, labels, hover, and details screen |
-| `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, and hotkeys |
-| `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu |
+| `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, hotkeys, and the `EnableMapView` comparison switch |
+| `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu (shipped scene and system-map scene) |
 
 # Composition and self-installation
 
@@ -162,6 +162,14 @@ one—for example `Assets/Scenes/SolarSystem.unity`, or a scene created by
 The shipped scene is a convenience, not a requirement: the bootstrap still runs
 in an empty scene, which keeps the prototype easy to inspect while it is finding
 its shape.
+
+Two scenes exist for the system map comparison. `SolarSystem.unity` leaves the
+serialized `SolarSystemBootstrap.EnableMapView` switch off and keeps the current
+orbit camera; `SystemMap.unity` turns it on and the bootstrap passes it to
+`ShipCameraRig.MapEnabled`. Both hold only the camera and the bootstrap; the rig
+is added at runtime. `Tools > Time to Explore > Create System Map Scene`
+recreates the comparison scene. The switch is a development aid, not a gameplay
+mode, and is due to be removed or defaulted on once the map work is done.
 
 # Double precision boundary
 
@@ -220,8 +228,8 @@ The controller is an inspection tool now, not a flight model:
 | **Jump (debug)**, `F` | Three-second eased debug teleport to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |
-| Right mouse drag | orbit the camera around the ship |
-| Mouse wheel | zoom the camera (1.25× per notch) |
+| Right mouse drag | orbit the camera around the ship; pan on the map |
+| Mouse wheel | zoom the camera (1.25× per notch; 12 billion km on the map side) |
 | `W A S D` | free flight: move forward/left/back/right |
 | `Q E` | free flight: move down/up |
 | `Shift` / `Ctrl` | ×10 / ×0.1 speed |
@@ -237,9 +245,15 @@ The controller is an inspection tool now, not a flight model:
 | `L` | toggle labels |
 | `H` | toggle HUD |
 
-The camera orbits the ship and always looks at it, so a flight and a debug jump
-can frame their destination without moving the eye into the plan. See
-[ADR-008](/decisions/adr-008-orbit-camera.md).
+The camera orbits the ship and, in the local band, looks at it, so a flight and
+a debug jump can frame their destination without moving the eye into the plan
+([ADR-008](/decisions/adr-008-orbit-camera.md)). With the map switch on, the
+same rig blends the pose to a top-down system map as the zoom crosses the local
+sphere of influence: the map looks at `ship + pan` (the one bend of ADR-008),
+right-drag pans, the wheel reaches 12 billion km, and the player's remembered
+yaw and pitch are never overwritten. Auto-framing is suspended while the map is
+engaged. The full rules are in
+[The system map and route preview](/technical/system-map.md).
 
 Free flight is deliberately simple and deliberately separate from the flight
 session: it cancels any plan and clears the velocity, because a teleport is not a
@@ -285,8 +299,9 @@ of the project, so it is safe with the editor open. It covers the Kepler
 solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
-details and picking, the focus-transition easing, the flight core, and the
-scene's frame loop.
+details and picking, the focus-transition easing, the orbit camera and its map
+blend (pose, input routing, pan, extended zoom, near plane), the flight core,
+and the scene's frame loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -324,6 +339,9 @@ deferred until the presentation code settles.
 * No save/load.
 * The HUD is immediate-mode and allocation-heavy; fine for a prototype.
 * The scene is generated at runtime; there is no authored art scene.
+* The system map is a camera pose only: map markers, label density, and
+  class-priority picking are not built yet (milestone 2.5, steps 3–4). The
+  `EnableMapView` comparison switch is temporary.
 * The shader and materials are built-in-pipeline only. URP/HDRP would need a
   different shader and a camera stack for the far field.
 * Warp drops in the clock's power-of-ten steps, not continuously.

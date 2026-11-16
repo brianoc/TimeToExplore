@@ -38,6 +38,15 @@ namespace TimeToExplore
         public bool ShowHud = true;
         public bool ShowLabels = true;
 
+        /// <summary>
+        /// Development switch for the system map. Off keeps today's orbit
+        /// camera; on enables the blended top-down pose, pan, and the extended
+        /// zoom. Serialized per scene so the comparison scene can opt in while
+        /// the shipped scene stays on the old camera. A later step removes the
+        /// switch (or defaults it on) once the comparison is done.
+        /// </summary>
+        public bool EnableMapView = false;
+
         /// <summary>Debug free flight. A flight owns the ship while it runs.</summary>
         public bool FreeFlight { get; private set; }
 
@@ -95,6 +104,7 @@ namespace TimeToExplore
             Flight = new FlightSession(Model, _gravity, _planner);
 
             Rig = gameObject.AddComponent<ShipCameraRig>();
+            Rig.MapEnabled = EnableMapView;
             Rig.Initialise(ViewCamera, Model, UnitsPerMeter);
 
             Focus = gameObject.AddComponent<CameraFocusDirector>();

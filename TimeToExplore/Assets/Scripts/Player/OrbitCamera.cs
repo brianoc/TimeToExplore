@@ -35,15 +35,19 @@ namespace TimeToExplore.Player
         public float DistanceUnits = DefaultDistanceUnits;
 
         /// <summary>Unit vector from the ship to the camera, in Unity space.</summary>
-        public Vector3 OffsetDirection
+        public Vector3 OffsetDirection => Direction(YawDegrees, PitchDegrees);
+
+        /// <summary>
+        /// Unit vector from the ship to the camera for an arbitrary yaw and
+        /// pitch. The rig uses this with the map's effective pitch, while the
+        /// player's stored pitch is left alone.
+        /// </summary>
+        public static Vector3 Direction(float yawDegrees, float pitchDegrees)
         {
-            get
-            {
-                float yaw = YawDegrees * Mathf.Deg2Rad;
-                float pitch = PitchDegrees * Mathf.Deg2Rad;
-                float cos = Mathf.Cos(pitch);
-                return new Vector3(cos * Mathf.Sin(yaw), Mathf.Sin(pitch), cos * Mathf.Cos(yaw));
-            }
+            float yaw = yawDegrees * Mathf.Deg2Rad;
+            float pitch = pitchDegrees * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(pitch);
+            return new Vector3(cos * Mathf.Sin(yaw), Mathf.Sin(pitch), cos * Mathf.Cos(yaw));
         }
 
         /// <summary>Camera position relative to the ship, in render units.</summary>
@@ -63,11 +67,22 @@ namespace TimeToExplore.Player
         /// <summary>Multiplicative zoom, so each notch feels the same at any scale.</summary>
         public void Zoom(float steps, float factorPerStep = 1.25f)
         {
-            if (steps == 0f) return;
+            DistanceUnits = ZoomDistanceUnits(DistanceUnits, steps, factorPerStep);
+        }
+
+        /// <summary>
+        /// The local zoom curve as a pure function, clamped to the local range.
+        /// The rig routes map-side zoom through <see cref="MapView"/> instead,
+        /// whose ceiling is higher.
+        /// </summary>
+        public static float ZoomDistanceUnits(float distanceUnits, float steps,
+            float factorPerStep = 1.25f)
+        {
+            if (steps == 0f) return Mathf.Clamp(distanceUnits, MinDistanceUnits, MaxDistanceUnits);
             if (factorPerStep <= 0f) throw new ArgumentOutOfRangeException(nameof(factorPerStep));
 
             double scale = Math.Pow(factorPerStep, steps);
-            DistanceUnits = Mathf.Clamp((float)(DistanceUnits * scale),
+            return Mathf.Clamp((float)(distanceUnits * scale),
                 MinDistanceUnits, MaxDistanceUnits);
         }
 

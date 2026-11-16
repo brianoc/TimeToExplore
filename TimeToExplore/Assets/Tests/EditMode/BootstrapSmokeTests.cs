@@ -1,6 +1,7 @@
 using System.Reflection;
 using NUnit.Framework;
 using TimeToExplore.Core;
+using TimeToExplore.Player;
 using TimeToExplore.Simulation;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -51,6 +52,21 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Selected?.Id, Is.EqualTo("earth"));
             Assert.That(_bootstrap.Rig.AutoTarget?.Id, Is.EqualTo("earth"),
                 "the opening shot frames Earth");
+            Assert.That(_bootstrap.EnableMapView, Is.False,
+                "the shipped path keeps the old camera by default");
+            Assert.That(_bootstrap.Rig.MapEnabled, Is.False);
+        }
+
+        [Test]
+        public void TheMapSwitchReachesTheRig()
+        {
+            Build(enableMapView: true);
+
+            Assert.That(_bootstrap.EnableMapView, Is.True);
+            Assert.That(_bootstrap.Rig.MapEnabled, Is.True);
+            Assert.That(_bootstrap.ViewCamera.farClipPlane,
+                Is.EqualTo(MapView.FarClipUnits),
+                "the map camera needs the larger far clip");
         }
 
         [Test]
@@ -106,7 +122,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.FreeFlight, Is.False);
         }
 
-        private void Build()
+        private void Build(bool enableMapView = false)
         {
             _cameraObject = new GameObject("Test Camera");
             _cameraObject.tag = "MainCamera";
@@ -114,6 +130,7 @@ namespace TimeToExplore.Tests.EditMode
 
             _root = new GameObject("Test Bootstrap");
             _bootstrap = _root.AddComponent<SolarSystemBootstrap>();
+            _bootstrap.EnableMapView = enableMapView;
             Invoke("Awake");
         }
 

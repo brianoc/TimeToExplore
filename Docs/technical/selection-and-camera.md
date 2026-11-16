@@ -68,7 +68,7 @@ teleport), and **Close**.
 # The camera
 
 The view is an **orbit camera** around the ship: right-drag orbits, the wheel
-zooms, and the camera always looks at the ship at the render origin
+zooms, and in the local band the camera looks at the ship at the render origin
 ([ADR-008](/decisions/adr-008-orbit-camera.md)). That keeps the ship-relative
 float precision of [ADR-002](/decisions/adr-002-double-precision.md) — the world
 is still projected from the ship — while letting the player look at their own
@@ -80,14 +80,59 @@ the automatic framing: a plan, a jump, or a reset turns the view toward its
 destination and eases the orbit distance to `clamp(0.6 × ship→target, 3 ×
 radius, 3.3 AU)`. The aim and the distance follow separately, so zooming keeps
 the destination centred; only a drag stops the aiming. If the orbit would put
-the camera inside a body, it is pulled in toward the ship.
+the camera inside a body, it is pulled in toward the origin it is looking at.
 
-The next step for this layer is
-[The system map and route preview](/technical/system-map.md): a zoom-driven
-blend to a top-down map at the local sphere of influence, panning, and a
-plotted route with a Begin button. The plain-C# map state (`MapView`) and its
-tests are built; the rig integration, map drawing, and route preview are not
-yet.
+## The blended map pose
+
+`ShipCameraRig.MapEnabled` continues the same camera into the
+[system map](/technical/system-map.md). Each frame the rig reads the dominant
+body's sphere of influence as the local scale `r` and the blend
+`w = smoothstep(x)`, `x = clamp(ln(d/r)/ln(3), 0, 1)`, where `d` is the orbit
+distance. The pose becomes:
+
+* **Pitch** — `lerp(player pitch, 90°, w)`. The stored pitch stays inside
+  ±85°; only the effective pose reaches the pole.
+* **Rotation** — `slerp(local rotation, map rotation, w)`. The map's screen-up
+  is the limit of the local view's projected up as the pitch reaches the pole,
+  `(-sin yaw, 0, -cos yaw)` in Unity space, so it is horizontal and turns with
+  yaw. The two rotations share a right axis, so the slerp is exactly a pitch
+  turn.
+* **Position** — the orbit offset for the effective pitch, added to the
+  look-at point. In the map that point is `ship + pan`; in the local band the
+  pan has eased to zero, so it is the ship again.
+* **Round trip** — the player's yaw and pitch are never written, so zooming out
+  and back returns the exact remembered angle without a saved pose.
+
+The one rule this bends is ADR-008's "the camera always looks at the ship". On
+the map it looks at `ship + pan`; ADR-009 is still deferred to the map's
+documentation step, and the rig records the bend locally.
+
+**Map input.** Right-drag orbits while `w ≤ 0.5` and pans while `w > 0.5`. A
+pan moves the look-at by the distance-scaled pixel size
+(`2 · d · tan(fov/2) / screenHeight` per pixel) so the content follows the
+cursor at any zoom; the offset is in double-precision metres, capped at 60 AU.
+Returning to the local band eases the pan to zero exponentially at 3/s, so the
+local view lands on the ship. A map pan clears the auto-framing flags, as an
+orbit drag does. While the map is engaged, auto-aim and auto-distance are
+suspended: the map keeps the player's yaw, and a wheel zoom cannot be silently
+pulled back to a framed target. The follow flags survive, so zooming back into
+the local band resumes the framing.
+
+**Zoom and clipping.** The wheel is still multiplicative (1.25× per notch), but
+the map side uses `MapView.ZoomDistanceUnits` and reaches 12 billion km; the
+local side keeps the 5-billion-km clamp. The near plane is today's
+`clamp(0.02 × d, 200 km, 50 km)` at `w = 0`, and blends to one thousandth of the
+distance on the map, capped at 12,000 units. The far plane is raised to 40
+billion km while the map is enabled. Every one of these is unchanged when the
+map switch is off.
+
+**The comparison switch.** `SolarSystemBootstrap.EnableMapView` (default false)
+is serialized per scene and passed to the rig. `SolarSystem.unity` leaves it
+off; `SystemMap.unity` turns it on. It is a development comparison aid, not a
+gameplay mode, and a later step removes it or defaults it on.
+
+The remaining work for this layer is map drawing and picking (step 3), the
+local marker-aid fade (step 4), and the plotted route with Begin (step 5).
 
 # The focus transition (debug jump)
 
@@ -132,8 +177,8 @@ flight is running the jump is disabled: the flight owns the ship.
 | **Go To …** button | Plan and fly to the selected body |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen; `Esc` also cancels a debug jump |
-| Right mouse drag | Orbit the camera around the ship |
-| Mouse wheel | Zoom the camera |
+| Right mouse drag | Orbit the camera around the ship; pan on the map (`w > 0.5`) |
+| Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km) |
 | `Tab` | Cycle planet/station targets without opening the screen |
 
 # Verification
@@ -149,6 +194,16 @@ flight is running the jump is disabled: the flight owns the ship.
   midpoint position, cancellation, and zero duration;
 * the approach offset's eight-radius and 5,000 km rules and its lit-side bias;
 * the orbit camera's pitch clamp, yaw wrap, zoom limits, shortest turn, slew
-  rate, and distance easing, and the rig's framing distance and follow flags.
+  rate, and distance easing, and the rig's framing distance and follow flags;
+* the map pose: a finite top-down rotation, a horizontal up that turns with
+  yaw, the blended rotation agreeing with the effective pitch, and the exact
+  remembered-pose round trip;
+* input routing at the 0.5 blend threshold, the multiplicative wheel on both
+  sides, the extended map ceiling, the local clamp when the map is off, and the
+  suspension of auto-framing on the map;
+* the distance-scaled pan (content follows the cursor), the 60 AU cap through
+  the rig, the exponential ease home, and the near plane at both ends of the
+  blend;
+* both scenes loading, and the bootstrap switch reaching the rig.
 
 See [Testing and verification](/technical/testing.md) for the full suite.

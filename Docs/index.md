@@ -45,7 +45,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Architecture](/technical/architecture.md) — how the Unity prototype is structured, from catalogue load to render frame.
 * [The flight session](/technical/flight-session.md) — press Go To, watch the ship fly: ship ownership, the warp cap, the trajectory line, and the flight panel.
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then jump to it in debug flight.
-* [The system map and route preview](/technical/system-map.md) — the next work: continuous zoom to a top-down map, pan and select, and Plot route → Begin.
+* [The system map and route preview](/technical/system-map.md) — in progress: the blended top-down map and pan are built; map drawing, picking, and Plot route → Begin are next.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.

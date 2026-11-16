@@ -24,9 +24,11 @@ always at the player's angle. Three things are missing:
    **Begin** button.
 
 This document is the design for that work. It is the next milestone
-([roadmap](/production/roadmap.md), milestone 2.5). **Step 1, the plain-C#
-map state, is implemented; everything visible is not yet.** The implementation
-steps at the end are the task list, and each step carries its tests.
+([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1 and 2 are
+implemented: the plain-C# map state and the camera-rig integration.** Map
+drawing, picking, the local aid fade, and the route preview are not yet. The
+implementation steps at the end are the task list, and each step carries its
+tests.
 
 # One zoom, two readings of the same camera
 
@@ -69,18 +71,26 @@ returns to 0 the camera is back at the exact remembered angle. This is the
 behaviour the design asks for, and it falls out of the blend rather than
 needing a saved-pose restore.
 
-Two camera details the rig must handle:
+Two camera details the rig now handles:
 
 * **The pole.** `OrbitCamera` clamps pitch to ±85° because
   `Quaternion.LookRotation(-offset, Vector3.up)` degenerates at 90°. The map
-  pose bypasses the clamp and uses a fixed screen-up (ecliptic +Z projected)
-  when `w` is near 1. Yaw still applies, so the map keeps the player's
-  orientation rather than snapping north-up.
-* **The far end.** The current zoom maximum, 5 billion km, cannot frame
-  Neptune's orbit at 60° FOV: the view half-height there is 2.9 billion km
-  against Neptune's 4.5 billion km radius. The map extends the maximum to
+  pose bypasses the clamp. Its screen-up is the limit of the local view's
+  projected world-up as the pitch reaches the pole: in Unity space
+  `(-sin yaw, 0, -cos yaw)`, which is horizontal at every yaw and is
+  perpendicular to the straight-down forward. Yaw still applies, so the map
+  keeps the player's orientation rather than snapping north-up. The rig blends
+  the rotations with `Quaternion.Slerp`; both share the same camera-right axis,
+  so the blend is exactly a pitch turn and agrees with the blended effective
+  pitch. The endpoint is built explicitly, so no frame ever calls
+  `LookRotation` with a forward parallel to up.
+* **The far end.** The old zoom maximum, 5 billion km, cannot frame Neptune's
+  orbit at 60° FOV: the view half-height there is 2.9 billion km against
+  Neptune's 4.5 billion km radius. The map extends the maximum to
   **12 billion km (≈80 AU)**, which frames the whole catalogue with margin.
-  The local range (2,000 km up) is unchanged.
+  The local range (2,000 km up) is unchanged, and a direct `OrbitCamera.Zoom`
+  still stops at the local 5-million-unit ceiling; the rig routes map-side
+  wheel input through the map range.
 
 The ship stays at the render origin ([ADR-002](/decisions/adr-002-double-precision.md)).
 The map camera is just a large orbit offset, and panning adds a look-at
@@ -101,6 +111,70 @@ not matter. Local precision is untouched.
   always ship-centred, and the return trip lands on the ship, not on empty
   space where the player left the map.
 * Clicking the ship marker recentres the map on the ship.
+
+# The rig, as built (step 2)
+
+`ShipCameraRig` reads the pose every frame and never writes the player's yaw or
+pitch:
+
+```text
+r = MapView.LocalRadiusM(model, ship)      // dominant SOI, overlaps resolved
+w = MapView.BlendWeight(orbit.Distance, r)
+effectivePitch = lerp(orbit.Pitch, 90°, w)
+rotation = slerp(orbit.Rotation, MapRotation(orbit.Yaw), w)
+camera = ship + pan + rotation-derived orbit offset
+```
+
+The camera *position* comes from the effective pitch (`OrbitCamera.Direction`)
+so it sits on the same great circle as the rotation; the order and the
+look-at point are described below.
+
+| Input | Local (`w ≤ 0.5`) | Map (`w > 0.5`) |
+|---|---|---|
+| Right drag | Orbit; clears auto-aim | Pan; clears both auto flags |
+| Wheel | 1.25× per notch, local 5-million-unit ceiling | 1.25× per notch, map 12-million-unit ceiling |
+| Left click | Selection (unchanged) | Selection (step 3) |
+
+**Pan scale.** The look-at moves by `2 · d · tan(fov/2) / screenHeight` units
+per pixel, times the drag. The factor comes from the camera distance, so the
+content under the cursor stays under the cursor at any zoom. Dragging right or
+up moves the look-at left or down, which is what makes the map follow the
+pointer rather than run away from it. The rig converts the old Input Manager's
+Mouse X/Y axes at ten pixels per axis unit (Unity's default 0.1 sensitivity).
+
+**Pan ease.** Returning to the local band starts an exponential decay of the
+pan at `PanReturnRatePerSecond` (3/s by default). It never snaps, and ten
+seconds of decay is well under a metre. A reset also clears the pan outright.
+
+**Look-at.** The map looks at `ship + pan`, with the pan held in double
+precision ecliptic metres and converted once at the camera. This is the one
+bend of ADR-008's "always looks at the ship"; ADR-009 stays deferred to the
+documentation step, but the rig and the camera concept record it now. In the
+local band the pan has eased to zero, so the look-at is the ship again.
+
+**Near and far planes.** At `w = 0` the near plane is exactly today's rule
+(`clamp(0.02 × distance, 200 km, 50 km)`). On the map it follows the camera
+distance at one thousandth, capped at 12,000 units (12 million km) at the zoom
+ceiling. That keeps the near plane in front of the look-at point and leaves a
+near:far ratio of about 1:3,300 at the ceiling. The far plane is raised to
+**40 billion km (40,000,000 units, about 267 AU)** when the map is enabled: a
+full-map camera can sit 12 billion km from the look-at point plus a 60 AU pan,
+and the catalogue is about 60 AU across, so 40 billion km covers the worst-case
+visible distance. The local camera's 20-billion-km far plane is unchanged when
+the map is off.
+
+**Auto-framing on the map.** While `w > 0.5` the rig suspends both auto-aim and
+auto-distance: the player's yaw stays the map yaw, and a wheel zoom is never
+silently pulled back to a framed target. The follow flags are kept, so zooming
+back into the local band resumes framing where it left off. A map pan, like an
+orbit drag, clears both flags because the player has taken the view.
+
+**The comparison switch.** `SolarSystemBootstrap.EnableMapView` is a serialized
+development switch, default `false`, passed to `ShipCameraRig.MapEnabled`.
+`Assets/Scenes/SolarSystem.unity` leaves it off and keeps the old camera;
+`Assets/Scenes/SystemMap.unity` turns it on. Both scenes hold only the camera
+and the bootstrap, and the rig is added at runtime. The switch is a comparison
+aid, not a gameplay mode; a later step removes it or defaults it on.
 
 # What the map draws
 
@@ -187,10 +261,11 @@ watch the ship cross the system along the active plan line.
 * **The debug jump** — stays for inspection.
 
 ADR-008's "the camera always looks at the ship" is the one settled rule this
-design bends: in the map the camera looks at `ship + pan`. Record that as
-ADR-009 when the work lands, and update
-[Selection and camera focus](/technical/selection-and-camera.md) and
-[The flight session](/technical/flight-session.md) with it.
+design bends: in the map the camera looks at `ship + pan`. The rig integration
+(step 2) records the bend in the rig and in
+[Selection and camera focus](/technical/selection-and-camera.md); ADR-009 is
+still deferred to the documentation step (7), which also updates
+[The flight session](/technical/flight-session.md).
 
 # Implementation steps
 
@@ -204,9 +279,16 @@ Each step is one session-sized piece of work with its tests, in order:
    round trip is a pure blend. Tests: `MapViewTests` covers the endpoints and
    the smoothstep midpoint, the exact round trip, the Moon-inside-Earth choice
    at Gateway, the deep-space fallback, the pan cap, and the zoom clamp.
-2. **Rig integration.** The top-down pose with a fixed up at the pole, input
-  routing (right-drag orbits when local, pans when map), the near plane at map
-  distances, the pan ease-out on re-entry. Extend `CameraRigTests`.
+2. **Rig integration — done.** `ShipCameraRig` blends the pose toward the
+  top-down map with a yaw-dependent horizontal up, routes right-drag to orbit
+  locally and pan on the map, scales the pan per pixel from the camera
+  distance, eases the pan home on re-entry, suspends auto-framing on the map,
+  routes the wheel through the extended map range, and blends the near plane
+  from today's local rule to one thousandth of the map distance.
+  `CameraRigTests` covers the pose, the round trip, the routing, the pan and
+  its cap, the ease, the zoom range, the near plane, and the local view with
+  the map off. `SolarSystemBootstrap.EnableMapView` and
+  `Assets/Scenes/SystemMap.unity` provide the side-by-side comparison.
 3. **Map drawing and picking.** The 6 px map marker minimum, the label density
   rule, class-priority picking at full-system zoom. Extend the picker tests.
 4. **The local aid fade.** The neighbourhood falloff as a pure function;

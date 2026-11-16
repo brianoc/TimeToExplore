@@ -54,6 +54,40 @@ namespace TimeToExplore.Player
         /// </summary>
         public const double MaxPanM = 60.0 * AstronomicalUnitM;
 
+        /// <summary>
+        /// Blend weight above which input is on the map side: a right drag pans
+        /// instead of orbiting. Exactly one half stays local, so the boundary
+        /// itself never flips the input mid-gesture.
+        /// </summary>
+        public const float PanThreshold = 0.5f;
+
+        /// <summary>
+        /// Near-clip fraction of the camera distance on the map side. The local
+        /// rule is 2%; at solar scale 2% of 12 billion km would push the near
+        /// plane past every planet, and a fixed 50 km plane leaves the depth
+        /// buffer almost no range. One thousandth keeps the near plane well in
+        /// front of the look-at point and leaves a sane near:far ratio.
+        /// </summary>
+        public const float MapNearClipFraction = 0.001f;
+
+        /// <summary>Near clip at the 12-billion-km ceiling: 12,000 units (12 million km).</summary>
+        public const float MaxNearClipUnits = 12_000f;
+
+        /// <summary>
+        /// Far clip on the map side: 40 billion km (267 AU). A full-map camera
+        /// can sit 12 billion km from the look-at point plus the 60 AU pan, and
+        /// the catalogue is about 60 AU across, so 40 billion km covers the
+        /// worst-case visible distance with margin. It is larger than the local
+        /// camera's 20 billion km but changes nothing visible at local range.
+        /// </summary>
+        public const float FarClipUnits = 40_000_000f;
+
+        /// <summary>
+        /// How fast a map pan eases back to the ship when the view returns to
+        /// the local band, per second. Exponential, so the return never snaps.
+        /// </summary>
+        public float PanReturnRatePerSecond = 3f;
+
         private float _unitsPerMeter = 1e-6f;
 
         /// <summary>Render units per metre. The default is the scene's 1:1,000 km.</summary>
@@ -205,6 +239,115 @@ namespace TimeToExplore.Player
         public void ClearPan()
         {
             PanOffsetM = Vector3d.Zero;
+        }
+
+        /// <summary>
+        /// Ease the pan toward zero when the view returns to the local band, so
+        /// the local view lands on the ship rather than on empty space. The
+        /// decay is exponential: fast enough to settle in a couple of seconds,
+        /// never a snap.
+        /// </summary>
+        public void EasePan(float deltaTime)
+        {
+            if (!(deltaTime > 0f) || !(PanReturnRatePerSecond > 0f)) return;
+            if (PanOffsetM.SqrMagnitude <= 0.0) return;
+
+            double factor = Math.Exp(-PanReturnRatePerSecond * deltaTime);
+            SetPanM(PanOffsetM * factor);
+        }
+
+        /// <summary>
+        /// True when a blend weight belongs to the map side. The threshold is
+        /// strict: exactly 0.5 still orbits, so the boundary is stable.
+        /// </summary>
+        public static bool UsesPan(float blendWeight)
+        {
+            return blendWeight > PanThreshold;
+        }
+
+        /// <summary>
+        /// The map's screen-up: the limit of the local orbit view's projected
+        /// world-up as its pitch reaches the pole. It is horizontal, so
+        /// <c>Quaternion.LookRotation</c> never sees a forward parallel to up,
+        /// and it turns with yaw so the map keeps the player's orientation
+        /// instead of snapping north-up.
+        /// </summary>
+        public static Vector3 MapScreenUp(float yawDegrees)
+        {
+            float yaw = yawDegrees * Mathf.Deg2Rad;
+            return new Vector3(-Mathf.Sin(yaw), 0f, -Mathf.Cos(yaw));
+        }
+
+        /// <summary>
+        /// The top-down rotation: looking straight down the ecliptic pole, with
+        /// the yaw-dependent horizontal up from <see cref="MapScreenUp"/>.
+        /// </summary>
+        public static Quaternion MapRotation(float yawDegrees)
+        {
+            return Quaternion.LookRotation(Vector3.down, MapScreenUp(yawDegrees));
+        }
+
+        /// <summary>
+        /// Blend the local orbit rotation toward the map rotation. Both share
+        /// the same camera-right axis, so this is exactly a pitch turn and the
+        /// result stays consistent with <see cref="EffectivePitchDegrees"/>.
+        /// </summary>
+        public static Quaternion BlendRotation(Quaternion localRotation, float yawDegrees,
+            float blendWeight)
+        {
+            blendWeight = Mathf.Clamp01(blendWeight);
+            if (blendWeight <= 0f) return localRotation;
+            if (blendWeight >= 1f) return MapRotation(yawDegrees);
+            return Quaternion.Slerp(localRotation, MapRotation(yawDegrees), blendWeight);
+        }
+
+        /// <summary>The orbit camera's near plane: 2% of the distance, clamped to 200 km–50 km.</summary>
+        public static float LocalNearClipUnits(float distanceUnits)
+        {
+            return Mathf.Clamp(distanceUnits * 0.02f, 0.0002f, 0.05f);
+        }
+
+        /// <summary>
+        /// Near plane for a blended pose. At w = 0 this is exactly today's local
+        /// rule; on the map side it follows the camera distance at one
+        /// thousandth, capped at 12,000 units at the zoom ceiling.
+        /// </summary>
+        public static float NearClipUnits(float distanceUnits, float blendWeight)
+        {
+            float local = LocalNearClipUnits(distanceUnits);
+            float map = Mathf.Clamp(distanceUnits * MapNearClipFraction,
+                LocalNearClipUnits(0f), MaxNearClipUnits);
+            return Mathf.Lerp(local, map, Mathf.Clamp01(blendWeight));
+        }
+
+        /// <summary>
+        /// Render units covered by one screen pixel on the look-at plane, at a
+        /// given camera distance and vertical field of view.
+        /// </summary>
+        public static float UnitsPerPixel(float distanceUnits, float fieldOfViewDegrees,
+            float screenHeightPixels)
+        {
+            float halfHeight = distanceUnits
+                * Mathf.Tan(0.5f * fieldOfViewDegrees * Mathf.Deg2Rad);
+            return 2f * halfHeight / Mathf.Max(1f, screenHeightPixels);
+        }
+
+        /// <summary>
+        /// Pan delta for a right-drag, in render units. The content follows the
+        /// cursor: dragging right moves the look-at left, so the world under the
+        /// pointer stays put. The scale is tied to the camera distance, so the
+        /// gesture feels the same at every zoom.
+        /// </summary>
+        public static Vector3 PanDeltaForDrag(float deltaXPixels, float deltaYPixels,
+            float distanceUnits, float fieldOfViewDegrees, float screenHeightPixels,
+            float yawDegrees)
+        {
+            float unitsPerPixel = UnitsPerPixel(distanceUnits, fieldOfViewDegrees,
+                screenHeightPixels);
+            Quaternion rotation = MapRotation(yawDegrees);
+            Vector3 right = rotation * Vector3.right;
+            Vector3 up = rotation * Vector3.up;
+            return (-right * deltaXPixels - up * deltaYPixels) * unitsPerPixel;
         }
 
         /// <summary>Clamp a look-at offset to the 60 AU pan cap.</summary>

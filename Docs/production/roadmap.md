@@ -27,7 +27,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite
-  (220 tests).
+  (236 tests).
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -110,10 +110,14 @@ implementation steps are the task list, each with its tests. In order:
 
 1. The zoom-driven blend from the local orbit view to a top-down map at the
    local sphere of influence, with the remembered angle restored on the way
-   back in, and panning on the map. **Step 1 is done:** the plain-C#
+   back in, and panning on the map. **Steps 1–2 are done:** the plain-C#
    `MapView` holds the blend, the dominant-body choice, the 12-billion-km
-   range, and the 60 AU pan cap, with `MapViewTests`. The rig integration is
-   next.
+   range, the map pose and clipping, and the 60 AU pan cap; `ShipCameraRig`
+   blends the pose, routes right-drag to orbit or pan, scales the pan from the
+   camera distance, eases it home on re-entry, suspends auto-framing on the
+   map, and routes the wheel through the extended range. `SystemMap.unity` and
+   the `EnableMapView` switch provide the side-by-side comparison. Map drawing
+   and picking are next.
 2. Map reading rules: bigger markers, label density by zoom, class-priority
    picking — the map selects big things.
 3. The local view stops inflating distant bodies; the marker aid becomes
