@@ -1,0 +1,3943 @@
+{
+ "name": "Time to Explore - Sol",
+ "epochUtc": "2026-11-15T00:00:00Z",
+ "epochJulianDate": 2461359.5,
+ "startJulianDate": 2461359.5,
+ "sourceNote": "Planets: JPL approximate positions (Standish & Williams). Asteroids: JPL SBDB query, 100 largest main-belt objects. Moons: IAU/JPL physical data with authored epoch phases. Stations: fictional, positioned at real Lagrange points.",
+ "bodies": [
+  {
+   "id": "sun",
+   "name": "Sun",
+   "kind": "star",
+   "parent": null,
+   "radiusM": 696340000.0,
+   "gm": 1.32712440018e+20,
+   "rotationPeriodS": 2192832.0,
+   "axialTiltDeg": 7.25,
+   "poleRaDeg": 286.13,
+   "poleDecDeg": 63.87,
+   "color": [
+    1.0,
+    0.93,
+    0.72
+   ],
+   "description": "G2V star containing 99.86% of the system mass.",
+   "orbit": null,
+   "lagrange": null
+  },
+  {
+   "id": "mercury",
+   "name": "Mercury",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 2439700.0,
+   "gm": 22032000000000.0,
+   "rotationPeriodS": 5067360.0,
+   "axialTiltDeg": 0.034,
+   "poleRaDeg": 281.01,
+   "poleDecDeg": 61.42,
+   "color": [
+    0.56,
+    0.52,
+    0.46
+   ],
+   "description": "Smallest planet; large iron core; 3:2 spin-orbit resonance.",
+   "orbit": {
+    "aM": 57909241414.74744,
+    "e": 0.2056410515433265,
+    "iDeg": 7.003380891578234,
+    "raanDeg": 48.29708605649569,
+    "argPeriDeg": 29.203831385363443,
+    "meanAnomalyDeg": 19.008408652807702,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "venus",
+   "name": "Venus",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 6051800.0,
+   "gm": 324859000000000.0,
+   "rotationPeriodS": -20997000.0,
+   "axialTiltDeg": 177.36,
+   "poleRaDeg": 272.76,
+   "poleDecDeg": 67.16,
+   "color": [
+    0.86,
+    0.79,
+    0.64
+   ],
+   "description": "Runaway-greenhouse world with a retrograde rotation.",
+   "orbit": {
+    "aM": 108209631309.18965,
+    "e": 0.0067656842295687886,
+    "iDeg": 3.3944640675482547,
+    "raanDeg": 76.60522435617085,
+    "argPeriDeg": 54.99796384093264,
+    "meanAnomalyDeg": -65.51459879819231,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "earth",
+   "name": "Earth",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 6371000.0,
+   "gm": 398600441800000.0,
+   "rotationPeriodS": 86164.2,
+   "axialTiltDeg": 23.44,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.2,
+    0.42,
+    0.72
+   ],
+   "description": "Home world; the Earth-Moon barycentre is used for the heliocentric orbit.",
+   "orbit": {
+    "aM": 149598487062.6412,
+    "e": 0.016699428416427107,
+    "iDeg": -0.003494165328131417,
+    "raanDeg": 0.0,
+    "argPeriDeg": 103.02454761486734,
+    "meanAnomalyDeg": -49.29944457470992,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "mars",
+   "name": "Mars",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 3389500.0,
+   "gm": 42828370000000.0,
+   "rotationPeriodS": 88642.44,
+   "axialTiltDeg": 25.19,
+   "poleRaDeg": 317.68,
+   "poleDecDeg": 52.89,
+   "color": [
+    0.72,
+    0.38,
+    0.24
+   ],
+   "description": "Cold desert world with two small captured moons.",
+   "orbit": {
+    "aM": 227944564882.7883,
+    "e": 0.09341527943572894,
+    "iDeg": 1.8475064852431213,
+    "raanDeg": 49.48092256698193,
+    "argPeriDeg": -73.30513612462711,
+    "meanAnomalyDeg": 122.39195062015278,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "jupiter",
+   "name": "Jupiter",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 69911000.0,
+   "gm": 1.26686534e+17,
+   "rotationPeriodS": 35730.0,
+   "axialTiltDeg": 3.13,
+   "poleRaDeg": 268.06,
+   "poleDecDeg": 64.5,
+   "color": [
+    0.8,
+    0.7,
+    0.56
+   ],
+   "description": "Largest planet; four Galilean moons; strong radiation belts.",
+   "orbit": {
+    "aM": 778336150922.4436,
+    "e": 0.04835062834537988,
+    "iDeg": 1.3039032987876797,
+    "raanDeg": 100.52891088078358,
+    "argPeriDeg": -85.74332377902834,
+    "meanAnomalyDeg": 115.06645562049323,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "saturn",
+   "name": "Saturn",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 58232000.0,
+   "gm": 3.7931187e+16,
+   "rotationPeriodS": 38361.6,
+   "axialTiltDeg": 26.73,
+   "poleRaDeg": 40.59,
+   "poleDecDeg": 83.54,
+   "color": [
+    0.86,
+    0.79,
+    0.62
+   ],
+   "description": "Ringed gas giant; Titan is the only moon with a dense atmosphere.",
+   "orbit": {
+    "aM": 1426616142686.0273,
+    "e": 0.05372477393716633,
+    "iDeg": 2.4865121097071867,
+    "raanDeg": 113.58485487994169,
+    "argPeriDeg": -21.098557056302255,
+    "meanAnomalyDeg": -74.0402355726361,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "uranus",
+   "name": "Uranus",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 25362000.0,
+   "gm": 5793939000000000.0,
+   "rotationPeriodS": -62063.99999999999,
+   "axialTiltDeg": 97.77,
+   "poleRaDeg": 257.31,
+   "poleDecDeg": -15.18,
+   "color": [
+    0.56,
+    0.79,
+    0.83
+   ],
+   "description": "Ice giant tipped on its side; its moon system shares the extreme tilt.",
+   "orbit": {
+    "aM": 2870579312023.187,
+    "e": 0.047245624981108826,
+    "iDeg": 0.7719850374427104,
+    "raanDeg": 74.02831976257782,
+    "argPeriDeg": 97.03560292493059,
+    "meanAnomalyDeg": -102.68996979054532,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "neptune",
+   "name": "Neptune",
+   "kind": "planet",
+   "parent": "sun",
+   "radiusM": 24622000.0,
+   "gm": 6836529000000000.0,
+   "rotationPeriodS": 57996.0,
+   "axialTiltDeg": 28.32,
+   "poleRaDeg": 299.36,
+   "poleDecDeg": 43.46,
+   "color": [
+    0.26,
+    0.4,
+    0.8
+   ],
+   "description": "Outermost giant planet; Triton orbits retrograde.",
+   "orbit": {
+    "aM": 4498406985439.389,
+    "e": 0.008604197459958931,
+    "iDeg": 1.7701385168156059,
+    "raanDeg": 131.782858927453,
+    "argPeriDeg": -86.90473152355237,
+    "meanAnomalyDeg": -41.2967114013031,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "moon",
+   "name": "Moon",
+   "kind": "moon",
+   "parent": "earth",
+   "radiusM": 1737400.0,
+   "gm": 4904869500000.0,
+   "rotationPeriodS": 2360591.5104,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.62,
+    0.62,
+    0.6
+   ],
+   "description": "Tidally locked; the only other world walked on by humans.",
+   "orbit": {
+    "aM": 384400000.0,
+    "e": 0.0549,
+    "iDeg": 5.145,
+    "raanDeg": 0.0,
+    "argPeriDeg": 0.0,
+    "meanAnomalyDeg": 0.0,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "phobos",
+   "name": "Phobos",
+   "kind": "moon",
+   "parent": "mars",
+   "radiusM": 11267.0,
+   "gm": 708700.0,
+   "rotationPeriodS": 27553.824,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.45,
+    0.42,
+    0.38
+   ],
+   "description": "Irregular inner moon, spiralling inward.",
+   "orbit": {
+    "aM": 9376000.0,
+    "e": 0.0151,
+    "iDeg": 1.08,
+    "raanDeg": 61.0,
+    "argPeriDeg": 29.0,
+    "meanAnomalyDeg": 137.508,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "deimos",
+   "name": "Deimos",
+   "kind": "moon",
+   "parent": "mars",
+   "radiusM": 6200.0,
+   "gm": 96200.0,
+   "rotationPeriodS": 109074.816,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.48,
+    0.45,
+    0.41
+   ],
+   "description": "Small outer moon of Mars.",
+   "orbit": {
+    "aM": 23463000.0,
+    "e": 0.0002,
+    "iDeg": 1.79,
+    "raanDeg": 122.0,
+    "argPeriDeg": 58.0,
+    "meanAnomalyDeg": 275.016,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "io",
+   "name": "Io",
+   "kind": "moon",
+   "parent": "jupiter",
+   "radiusM": 1821600.0,
+   "gm": 5959900000000.0,
+   "rotationPeriodS": 152853.5232,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.86,
+    0.8,
+    0.42
+   ],
+   "description": "Volcanic moon heated by tidal flexing.",
+   "orbit": {
+    "aM": 421700000.0,
+    "e": 0.0041,
+    "iDeg": 0.05,
+    "raanDeg": 183.0,
+    "argPeriDeg": 87.0,
+    "meanAnomalyDeg": 52.524,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "europa",
+   "name": "Europa",
+   "kind": "moon",
+   "parent": "jupiter",
+   "radiusM": 1560800.0,
+   "gm": 3202700000000.0,
+   "rotationPeriodS": 306822.0384,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.76,
+    0.72,
+    0.64
+   ],
+   "description": "Ice shell over a probable subsurface ocean.",
+   "orbit": {
+    "aM": 671034000.0,
+    "e": 0.009,
+    "iDeg": 0.47,
+    "raanDeg": 244.0,
+    "argPeriDeg": 116.0,
+    "meanAnomalyDeg": 190.03200000000004,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ganymede",
+   "name": "Ganymede",
+   "kind": "moon",
+   "parent": "jupiter",
+   "radiusM": 2634100.0,
+   "gm": 9887800000000.0,
+   "rotationPeriodS": 618153.3792,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.62,
+    0.58,
+    0.52
+   ],
+   "description": "Largest moon in the solar system.",
+   "orbit": {
+    "aM": 1070412000.0,
+    "e": 0.0013,
+    "iDeg": 0.2,
+    "raanDeg": 305.0,
+    "argPeriDeg": 145.0,
+    "meanAnomalyDeg": 327.5400000000001,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "callisto",
+   "name": "Callisto",
+   "kind": "moon",
+   "parent": "jupiter",
+   "radiusM": 2410300.0,
+   "gm": 7179300000000.0,
+   "rotationPeriodS": 1441931.1552000002,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.42,
+    0.39,
+    0.35
+   ],
+   "description": "Heavily cratered ancient surface.",
+   "orbit": {
+    "aM": 1882709000.0,
+    "e": 0.0074,
+    "iDeg": 0.24,
+    "raanDeg": 6.0,
+    "argPeriDeg": 174.0,
+    "meanAnomalyDeg": 105.048,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "mimas",
+   "name": "Mimas",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 198200.0,
+   "gm": 25026000000.0,
+   "rotationPeriodS": 81425.2608,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.68,
+    0.67,
+    0.64
+   ],
+   "description": "Small icy moon with the Herschel crater.",
+   "orbit": {
+    "aM": 185539000.0,
+    "e": 0.0196,
+    "iDeg": 1.57,
+    "raanDeg": 67.0,
+    "argPeriDeg": 203.0,
+    "meanAnomalyDeg": 242.55600000000004,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "enceladus",
+   "name": "Enceladus",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 252100.0,
+   "gm": 72104000000.0,
+   "rotationPeriodS": 118386.8352,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.86,
+    0.88,
+    0.88
+   ],
+   "description": "South-polar plumes vent a subsurface ocean.",
+   "orbit": {
+    "aM": 238037000.0,
+    "e": 0.0047,
+    "iDeg": 0.02,
+    "raanDeg": 128.0,
+    "argPeriDeg": 232.0,
+    "meanAnomalyDeg": 20.064000000000078,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "tethys",
+   "name": "Tethys",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 531100.0,
+   "gm": 41213000000.0,
+   "rotationPeriodS": 163106.09279999998,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.76,
+    0.76,
+    0.74
+   ],
+   "description": "Icy moon with the Odysseus impact basin.",
+   "orbit": {
+    "aM": 294672000.0,
+    "e": 0.0001,
+    "iDeg": 1.09,
+    "raanDeg": 189.0,
+    "argPeriDeg": 261.0,
+    "meanAnomalyDeg": 157.57200000000012,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "dione",
+   "name": "Dione",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 561400.0,
+   "gm": 73105000000.0,
+   "rotationPeriodS": 236469.456,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.72,
+    0.71
+   ],
+   "description": "Icy moon with bright tectonic fractures.",
+   "orbit": {
+    "aM": 377415000.0,
+    "e": 0.0022,
+    "iDeg": 0.02,
+    "raanDeg": 250.0,
+    "argPeriDeg": 290.0,
+    "meanAnomalyDeg": 295.08000000000015,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "rhea",
+   "name": "Rhea",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 763800.0,
+   "gm": 153940000000.0,
+   "rotationPeriodS": 390373.5168,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.7,
+    0.7,
+    0.69
+   ],
+   "description": "Saturn's second-largest moon.",
+   "orbit": {
+    "aM": 527068000.0,
+    "e": 0.0013,
+    "iDeg": 0.35,
+    "raanDeg": 311.0,
+    "argPeriDeg": 319.0,
+    "meanAnomalyDeg": 72.58800000000019,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "titan",
+   "name": "Titan",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 2574730.0,
+   "gm": 8978100000000.0,
+   "rotationPeriodS": 1377684.3743999999,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.8,
+    0.62,
+    0.32
+   ],
+   "description": "Thick nitrogen atmosphere and methane lakes.",
+   "orbit": {
+    "aM": 1221870000.0,
+    "e": 0.0288,
+    "iDeg": 0.33,
+    "raanDeg": 12.0,
+    "argPeriDeg": 348.0,
+    "meanAnomalyDeg": 210.096,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "iapetus",
+   "name": "Iapetus",
+   "kind": "moon",
+   "parent": "saturn",
+   "radiusM": 734500.0,
+   "gm": 120510000000.0,
+   "rotationPeriodS": 6853377.6,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.5,
+    0.48,
+    0.44
+   ],
+   "description": "Two-tone surface and a distant inclined orbit.",
+   "orbit": {
+    "aM": 3560820000.0,
+    "e": 0.0286,
+    "iDeg": 15.47,
+    "raanDeg": 73.0,
+    "argPeriDeg": 17.0,
+    "meanAnomalyDeg": 347.60400000000004,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "miranda",
+   "name": "Miranda",
+   "kind": "moon",
+   "parent": "uranus",
+   "radiusM": 235800.0,
+   "gm": 4400000000.0,
+   "rotationPeriodS": 122124.58559999999,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.66,
+    0.66,
+    0.66
+   ],
+   "description": "Small moon with extreme fault scarps.",
+   "orbit": {
+    "aM": 129390000.0,
+    "e": 0.0013,
+    "iDeg": 4.34,
+    "raanDeg": 134.0,
+    "argPeriDeg": 46.0,
+    "meanAnomalyDeg": 125.11200000000008,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ariel",
+   "name": "Ariel",
+   "kind": "moon",
+   "parent": "uranus",
+   "radiusM": 578900.0,
+   "gm": 90000000000.0,
+   "rotationPeriodS": 217760.74560000002,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.72,
+    0.71
+   ],
+   "description": "Brightest and most fractured Uranian moon.",
+   "orbit": {
+    "aM": 190900000.0,
+    "e": 0.0012,
+    "iDeg": 0.26,
+    "raanDeg": 195.0,
+    "argPeriDeg": 75.0,
+    "meanAnomalyDeg": 262.62000000000035,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "umbriel",
+   "name": "Umbriel",
+   "kind": "moon",
+   "parent": "uranus",
+   "radiusM": 584700.0,
+   "gm": 85000000000.0,
+   "rotationPeriodS": 358056.8928,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.42,
+    0.42,
+    0.41
+   ],
+   "description": "Dark, ancient Uranian moon.",
+   "orbit": {
+    "aM": 266000000.0,
+    "e": 0.0039,
+    "iDeg": 0.13,
+    "raanDeg": 256.0,
+    "argPeriDeg": 104.0,
+    "meanAnomalyDeg": 40.128000000000156,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "titania",
+   "name": "Titania",
+   "kind": "moon",
+   "parent": "uranus",
+   "radiusM": 788900.0,
+   "gm": 240000000000.0,
+   "rotationPeriodS": 752187.3407999999,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.62,
+    0.62,
+    0.61
+   ],
+   "description": "Largest moon of Uranus.",
+   "orbit": {
+    "aM": 436300000.0,
+    "e": 0.0011,
+    "iDeg": 0.34,
+    "raanDeg": 317.0,
+    "argPeriDeg": 133.0,
+    "meanAnomalyDeg": 177.63599999999997,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "oberon",
+   "name": "Oberon",
+   "kind": "moon",
+   "parent": "uranus",
+   "radiusM": 761400.0,
+   "gm": 200000000000.0,
+   "rotationPeriodS": 1163223.8496,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.55,
+    0.54,
+    0.52
+   ],
+   "description": "Outer major moon of Uranus.",
+   "orbit": {
+    "aM": 583500000.0,
+    "e": 0.0014,
+    "iDeg": 0.06,
+    "raanDeg": 18.0,
+    "argPeriDeg": 162.0,
+    "meanAnomalyDeg": 315.14400000000023,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "triton",
+   "name": "Triton",
+   "kind": "moon",
+   "parent": "neptune",
+   "radiusM": 1353400.0,
+   "gm": 1427600000000.0,
+   "rotationPeriodS": 507760.18559999997,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.78,
+    0.77,
+    0.74
+   ],
+   "description": "Retrograde captured moon with nitrogen geysers.",
+   "orbit": {
+    "aM": 354759000.0,
+    "e": 0.0,
+    "iDeg": 156.885,
+    "raanDeg": 79.0,
+    "argPeriDeg": 191.0,
+    "meanAnomalyDeg": 92.65200000000004,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "proteus",
+   "name": "Proteus",
+   "kind": "moon",
+   "parent": "neptune",
+   "radiusM": 210000.0,
+   "gm": 1800000000.0,
+   "rotationPeriodS": 96968.01599999999,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.4,
+    0.39,
+    0.38
+   ],
+   "description": "Irregular, dark inner moon of Neptune.",
+   "orbit": {
+    "aM": 117647000.0,
+    "e": 0.0005,
+    "iDeg": 0.52,
+    "raanDeg": 140.0,
+    "argPeriDeg": 220.0,
+    "meanAnomalyDeg": 230.1600000000003,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "nereid",
+   "name": "Nereid",
+   "kind": "moon",
+   "parent": "neptune",
+   "radiusM": 170000.0,
+   "gm": 1000000000.0,
+   "rotationPeriodS": 31115232.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.48,
+    0.47,
+    0.45
+   ],
+   "description": "Highly eccentric outer moon of Neptune.",
+   "orbit": {
+    "aM": 5513400000.0,
+    "e": 0.7507,
+    "iDeg": 7.23,
+    "raanDeg": 201.0,
+    "argPeriDeg": 249.0,
+    "meanAnomalyDeg": 7.66800000000012,
+    "epochJulianDate": 2461359.5,
+    "plane": "parentEquator"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_1",
+   "name": "Ceres",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 469700.0,
+   "gm": 62628400000.0,
+   "rotationPeriodS": 32667.012000000002,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": -60.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 939.4 km.",
+   "orbit": {
+    "aM": 413787710356.2,
+    "e": 0.0797,
+    "iDeg": 10.59,
+    "raanDeg": 80.25,
+    "argPeriDeg": 73.29,
+    "meanAnomalyDeg": -51.51385940124288,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_4",
+   "name": "Vesta",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 261385.0,
+   "gm": 17288284400.0,
+   "rotationPeriodS": 19231.65947592,
+   "axialTiltDeg": 13.0,
+   "poleRaDeg": 47.0,
+   "poleDecDeg": -43.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 522.8 km.",
+   "orbit": {
+    "aM": 353200572722.7,
+    "e": 0.0902,
+    "iDeg": 7.14,
+    "raanDeg": 103.7,
+    "argPeriDeg": 151.47,
+    "meanAnomalyDeg": 124.38736117120618,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_2",
+   "name": "Pallas",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 256500.0,
+   "gm": 13630000000.0,
+   "rotationPeriodS": 28127.59704,
+   "axialTiltDeg": 26.0,
+   "poleRaDeg": 94.0,
+   "poleDecDeg": -26.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 513.0 km.",
+   "orbit": {
+    "aM": 414386101839.0,
+    "e": 0.2307,
+    "iDeg": 34.93,
+    "raanDeg": 172.89,
+    "argPeriDeg": 310.97,
+    "meanAnomalyDeg": -71.75762223024992,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_10",
+   "name": "Hygiea",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 203560.0,
+   "gm": 7000000000.0,
+   "rotationPeriodS": 49780.799999999996,
+   "axialTiltDeg": 39.0,
+   "poleRaDeg": 141.0,
+   "poleDecDeg": -9.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 407.1 km.",
+   "orbit": {
+    "aM": 471382890575.69995,
+    "e": 0.1067,
+    "iDeg": 3.83,
+    "raanDeg": 283.12,
+    "argPeriDeg": 312.42,
+    "meanAnomalyDeg": -79.95255078355507,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_704",
+   "name": "Interamnia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 153156.5,
+   "gm": 5000000000.0,
+   "rotationPeriodS": 31417.2,
+   "axialTiltDeg": 12.0,
+   "poleRaDeg": 188.0,
+   "poleDecDeg": 8.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 306.3 km.",
+   "orbit": {
+    "aM": 457320690729.89996,
+    "e": 0.1551,
+    "iDeg": 17.32,
+    "raanDeg": 280.17,
+    "argPeriDeg": 94.06,
+    "meanAnomalyDeg": -109.54040006403596,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_52",
+   "name": "52 Europa",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 151959.0,
+   "gm": 2452526012.56658,
+   "rotationPeriodS": 20269.44,
+   "axialTiltDeg": 25.0,
+   "poleRaDeg": 235.0,
+   "poleDecDeg": 25.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 303.9 km.",
+   "orbit": {
+    "aM": 462855811945.8,
+    "e": 0.1125,
+    "iDeg": 7.48,
+    "raanDeg": 128.57,
+    "argPeriDeg": 342.8,
+    "meanAnomalyDeg": 17.715242090793936,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_511",
+   "name": "Davida",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 135163.5,
+   "gm": 1725888078.869046,
+   "rotationPeriodS": 18466.92,
+   "axialTiltDeg": 38.0,
+   "poleRaDeg": 282.0,
+   "poleDecDeg": 42.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 270.3 km.",
+   "orbit": {
+    "aM": 473028467153.39996,
+    "e": 0.1894,
+    "iDeg": 15.95,
+    "raanDeg": 107.55,
+    "argPeriDeg": 336.53,
+    "meanAnomalyDeg": 98.31137533105556,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_31",
+   "name": "Euphrosyne",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 133540.0,
+   "gm": 1664441199.8338866,
+   "rotationPeriodS": 19908.0,
+   "axialTiltDeg": 11.0,
+   "poleRaDeg": 329.0,
+   "poleDecDeg": 59.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 267.1 km.",
+   "orbit": {
+    "aM": 473028467153.39996,
+    "e": 0.2158,
+    "iDeg": 26.31,
+    "raanDeg": 30.79,
+    "argPeriDeg": 62.01,
+    "meanAnomalyDeg": -149.21862466894447,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_451",
+   "name": "Patientia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 126950.0,
+   "gm": 1429988211.5240476,
+   "rotationPeriodS": 35017.200000000004,
+   "axialTiltDeg": 24.0,
+   "poleRaDeg": 16.0,
+   "poleDecDeg": -44.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 253.9 km.",
+   "orbit": {
+    "aM": 458517473695.5,
+    "e": 0.0695,
+    "iDeg": 15.21,
+    "raanDeg": 89.0,
+    "argPeriDeg": 337.23,
+    "meanAnomalyDeg": -109.59511638271431,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_3",
+   "name": "Juno",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 123298.0,
+   "gm": 1310093939.7987037,
+   "rotationPeriodS": 25956.0,
+   "axialTiltDeg": 37.0,
+   "poleRaDeg": 63.0,
+   "poleDecDeg": -27.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 246.6 km.",
+   "orbit": {
+    "aM": 399575912639.69995,
+    "e": 0.2557,
+    "iDeg": 12.99,
+    "raanDeg": 169.81,
+    "argPeriDeg": 247.9,
+    "meanAnomalyDeg": -61.37033746366967,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_88",
+   "name": "Thisbe",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 116000.0,
+   "gm": 1090958698.3196156,
+   "rotationPeriodS": 21751.2,
+   "axialTiltDeg": 10.0,
+   "poleRaDeg": 110.0,
+   "poleDecDeg": -10.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 232.0 km.",
+   "orbit": {
+    "aM": 413787710356.2,
+    "e": 0.1656,
+    "iDeg": 5.23,
+    "raanDeg": 276.32,
+    "argPeriDeg": 36.97,
+    "meanAnomalyDeg": -81.57385940124288,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_15",
+   "name": "Eunomia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 115844.5,
+   "gm": 1086577230.1714995,
+   "rotationPeriodS": 21898.8,
+   "axialTiltDeg": 23.0,
+   "poleRaDeg": 157.0,
+   "poleDecDeg": 7.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 231.7 km.",
+   "orbit": {
+    "aM": 395237574389.39996,
+    "e": 0.1878,
+    "iDeg": 11.76,
+    "raanDeg": 292.88,
+    "argPeriDeg": 98.46,
+    "meanAnomalyDeg": -163.81763767255842,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_16",
+   "name": "Psyche",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 111000.0,
+   "gm": 1601000000.0,
+   "rotationPeriodS": 15105.599999999999,
+   "axialTiltDeg": 36.0,
+   "poleRaDeg": 204.0,
+   "poleDecDeg": 24.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 222.0 km.",
+   "orbit": {
+    "aM": 437723369668.2,
+    "e": 0.1349,
+    "iDeg": 3.1,
+    "raanDeg": 149.98,
+    "argPeriDeg": 230.03,
+    "meanAnomalyDeg": 111.08047927536757,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_324",
+   "name": "Bamberga",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 110345.5,
+   "gm": 939070552.9773355,
+   "rotationPeriodS": 105948.0,
+   "axialTiltDeg": 9.0,
+   "poleRaDeg": 251.0,
+   "poleDecDeg": 41.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 220.7 km.",
+   "orbit": {
+    "aM": 401371087088.1,
+    "e": 0.3404,
+    "iDeg": 11.1,
+    "raanDeg": 327.82,
+    "argPeriDeg": 44.19,
+    "meanAnomalyDeg": -10.620915489591198,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_48",
+   "name": "Doris",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 108236.5,
+   "gm": 886248600.2573187,
+   "rotationPeriodS": 42804.0,
+   "axialTiltDeg": 22.0,
+   "poleRaDeg": 298.0,
+   "poleDecDeg": 58.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 216.5 km.",
+   "orbit": {
+    "aM": 465847769359.8,
+    "e": 0.0661,
+    "iDeg": 6.56,
+    "raanDeg": 183.42,
+    "argPeriDeg": 251.45,
+    "meanAnomalyDeg": -153.9417228161858,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_375",
+   "name": "Ursula",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 108000.0,
+   "gm": 880451845.4641434,
+   "rotationPeriodS": 60836.4,
+   "axialTiltDeg": 35.0,
+   "poleRaDeg": 345.0,
+   "poleDecDeg": -45.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 216.0 km.",
+   "orbit": {
+    "aM": 467792541678.89996,
+    "e": 0.1022,
+    "iDeg": 15.94,
+    "raanDeg": 336.38,
+    "argPeriDeg": 341.34,
+    "meanAnomalyDeg": 68.84062191575276,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_117",
+   "name": "Lomia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 104487.0,
+   "gm": 797298820.6564585,
+   "rotationPeriodS": 32857.200000000004,
+   "axialTiltDeg": 8.0,
+   "poleRaDeg": 32.0,
+   "poleDecDeg": -28.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 209.0 km.",
+   "orbit": {
+    "aM": 447596829134.4,
+    "e": 0.0228,
+    "iDeg": 14.92,
+    "raanDeg": 348.61,
+    "argPeriDeg": 53.35,
+    "meanAnomalyDeg": -47.34979476746071,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_106",
+   "name": "106 Dione",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 103934.5,
+   "gm": 784717856.0953428,
+   "rotationPeriodS": 58356.0,
+   "axialTiltDeg": 21.0,
+   "poleRaDeg": 79.0,
+   "poleDecDeg": -11.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 207.9 km.",
+   "orbit": {
+    "aM": 476020424567.39996,
+    "e": 0.1587,
+    "iDeg": 4.57,
+    "raanDeg": 61.98,
+    "argPeriDeg": 331.77,
+    "meanAnomalyDeg": -17.77098356873762,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_41",
+   "name": "Daphne",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 102747.5,
+   "gm": 758137768.3884388,
+   "rotationPeriodS": 21556.800000000003,
+   "axialTiltDeg": 34.0,
+   "poleRaDeg": 126.0,
+   "poleDecDeg": 6.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 205.5 km.",
+   "orbit": {
+    "aM": 413937308226.89996,
+    "e": 0.2702,
+    "iDeg": 15.73,
+    "raanDeg": 177.6,
+    "argPeriDeg": 47.02,
+    "meanAnomalyDeg": 5.197674898078503,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_94",
+   "name": "Aurora",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 102445.0,
+   "gm": 751461338.9368906,
+   "rotationPeriodS": 25992.0,
+   "axialTiltDeg": 7.0,
+   "poleRaDeg": 173.0,
+   "poleDecDeg": 23.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 204.9 km.",
+   "orbit": {
+    "aM": 472579673541.3,
+    "e": 0.0973,
+    "iDeg": 7.97,
+    "raanDeg": 2.45,
+    "argPeriDeg": 60.61,
+    "meanAnomalyDeg": 73.62108756954521,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_13",
+   "name": "Egeria",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 101318.0,
+   "gm": 726932634.9702864,
+   "rotationPeriodS": 25362.0,
+   "axialTiltDeg": 20.0,
+   "poleRaDeg": 220.0,
+   "poleDecDeg": 40.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 202.6 km.",
+   "orbit": {
+    "aM": 385364114923.2,
+    "e": 0.0846,
+    "iDeg": 16.53,
+    "raanDeg": 43.18,
+    "argPeriDeg": 79.12,
+    "meanAnomalyDeg": 126.52377017964693,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_45",
+   "name": "Eugenia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 101163.5,
+   "gm": 723612200.819287,
+   "rotationPeriodS": 20516.399999999998,
+   "axialTiltDeg": 33.0,
+   "poleRaDeg": 267.0,
+   "poleDecDeg": 57.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 202.3 km.",
+   "orbit": {
+    "aM": 407355001916.1,
+    "e": 0.0814,
+    "iDeg": 6.61,
+    "raanDeg": 147.52,
+    "argPeriDeg": 87.2,
+    "meanAnomalyDeg": -74.61375368959261,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_19",
+   "name": "Fortuna",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 100000.0,
+   "gm": 698931061.5951451,
+   "rotationPeriodS": 26795.52,
+   "axialTiltDeg": 6.0,
+   "poleRaDeg": 314.0,
+   "poleDecDeg": -46.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 200.0 km.",
+   "orbit": {
+    "aM": 365318000249.4,
+    "e": 0.1581,
+    "iDeg": 1.57,
+    "raanDeg": 210.99,
+    "argPeriDeg": 182.44,
+    "meanAnomalyDeg": -170.67397107008145,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_7",
+   "name": "Iris",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 99915.0,
+   "gm": 697150301.8919225,
+   "rotationPeriodS": 25700.4,
+   "axialTiltDeg": 19.0,
+   "poleRaDeg": 1.0,
+   "poleDecDeg": -29.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 199.8 km.",
+   "orbit": {
+    "aM": 356940519490.2,
+    "e": 0.2303,
+    "iDeg": 5.52,
+    "raanDeg": 259.49,
+    "argPeriDeg": 145.41,
+    "meanAnomalyDeg": 157.81022355170865,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_24",
+   "name": "Themis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 99000.0,
+   "gm": 678172110.1347078,
+   "rotationPeriodS": 30146.4,
+   "axialTiltDeg": 32.0,
+   "poleRaDeg": 48.0,
+   "poleDecDeg": -12.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 198.0 km.",
+   "orbit": {
+    "aM": 470335705480.80005,
+    "e": 0.1154,
+    "iDeg": 0.74,
+    "raanDeg": 36.39,
+    "argPeriDeg": 109.22,
+    "meanAnomalyDeg": 120.13107100495642,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_154",
+   "name": "Bertha",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 96305.5,
+   "gm": 624291774.3361683,
+   "rotationPeriodS": 90806.4,
+   "axialTiltDeg": 5.0,
+   "poleRaDeg": 95.0,
+   "poleDecDeg": 5.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 192.6 km.",
+   "orbit": {
+    "aM": 477815599015.8,
+    "e": 0.0772,
+    "iDeg": 21.02,
+    "raanDeg": 36.48,
+    "argPeriDeg": 168.02,
+    "meanAnomalyDeg": 44.5735702115671,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_702",
+   "name": "Alauda",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 95490.0,
+   "gm": 608566471.6292437,
+   "rotationPeriodS": 60145.92,
+   "axialTiltDeg": 18.0,
+   "poleRaDeg": 142.0,
+   "poleDecDeg": 22.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 191.0 km.",
+   "orbit": {
+    "aM": 477516403274.4,
+    "e": 0.0153,
+    "iDeg": 20.6,
+    "raanDeg": 289.71,
+    "argPeriDeg": 352.21,
+    "meanAnomalyDeg": 168.96937648048993,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_9",
+   "name": "Metis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 95000.0,
+   "gm": 599246018.9351375,
+   "rotationPeriodS": 18284.399999999998,
+   "axialTiltDeg": 31.0,
+   "poleRaDeg": 189.0,
+   "poleDecDeg": 39.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 190.0 km.",
+   "orbit": {
+    "aM": 357090117360.9,
+    "e": 0.1225,
+    "iDeg": 5.58,
+    "raanDeg": 68.87,
+    "argPeriDeg": 5.93,
+    "meanAnomalyDeg": -64.88649352197922,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_29",
+   "name": "Amphitrite",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 94779.5,
+   "gm": 595083051.7222639,
+   "rotationPeriodS": 19411.56,
+   "axialTiltDeg": 4.0,
+   "poleRaDeg": 236.0,
+   "poleDecDeg": 56.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 189.6 km.",
+   "orbit": {
+    "aM": 382222559638.5,
+    "e": 0.0732,
+    "iDeg": 6.08,
+    "raanDeg": 356.25,
+    "argPeriDeg": 61.93,
+    "meanAnomalyDeg": -128.25796415668407,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_6",
+   "name": "Hebe",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 92590.0,
+   "gm": 554787406.1927184,
+   "rotationPeriodS": 26188.2,
+   "axialTiltDeg": 17.0,
+   "poleRaDeg": 283.0,
+   "poleDecDeg": -47.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 185.2 km.",
+   "orbit": {
+    "aM": 362924434318.2,
+    "e": 0.2023,
+    "iDeg": 14.74,
+    "raanDeg": 138.61,
+    "argPeriDeg": 239.73,
+    "meanAnomalyDeg": 86.1929571859244,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_130",
+   "name": "Elektra",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 90326.0,
+   "gm": 515077615.6930796,
+   "rotationPeriodS": 18810.0,
+   "axialTiltDeg": 30.0,
+   "poleRaDeg": 330.0,
+   "poleDecDeg": -30.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 180.7 km.",
+   "orbit": {
+    "aM": 467493345937.5,
+    "e": 0.2097,
+    "iDeg": 22.78,
+    "raanDeg": 144.96,
+    "argPeriDeg": 238.03,
+    "meanAnomalyDeg": 77.41783326544714,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_165",
+   "name": "Loreley",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 90041.5,
+   "gm": 510225905.990067,
+   "rotationPeriodS": 26013.6,
+   "axialTiltDeg": 3.0,
+   "poleRaDeg": 17.0,
+   "poleDecDeg": -13.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 180.1 km.",
+   "orbit": {
+    "aM": 467642943808.2,
+    "e": 0.0835,
+    "iDeg": 11.23,
+    "raanDeg": 302.43,
+    "argPeriDeg": 344.36,
+    "meanAnomalyDeg": 79.36422215007104,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_39",
+   "name": "Laetitia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 89742.0,
+   "gm": 505151414.8869349,
+   "rotationPeriodS": 18496.8,
+   "axialTiltDeg": 16.0,
+   "poleRaDeg": 64.0,
+   "poleDecDeg": 4.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 179.5 km.",
+   "orbit": {
+    "aM": 414236503968.30005,
+    "e": 0.1138,
+    "iDeg": 10.38,
+    "raanDeg": 156.82,
+    "argPeriDeg": 210.1,
+    "meanAnomalyDeg": 170.62079350463478,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_209",
+   "name": "Dido",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 89504.0,
+   "gm": 501143008.33784103,
+   "rotationPeriodS": 20651.760000000002,
+   "axialTiltDeg": 29.0,
+   "poleRaDeg": 111.0,
+   "poleDecDeg": 21.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 179.0 km.",
+   "orbit": {
+    "aM": 471831684187.8,
+    "e": 0.052,
+    "iDeg": 7.17,
+    "raanDeg": 0.47,
+    "argPeriDeg": 250.13,
+    "meanAnomalyDeg": -106.55251544306509,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_96",
+   "name": "Aegle",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 88887.0,
+   "gm": 490850330.46864057,
+   "rotationPeriodS": 49924.8,
+   "axialTiltDeg": 2.0,
+   "poleRaDeg": 158.0,
+   "poleDecDeg": 38.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 177.8 km.",
+   "orbit": {
+    "aM": 455974309893.60004,
+    "e": 0.1425,
+    "iDeg": 15.98,
+    "raanDeg": 321.47,
+    "argPeriDeg": 207.97,
+    "meanAnomalyDeg": -104.38044381683255,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_423",
+   "name": "Diotima",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 87929.5,
+   "gm": 475158116.8292362,
+   "rotationPeriodS": 17190.0,
+   "axialTiltDeg": 15.0,
+   "poleRaDeg": 205.0,
+   "poleDecDeg": 55.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 175.9 km.",
+   "orbit": {
+    "aM": 458966267307.60004,
+    "e": 0.0333,
+    "iDeg": 11.24,
+    "raanDeg": 69.35,
+    "argPeriDeg": 199.21,
+    "meanAnomalyDeg": -152.1779422770312,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_259",
+   "name": "Aletheia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 87159.0,
+   "gm": 462776245.2394331,
+   "rotationPeriodS": 29314.800000000003,
+   "axialTiltDeg": 28.0,
+   "poleRaDeg": 252.0,
+   "poleDecDeg": -48.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 174.3 km.",
+   "orbit": {
+    "aM": 468690128903.1,
+    "e": 0.13,
+    "iDeg": 10.81,
+    "raanDeg": 86.78,
+    "argPeriDeg": 166.28,
+    "meanAnomalyDeg": 92.26924833152896,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_372",
+   "name": "Palma",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 86821.0,
+   "gm": 457413199.4532693,
+   "rotationPeriodS": 30841.2,
+   "axialTiltDeg": 1.0,
+   "poleRaDeg": 299.0,
+   "poleDecDeg": -31.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 173.6 km.",
+   "orbit": {
+    "aM": 473178065024.1,
+    "e": 0.2523,
+    "iDeg": 23.78,
+    "raanDeg": 327.2,
+    "argPeriDeg": 115.45,
+    "meanAnomalyDeg": -143.55184115912425,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_747",
+   "name": "Winchester",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 85855.0,
+   "gm": 442314441.5525524,
+   "rotationPeriodS": 33892.56,
+   "axialTiltDeg": 14.0,
+   "poleRaDeg": 346.0,
+   "poleDecDeg": -14.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 171.7 km.",
+   "orbit": {
+    "aM": 448644014229.3,
+    "e": 0.3398,
+    "iDeg": 18.22,
+    "raanDeg": 129.05,
+    "argPeriDeg": 277.66,
+    "meanAnomalyDeg": 49.6442510629478,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_409",
+   "name": "Aspasia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 85506.0,
+   "gm": 436942322.7520701,
+   "rotationPeriodS": 32479.2,
+   "axialTiltDeg": 27.0,
+   "poleRaDeg": 33.0,
+   "poleDecDeg": 3.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 171.0 km.",
+   "orbit": {
+    "aM": 385364114923.2,
+    "e": 0.0735,
+    "iDeg": 11.28,
+    "raanDeg": 242.05,
+    "argPeriDeg": 355.72,
+    "meanAnomalyDeg": 74.5337701796469,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_241",
+   "name": "Germania",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 84450.0,
+   "gm": 420952703.7941858,
+   "rotationPeriodS": 55836.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 80.0,
+   "poleDecDeg": 20.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 168.9 km.",
+   "orbit": {
+    "aM": 455675114152.19995,
+    "e": 0.1062,
+    "iDeg": 5.52,
+    "raanDeg": 270.13,
+    "argPeriDeg": 78.91,
+    "meanAnomalyDeg": -104.15143424054543,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_47",
+   "name": "Aglaja",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 84087.0,
+   "gm": 415547732.1505874,
+   "rotationPeriodS": 47440.8,
+   "axialTiltDeg": 13.0,
+   "poleRaDeg": 127.0,
+   "poleDecDeg": 37.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 168.2 km.",
+   "orbit": {
+    "aM": 430692269745.3,
+    "e": 0.134,
+    "iDeg": 4.97,
+    "raanDeg": 2.67,
+    "argPeriDeg": 316.28,
+    "meanAnomalyDeg": -113.30967932363126,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_488",
+   "name": "Kreusa",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 84058.5,
+   "gm": 415125344.738299,
+   "rotationPeriodS": 117522.00000000001,
+   "axialTiltDeg": 26.0,
+   "poleRaDeg": 174.0,
+   "poleDecDeg": 54.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 168.1 km.",
+   "orbit": {
+    "aM": 473926054377.60004,
+    "e": 0.1585,
+    "iDeg": 11.48,
+    "raanDeg": 82.98,
+    "argPeriDeg": 77.35,
+    "meanAnomalyDeg": 128.4922327898949,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_532",
+   "name": "Herculina",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 83895.5,
+   "gm": 412715083.87618977,
+   "rotationPeriodS": 33858.0,
+   "axialTiltDeg": 39.0,
+   "poleRaDeg": 221.0,
+   "poleDecDeg": -49.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 167.8 km.",
+   "orbit": {
+    "aM": 414386101839.0,
+    "e": 0.1804,
+    "iDeg": 16.3,
+    "raanDeg": 107.41,
+    "argPeriDeg": 76.66,
+    "meanAnomalyDeg": -146.75762223024992,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_22",
+   "name": "Kalliope",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 83768.0,
+   "gm": 491000000.0,
+   "rotationPeriodS": 14933.88,
+   "axialTiltDeg": 12.0,
+   "poleRaDeg": 268.0,
+   "poleDecDeg": -32.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 167.5 km.",
+   "orbit": {
+    "aM": 435180205866.3,
+    "e": 0.0988,
+    "iDeg": 13.7,
+    "raanDeg": 65.97,
+    "argPeriDeg": 358.31,
+    "meanAnomalyDeg": 21.915344370583625,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_49",
+   "name": "Pales",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 83126.0,
+   "gm": 401462505.1150805,
+   "rotationPeriodS": 74538.0,
+   "axialTiltDeg": 25.0,
+   "poleRaDeg": 315.0,
+   "poleDecDeg": -15.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 166.3 km.",
+   "orbit": {
+    "aM": 463304605557.9,
+    "e": 0.2213,
+    "iDeg": 3.2,
+    "raanDeg": 284.98,
+    "argPeriDeg": 113.48,
+    "meanAnomalyDeg": 17.843412189497826,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_59",
+   "name": "Elpis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 82559.5,
+   "gm": 393310466.7099634,
+   "rotationPeriodS": 49215.6,
+   "axialTiltDeg": 38.0,
+   "poleRaDeg": 2.0,
+   "poleDecDeg": 2.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 165.1 km.",
+   "orbit": {
+    "aM": 405859023209.10004,
+    "e": 0.1165,
+    "iDeg": 8.65,
+    "raanDeg": 169.91,
+    "argPeriDeg": 211.17,
+    "meanAnomalyDeg": 47.43925238123012,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_386",
+   "name": "Siegena",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 82505.0,
+   "gm": 392532072.70130444,
+   "rotationPeriodS": 35146.8,
+   "axialTiltDeg": 11.0,
+   "poleRaDeg": 49.0,
+   "poleDecDeg": 19.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 165.0 km.",
+   "orbit": {
+    "aM": 433684227159.3,
+    "e": 0.1696,
+    "iDeg": 20.22,
+    "raanDeg": 166.59,
+    "argPeriDeg": 221.3,
+    "meanAnomalyDeg": 95.8689140508298,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_128",
+   "name": "Nemesis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 81257.5,
+   "gm": 374994338.6805626,
+   "rotationPeriodS": 140157.0,
+   "axialTiltDeg": 24.0,
+   "poleRaDeg": 96.0,
+   "poleDecDeg": 36.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 162.5 km.",
+   "orbit": {
+    "aM": 411394144425.0,
+    "e": 0.1269,
+    "iDeg": 6.25,
+    "raanDeg": 76.16,
+    "argPeriDeg": 302.77,
+    "meanAnomalyDeg": -50.4861228769895,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_194",
+   "name": "Prokne",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 80833.5,
+   "gm": 369154776.92869014,
+   "rotationPeriodS": 56444.4,
+   "axialTiltDeg": 37.0,
+   "poleRaDeg": 143.0,
+   "poleDecDeg": 53.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 161.7 km.",
+   "orbit": {
+    "aM": 391796823363.30005,
+    "e": 0.2375,
+    "iDeg": 18.53,
+    "raanDeg": 159.12,
+    "argPeriDeg": 163.68,
+    "meanAnomalyDeg": -162.59587113351859,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_654",
+   "name": "Zelinda",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 80368.0,
+   "gm": 362813822.16709226,
+   "rotationPeriodS": 114246.0,
+   "axialTiltDeg": 10.0,
+   "poleRaDeg": 190.0,
+   "poleDecDeg": -50.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 160.7 km.",
+   "orbit": {
+    "aM": 343626308997.9,
+    "e": 0.2317,
+    "iDeg": 18.1,
+    "raanDeg": 278.32,
+    "argPeriDeg": 214.53,
+    "meanAnomalyDeg": 35.435254039208985,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_185",
+   "name": "Eunike",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 80232.0,
+   "gm": 360975059.40886354,
+   "rotationPeriodS": 78469.2,
+   "axialTiltDeg": 23.0,
+   "poleRaDeg": 237.0,
+   "poleDecDeg": -33.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 160.5 km.",
+   "orbit": {
+    "aM": 409598969976.6,
+    "e": 0.1268,
+    "iDeg": 23.25,
+    "raanDeg": 153.74,
+    "argPeriDeg": 224.05,
+    "meanAnomalyDeg": 65.0100374710596,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_146",
+   "name": "Lucina",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 80155.0,
+   "gm": 359936755.0152545,
+   "rotationPeriodS": 66805.2,
+   "axialTiltDeg": 36.0,
+   "poleRaDeg": 284.0,
+   "poleDecDeg": -16.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 160.3 km.",
+   "orbit": {
+    "aM": 407055806174.7,
+    "e": 0.0639,
+    "iDeg": 13.09,
+    "raanDeg": 83.91,
+    "argPeriDeg": 145.36,
+    "meanAnomalyDeg": -53.745294313358784,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_54",
+   "name": "Alexandra",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 80060.0,
+   "gm": 358658476.1470783,
+   "rotationPeriodS": 25286.4,
+   "axialTiltDeg": 9.0,
+   "poleRaDeg": 331.0,
+   "poleDecDeg": 1.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 160.1 km.",
+   "orbit": {
+    "aM": 405410229597.0,
+    "e": 0.1992,
+    "iDeg": 11.84,
+    "raanDeg": 313.01,
+    "argPeriDeg": 346.36,
+    "meanAnomalyDeg": -94.09249842966739,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_596",
+   "name": "Scheila",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 79863.0,
+   "gm": 356017381.8519988,
+   "rotationPeriodS": 57052.8,
+   "axialTiltDeg": 22.0,
+   "poleRaDeg": 18.0,
+   "poleDecDeg": 18.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 159.7 km.",
+   "orbit": {
+    "aM": 438770554763.1,
+    "e": 0.1595,
+    "iDeg": 14.62,
+    "raanDeg": 70.44,
+    "argPeriDeg": 177.95,
+    "meanAnomalyDeg": -41.95154383979036,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_444",
+   "name": "Gyptis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 79665.5,
+   "gm": 353382631.3847226,
+   "rotationPeriodS": 22370.4,
+   "axialTiltDeg": 35.0,
+   "poleRaDeg": 65.0,
+   "poleDecDeg": 35.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 159.3 km.",
+   "orbit": {
+    "aM": 414535699709.7,
+    "e": 0.1733,
+    "iDeg": 10.27,
+    "raanDeg": 195.59,
+    "argPeriDeg": 154.83,
+    "meanAnomalyDeg": 95.49397864806747,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_238",
+   "name": "Hypatia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 77829.5,
+   "gm": 329508834.4133974,
+   "rotationPeriodS": 31949.64,
+   "axialTiltDeg": 8.0,
+   "poleRaDeg": 112.0,
+   "poleDecDeg": 52.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 155.7 km.",
+   "orbit": {
+    "aM": 434581814383.5,
+    "e": 0.0917,
+    "iDeg": 12.41,
+    "raanDeg": 183.76,
+    "argPeriDeg": 209.18,
+    "meanAnomalyDeg": -160.599396666328,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_120",
+   "name": "Lachesis",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 77566.0,
+   "gm": 326173391.4604175,
+   "rotationPeriodS": 167583.6,
+   "axialTiltDeg": 21.0,
+   "poleRaDeg": 159.0,
+   "poleDecDeg": -51.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 155.1 km.",
+   "orbit": {
+    "aM": 466745356584.0,
+    "e": 0.049,
+    "iDeg": 6.94,
+    "raanDeg": 340.55,
+    "argPeriDeg": 242.83,
+    "meanAnomalyDeg": -1.2939475144819426,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_85",
+   "name": "85 Io",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 77395.0,
+   "gm": 324020923.41738707,
+   "rotationPeriodS": 24750.0,
+   "axialTiltDeg": 34.0,
+   "poleRaDeg": 206.0,
+   "poleDecDeg": -34.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 154.8 km.",
+   "orbit": {
+    "aM": 397032748837.8,
+    "e": 0.193,
+    "iDeg": 11.96,
+    "raanDeg": 203.04,
+    "argPeriDeg": 122.96,
+    "meanAnomalyDeg": 130.08514323768514,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_93",
+   "name": "Minerva",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 77077.5,
+   "gm": 320049535.62251693,
+   "rotationPeriodS": 21535.2,
+   "axialTiltDeg": 7.0,
+   "poleRaDeg": 253.0,
+   "poleDecDeg": -17.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 154.2 km.",
+   "orbit": {
+    "aM": 411842938037.10004,
+    "e": 0.143,
+    "iDeg": 8.54,
+    "raanDeg": 3.81,
+    "argPeriDeg": 275.9,
+    "meanAnomalyDeg": -9.402278093665018,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_14",
+   "name": "Irene",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 76000.0,
+   "gm": 306813961.6947904,
+   "rotationPeriodS": 54100.8,
+   "axialTiltDeg": 20.0,
+   "poleRaDeg": 300.0,
+   "poleDecDeg": 0.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 152.0 km.",
+   "orbit": {
+    "aM": 387159289371.60004,
+    "e": 0.1628,
+    "iDeg": 9.13,
+    "raanDeg": 86.01,
+    "argPeriDeg": 98.31,
+    "meanAnomalyDeg": 97.87044855344897,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_776",
+   "name": "Berbericia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 75855.5,
+   "gm": 305067236.29558265,
+   "rotationPeriodS": 27604.8,
+   "axialTiltDeg": 33.0,
+   "poleRaDeg": 347.0,
+   "poleDecDeg": 17.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 151.7 km.",
+   "orbit": {
+    "aM": 438471359021.7,
+    "e": 0.165,
+    "iDeg": 18.25,
+    "raanDeg": 79.65,
+    "argPeriDeg": 306.18,
+    "meanAnomalyDeg": -104.74960547980339,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_139",
+   "name": "Juewa",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 75558.0,
+   "gm": 301491937.59574604,
+   "rotationPeriodS": 75567.6,
+   "axialTiltDeg": 6.0,
+   "poleRaDeg": 34.0,
+   "poleDecDeg": 34.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 151.1 km.",
+   "orbit": {
+    "aM": 416779667770.2,
+    "e": 0.1703,
+    "iDeg": 10.87,
+    "raanDeg": 1.66,
+    "argPeriDeg": 167.37,
+    "meanAnomalyDeg": 135.9699712250931,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_354",
+   "name": "Eleonora",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 74485.0,
+   "gm": 288829007.53360385,
+   "rotationPeriodS": 15397.2,
+   "axialTiltDeg": 19.0,
+   "poleRaDeg": 81.0,
+   "poleDecDeg": 51.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 149.0 km.",
+   "orbit": {
+    "aM": 419023635830.7,
+    "e": 0.1119,
+    "iDeg": 18.36,
+    "raanDeg": 140.2,
+    "argPeriDeg": 8.18,
+    "meanAnomalyDeg": -168.1703726859057,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_419",
+   "name": "Aurelia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 74350.5,
+   "gm": 287267187.21276647,
+   "rotationPeriodS": 60422.399999999994,
+   "axialTiltDeg": 32.0,
+   "poleRaDeg": 128.0,
+   "poleDecDeg": -52.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 148.7 km.",
+   "orbit": {
+    "aM": 388206474466.5,
+    "e": 0.2523,
+    "iDeg": 3.93,
+    "raanDeg": 229.02,
+    "argPeriDeg": 44.25,
+    "meanAnomalyDeg": 103.52824891542383,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_471",
+   "name": "Papagena",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 74064.0,
+   "gm": 283959126.7601658,
+   "rotationPeriodS": 25606.800000000003,
+   "axialTiltDeg": 5.0,
+   "poleRaDeg": 175.0,
+   "poleDecDeg": -35.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 148.1 km.",
+   "orbit": {
+    "aM": 432337846323.0,
+    "e": 0.2295,
+    "iDeg": 15.02,
+    "raanDeg": 83.77,
+    "argPeriDeg": 315.96,
+    "meanAnomalyDeg": 78.62733753175092,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_95",
+   "name": "Arethusa",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 73984.5,
+   "gm": 283045706.1671278,
+   "rotationPeriodS": 31338.0,
+   "axialTiltDeg": 18.0,
+   "poleRaDeg": 222.0,
+   "poleDecDeg": -18.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 148.0 km.",
+   "orbit": {
+    "aM": 458517473695.5,
+    "e": 0.1524,
+    "iDeg": 13.01,
+    "raanDeg": 242.94,
+    "argPeriDeg": 152.75,
+    "meanAnomalyDeg": -137.76511638271433,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_8",
+   "name": "Flora",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 73745.5,
+   "gm": 280311499.8615902,
+   "rotationPeriodS": 46314.0,
+   "axialTiltDeg": 31.0,
+   "poleRaDeg": 269.0,
+   "poleDecDeg": -1.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 147.5 km.",
+   "orbit": {
+    "aM": 329414511281.39996,
+    "e": 0.1562,
+    "iDeg": 5.89,
+    "raanDeg": 110.84,
+    "argPeriDeg": 285.41,
+    "meanAnomalyDeg": -52.78043600575825,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_762",
+   "name": "Pulcova",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 73671.5,
+   "gm": 279468509.7137662,
+   "rotationPeriodS": 21020.4,
+   "axialTiltDeg": 4.0,
+   "poleRaDeg": 316.0,
+   "poleDecDeg": 16.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 147.3 km.",
+   "orbit": {
+    "aM": 471532488446.4,
+    "e": 0.108,
+    "iDeg": 13.1,
+    "raanDeg": 305.51,
+    "argPeriDeg": 188.82,
+    "meanAnomalyDeg": -69.1158829029568,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_187",
+   "name": "Lamberta",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 73647.0,
+   "gm": 279189784.4919124,
+   "rotationPeriodS": 38412.0,
+   "axialTiltDeg": 17.0,
+   "poleRaDeg": 3.0,
+   "poleDecDeg": 33.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 147.3 km.",
+   "orbit": {
+    "aM": 408701382752.4,
+    "e": 0.2383,
+    "iDeg": 10.57,
+    "raanDeg": 21.56,
+    "argPeriDeg": 196.58,
+    "meanAnomalyDeg": -39.95595037698445,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_328",
+   "name": "Gudrun",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 72840.0,
+   "gm": 270112170.6717652,
+   "rotationPeriodS": 39571.200000000004,
+   "axialTiltDeg": 30.0,
+   "poleRaDeg": 50.0,
+   "poleDecDeg": 50.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 145.7 km.",
+   "orbit": {
+    "aM": 465099780006.3,
+    "e": 0.1078,
+    "iDeg": 16.13,
+    "raanDeg": 351.85,
+    "argPeriDeg": 107.73,
+    "meanAnomalyDeg": -82.87289906225561,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_356",
+   "name": "Liguria",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 72751.5,
+   "gm": 269128814.2229272,
+   "rotationPeriodS": 114123.6,
+   "axialTiltDeg": 3.0,
+   "poleRaDeg": 97.0,
+   "poleDecDeg": -53.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 145.5 km.",
+   "orbit": {
+    "aM": 411992535907.8,
+    "e": 0.242,
+    "iDeg": 8.21,
+    "raanDeg": 354.44,
+    "argPeriDeg": 79.27,
+    "meanAnomalyDeg": 118.07903747966617,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_89",
+   "name": "Julia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 72741.5,
+   "gm": 269017850.8106144,
+   "rotationPeriodS": 40993.200000000004,
+   "axialTiltDeg": 16.0,
+   "poleRaDeg": 144.0,
+   "poleDecDeg": -36.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 145.5 km.",
+   "orbit": {
+    "aM": 381624168155.7,
+    "e": 0.1837,
+    "iDeg": 16.12,
+    "raanDeg": 311.52,
+    "argPeriDeg": 45.2,
+    "meanAnomalyDeg": 85.23232296336221,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_196",
+   "name": "Philomela",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 72313.0,
+   "gm": 264291672.45045123,
+   "rotationPeriodS": 30002.399999999998,
+   "axialTiltDeg": 29.0,
+   "poleRaDeg": 191.0,
+   "poleDecDeg": -19.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 144.6 km.",
+   "orbit": {
+    "aM": 466446160842.6,
+    "e": 0.0126,
+    "iDeg": 7.25,
+    "raanDeg": 72.28,
+    "argPeriDeg": 207.79,
+    "meanAnomalyDeg": -141.45658323098525,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_268",
+   "name": "Adorea",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 72292.5,
+   "gm": 264066964.16196832,
+   "rotationPeriodS": 28080.0,
+   "axialTiltDeg": 2.0,
+   "poleRaDeg": 238.0,
+   "poleDecDeg": -2.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 144.6 km.",
+   "orbit": {
+    "aM": 462407018333.7,
+    "e": 0.1373,
+    "iDeg": 2.44,
+    "raanDeg": 120.85,
+    "argPeriDeg": 67.95,
+    "meanAnomalyDeg": -94.7528264872509,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_156",
+   "name": "Xanthippe",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 71673.0,
+   "gm": 257336322.70601535,
+   "rotationPeriodS": 79675.20000000001,
+   "axialTiltDeg": 15.0,
+   "poleRaDeg": 285.0,
+   "poleDecDeg": 15.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 143.3 km.",
+   "orbit": {
+    "aM": 408850980623.10004,
+    "e": 0.2215,
+    "iDeg": 9.76,
+    "raanDeg": 241.7,
+    "argPeriDeg": 338.97,
+    "meanAnomalyDeg": 3.815004137345113,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_11",
+   "name": "Parthenope",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 71443.5,
+   "gm": 254872224.11339986,
+   "rotationPeriodS": 49393.44,
+   "axialTiltDeg": 28.0,
+   "poleRaDeg": 332.0,
+   "poleDecDeg": 32.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 142.9 km.",
+   "orbit": {
+    "aM": 366813978956.39996,
+    "e": 0.1009,
+    "iDeg": 4.64,
+    "raanDeg": 125.47,
+    "argPeriDeg": 196.46,
+    "meanAnomalyDeg": -94.24493434798705,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_144",
+   "name": "Vibilia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 71190.0,
+   "gm": 252168781.81561568,
+   "rotationPeriodS": 49748.4,
+   "axialTiltDeg": 1.0,
+   "poleRaDeg": 19.0,
+   "poleDecDeg": 49.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 142.4 km.",
+   "orbit": {
+    "aM": 397032748837.8,
+    "e": 0.2354,
+    "iDeg": 4.82,
+    "raanDeg": 76.17,
+    "argPeriDeg": 294.4,
+    "meanAnomalyDeg": -83.56485676231483,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_211",
+   "name": "Isolda",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 70562.5,
+   "gm": 245559205.43021613,
+   "rotationPeriodS": 66114.0,
+   "axialTiltDeg": 14.0,
+   "poleRaDeg": 66.0,
+   "poleDecDeg": -54.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 141.1 km.",
+   "orbit": {
+    "aM": 455974309893.60004,
+    "e": 0.1544,
+    "iDeg": 3.87,
+    "raanDeg": 263.16,
+    "argPeriDeg": 173.73,
+    "meanAnomalyDeg": -122.56044381683256,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_349",
+   "name": "Dembowska",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69885.0,
+   "gm": 238553751.2108122,
+   "rotationPeriodS": 16923.6,
+   "axialTiltDeg": 27.0,
+   "poleRaDeg": 113.0,
+   "poleDecDeg": -37.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 139.8 km.",
+   "orbit": {
+    "aM": 437573771797.5,
+    "e": 0.0885,
+    "iDeg": 8.25,
+    "raanDeg": 32.18,
+    "argPeriDeg": 344.48,
+    "meanAnomalyDeg": -30.383462696308243,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_18",
+   "name": "Melpomene",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69797.0,
+   "gm": 237653716.57189655,
+   "rotationPeriodS": 41652.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 160.0,
+   "poleDecDeg": -20.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 139.6 km.",
+   "orbit": {
+    "aM": 343476711127.19995,
+    "e": 0.2178,
+    "iDeg": 10.13,
+    "raanDeg": 150.32,
+    "argPeriDeg": 228.03,
+    "meanAnomalyDeg": -31.005333838510865,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_489",
+   "name": "Comacina",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69695.0,
+   "gm": 236613330.67498505,
+   "rotationPeriodS": 32472.0,
+   "axialTiltDeg": 13.0,
+   "poleRaDeg": 207.0,
+   "poleDecDeg": -3.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 139.4 km.",
+   "orbit": {
+    "aM": 471382890575.69995,
+    "e": 0.0491,
+    "iDeg": 13.0,
+    "raanDeg": 166.67,
+    "argPeriDeg": 8.27,
+    "meanAnomalyDeg": -131.5925507835551,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_476",
+   "name": "Hedwig",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69246.5,
+   "gm": 232074713.76217827,
+   "rotationPeriodS": 98388.0,
+   "axialTiltDeg": 26.0,
+   "poleRaDeg": 254.0,
+   "poleDecDeg": 14.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 138.5 km.",
+   "orbit": {
+    "aM": 396434357355.0,
+    "e": 0.075,
+    "iDeg": 10.93,
+    "raanDeg": 286.18,
+    "argPeriDeg": 0.4,
+    "meanAnomalyDeg": 56.06723867288059,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_51",
+   "name": "Nemausa",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69079.5,
+   "gm": 230399694.04253075,
+   "rotationPeriodS": 28018.800000000003,
+   "axialTiltDeg": 39.0,
+   "poleRaDeg": 301.0,
+   "poleDecDeg": 31.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 138.2 km.",
+   "orbit": {
+    "aM": 353948562076.2,
+    "e": 0.066,
+    "iDeg": 9.97,
+    "raanDeg": 175.88,
+    "argPeriDeg": 2.4,
+    "meanAnomalyDeg": 123.67050192187094,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_69",
+   "name": "Hesperia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 69065.0,
+   "gm": 230254639.67606628,
+   "rotationPeriodS": 20358.0,
+   "axialTiltDeg": 12.0,
+   "poleRaDeg": 348.0,
+   "poleDecDeg": 48.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 138.1 km.",
+   "orbit": {
+    "aM": 445352861073.89996,
+    "e": 0.1689,
+    "iDeg": 8.59,
+    "raanDeg": 184.89,
+    "argPeriDeg": 288.18,
+    "meanAnomalyDeg": 111.66934937388118,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_804",
+   "name": "Hispania",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 68976.0,
+   "gm": 229365639.46237952,
+   "rotationPeriodS": 53442.0,
+   "axialTiltDeg": 25.0,
+   "poleRaDeg": 35.0,
+   "poleDecDeg": -55.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 138.0 km.",
+   "orbit": {
+    "aM": 424558757046.60004,
+    "e": 0.1416,
+    "iDeg": 15.39,
+    "raanDeg": 347.54,
+    "argPeriDeg": 343.77,
+    "meanAnomalyDeg": -26.521987878983282,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_426",
+   "name": "Hippo",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 68781.0,
+   "gm": 227425835.42366815,
+   "rotationPeriodS": 243072.0,
+   "axialTiltDeg": 38.0,
+   "poleRaDeg": 82.0,
+   "poleDecDeg": -38.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 137.6 km.",
+   "orbit": {
+    "aM": 431889052710.9,
+    "e": 0.1067,
+    "iDeg": 19.5,
+    "raanDeg": 311.31,
+    "argPeriDeg": 221.38,
+    "meanAnomalyDeg": -76.47293080856889,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_104",
+   "name": "Klymene",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 68276.5,
+   "gm": 222458032.61538392,
+   "rotationPeriodS": 32342.4,
+   "axialTiltDeg": 11.0,
+   "poleRaDeg": 129.0,
+   "poleDecDeg": -21.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 136.6 km.",
+   "orbit": {
+    "aM": 470485303351.5,
+    "e": 0.163,
+    "iDeg": 2.79,
+    "raanDeg": 41.63,
+    "argPeriDeg": 31.93,
+    "meanAnomalyDeg": 45.717664564748674,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_212",
+   "name": "Medea",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 68060.0,
+   "gm": 220348539.30661228,
+   "rotationPeriodS": 37018.799999999996,
+   "axialTiltDeg": 24.0,
+   "poleRaDeg": 176.0,
+   "poleDecDeg": -4.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 136.1 km.",
+   "orbit": {
+    "aM": 466296562971.9,
+    "e": 0.1028,
+    "iDeg": 4.28,
+    "raanDeg": 312.88,
+    "argPeriDeg": 105.89,
+    "meanAnomalyDeg": -23.662884626767436,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_20",
+   "name": "Massalia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 67840.0,
+   "gm": 218218647.32440746,
+   "rotationPeriodS": 29152.800000000003,
+   "axialTiltDeg": 37.0,
+   "poleRaDeg": 223.0,
+   "poleDecDeg": 13.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 135.7 km.",
+   "orbit": {
+    "aM": 360231672645.6,
+    "e": 0.1436,
+    "iDeg": 0.71,
+    "raanDeg": 205.95,
+    "argPeriDeg": 257.2,
+    "meanAnomalyDeg": 124.738845822717,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_690",
+   "name": "Wratislavia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 67325.0,
+   "gm": 213286529.61191615,
+   "rotationPeriodS": 31104.000000000004,
+   "axialTiltDeg": 10.0,
+   "poleRaDeg": 270.0,
+   "poleDecDeg": 30.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 134.7 km.",
+   "orbit": {
+    "aM": 471532488446.4,
+    "e": 0.1758,
+    "iDeg": 11.24,
+    "raanDeg": 253.03,
+    "argPeriDeg": 114.62,
+    "meanAnomalyDeg": -3.495882902956737,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_469",
+   "name": "Argentina",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66859.0,
+   "gm": 208888230.7549012,
+   "rotationPeriodS": 63261.72,
+   "axialTiltDeg": 23.0,
+   "poleRaDeg": 317.0,
+   "poleDecDeg": 47.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 133.7 km.",
+   "orbit": {
+    "aM": 475571630955.3,
+    "e": 0.1617,
+    "iDeg": 11.45,
+    "raanDeg": 332.66,
+    "argPeriDeg": 215.75,
+    "meanAnomalyDeg": 79.33810730278532,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_34",
+   "name": "Circe",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66496.0,
+   "gm": 205504296.5510497,
+   "rotationPeriodS": 43740.0,
+   "axialTiltDeg": 36.0,
+   "poleRaDeg": 4.0,
+   "poleDecDeg": -56.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 133.0 km.",
+   "orbit": {
+    "aM": 402119076441.60004,
+    "e": 0.1065,
+    "iDeg": 5.5,
+    "raanDeg": 184.25,
+    "argPeriDeg": 329.26,
+    "meanAnomalyDeg": 25.649635579520464,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_147",
+   "name": "Protogeneia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66465.0,
+   "gm": 205217016.24665073,
+   "rotationPeriodS": 28270.08,
+   "axialTiltDeg": 9.0,
+   "poleRaDeg": 51.0,
+   "poleDecDeg": -39.0,
+   "color": [
+    0.45,
+    0.42000000000000004,
+    0.39
+   ],
+   "description": "Main-belt asteroid, effective diameter 132.9 km.",
+   "orbit": {
+    "aM": 469288520385.9,
+    "e": 0.0218,
+    "iDeg": 1.93,
+    "raanDeg": 248.19,
+    "argPeriDeg": 103.45,
+    "meanAnomalyDeg": 36.975215361081695,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_36",
+   "name": "Atalante",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66421.0,
+   "gm": 204809723.42563665,
+   "rotationPeriodS": 35748.0,
+   "axialTiltDeg": 22.0,
+   "poleRaDeg": 98.0,
+   "poleDecDeg": -22.0,
+   "color": [
+    0.47500000000000003,
+    0.44500000000000006,
+    0.41500000000000004
+   ],
+   "description": "Main-belt asteroid, effective diameter 132.8 km.",
+   "orbit": {
+    "aM": 410646155071.5,
+    "e": 0.3062,
+    "iDeg": 18.37,
+    "raanDeg": 358.16,
+    "argPeriDeg": 47.76,
+    "meanAnomalyDeg": 177.3978102398724,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_98",
+   "name": "Ianthe",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66394.0,
+   "gm": 204560060.7454908,
+   "rotationPeriodS": 59324.399999999994,
+   "axialTiltDeg": 35.0,
+   "poleRaDeg": 145.0,
+   "poleDecDeg": -5.0,
+   "color": [
+    0.5,
+    0.4700000000000001,
+    0.44000000000000006
+   ],
+   "description": "Main-belt asteroid, effective diameter 132.8 km.",
+   "orbit": {
+    "aM": 402119076441.60004,
+    "e": 0.1878,
+    "iDeg": 15.58,
+    "raanDeg": 353.85,
+    "argPeriDeg": 158.07,
+    "meanAnomalyDeg": 23.75963557952059,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_283",
+   "name": "Emma",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66192.5,
+   "gm": 202703241.61260253,
+   "rotationPeriodS": 24825.6,
+   "axialTiltDeg": 8.0,
+   "poleRaDeg": 192.0,
+   "poleDecDeg": 12.0,
+   "color": [
+    0.525,
+    0.495,
+    0.465
+   ],
+   "description": "Main-belt asteroid, effective diameter 132.4 km.",
+   "orbit": {
+    "aM": 456123907764.3,
+    "e": 0.144,
+    "iDeg": 7.99,
+    "raanDeg": 303.86,
+    "argPeriDeg": 56.1,
+    "meanAnomalyDeg": 100.61506923267808,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_705",
+   "name": "Erminia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 66130.5,
+   "gm": 202134181.6861332,
+   "rotationPeriodS": 193248.0,
+   "axialTiltDeg": 21.0,
+   "poleRaDeg": 239.0,
+   "poleDecDeg": 29.0,
+   "color": [
+    0.55,
+    0.52,
+    0.49000000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 132.3 km.",
+   "orbit": {
+    "aM": 437124978185.4,
+    "e": 0.0521,
+    "iDeg": 25.02,
+    "raanDeg": 2.76,
+    "argPeriDeg": 102.53,
+    "meanAnomalyDeg": 8.964793838528522,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_46",
+   "name": "Hestia",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 65735.5,
+   "gm": 198533707.80520573,
+   "rotationPeriodS": 75744.0,
+   "axialTiltDeg": 34.0,
+   "poleRaDeg": 286.0,
+   "poleDecDeg": 46.0,
+   "color": [
+    0.4,
+    0.37,
+    0.34
+   ],
+   "description": "Main-belt asteroid, effective diameter 131.5 km.",
+   "orbit": {
+    "aM": 377884221388.19995,
+    "e": 0.1718,
+    "iDeg": 2.35,
+    "raanDeg": 181.05,
+    "argPeriDeg": 177.05,
+    "meanAnomalyDeg": 27.894729920691702,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "ast_618",
+   "name": "Elfriede",
+   "kind": "asteroid",
+   "parent": "sun",
+   "radiusM": 65646.0,
+   "gm": 197723890.33899072,
+   "rotationPeriodS": 53247.6,
+   "axialTiltDeg": 7.0,
+   "poleRaDeg": 333.0,
+   "poleDecDeg": -57.0,
+   "color": [
+    0.42500000000000004,
+    0.395,
+    0.36500000000000005
+   ],
+   "description": "Main-belt asteroid, effective diameter 131.3 km.",
+   "orbit": {
+    "aM": 477217207533.0,
+    "e": 0.0682,
+    "iDeg": 17.06,
+    "raanDeg": 110.81,
+    "argPeriDeg": 230.12,
+    "meanAnomalyDeg": 70.00522320444867,
+    "epochJulianDate": 2461359.5,
+    "plane": "ecliptic"
+   },
+   "lagrange": null
+  },
+  {
+   "id": "gateway",
+   "name": "Gateway Station",
+   "kind": "station",
+   "parent": "moon",
+   "radiusM": 1000.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Earth-Moon L1 transit hub and lunar-surface logistics depot.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "earth",
+    "secondary": "moon",
+    "point": "L1"
+   }
+  },
+  {
+   "id": "helios_watch",
+   "name": "Helios Watch",
+   "kind": "station",
+   "parent": "earth",
+   "radiusM": 1250.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Solar observatory and space-weather warning station, 1.5 million km sunward of Earth.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "sun",
+    "secondary": "earth",
+    "point": "L1"
+   }
+  },
+  {
+   "id": "nyx_anchor",
+   "name": "Nyx Anchor",
+   "kind": "station",
+   "parent": "earth",
+   "radiusM": 1000.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Deep-space telescope servicing yard and quiet-sector research station.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "sun",
+    "secondary": "earth",
+    "point": "L2"
+   }
+  },
+  {
+   "id": "ares_junction",
+   "name": "Ares Junction",
+   "kind": "station",
+   "parent": "mars",
+   "radiusM": 1100.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Mars approach control, propellant cache and transfer rendezvous.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "sun",
+    "secondary": "mars",
+    "point": "L1"
+   }
+  },
+  {
+   "id": "jovian_yard",
+   "name": "Jovian Transfer Yard",
+   "kind": "station",
+   "parent": "jupiter",
+   "radiusM": 1750.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Large construction yard in Jupiter's leading Trojan swarm.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "sun",
+    "secondary": "jupiter",
+    "point": "L4"
+   }
+  },
+  {
+   "id": "titan_reach",
+   "name": "Titan Reach",
+   "kind": "station",
+   "parent": "titan",
+   "radiusM": 1000.0,
+   "gm": 0.0,
+   "rotationPeriodS": 600.0,
+   "axialTiltDeg": 0.0,
+   "poleRaDeg": 0.0,
+   "poleDecDeg": 90.0,
+   "color": [
+    0.72,
+    0.8,
+    0.86
+   ],
+   "description": "Saturn-system depot at the Titan-Saturn L1 point.",
+   "orbit": null,
+   "lagrange": {
+    "primary": "saturn",
+    "secondary": "titan",
+    "point": "L1"
+   }
+  }
+ ]
+}
