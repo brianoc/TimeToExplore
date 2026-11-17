@@ -49,21 +49,81 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void ZoomIsMultiplicativeAndClamped()
+        public void ZoomRequestsMultiplicativeStepsAndClamps()
         {
             var orbit = new OrbitCamera { DistanceUnits = 100f };
 
             orbit.Zoom(1f, 2f);
-            Assert.That(orbit.DistanceUnits, Is.EqualTo(200f).Within(1e-3f));
+            Assert.That(orbit.DistanceUnits, Is.EqualTo(100f),
+                "a zoom requests a distance; it does not teleport");
+            Assert.That(orbit.TargetDistanceUnits, Is.EqualTo(200f).Within(1e-3f));
 
-            orbit.Zoom(-1f, 2f);
-            Assert.That(orbit.DistanceUnits, Is.EqualTo(100f).Within(1e-3f));
+            orbit.Zoom(1f, 2f);
+            Assert.That(orbit.TargetDistanceUnits, Is.EqualTo(400f).Within(1e-3f),
+                "rapid notches compound on the pending request");
 
             orbit.Zoom(100f, 2f);
-            Assert.That(orbit.DistanceUnits, Is.EqualTo(OrbitCamera.MaxDistanceUnits));
+            Assert.That(orbit.TargetDistanceUnits, Is.EqualTo(OrbitCamera.MaxDistanceUnits));
 
             orbit.Zoom(-200f, 2f);
-            Assert.That(orbit.DistanceUnits, Is.EqualTo(OrbitCamera.MinDistanceUnits));
+            Assert.That(orbit.TargetDistanceUnits, Is.EqualTo(OrbitCamera.MinDistanceUnits));
+        }
+
+        [Test]
+        public void AZoomRequestEasesInsteadOfSnapping()
+        {
+            var orbit = new OrbitCamera { DistanceUnits = 100f };
+            orbit.RequestDistance(200f);
+
+            Assert.That(orbit.IsDistanceSettled, Is.False);
+            Assert.That(orbit.DistanceUnits, Is.EqualTo(100f),
+                "the request alone does not move the camera");
+
+            Assert.That(orbit.EaseDistance(1f / 60f, 7f), Is.True);
+            Assert.That(orbit.DistanceUnits, Is.GreaterThan(100f));
+            Assert.That(orbit.DistanceUnits, Is.LessThan(200f), "the first frame is part-way");
+
+            float previous = orbit.DistanceUnits;
+            int frames = 1;
+            while (!orbit.IsDistanceSettled && frames < 600)
+            {
+                orbit.EaseDistance(1f / 60f, 7f);
+                Assert.That(orbit.DistanceUnits, Is.GreaterThanOrEqualTo(previous),
+                    "the tween never runs backwards");
+                previous = orbit.DistanceUnits;
+                frames++;
+            }
+
+            Assert.That(frames, Is.GreaterThan(1), "the zoom takes more than one frame");
+            Assert.That(frames, Is.LessThan(600));
+            Assert.That(orbit.DistanceUnits, Is.EqualTo(200f), "the tween lands exactly");
+            Assert.That(orbit.EaseDistance(1f / 60f, 7f), Is.False,
+                "a settled camera reports no motion");
+        }
+
+        [Test]
+        public void PlacingTheDistanceCancelsAPendingRequest()
+        {
+            var orbit = new OrbitCamera { DistanceUnits = 100f };
+            orbit.RequestDistance(1_000f);
+
+            orbit.DistanceUnits = 0.5f;
+
+            Assert.That(orbit.DistanceUnits, Is.EqualTo(0.5f));
+            Assert.That(orbit.TargetDistanceUnits, Is.EqualTo(0.5f));
+            Assert.That(orbit.IsDistanceSettled, Is.True);
+        }
+
+        [Test]
+        public void AZeroLengthFrameCompletesTheZoom()
+        {
+            var orbit = new OrbitCamera { DistanceUnits = 100f };
+            orbit.RequestDistance(200f);
+
+            Assert.That(orbit.EaseDistance(0f, 7f), Is.False);
+
+            Assert.That(orbit.DistanceUnits, Is.EqualTo(200f));
+            Assert.That(orbit.IsDistanceSettled, Is.True);
         }
 
         [Test]

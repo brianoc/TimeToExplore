@@ -128,6 +128,16 @@ radius, 3.3 AU)`. The aim and the distance follow separately, so zooming keeps
 the destination centred; only a drag stops the aiming. If the orbit would put
 the camera inside a body, it is pulled in toward the origin it is looking at.
 
+**Zoom is a tween.** A wheel notch does not place the camera: it requests a new
+distance (`OrbitCamera.RequestDistance`) and the rig eases the current distance
+toward it at `ZoomEaseRatePerSecond` (7/s). The request compounds on a pending
+distance, so a continuous gesture keeps its 1.25× per notch even while the
+camera is still travelling. The blend reads the eased distance, so entering or
+leaving the [solar system view](/technical/system-map.md) sweeps the top-down
+tilt and the rotation over the same short tween instead of snapping, and the
+player's stored yaw and pitch are still never written. A reset, a snap-to, or a
+direct distance assignment places the camera immediately.
+
 ## The blended map pose
 
 `ShipCameraRig.MapEnabled` continues the same camera into the
@@ -170,8 +180,11 @@ target. The follow flags survive, so zooming back into the local band resumes
 the framing.
 
 **Zoom and clipping.** The wheel is still multiplicative (1.25× per notch), but
-the map side uses `MapView.ZoomDistanceUnits` and reaches 12 billion km; the
-local side keeps the 5-billion-km clamp. The near plane is today's
+the distance is eased to the requested value rather than placed (see
+[the camera](/technical/selection-and-camera.md#the-camera)); the blend reads
+the eased distance, so the top-down tilt arrives with the zoom. The map side
+uses `MapView.ZoomDistanceUnits` and reaches 12 billion km; the local side keeps
+the 5-billion-km clamp. The near plane is today's
 `clamp(0.02 × d, 200 km, 50 km)` at `w = 0`, and blends to one thousandth of the
 distance on the map, capped at 12,000 units. The far plane is raised to 40
 billion km while the map is enabled. Every one of these is unchanged when the
@@ -240,7 +253,7 @@ second mapping.
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
 | Right mouse drag | Orbit the camera around the ship, at every zoom |
-| Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km) |
+| Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km), eased to the requested distance |
 | `Tab` | Cycle planet/station targets without opening the screen |
 
 # Verification
@@ -256,7 +269,9 @@ second mapping.
   midpoint position, cancellation, and zero duration;
 * the approach offset's eight-radius and 5,000 km rules and its lit-side bias;
 * the orbit camera's pitch clamp, yaw wrap, zoom limits, shortest turn, slew
-  rate, and distance easing, and the rig's framing distance and follow flags;
+  rate, and distance easing, the zoom request that eases over many frames and
+  lands exactly, and the rig's framing distance, follow flags, and the smooth
+  top-down tilt that follows a wheel tween;
 * the map pose: a finite top-down rotation, a horizontal up that turns with
   yaw, the blended rotation agreeing with the effective pitch, and the exact
   remembered-pose round trip;

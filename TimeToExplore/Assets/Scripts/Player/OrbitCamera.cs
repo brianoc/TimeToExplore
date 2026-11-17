@@ -32,7 +32,38 @@ namespace TimeToExplore.Player
 
         public float YawDegrees;
         public float PitchDegrees = DefaultPitchDegrees;
-        public float DistanceUnits = DefaultDistanceUnits;
+
+        private float _distanceUnits = DefaultDistanceUnits;
+
+        /// <summary>
+        /// The current orbit distance, in render units. Assigning it places the
+        /// camera immediately and cancels any pending request; a wheel zoom
+        /// instead calls <see cref="RequestDistance"/> and lets the rig ease
+        /// toward it with <see cref="EaseDistance"/>.
+        ///
+        /// The caller owns the range: the rig routes a wheel through
+        /// <see cref="ZoomDistanceUnits"/> (local) or
+        /// <see cref="MapView.ZoomDistanceUnits"/> (map), so the map's higher
+        /// ceiling is not clamped away here.
+        /// </summary>
+        public float DistanceUnits
+        {
+            get => _distanceUnits;
+            set
+            {
+                _distanceUnits = value;
+                TargetDistanceUnits = _distanceUnits;
+            }
+        }
+
+        /// <summary>
+        /// The distance a zoom is heading for. Equal to
+        /// <see cref="DistanceUnits"/> whenever no tween is pending.
+        /// </summary>
+        public float TargetDistanceUnits { get; private set; } = DefaultDistanceUnits;
+
+        /// <summary>True when the camera has arrived and there is no zoom left to ease.</summary>
+        public bool IsDistanceSettled => _distanceUnits == TargetDistanceUnits;
 
         /// <summary>Unit vector from the ship to the camera, in Unity space.</summary>
         public Vector3 OffsetDirection => Direction(YawDegrees, PitchDegrees);
@@ -64,10 +95,32 @@ namespace TimeToExplore.Player
                 MinPitchDegrees, MaxPitchDegrees);
         }
 
-        /// <summary>Multiplicative zoom, so each notch feels the same at any scale.</summary>
+        /// <summary>
+        /// Request a zoom without moving the camera: the distance eases there
+        /// while <see cref="EaseDistance"/> runs. The caller routes the range
+        /// through <see cref="ZoomDistanceUnits"/> or
+        /// <see cref="MapView.ZoomDistanceUnits"/>, so the map's higher ceiling
+        /// survives.
+        /// </summary>
+        public void RequestDistance(float distanceUnits)
+        {
+            TargetDistanceUnits = distanceUnits;
+        }
+
+        /// <summary>Place the camera immediately, for a reset or a start.</summary>
+        public void SnapDistance(float distanceUnits)
+        {
+            DistanceUnits = distanceUnits;
+        }
+
+        /// <summary>
+        /// Multiplicative zoom, requested from the pending target so rapid
+        /// notches compound. The camera moves on the next
+        /// <see cref="EaseDistance"/>, not in this call.
+        /// </summary>
         public void Zoom(float steps, float factorPerStep = 1.25f)
         {
-            DistanceUnits = ZoomDistanceUnits(DistanceUnits, steps, factorPerStep);
+            RequestDistance(ZoomDistanceUnits(TargetDistanceUnits, steps, factorPerStep));
         }
 
         /// <summary>
@@ -142,19 +195,48 @@ namespace TimeToExplore.Player
             return remaining - budget;
         }
 
-        /// <summary>Ease the distance toward a target, exponentially in time.</summary>
-        public void SmoothDistance(float targetUnits, float deltaTime, float ratePerSecond = 2.5f)
+        /// <summary>
+        /// Ease the distance toward the requested target, exponentially in time.
+        /// Returns true while the camera is still travelling and false once it
+        /// has arrived (or when the frame is too short to move), so a caller can
+        /// stop work when the zoom settles.
+        /// </summary>
+        public bool EaseDistance(float deltaTime, float ratePerSecond = 2.5f)
         {
-            targetUnits = Mathf.Clamp(targetUnits, MinDistanceUnits, MaxDistanceUnits);
+            float target = TargetDistanceUnits;
+
             if (!(deltaTime > 0f) || !(ratePerSecond > 0f))
             {
-                DistanceUnits = targetUnits;
-                return;
+                _distanceUnits = target;
+                return false;
             }
 
+            if (_distanceUnits == target) return false;
+
             float t = 1f - Mathf.Exp(-ratePerSecond * deltaTime);
-            DistanceUnits = Mathf.Clamp(Mathf.Lerp(DistanceUnits, targetUnits, t),
-                MinDistanceUnits, MaxDistanceUnits);
+            float next = Mathf.Lerp(_distanceUnits, target, t);
+
+            // Snap the last float noise so the pose settles exactly and the
+            // remembered distance round-trips without a permanent crawl.
+            if (Mathf.Abs(next - target) <= Mathf.Max(target * 1e-6f, 1e-9f))
+            {
+                _distanceUnits = target;
+                return false;
+            }
+
+            _distanceUnits = next;
+            return true;
+        }
+
+        /// <summary>
+        /// Request a target and ease one frame toward it. A caller that
+        /// recomputes its target every frame can use this instead of the two
+        /// separate calls.
+        /// </summary>
+        public void SmoothDistance(float targetUnits, float deltaTime, float ratePerSecond = 2.5f)
+        {
+            RequestDistance(targetUnits);
+            EaseDistance(deltaTime, ratePerSecond);
         }
 
         /// <summary>Look at a point from a given ship position, keeping the distance.</summary>

@@ -357,6 +357,57 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.CurrentThrust.IsActive, Is.False, "the drive is off");
         }
 
+        /// <summary>
+        /// The zoom is a request plus an ease, not a teleport: one gesture moves
+        /// the camera over many frames, and the map blend sweeps through its
+        /// band instead of snapping to the top-down pose.
+        /// </summary>
+        [Test]
+        public void OneWheelGestureEasesToTheMapInsteadOfSnapping()
+        {
+            Build(enableMapView: true);
+            _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
+            _bootstrap.Rig.ClearAuto();
+            _bootstrap.Rig.Orbit.YawDegrees = 40f;
+            _bootstrap.Rig.Orbit.PitchDegrees = 10f;
+
+            double radiusM = MapView.LocalRadiusM(_bootstrap.Model, _bootstrap.ShipPositionM);
+            float localDistance = (float)(radiusM * _bootstrap.UnitsPerMeter);
+            _bootstrap.Rig.Orbit.DistanceUnits = localDistance;
+            Invoke("LateUpdate");
+            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
+
+            _bootstrap.Rig.ApplyWheelSteps(6f);
+            Assert.That(_bootstrap.Rig.Orbit.DistanceUnits, Is.EqualTo(localDistance),
+                "a wheel gesture requests a distance; the camera has not moved");
+
+            int frames = 0;
+            bool sawIntermediateBlend = false;
+            float previousDistance = localDistance;
+
+            while (!_bootstrap.Rig.Orbit.IsDistanceSettled && frames < 600)
+            {
+                Invoke("LateUpdate");
+
+                Assert.That(_bootstrap.Rig.Orbit.DistanceUnits,
+                    Is.GreaterThanOrEqualTo(previousDistance),
+                    "the zoom eases outward through the frame loop");
+
+                float weight = _bootstrap.Rig.MapBlendWeight;
+                if (weight > 0.01f && weight < 0.99f) sawIntermediateBlend = true;
+
+                previousDistance = _bootstrap.Rig.Orbit.DistanceUnits;
+                frames++;
+            }
+
+            Assert.That(frames, Is.GreaterThan(1), "the zoom is a tween, not a snap");
+            Assert.That(frames, Is.LessThan(600));
+            Assert.That(sawIntermediateBlend, Is.True, "the map blend sweeps through its band");
+            Assert.That(_bootstrap.Rig.Orbit.DistanceUnits,
+                Is.EqualTo(_bootstrap.Rig.Orbit.TargetDistanceUnits));
+            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-4f));
+        }
+
         private const float FrameSeconds = 1f / 60f;
         private const int MapNotches = 90;
         private const int MaxFrames = 20_000;

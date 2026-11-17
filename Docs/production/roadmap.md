@@ -160,8 +160,9 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    flight-session, testing, and index concepts carry the finished layer.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
-the 12-billion-km map ceiling with the pose top-down, and the reverse gesture
-returns to the exact remembered yaw, pitch, and rotation. From the map, Mars can
+the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
+are eased, not snapped), and the reverse gesture returns to the exact remembered
+yaw, pitch, and rotation. From the map, Mars can
 be selected and plotted; the curve and the arrival ghost draw without flying,
 and Begin replans and arrives on the 3,898 km parking orbit in 4.44 days with
 0.0 m and 0.0000 m/s, 3,939 frames and 65.7 real seconds — the same numbers as
@@ -171,9 +172,10 @@ fades distant bodies to true scale outside the Moon's sphere of influence; the
 first two are unit-tested, and a real pointer click still needs a human frame.
 
 **Known gaps:** the `EnableMapView` comparison switch still gates the map (off in
-the shipped scene), wheel feel and real pointer hits have no PlayMode coverage,
-the map keeps the player's yaw rather than offering north-up, and the 60 AU pan
-cap and 12-billion-km ceiling are fixed constants.
+the shipped scene), the zoom tween is unit-tested but its feel and real pointer
+hits still need a PlayMode pass, the map keeps the player's yaw rather than
+offering north-up, and the 60 AU pan cap and 12-billion-km ceiling are fixed
+constants.
 
 # Milestone 3 — fuel and the delta-v economy
 

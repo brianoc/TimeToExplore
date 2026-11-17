@@ -33,7 +33,9 @@ tests.
 
 # One zoom, two readings of the same camera
 
-The wheel keeps its current meaning: multiplicative zoom, 1.25× per notch.
+The wheel keeps its current meaning: multiplicative zoom, 1.25× per notch. The
+notch requests a distance and the camera eases to it over a short tween
+(`OrbitCamera.EaseDistance`, 7/s by default), so the pose change is continuous.
 There is no separate map key and no hard mode switch. Instead the camera
 **blends** between two readings as the zoom distance crosses the local sphere
 of influence:
@@ -133,11 +135,21 @@ The camera *position* comes from the effective pitch (`OrbitCamera.Direction`)
 so it sits on the same great circle as the rotation; the order and the
 look-at point are described below.
 
+**Zoom ease.** A notch calls `ShipCameraRig.ApplyWheelSteps`, which requests a
+distance from the pending one (so a continuous gesture compounds) and eases the
+current distance toward it in `Apply`. Because `w` is computed from the eased
+distance every frame, the tilt, rotation, near plane, and marker/label aids all
+sweep with the zoom. The tween is therefore the transition from the solar
+system view to the local view and back: there is no separate animated pose. The
+local view still returns to the player's exact remembered yaw and pitch; only
+the effective pose blends. Only a wheel request keeps easing once the view is on
+the map side — the automatic framing stays suspended there.
+
 | Input | Local (`w ≤ 0.5`) | Map (`w > 0.5`) |
 |---|---|---|
 | Right drag | Orbit; clears auto-aim | Orbit; clears auto-aim |
 | Left drag | Nothing | Pan; clears both auto flags |
-| Wheel | 1.25× per notch, local 5-million-unit ceiling | 1.25× per notch, map 12-million-unit ceiling |
+| Wheel | 1.25× per notch, eased, local 5-million-unit ceiling | 1.25× per notch, eased, map 12-million-unit ceiling |
 | Left click | Selection (unchanged) | Selection, when the press stayed inside the 4 px slop |
 
 **Pan scale.** The look-at moves by `2 · d · tan(fov/2) / screenHeight` units
@@ -354,9 +366,9 @@ Each step is one session-sized piece of work with its tests, in order:
    top-down map with a yaw-dependent horizontal up, keeps right-drag as orbit
    at every zoom, routes left-drag to pan on the map, scales the pan per pixel
    from the camera distance, eases the pan home on re-entry, suspends
-   auto-framing on the map, routes the wheel through the extended map range,
-   and blends the near plane from today's local rule to one thousandth of the
-   map distance.
+   auto-framing on the map, routes the wheel through the extended map range and
+   eases the requested distance, and blends the near plane from today's local
+   rule to one thousandth of the map distance.
   `CameraRigTests` covers the pose, the round trip, the routing, the pan and
   its cap, the ease, the zoom range, the near plane, and the local view with
   the map off. `SolarSystemBootstrap.EnableMapView` and
@@ -416,9 +428,10 @@ Each step is one session-sized piece of work with its tests, in order:
 
 # Acceptance
 
-* One wheel gesture zooms from a parking orbit to the whole system; the view
-  arrives top-down with every planet orbit visible. Zooming back in returns
-  to the exact angle the player left.
+* One wheel gesture zooms from a parking orbit to the whole system, eased rather
+  than snapped; the view arrives top-down with every planet orbit visible and
+  the tilt sweeps with the zoom. Zooming back in returns to the exact angle the
+  player left.
 * Pan to Jupiter, click it, read its details. Plot a route: a smooth curve
   draws across the map with the arrival ghost. Begin flies a curve close to
   the preview and arrives on the parking orbit with the existing exactness
@@ -439,7 +452,10 @@ the map changes the camera, not the trajectory.
 * **A map shortcut key (`M`)?** Zoom-only first; add the key if the wheel trip
   feels long in play.
 * **Pure top-down or a slight tilt?** 90° first. If the map reads flat, end
-  the blend at 80–85° instead; the blend makes this a one-number change.
+  the blend at 80–85° instead; the blend makes this a one-number change. The
+  **local** view keeps the player's remembered pitch: there is no forced local
+  tilt. Entering local from the map sweeps down to that pitch through the zoom
+  tween, which is the deliberate transition (2026-11-17).
 * **Map rotation?** The map keeps the remembered yaw; there is no separate
   rotate control in the first pass.
 * **Departure-time choice** (the porkchop search) stays out of scope. Plot

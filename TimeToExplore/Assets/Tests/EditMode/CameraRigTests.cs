@@ -188,6 +188,58 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheWheelEasesTheZoomAndTheTiltFollowsIt()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+            float localDistance = (float)(radiusM * _rig.UnitsPerMeter); // w = 0 exactly
+
+            _rig.Orbit.YawDegrees = 30f;
+            _rig.Orbit.PitchDegrees = 12f;
+            _rig.Orbit.DistanceUnits = localDistance;
+            _rig.Apply(shipM, 1f / 60f);
+
+            Assert.That(_rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
+            float localTilt = TiltFromTopDown(_rig.PoseRotation);
+
+            // Six notches request 3.81x the local radius: fully on the map side.
+            _rig.ApplyWheelSteps(6f);
+            Assert.That(_rig.Orbit.DistanceUnits, Is.EqualTo(localDistance),
+                "the notch requests a distance; the camera has not moved yet");
+
+            float previousDistance = _rig.Orbit.DistanceUnits;
+            float previousTilt = localTilt;
+            int frames = 0;
+            bool sawIntermediateTilt = false;
+
+            while (!_rig.Orbit.IsDistanceSettled && frames < 600)
+            {
+                _rig.Apply(shipM, 1f / 60f);
+
+                Assert.That(_rig.Orbit.DistanceUnits,
+                    Is.GreaterThanOrEqualTo(previousDistance), "the zoom eases outward");
+                Assert.That(_rig.Orbit.PitchDegrees, Is.EqualTo(12f),
+                    "the player's stored pitch is untouched");
+
+                float tilt = TiltFromTopDown(_rig.PoseRotation);
+                Assert.That(tilt, Is.LessThanOrEqualTo(previousTilt + 1e-3f),
+                    "the pose tilts toward top-down, never away");
+                if (tilt > 1f && tilt < localTilt - 1f) sawIntermediateTilt = true;
+
+                previousDistance = _rig.Orbit.DistanceUnits;
+                previousTilt = tilt;
+                frames++;
+            }
+
+            Assert.That(frames, Is.GreaterThan(1), "the zoom takes many frames, not one");
+            Assert.That(frames, Is.LessThan(600));
+            Assert.That(sawIntermediateTilt, Is.True, "the tilt eases through the blend band");
+            Assert.That(_rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-4f));
+            Assert.That(TiltFromTopDown(_rig.PoseRotation), Is.LessThan(0.01f),
+                "the arrival is exactly top-down");
+        }
+
+        [Test]
         public void TheMapSidePansAndTheSixtyAuCapHoldsThroughTheRig()
         {
             Vector3d shipM = _model.Get("gateway").PositionM;
@@ -452,9 +504,12 @@ namespace TimeToExplore.Tests.EditMode
                 "the local clamp still stops at 33 AU when the map is off");
         }
 
+        /// <summary>0° is straight down the pole, 90° is looking along the ecliptic.</summary>
+        private static float TiltFromTopDown(Quaternion rotation) =>
+            Vector3.Angle(rotation * Vector3.forward, Vector3.down);
+
         private static void AssertFinite(Quaternion rotation)
-        {
-            Assert.That(float.IsNaN(rotation.x) || float.IsInfinity(rotation.x), Is.False);
+        {            Assert.That(float.IsNaN(rotation.x) || float.IsInfinity(rotation.x), Is.False);
             Assert.That(float.IsNaN(rotation.y) || float.IsInfinity(rotation.y), Is.False);
             Assert.That(float.IsNaN(rotation.z) || float.IsInfinity(rotation.z), Is.False);
             Assert.That(float.IsNaN(rotation.w) || float.IsInfinity(rotation.w), Is.False);

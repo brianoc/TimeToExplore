@@ -8,6 +8,12 @@ namespace TimeToExplore.Player
     /// pans the map, the wheel zooms, and a plan or a debug jump frames its
     /// destination automatically until the player takes the camera back.
     ///
+    /// The wheel requests a distance rather than placing one: the camera eases
+    /// to it over <see cref="ZoomEaseRatePerSecond"/> (see
+    /// <see cref="OrbitCamera.EaseDistance"/>), and the map blend reads the
+    /// eased distance, so the top-down-to-local tilt and the rotation sweep
+    /// with the zoom instead of snapping.
+    ///
     /// With <see cref="MapEnabled"/>, the pose blends from the local orbit to a
     /// top-down view as the camera distance crosses the local sphere of
     /// influence, left-drag pans on the map side, and the wheel reaches the
@@ -32,8 +38,15 @@ namespace TimeToExplore.Player
         /// <summary>How fast the auto-framing turns the view, in degrees per second.</summary>
         public float AutoSlewDegreesPerSecond = 45f;
 
-        /// <summary>How fast auto-framing eases the orbit distance.</summary>
+        /// <summary>How fast the auto-framing eases the orbit distance.</summary>
         public float AutoZoomRate = 2.5f;
+
+        /// <summary>
+        /// How fast a wheel zoom closes on the distance it requested, per
+        /// second. The map blend, the tilt, and the rotation all read the eased
+        /// distance, so one tween smooths the whole pose change.
+        /// </summary>
+        public float ZoomEaseRatePerSecond = 7f;
 
         /// <summary>
         /// Development switch for the system map. Off is today's orbit camera,
@@ -107,6 +120,7 @@ namespace TimeToExplore.Player
         private bool _orbiting;
         private bool _panning;
         private bool _panEngaged;
+        private bool _zoomPending;
         private Vector2 _panPressPointer;
 
         public void Initialise(Camera camera, SolarSystemModel model, float unitsPerMeter)
@@ -114,6 +128,8 @@ namespace TimeToExplore.Player
             _camera = camera;
             _model = model;
             UnitsPerMeter = unitsPerMeter;
+            _zoomPending = false;
+            Orbit.SnapDistance(Orbit.DistanceUnits);
 
             if (_camera != null)
             {
@@ -142,11 +158,12 @@ namespace TimeToExplore.Player
         public void SnapTo(Vector3d shipPositionM, BodyRuntime body)
         {
             Frame(body);
+            _zoomPending = false;
             if (body != null)
             {
                 Orbit.AimAlong(body.PositionM - shipPositionM);
-                Orbit.DistanceUnits = Mathf.Clamp(AutoDistanceUnits(shipPositionM, body),
-                    OrbitCamera.MinDistanceUnits, OrbitCamera.MaxDistanceUnits);
+                Orbit.SnapDistance(Mathf.Clamp(AutoDistanceUnits(shipPositionM, body),
+                    OrbitCamera.MinDistanceUnits, OrbitCamera.MaxDistanceUnits));
             }
 
             Map.ClearPan();
@@ -163,12 +180,22 @@ namespace TimeToExplore.Player
 
             HandleInput(MapBlendWeight);
 
-            // The wheel and a drag may have moved the distance, so re-read the
-            // blend before deciding what the rest of the frame should do.
+            // A wheel notch only requests a distance. Ease it before the rest of
+            // the frame reads the blend, so the map tilt, the rotation, and the
+            // near plane follow the zoom over one short tween instead of
+            // snapping with the notch.
+            if (_zoomPending && !Orbit.EaseDistance(deltaTime, ZoomEaseRatePerSecond))
+                _zoomPending = false;
+
+            // The wheel may have moved the distance, so re-read the blend
+            // before deciding what the rest of the frame should do.
             RefreshBlendWeight(localRadiusM);
             bool mapSide = IsMapSide;
 
-            if (AutoTarget != null && !mapSide)
+            // A pending wheel zoom owns the distance until it settles; the
+            // automatic framing resumes after that, and stays suspended on the
+            // map side exactly as before.
+            if (AutoTarget != null && !mapSide && !_zoomPending)
             {
                 Vector3d toTarget = AutoTarget.PositionM - shipPositionM;
 
@@ -176,8 +203,10 @@ namespace TimeToExplore.Player
                     Orbit.SlewToLookDirection(toTarget, AutoSlewDegreesPerSecond, deltaTime);
 
                 if (AutoDistance)
-                    Orbit.SmoothDistance(AutoDistanceUnits(shipPositionM, AutoTarget),
-                        deltaTime, AutoZoomRate);
+                {
+                    Orbit.RequestDistance(AutoDistanceUnits(shipPositionM, AutoTarget));
+                    Orbit.EaseDistance(deltaTime, AutoZoomRate);
+                }
             }
 
             RefreshBlendWeight(localRadiusM);
@@ -324,11 +353,31 @@ namespace TimeToExplore.Player
             }, mapSide);
 
             float scroll = PlayerControls.WheelSteps;
-            if (Mathf.Abs(scroll) > 0.01f)
-            {
-                Orbit.DistanceUnits = WheelDistanceUnits(Orbit.DistanceUnits, scroll, blendWeight);
-                AutoDistance = false;
-            }
+            if (Mathf.Abs(scroll) > 0.01f) ApplyWheelSteps(scroll);
+        }
+
+        /// <summary>
+        /// Route one wheel gesture through the blend and request its distance.
+        /// The pose eases to the request over
+        /// <see cref="ZoomEaseRatePerSecond"/>, so the map tilt and the rotation
+        /// blend rather than snapping. Exposed so the tween is testable without
+        /// a device.
+        /// </summary>
+        public void ApplyWheelSteps(float steps)
+        {
+            if (steps == 0f) return;
+
+            // Compound on a pending request so a continuous gesture keeps its
+            // 1.25x per notch; start from the placed distance when the last
+            // tween has settled. Never compound on a stale auto-framing target.
+            float from = _zoomPending ? Orbit.TargetDistanceUnits : Orbit.DistanceUnits;
+            float weight = MapEnabled
+                ? Map.BlendWeight(from, NeighbourhoodRadiusM)
+                : 0f;
+
+            Orbit.RequestDistance(WheelDistanceUnits(from, steps, weight));
+            _zoomPending = !Orbit.IsDistanceSettled;
+            AutoDistance = false;
         }
 
         private double LocalRadiusM(Vector3d shipPositionM)
