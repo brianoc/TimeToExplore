@@ -51,6 +51,29 @@ it is inert. It is not read, and it is not deleted by hand. The setting and the
 two-file allowance are pinned by `InputSeamTests`, and the decision is recorded
 in [ADR-013](/decisions/adr-013-ugui-hud.md).
 
+## Restart after changing Active Input Handling
+
+Unity bakes the active backend into compile defines (`ENABLE_INPUT_SYSTEM`,
+`ENABLE_LEGACY_INPUT_MANAGER`), and package assemblies keep the branch they were
+compiled with until the Editor restarts. If the setting is flipped in
+`ProjectSettings.asset` while the Editor is open, the packages can stay on the
+old branch while the runtime uses the new one. The symptom is a stream of:
+
+```text
+InvalidOperationException: You are trying to read Input using the UnityEngine.Input class,
+but you have switched active Input handling to Input System package in Player Settings.
+  at UnityEngine.Input.GetButton(...)
+  at UnityEngine.Rendering.DebugManager.SampleAction(...)
+  at UnityEngine.Rendering.DebugManager.UpdateActions()
+  at UnityEngine.Rendering.DebugUpdater.Update()
+```
+
+That is URP's runtime **Rendering Debugger**, not project code. Restarting the
+Editor recompiles `Unity.RenderPipelines.Core.Runtime` with the new defines and
+the exceptions stop. The source guard cannot catch this: the C# is clean and
+`activeInputHandler` is correct; the stale artifact lives in
+`Library/ScriptAssemblies`.
+
 # The uGUI input path
 
 The HUD builds its Canvas and panels at runtime. The EventSystem is created on
