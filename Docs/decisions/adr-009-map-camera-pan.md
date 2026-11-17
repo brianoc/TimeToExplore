@@ -42,11 +42,14 @@ than one that changes reading as it pulls back.
    local band the pan has eased to zero, so the camera looks at the ship again
    and ADR-008 holds without an exception.
 
-3. **Input is routed by the blend at a strict `w > 0.5`.** Right-drag orbits
-   locally and pans on the map. The wheel stays multiplicative at 1.25× per
-   notch on both ranges; the map side extends the ceiling from the local
-   5 billion km to 12 billion km. The boundary is one threshold, so a gesture
-   cannot flip mid-drag.
+3. **Input is routed by the button, and by the blend at a strict `w > 0.5`.**
+   Right-drag always orbits, at every zoom, so the button has one meaning and a
+   gesture never changes behaviour under the player. Left-drag pans, but only
+   on the map side. The left button still selects: a body is selected on release
+   only when the press stayed inside the 4 px click slop, so a pan never opens
+   the details screen. The wheel stays multiplicative at 1.25× per notch on both
+   ranges; the map side extends the ceiling from the local 5 billion km to
+   12 billion km. The boundary is one threshold, so a pan cannot flip mid-drag.
 
 4. **The player's yaw and pitch are never written.** The map pose is computed
    from them every frame. Zooming out and back therefore restores the exact
@@ -95,6 +98,9 @@ than one that changes reading as it pulls back.
 * The map keeps the player's yaw rather than snapping north-up, so orbit lines
   are not axis-aligned. That is intentional orientation preservation, but it is
   a choice a first-time player may not predict.
+* The left button now means "select" and "pan" depending on movement. The 4 px
+  click slop keeps them apart, but a press that travels further than the slop
+  pans instead of selecting.
 * While `EnableMapView` is off, the shipped scene keeps the old camera and the
   old full-strength marker aid. The comparison switch is a temporary asymmetry.
 * There is still no PlayMode coverage for wheel feel, real pointer hits, or the

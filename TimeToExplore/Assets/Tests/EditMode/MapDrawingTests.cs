@@ -257,35 +257,51 @@ namespace TimeToExplore.Tests.EditMode
         {
             // The reported trap: Earth's orbit is 149,598 render units across,
             // but the camera at the Earth–Moon neighbourhood sits ~185 units
-            // away. The old orbit-sized width made a ribbon wider than the view.
-            const float earthOrbitReference = 149_598f;
-            const float closeMapCamera = 185f;
+            // away. The old orbit-sized width made a ribbon wider than the
+            // view; the camera-distance rule makes it a fine line.
+            const float closeCamera = 185f;
 
-            float width = OrbitLine.WidthForView(earthOrbitReference, closeMapCamera, 1f);
+            float width = LineWidth.WorldWidth(closeCamera, 60f, 1080f);
 
             Assert.That(width, Is.GreaterThan(0f));
-            Assert.That(width / closeMapCamera, Is.LessThan(0.01f));
+            Assert.That(width / closeCamera, Is.LessThan(0.01f));
         }
 
         [Test]
-        public void TheLocalOrbitLineWidthIsUnchanged()
+        public void AnOrbitLineIsThreePixelsAtEveryZoom()
         {
-            const float reference = 149_598f;
-            float expected = Mathf.Clamp(reference * OrbitLine.WidthPerCameraDistance, 0.35f,
-                OrbitLine.LocalMaxWidthUnits);
+            float[] depths = { 0.002f, 185f, 149_598f, 12_000_000f };
 
-            Assert.That(OrbitLine.WidthForView(reference, 185f, 0f),
-                Is.EqualTo(expected).Within(1e-3f));
+            foreach (float depth in depths)
+            {
+                float width = LineWidth.WorldWidth(depth, 60f, 1080f);
+                float pixels = LineWidth.PixelsAt(width, depth, 60f, 1080f);
+                Assert.That(pixels, Is.EqualTo(LineWidth.Pixels).Within(1e-3f),
+                    $"a {depth}-unit camera should still see a fine line");
+            }
         }
 
         [Test]
-        public void TheMapOrbitLineWidthFollowsTheCameraDistance()
+        public void TheOrbitLineWidthFollowsTheCameraDistance()
         {
-            float near = OrbitLine.WidthForView(1f, 1_000f, 1f);
-            float far = OrbitLine.WidthForView(1f, 10_000f, 1f);
+            float near = LineWidth.WorldWidth(1_000f, 60f, 1080f);
+            float far = LineWidth.WorldWidth(10_000f, 60f, 1080f);
 
             Assert.That(near, Is.GreaterThan(0f));
             Assert.That(far / near, Is.EqualTo(10f).Within(0.01f));
+        }
+
+        [Test]
+        public void TheWidthRuleIsResolutionIndependent()
+        {
+            float hd = LineWidth.WorldWidth(1_000f, 60f, 1080f);
+            float uhd = LineWidth.WorldWidth(1_000f, 60f, 2160f);
+
+            // Twice the pixels in the same screen height means one pixel is
+            // half as wide in world units at the same depth.
+            Assert.That(uhd, Is.EqualTo(hd * 0.5f).Within(1e-4f));
+            Assert.That(LineWidth.PixelsAt(uhd, 1_000f, 60f, 2160f),
+                Is.EqualTo(LineWidth.Pixels).Within(1e-3f));
         }
 
         // ---------------------------------------------------------------- helper

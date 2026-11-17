@@ -139,6 +139,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `ShipIntegrator` | `Scripts/Simulation/ShipIntegrator.cs` | Adaptive RK4 that advances to a Julian date |
 | `TwoBody` | `Scripts/Simulation/TwoBody.cs` | Circular and escape speeds, energy, osculating elements |
 | `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends |
+| `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive quintic polyline with a scale-free chord tolerance |
 | `PlanArc` | `Scripts/Simulation/PlanArc.cs` | One planned leg, its thrust profile, delta-v, clearance |
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The circular orbit a Go To finishes in, with its gravity ceiling |
@@ -167,15 +168,16 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
 | `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the three runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
-| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Screen-width-aware orbit polyline; orbit-sized locally, camera-sized on the map |
-| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Route path, dashed capture, flip, arrival, and target-arrival ghost markers |
+| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line: 3 px converted to render units at the camera depth, FOV, and viewport height |
+| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
+| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed capture, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `PlayerControls` | `Scripts/Player/PlayerControls.cs` | The one input seam: device polling, intents, key table, mouse sensitivity, scroll normalisation |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
 | `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
-| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit locally and pan on the map, wheel zoom on both ranges, destination framing, blended pose, camera placement |
+| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit at every zoom, left-drag map pan, wheel zoom on both ranges, destination framing, blended pose, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: nearest locally, class-priority on the map |
@@ -293,7 +295,7 @@ they survive `Shader.Find` in a player build:
 |---|---|---|
 | `TimeToExplore/BodyLit` | planets, moons, asteroids, stations | Lambert from the global `_SunPosition`, with `_Ambient` and per-body `_Color` |
 | `TimeToExplore/Unlit` | the Sun, the ship marker, plan markers | flat `_Color`, no lighting |
-| `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for the dashed capture |
+| `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for the dashed capture, and `fwidth` edge coverage for antialiasing without MSAA |
 
 `BodyView.Refresh` handles:
 
@@ -306,15 +308,22 @@ they survive `Shader.Find` in a player build:
 
 Orbit lines sample the Kepler ellipse once per frame in the body's element frame,
 transform to the parent's frame, add the parent's current position, and then
-convert to ship-relative render coordinates. Locally the line width scales with
-the orbit's size, as before; on the map it eases to a fraction of the camera
-distance so the line stays roughly a pixel or two wide and a distant orbit can
-never become a ribbon at close map zoom.
+convert to ship-relative render coordinates. Every line takes its width from
+`LineWidth`, which converts 3 screen pixels to render units at the camera
+distance and the viewport's FOV and height. The orbit radius is not an input, so
+the line is a fine line at every zoom; the near and far arcs share the one world
+width and thin naturally with perspective.
 
-`TrajectoryLine` is the same idea for a plan: it samples each arc once when the
-plan is made, then subtracts the ship position every frame. The capture arc uses
-a repeating alpha texture in `LineTextureMode.Tile`, with the texture scale tied
+`TrajectoryLine` is the same idea for a plan, with two differences. It samples
+each arc once when the plan is made with `PathTessellation`, which subdivides by
+curvature until every chord's midpoint is within 5 × 10⁻⁴ of its own length;
+uniform sampling in time spent the budget on the straight cruise and left
+visible chords in the tight departure and capture turns. The capture arc uses a
+repeating alpha texture in `LineTextureMode.Tile`, with the texture scale tied
 to the line width, so the dashes stay the same apparent length at any zoom.
+`TimeToExplore/Line` feathers both strip edges over one screen pixel with
+`fwidth`, so geometric edges are antialiased even though the pipeline runs with
+MSAA off.
 
 # Input
 
@@ -334,7 +343,8 @@ The controller is an inspection tool now, not a flight model:
 | **Jump (debug)**, `F` | Three-second eased debug teleport to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |
-| Right mouse drag | orbit the camera around the ship; pan on the map |
+| Right mouse drag | orbit the camera around the ship, at every zoom |
+| Left mouse drag | pan the map (`w > 0.5`) |
 | Mouse wheel | zoom the camera (1.25× per notch; 12 billion km on the map side) |
 | `W A S D` | free flight: move forward/left/back/right |
 | `Q E` | free flight: move down/up |
@@ -356,7 +366,7 @@ a debug jump can frame their destination without moving the eye into the plan
 ([ADR-008](/decisions/adr-008-orbit-camera.md)). With the map switch on, the
 same rig blends the pose to a top-down system map as the zoom crosses the local
 sphere of influence: the map looks at `ship + pan` (the one bend of ADR-008,
-recorded in [ADR-009](/decisions/adr-009-map-camera-pan.md)), right-drag pans,
+recorded in [ADR-009](/decisions/adr-009-map-camera-pan.md)), left-drag pans,
 the wheel reaches 12 billion km, and the player's remembered yaw and pitch are
 never overwritten. Auto-framing is suspended while the map is engaged. The full
 rules are in [The system map and route preview](/technical/system-map.md).
@@ -374,8 +384,8 @@ of trigonometric operations. The expensive parts are rendering and HUD:
 
 * 137 `BodyView` transforms and materials,
 * 30 orbit lines × 161 points updated per frame,
-* one plan trajectory line, ~192 points, re-projected per frame while a plan is
-  live,
+* one plan trajectory line, up to a few thousand curvature-adaptive points,
+  re-projected per frame while a plan is live,
 * one uGUI canvas: three panels, up to 37 pooled row texts, four buttons, and up
   to a few dozen world labels.
 

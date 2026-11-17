@@ -25,7 +25,7 @@ Shader "TimeToExplore/Line"
             Tags { "LightMode" = "UniversalForward" }
 
             HLSLPROGRAM
-            #pragma target 2.0
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
 
@@ -65,7 +65,18 @@ Shader "TimeToExplore/Line"
             half4 frag(Varyings input) : SV_Target
             {
                 half4 textureColour = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
-                return textureColour * input.colour;
+
+                // LineRenderer's UV.y runs 0..1 across the strip. Feather the
+                // two long edges over one screen pixel using the screen-space
+                // derivative, which gives geometric antialiasing without MSAA.
+                // A sub-pixel line gets proportionally less coverage instead
+                // of a hard, shimmering edge, so it fades smoothly with
+                // distance. The max() guards a zero-width or degenerate quad.
+                float edge = min(input.uv.y, 1.0 - input.uv.y);
+                float feather = max(fwidth(input.uv.y), 1e-5);
+                half coverage = saturate(edge / feather);
+
+                return textureColour * input.colour * coverage;
             }
             ENDHLSL
         }

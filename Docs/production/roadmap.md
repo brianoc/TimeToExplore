@@ -38,7 +38,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite.
-  The suite is 331 tests at milestone 2.5.
+  The suite is 337 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -124,9 +124,10 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    back in, and panning on the map. **Steps 1–2 are done:** the plain-C#
    `MapView` holds the blend, the dominant-body choice, the 12-billion-km
    range, the map pose and clipping, and the 60 AU pan cap; `ShipCameraRig`
-   blends the pose, routes right-drag to orbit or pan, scales the pan from the
-   camera distance, eases it home on re-entry, suspends auto-framing on the
-   map, and routes the wheel through the extended range. `SystemMap.unity` and
+   blends the pose, keeps right-drag as orbit, routes left-drag to pan on the
+   map, scales the pan from the camera distance, eases it home on re-entry,
+   suspends auto-framing on the map, and routes the wheel through the extended
+   range. `SystemMap.unity` and
    the `EnableMapView` switch provide the side-by-side comparison.
 2. Map reading rules: bigger markers, label density by zoom, class-priority
    picking, the map-only ship label, and the camera-distance orbit width. **Step

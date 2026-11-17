@@ -4,16 +4,17 @@ using TimeToExplore.Core;
 namespace TimeToExplore.Player
 {
     /// <summary>
-    /// Drives the view: right-drag orbits the ship, the wheel zooms, and a plan
-    /// or a debug jump frames its destination automatically until the player
-    /// takes the camera back.
+    /// Drives the view: right-drag orbits the ship and the system map, left-drag
+    /// pans the map, the wheel zooms, and a plan or a debug jump frames its
+    /// destination automatically until the player takes the camera back.
     ///
-    /// With <see cref="MapEnabled"/>, the same controls also reach the system
-    /// map: the pose blends from the local orbit to a top-down view as the
-    /// camera distance crosses the local sphere of influence, right-drag pans
-    /// on the map side, and the wheel reaches the map's 12-billion-km ceiling.
-    /// The player's stored yaw and pitch are never overwritten, so zooming back
-    /// in restores the exact remembered angle. The map looks at
+    /// With <see cref="MapEnabled"/>, the pose blends from the local orbit to a
+    /// top-down view as the camera distance crosses the local sphere of
+    /// influence, left-drag pans on the map side, and the wheel reaches the
+    /// map's 12-billion-km ceiling. The right button keeps one meaning at every
+    /// zoom — rotate — so the gesture never changes under the player. The
+    /// player's stored yaw and pitch are never overwritten, so zooming back in
+    /// restores the exact remembered angle. The map looks at
     /// <c>ship + pan</c> rather than at the ship, which bends ADR-008; ADR-009
     /// is deferred to the map's documentation step.
     ///
@@ -103,7 +104,10 @@ namespace TimeToExplore.Player
 
         private Camera _camera;
         private SolarSystemModel _model;
-        private bool _dragging;
+        private bool _orbiting;
+        private bool _panning;
+        private bool _panEngaged;
+        private Vector2 _panPressPointer;
 
         public void Initialise(Camera camera, SolarSystemModel model, float unitsPerMeter)
         {
@@ -227,45 +231,97 @@ namespace TimeToExplore.Player
                 fieldOfView, screenHeight, Orbit.YawDegrees));
         }
 
+        /// <summary>
+        /// The pointer gestures for one frame, supplied by the caller so the
+        /// orbit/pan routing is verified without hardware.
+        /// </summary>
+        public struct DragInput
+        {
+            public bool LeftPressed;
+            public bool LeftReleased;
+            public bool RightPressed;
+            public bool RightReleased;
+
+            /// <summary>The seam's drag delta: raw pixels times the 0.1 sensitivity.</summary>
+            public Vector2 Delta;
+
+            /// <summary>The pointer in screen pixels, for the click slop.</summary>
+            public Vector2 Pointer;
+        }
+
+        /// <summary>
+        /// Route one frame of pointer gestures. The right button always orbits,
+        /// at every zoom, so its meaning never changes under the player. The
+        /// left button pans, and only on the map side: a press starts the pan,
+        /// it engages once the pointer leaves the click slop, and the release
+        /// ends it. The slop also keeps a click from nudging the map, which at
+        /// the map ceiling would move it by tens of millions of kilometres.
+        /// </summary>
+        public void ApplyDragInput(DragInput input, bool mapSide)
+        {
+            if (input.RightPressed) _orbiting = true;
+            else if (input.RightReleased) _orbiting = false;
+
+            if (input.LeftPressed)
+            {
+                _panning = mapSide;
+                _panEngaged = false;
+                _panPressPointer = input.Pointer;
+            }
+            else if (input.LeftReleased)
+            {
+                _panning = false;
+                _panEngaged = false;
+            }
+            if (!mapSide) _panning = false;
+
+            if (_panning && !_panEngaged &&
+                PlayerControls.ExceedsClickSlop(_panPressPointer, input.Pointer))
+                _panEngaged = true;
+
+            float x = input.Delta.x;
+            float y = input.Delta.y;
+            if (x == 0f && y == 0f) return;
+
+            if (_orbiting)
+            {
+                Orbit.Turn(x * OrbitDegreesPerMouseUnit, -y * OrbitDegreesPerMouseUnit);
+                AutoAim = false;
+            }
+            else if (_panning && _panEngaged)
+            {
+                PanByDrag(x * PanPixelsPerMouseUnit, y * PanPixelsPerMouseUnit);
+                AutoAim = false;
+                AutoDistance = false;
+            }
+        }
+
         private void HandleInput(float blendWeight)
         {
             bool mapSide = MapEnabled && MapView.UsesPan(blendWeight);
 
+            // Only the orbit gesture captures the cursor: a map pan follows the
+            // visible pointer and must not hide it.
             if (PlayerControls.RightDragStarted)
             {
-                _dragging = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
             else if (PlayerControls.RightDragEnded)
             {
-                _dragging = false;
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
             }
 
-            if (_dragging)
+            ApplyDragInput(new DragInput
             {
-                Vector2 axis = PlayerControls.DragDelta;
-                float x = axis.x;
-                float y = axis.y;
-                if (x != 0f || y != 0f)
-                {
-                    if (mapSide)
-                    {
-                        // On the map the button pans. Taking the pan means the
-                        // player owns the view, exactly as an orbit drag does.
-                        PanByDrag(x * PanPixelsPerMouseUnit, y * PanPixelsPerMouseUnit);
-                        AutoAim = false;
-                        AutoDistance = false;
-                    }
-                    else
-                    {
-                        Orbit.Turn(x * OrbitDegreesPerMouseUnit, -y * OrbitDegreesPerMouseUnit);
-                        AutoAim = false;
-                    }
-                }
-            }
+                LeftPressed = PlayerControls.LeftClickPressed,
+                LeftReleased = PlayerControls.LeftClickReleased,
+                RightPressed = PlayerControls.RightDragStarted,
+                RightReleased = PlayerControls.RightDragEnded,
+                Delta = PlayerControls.DragDelta,
+                Pointer = PlayerControls.PointerPosition
+            }, mapSide);
 
             float scroll = PlayerControls.WheelSteps;
             if (Mathf.Abs(scroll) > 0.01f)

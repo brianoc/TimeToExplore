@@ -113,8 +113,10 @@ usable.
 
 # The plan in the world
 
-`TrajectoryLine` samples the plan once, at 64 points per arc, and re-projects it
-into the ship-relative frame every frame. It draws
+`TrajectoryLine` samples the plan once with `PathTessellation`: each arc is
+subdivided by curvature until every chord's midpoint deviates by at most
+5 × 10⁻⁴ of the chord length, capped at 4,096 segments per arc. The polyline is
+then re-projected into the ship-relative frame every frame. It draws
 
 * a **solid** line for the departure and cruise arcs;
 * a **dashed** line for the capture arc, using a repeating alpha texture tiled
@@ -128,12 +130,14 @@ into the ship-relative frame every frame. It draws
   sees where the planet will be when the route meets it. `TARGET AT ARRIVAL`
   labels it, and the ghost is drawn for a preview and a live flight alike.
 
-Line width follows the **camera distance**, not the path: `0.0015 × camera
-distance`, which is about 1.5 pixels at the near end. The earlier rule used the
-farthest point of the plan, which made the line 225,000 km thick on a 1 AU trip
-and swallowed the view once the camera could orbit. The path is sampled from the
-plan, not integrated, so it costs the same whether the ship is next to it or an
-AU away.
+Line width follows the **camera distance**, not the path: `LineWidth` converts
+3 screen pixels to render units at the camera's depth, so the route stays a
+fine line from the departure neighbourhood to the 12-billion-km map ceiling. The
+earlier rule used the farthest point of the plan, which made the line
+225,000 km thick on a 1 AU trip and swallowed the view once the camera could
+orbit; a later world-unit cap silently faded the line to a third of a pixel at
+full-map zoom. The path is sampled from the plan, not integrated, so it costs
+the same whether the ship is next to it or an AU away.
 
 # The flight panel
 
@@ -189,7 +193,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | `R` | Reset the ship to Gateway, discard the preview, and set warp to 1× |
 | `1`–`7`, `Space` | Requested warp and pause; the policy may lower the request |
 | `Esc` | Close the details screen and discard a preview / cancel a debug jump |
-| Right-drag, wheel | Orbit the camera and zoom |
+| Right-drag, left-drag, wheel | Orbit, pan the map, and zoom |
 | `W A S D Q E`, `,` `.` | Debug free flight only (move and change speed) |
 
 # The camera
@@ -214,7 +218,7 @@ retrograde, and facing the burn would point the camera at empty space at the
 moment of arrival.
 
 With the map switch on, the same camera continues into the system map: the zoom
-blends the pose top-down, right-drag pans instead of orbiting, the look-at
+blends the pose top-down, left-drag pans the map, the look-at
 becomes `ship + pan`, and the wheel reaches 12 billion km
 ([The system map](/technical/system-map.md),
 [ADR-009](/decisions/adr-009-map-camera-pan.md)). The flight is unaffected: the

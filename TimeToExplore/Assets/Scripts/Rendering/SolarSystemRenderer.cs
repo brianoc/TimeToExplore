@@ -116,13 +116,21 @@ namespace TimeToExplore.Rendering
             if (_sunView != null)
                 Shader.SetGlobalVector("_SunPosition", _sunView.transform.position);
 
+            // Every line shares one apparent width. The camera distance is the
+            // depth of the look-at plane; a LineRenderer cannot vary its width
+            // per vertex, so the near and far arcs of one ellipse still share
+            // one world width and fall off naturally with perspective.
+            float lineDepth = cameraDistanceUnits > 0f
+                ? cameraDistanceUnits
+                : (_camera != null ? _camera.transform.position.magnitude : 0f);
+            float lineWidth = LineWidth.WorldWidth(lineDepth, fieldOfView, Screen.height);
+
             foreach (OrbitLine orbit in _planetOrbits)
-                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits,
-                    cameraDistanceUnits, mapBlendWeight);
+                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits, lineWidth);
 
             foreach (OrbitLine orbit in _moonOrbits)
                 orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits && ShowMoonOrbits,
-                    cameraDistanceUnits, mapBlendWeight);
+                    lineWidth);
         }
     }
 }

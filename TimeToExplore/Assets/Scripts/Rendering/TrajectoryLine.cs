@@ -14,9 +14,6 @@ namespace TimeToExplore.Rendering
     /// </summary>
     public class TrajectoryLine : MonoBehaviour
     {
-        /// <summary>Points per arc. Three arcs therefore draw ~192 segments.</summary>
-        public const int SamplesPerArc = 64;
-
         private const float MarkerPixels = 7f;
 
         private readonly List<Vector3d> _solid = new List<Vector3d>();
@@ -36,15 +33,6 @@ namespace TimeToExplore.Rendering
         private bool _hasGhost;
 
         public bool IsShowing => _plan != null;
-
-        /// <summary>
-        /// World width of the plan line for a camera at a given distance, in
-        /// render units. 0.0015 of the distance is about 1.5 pixels at 60° and
-        /// 1080p, and — the point — it can never be a meaningful fraction of the
-        /// distance, so the line can never swallow the camera.
-        /// </summary>
-        public static float WidthForCameraDistance(float cameraDistanceUnits) =>
-            Mathf.Clamp(cameraDistanceUnits * 0.0015f, 1e-6f, 4000f);
 
         /// <summary>Render-space position of the flip marker, for a screen label.</summary>
         public Vector3 FlipMarkerPosition => _flipMarker != null ? _flipMarker.position : Vector3.zero;
@@ -172,12 +160,12 @@ namespace TimeToExplore.Rendering
             {
                 List<Vector3d> target = arc.Phase == FlightPhase.Capture ? _dashed : _solid;
 
-                for (int i = 0; i <= SamplesPerArc; i++)
-                {
-                    Vector3d point = arc.Path.PositionAt((double)i / SamplesPerArc);
-                    if (i == 0 && target.Count > 0) continue; // shared seam, already drawn
-                    target.Add(point);
-                }
+                // Curvature-adaptive, not uniform in time. A quintic is nearly
+                // straight across the cruise and turns hard at the departure
+                // and capture ends, so uniform samples spend most of their
+                // budget on the easy part and leave visible chords in the
+                // turns. A shared seam keeps the solid and dashed runs joined.
+                PathTessellation.Append(arc.Path, target, includeStart: target.Count == 0);
             }
 
             double flip = plan.FindFlipJulianDate(gravity);
@@ -218,13 +206,14 @@ namespace TimeToExplore.Rendering
         {
             if (_plan == null) return;
 
-            // Width follows the camera distance, not the length of the path.
-            // The old rule used the farthest point of the plan, which put a
-            // multi-hundred-kilometre ribbon around the ship and swallowed the
-            // view once the camera could orbit; a screen-constant width is what
-            // a line wants.
-            float cameraDistance = camera != null ? camera.transform.position.magnitude : 1f;
-            float width = WidthForCameraDistance(cameraDistance);
+            // Width is apparent, not world-scaled: the same pixel rule as the
+            // orbit lines. The depth is the camera's distance to the ship
+            // (the render origin), which is where the route is anchored; on a
+            // panned map that is the true distance to the route.
+            float depth = camera != null
+                ? Mathf.Max(camera.transform.position.magnitude, 1e-4f)
+                : 1f;
+            float width = LineWidth.WorldWidth(camera, depth);
 
             SetPositions(_solidLine, _solid, shipPositionM, width);
             SetPositions(_dashedLine, _dashed, shipPositionM, width);

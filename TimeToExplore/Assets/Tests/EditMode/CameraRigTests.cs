@@ -92,7 +92,7 @@ namespace TimeToExplore.Tests.EditMode
 
             foreach (float distance in distances)
             {
-                float width = TrajectoryLine.WidthForCameraDistance(distance);
+                float width = LineWidth.WorldWidth(distance, 60f, 1080f);
                 Assert.That(width / distance, Is.LessThan(0.01f),
                     $"a {distance} unit camera must not sit inside a {width} unit line");
                 Assert.That(width, Is.GreaterThan(0f));
@@ -216,6 +216,113 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_rig.Map.PanOffsetM.Magnitude,
                 Is.LessThanOrEqualTo(MapView.MaxPanM + 1.0),
                 "the 60 AU cap holds through the rig");
+        }
+
+        [Test]
+        public void TheRightButtonAlwaysOrbitsAndTheLeftButtonPansTheMap()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Orbit.YawDegrees = 0f;
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.IsMapSide, Is.True, "the test starts on the map side");
+
+            // The right button rotates on the map too, and never pans.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                RightPressed = true,
+                Pointer = new Vector2(100f, 100f),
+                Delta = new Vector2(10f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(30f).Within(1e-3f),
+                "the right button keeps its 3 degrees per axis unit on the map");
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "a right drag never pans");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { RightReleased = true }, true);
+
+            // A left click's jitter stays inside the slop and must not nudge the
+            // map: at the ceiling a few pixels are tens of millions of km.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(102f, 101f),
+                Delta = new Vector2(0.2f, 0.1f)
+            }, mapSide: true);
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "a click's jitter is not a pan");
+
+            // Past the slop the left button pans, and never rotates.
+            float yaw = _rig.Orbit.YawDegrees;
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(138f, 100f),
+                Delta = new Vector2(3.8f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.GreaterThan(0.0),
+                "the left button pans on the map");
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(yaw), "a left drag never rotates");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { LeftReleased = true }, true);
+
+            // The local band has nothing to pan, so the same left drag is inert.
+            _rig.Map.ClearPan();
+            _rig.Orbit.DistanceUnits = (float)(0.5 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.IsMapSide, Is.False, "the test is back in the local band");
+
+            yaw = _rig.Orbit.YawDegrees;
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: false);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(138f, 100f),
+                Delta = new Vector2(3.8f, 0f)
+            }, mapSide: false);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "a left drag outside the map does not pan");
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(yaw),
+                "and it does not orbit either");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { LeftReleased = true }, false);
+        }
+
+        [Test]
+        public void ALeftDragOnTheMapClearsBothAutoFlags()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Frame(_model.Get("mars"));
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.Auto, Is.True, "the map suspends framing but keeps the flags");
+
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(120f, 100f),
+                Delta = new Vector2(2f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.AutoAim, Is.False);
+            Assert.That(_rig.AutoDistance, Is.False);
+            Assert.That(_rig.Auto, Is.False, "a pan takes the view from the framing");
         }
 
         [Test]

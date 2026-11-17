@@ -21,6 +21,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(PlayerControls.ReadHotkeys().Pause, Is.False);
             Assert.That(PlayerControls.PointerPosition, Is.EqualTo(Vector2.zero));
             Assert.That(PlayerControls.LeftClickPressed, Is.False);
+            Assert.That(PlayerControls.LeftClickHeld, Is.False);
+            Assert.That(PlayerControls.LeftClickReleased, Is.False);
             Assert.That(PlayerControls.DragDelta, Is.EqualTo(Vector2.zero));
             Assert.That(PlayerControls.WheelSteps, Is.EqualTo(0f));
             Assert.That(PlayerControls.MoveAxes, Is.EqualTo(Vector3.zero));
@@ -84,8 +86,12 @@ namespace TimeToExplore.Tests.EditMode
 
             Press(mouse.leftButton);
             Assert.That(PlayerControls.LeftClickPressed, Is.True);
+            Assert.That(PlayerControls.LeftClickHeld, Is.True);
+            Assert.That(PlayerControls.LeftClickReleased, Is.False);
             Release(mouse.leftButton);
             Assert.That(PlayerControls.LeftClickPressed, Is.False);
+            Assert.That(PlayerControls.LeftClickHeld, Is.False);
+            Assert.That(PlayerControls.LeftClickReleased, Is.True);
 
             Press(mouse.rightButton);
             Assert.That(PlayerControls.RightDragStarted, Is.True);

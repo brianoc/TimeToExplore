@@ -66,9 +66,9 @@ namespace TimeToExplore.UI
         private static readonly Color FallbackAccent = new Color(0.55f, 0.75f, 1f);
 
         private const string HelpText =
-            "LMB select body · RMB drag orbit · wheel zoom · 1–7 warp · Space pause\n" +
-            "Tab target · R reset to Gateway · Esc cancel · T true scale · O orbits\n" +
-            "L labels · H HUD · ` debug free flight (WASD fly, , . speed) · X cancel flight";
+            "LMB select · LMB drag pans map · RMB drag orbits · wheel zoom · 1–7 warp\n" +
+            "Space pause · Tab target · R reset · Esc cancel · T true scale · O orbits\n" +
+            "L labels · H HUD · ` free flight (WASD, , . speed) · X cancel";
 
         private SolarSystemBootstrap _owner;
         private bool _built;
@@ -120,6 +120,9 @@ namespace TimeToExplore.UI
         private bool _detailsOpen;
         private bool _detailsOpenedThisFrame;
         private BodyRuntime _hover;
+        private BodyRuntime _clickBody;
+        private Vector2 _clickPressPointer;
+        private bool _clickDragged;
         private readonly List<ScreenTarget> _targets = new List<ScreenTarget>();
 
         // --- Public API ---------------------------------------------------------
@@ -184,22 +187,55 @@ namespace TimeToExplore.UI
         {
             _hover = null;
 
-            // With the cursor locked for mouse look there is no pointer to aim.
-            if (Cursor.lockState != CursorLockMode.None) return;
-
             Vector2 screen = PlayerControls.PointerPosition;
+            bool pressed = PlayerControls.LeftClickPressed;
+            bool released = PlayerControls.LeftClickReleased;
+
+            // A press always starts a fresh click candidate, whatever it is over,
+            // so no earlier gesture can select on a later release.
+            if (pressed)
+            {
+                _clickBody = null;
+                _clickPressPointer = screen;
+                _clickDragged = false;
+            }
+            else if (_clickBody != null && (PlayerControls.LeftClickHeld || released) &&
+                     PlayerControls.ExceedsClickSlop(_clickPressPointer, screen))
+            {
+                _clickDragged = true;
+            }
+
+            // With the cursor locked for mouse look there is no pointer to aim.
+            if (Cursor.lockState != CursorLockMode.None)
+            {
+                if (released) _clickBody = null;
+                return;
+            }
 
             // Any raycast-target panel swallows the pointer before the world sees
             // it. IsPointerOverGameObject can lag the EventSystem by a frame, so
             // the panel rects are tested immediately as well.
-            if (UiInput.PointerOverUi() || PointerOverPanel(screen)) return;
+            if (UiInput.PointerOverUi() || PointerOverPanel(screen))
+            {
+                if (released) _clickBody = null;
+                return;
+            }
 
             Vector2 pointer = PlayerControls.ToGuiPointer(screen, Screen.height);
             _hover = PickAt(pointer);
 
-            if (!PlayerControls.LeftClickPressed || _hover == null) return;
+            if (pressed) _clickBody = _hover;
 
-            _owner.Select(_hover);
+            if (!released) return;
+
+            // The pan shares the left button, so a body is selected only when the
+            // press and release stayed inside the click slop. A drag is a pan and
+            // never opens the details screen.
+            BodyRuntime clicked = _clickDragged ? null : _clickBody;
+            _clickBody = null;
+            if (clicked == null) return;
+
+            _owner.Select(clicked);
             OpenDetails();
         }
 

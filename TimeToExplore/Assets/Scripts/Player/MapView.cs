@@ -55,9 +55,9 @@ namespace TimeToExplore.Player
         public const double MaxPanM = 60.0 * AstronomicalUnitM;
 
         /// <summary>
-        /// Blend weight above which input is on the map side: a right drag pans
-        /// instead of orbiting. Exactly one half stays local, so the boundary
-        /// itself never flips the input mid-gesture.
+        /// Blend weight above which input is on the map side: a left drag pans,
+        /// and the wheel reaches the map ceiling. Exactly one half stays local,
+        /// so the boundary itself never flips the input mid-gesture.
         /// </summary>
         public const float PanThreshold = 0.5f;
 
@@ -333,7 +333,7 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
-        /// Pan delta for a right-drag, in render units. The content follows the
+        /// Pan delta for a drag, in render units. The content follows the
         /// cursor: dragging right moves the look-at left, so the world under the
         /// pointer stays put. The scale is tied to the camera distance, so the
         /// gesture feels the same at every zoom.

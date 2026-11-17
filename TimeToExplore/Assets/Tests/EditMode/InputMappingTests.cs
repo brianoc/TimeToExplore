@@ -196,6 +196,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(PlayerControls.IsPressed(null, Key.Space), Is.False);
             Assert.That(PlayerControls.ReadPointer(null), Is.EqualTo(Vector2.zero));
             Assert.That(PlayerControls.ReadLeftClick(null), Is.False);
+            Assert.That(PlayerControls.ReadLeftClickHeld(null), Is.False);
+            Assert.That(PlayerControls.ReadLeftClickReleased(null), Is.False);
             Assert.That(PlayerControls.ReadRightDragStarted(null), Is.False);
             Assert.That(PlayerControls.ReadRightDragEnded(null), Is.False);
             Assert.That(PlayerControls.ReadDragDelta(null), Is.EqualTo(Vector2.zero));
@@ -219,6 +221,24 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo(new Vector2(0f, 1080f)));
             Assert.That(PlayerControls.ToGuiPointer(new Vector2(50f, 1080f), 1080),
                 Is.EqualTo(new Vector2(50f, 0f)));
+        }
+
+        [Test]
+        public void ClickSlopSeparatesAClickFromAMapPan()
+        {
+            var press = new Vector2(100f, 100f);
+
+            Assert.That(PlayerControls.ClickSlopPixels, Is.EqualTo(4f));
+            Assert.That(PlayerControls.ExceedsClickSlop(press, press), Is.False);
+            Assert.That(PlayerControls.ExceedsClickSlop(press, press + new Vector2(3f, 0f)),
+                Is.False);
+            Assert.That(PlayerControls.ExceedsClickSlop(press,
+                press + new Vector2(PlayerControls.ClickSlopPixels, 0f)), Is.False,
+                "the boundary itself is still a click");
+            Assert.That(PlayerControls.ExceedsClickSlop(press,
+                press + new Vector2(PlayerControls.ClickSlopPixels + 0.5f, 0f)), Is.True);
+            Assert.That(PlayerControls.ExceedsClickSlop(press, press + new Vector2(3f, 3f)),
+                Is.True, "both axes count, so a diagonal drag leaves the slop");
         }
     }
 }

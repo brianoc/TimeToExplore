@@ -1,7 +1,7 @@
 # Handoff
 
-**No active handoff (2026-11-17).** Milestone 2.5, the system map and route
-preview, is complete and committed.
+**No active handoff (2026-11-17).** The line-width, antialiasing, and adaptive
+tessellation pass is complete and verified.
 
 Start from [the design bundle](Docs/index.md),
 [the roadmap](Docs/production/roadmap.md), and

@@ -154,14 +154,20 @@ Kepler ellipse.
   equator if needed, then offset by the parent's current position.
 * The line is drawn in ship-relative render coordinates, so it moves with the
   world.
-* Width is scaled with camera distance:
+* Width is one apparent-width rule shared with the plan line. `LineWidth`
+  converts **3 screen pixels** to render units at the camera's look-at depth:
 
   ```text
-  width = max(parentDistance, orbitRadius) × 0.0015
+  width = 2 × depth × tan(fov / 2) / screenHeight × 3
   ```
 
-  clamped to [0.35, 4000] units. This keeps the line roughly 1–2 pixels wide at
-  any zoom.
+  The orbit's radius is not an input. The old rule multiplied the orbit size,
+  which was only correct at the single distance where the whole ellipse was
+  framed; inside the orbit it became a screen-filling ribbon. The pixel form is
+  also correct at other fields of view and resolutions, and needs no world-unit
+  clamp that breaks at the map ceiling. A `LineRenderer` has one world width
+  for the whole ellipse, so the near and far arcs share it and thin naturally
+  with perspective.
 
 Asteroid orbits are not drawn by default; 100 ellipses would clutter the view
 and cost more than they add. The data is available if a later "belt map" mode

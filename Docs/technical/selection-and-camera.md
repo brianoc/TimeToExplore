@@ -70,11 +70,10 @@ while the local view keeps its old thresholds:
   hovered or selected; locally it keeps the old 200,000-km threshold.
 * **The ship.** `BodyLabels.ShouldLabelShip` names the ten-pixel marker
   "YOU ARE HERE" on the map side only.
-* **Orbit lines.** `OrbitLine.WidthForView` keeps the orbit-sized width at
-  `w = 0` and eases to `0.0015 × camera distance` on the map. The map ceiling
-  of 20,000 units is about 1.5 px at the 12-billion-km zoom, so the line does
-  not thin to nothing and a distant orbit cannot become a ribbon at the
-  neighbourhood.
+* **Orbit lines.** `LineWidth` turns 3 screen pixels into render units at the
+  camera distance, with no orbit-sized term and no local/map blend. An orbit is
+  a fine line at the neighbourhood, at a whole-orbit framing, and at the
+  12-billion-km map ceiling, and a distant orbit can never become a ribbon.
 
 # The details screen
 
@@ -113,8 +112,9 @@ replans from the current state before flying.
 
 # The camera
 
-The view is an **orbit camera** around the ship: right-drag orbits, the wheel
-zooms, and in the local band the camera looks at the ship at the render origin
+The view is an **orbit camera** around the ship: right-drag orbits, left-drag
+pans on the map, the wheel zooms, and in the local band the camera looks at the
+ship at the render origin
 ([ADR-008](/decisions/adr-008-orbit-camera.md)). That keeps the ship-relative
 float precision of [ADR-002](/decisions/adr-002-double-precision.md) — the world
 is still projected from the ship — while letting the player look at their own
@@ -154,16 +154,20 @@ the map it looks at `ship + pan`; in the local band the pan has eased to zero,
 so ADR-008 holds exactly there. The bend is recorded in
 [ADR-009](/decisions/adr-009-map-camera-pan.md).
 
-**Map input.** Right-drag orbits while `w ≤ 0.5` and pans while `w > 0.5`. A
-pan moves the look-at by the distance-scaled pixel size
+**Map input.** Right-drag orbits at every zoom, local and map. Left-drag pans,
+but only while `w > 0.5`; in the local band there is nothing to pan, so the
+button is inert. A pan moves the look-at by the distance-scaled pixel size
 (`2 · d · tan(fov/2) / screenHeight` per pixel) so the content follows the
 cursor at any zoom; the offset is in double-precision metres, capped at 60 AU.
-Returning to the local band eases the pan to zero exponentially at 3/s, so the
-local view lands on the ship. A map pan clears the auto-framing flags, as an
-orbit drag does. While the map is engaged, auto-aim and auto-distance are
-suspended: the map keeps the player's yaw, and a wheel zoom cannot be silently
-pulled back to a framed target. The follow flags survive, so zooming back into
-the local band resumes the framing.
+Selection shares the left button: a press that stays inside the 4 px click slop
+selects its body on release, while a press that moves further is a pan and
+never opens the details screen. Returning to the local band eases the pan to
+zero exponentially at 3/s, so the local view lands on the ship. A map pan
+clears the auto-framing flags, as an orbit drag clears auto-aim. While the map
+is engaged, auto-aim and auto-distance are suspended: the map keeps the
+player's yaw, and a wheel zoom cannot be silently pulled back to a framed
+target. The follow flags survive, so zooming back into the local band resumes
+the framing.
 
 **Zoom and clipping.** The wheel is still multiplicative (1.25× per notch), but
 the map side uses `MapView.ZoomDistanceUnits` and reaches 12 billion km; the
@@ -229,12 +233,13 @@ second mapping.
 
 | Input | Action |
 |---|---|
-| Left click a body | Select it and open the details screen |
+| Left click a body | Select it and open the details screen (release inside the 4 px slop) |
+| Left mouse drag | Pan the map (`w > 0.5`); inert in the local band |
 | **Plot route …** button | Plan the route and draw the preview without flying |
 | **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
-| Right mouse drag | Orbit the camera around the ship; pan on the map (`w > 0.5`) |
+| Right mouse drag | Orbit the camera around the ship, at every zoom |
 | Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km) |
 | `Tab` | Cycle planet/station targets without opening the screen |
 

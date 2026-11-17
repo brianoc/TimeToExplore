@@ -7,8 +7,8 @@ namespace TimeToExplore.Player
     /// <summary>
     /// The project's single gameplay input seam. It polls the Input System's
     /// keyboard and mouse devices directly and exposes intents (pause, scale
-    /// index, pointer, drag delta, wheel steps, movement axes) so no other
-    /// gameplay script mentions <see cref="UnityEngine.InputSystem"/> or the
+    /// index, pointer, click and drag edges, wheel steps, movement axes) so no
+    /// other gameplay script mentions <see cref="UnityEngine.InputSystem"/> or the
     /// legacy <c>UnityEngine.Input</c> API.
     ///
     /// Active Input Handling is **New** only. uGUI receives its own pointer and
@@ -34,6 +34,13 @@ namespace TimeToExplore.Player
         /// Dividing only on Windows keeps one notch as one zoom step everywhere.
         /// </summary>
         public const float WindowsScrollUnitsPerNotch = 120f;
+
+        /// <summary>
+        /// Pointer movement, in pixels, that separates a click from a drag. A
+        /// left press that stays inside this radius selects on release; one that
+        /// leaves it is a map pan and selects nothing.
+        /// </summary>
+        public const float ClickSlopPixels = 4f;
 
         /// <summary>
         /// The explicit digit table. The clock has fewer scales than there are
@@ -70,7 +77,16 @@ namespace TimeToExplore.Player
         // --- Device-backed intent for the frame ---------------------------------
 
         public static Vector2 PointerPosition => ReadPointer(Mouse.current);
+
+        /// <summary>Left button down this frame: starts a click or a map pan.</summary>
         public static bool LeftClickPressed => ReadLeftClick(Mouse.current);
+
+        /// <summary>The left button is held: a click candidate may turn into a drag.</summary>
+        public static bool LeftClickHeld => ReadLeftClickHeld(Mouse.current);
+
+        /// <summary>Left button up this frame: a click selects, a drag does not.</summary>
+        public static bool LeftClickReleased => ReadLeftClickReleased(Mouse.current);
+
         public static bool RightDragStarted => ReadRightDragStarted(Mouse.current);
         public static bool RightDragEnded => ReadRightDragEnded(Mouse.current);
         public static Vector2 DragDelta => ReadDragDelta(Mouse.current);
@@ -108,6 +124,21 @@ namespace TimeToExplore.Player
 
         public static bool ReadLeftClick(Mouse mouse) =>
             mouse != null && mouse.leftButton.wasPressedThisFrame;
+
+        public static bool ReadLeftClickHeld(Mouse mouse) =>
+            mouse != null && mouse.leftButton.isPressed;
+
+        public static bool ReadLeftClickReleased(Mouse mouse) =>
+            mouse != null && mouse.leftButton.wasReleasedThisFrame;
+
+        /// <summary>
+        /// True when the pointer has moved further than the click slop, in
+        /// pixels. The HUD uses it to tell a click on a body from a map pan that
+        /// happened to start on the body.
+        /// </summary>
+        public static bool ExceedsClickSlop(Vector2 pressPoint, Vector2 currentPoint,
+            float slopPixels = ClickSlopPixels) =>
+            (currentPoint - pressPoint).sqrMagnitude > slopPixels * slopPixels;
 
         public static bool ReadRightDragStarted(Mouse mouse) =>
             mouse != null && mouse.rightButton.wasPressedThisFrame;

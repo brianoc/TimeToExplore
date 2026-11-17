@@ -18,8 +18,9 @@ other's mapping:
 | `Assets/Scripts/UI/UiInput.cs` | the **uGUI bridge**: creates the one `EventSystem` with an `InputSystemUIInputModule` and answers "is the pointer over a panel?" |
 
 `PlayerControls` polls `Keyboard.current` and `Mouse.current` directly and
-exposes intents: a hotkey set, a pointer, a left click, a right-drag begin/end,
-a drag delta, wheel steps, movement axes, and a speed multiplier. `UiInput` owns
+exposes intents: a hotkey set, a pointer, left-click press/hold/release, a
+right-drag begin/end, a drag delta, wheel steps, movement axes, and a speed
+multiplier. `UiInput` owns
 no gameplay mapping: it hands uGUI the Input System's default UI actions
 (`Point`, `Click`, `ScrollWheel`, `Navigate`, `Submit`, `Cancel`) so buttons
 receive pointer events. No runtime script calls the legacy `UnityEngine.Input`
@@ -123,9 +124,10 @@ knows about the world. No device is read twice for the same decision.
 | `W` `S` / `A` `D` / `E` `Q` | free flight: forward-back / left-right / down-up | `ShipController` |
 | `Shift` / `Ctrl` | free flight: ×10 / ×0.1 speed | `ShipController` |
 | `,` / `.` | free flight: decrease / increase speed | `ShipController` |
-| Right mouse drag | orbit the camera; pan on the map side | `ShipCameraRig` |
+| Right mouse drag | orbit the camera at every zoom | `ShipCameraRig` |
+| Left mouse drag | pan the map (`w > 0.5`) | `ShipCameraRig` |
 | Mouse wheel | zoom the camera | `ShipCameraRig` |
-| Left click | select the hovered body | `SolarSystemHud` |
+| Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 
 `Esc` keeps its old order: the bootstrap (execution order −100) cancels the
@@ -154,9 +156,13 @@ The camera's constants are unchanged, so the feel is unchanged:
 * `PanPixelsPerMouseUnit = 10` → the map content follows the cursor at **1 px
   per raw pixel**.
 
-While dragging, the rig locks and hides the cursor as before, and releasing the
-right button unlocks and shows it. The HUD ignores the pointer while the cursor
-is locked, so a drag never selects a body.
+While orbiting, the rig locks and hides the cursor as before, and releasing the
+right button unlocks and shows it. A map pan does not capture the cursor: the
+gesture follows the visible pointer. The HUD ignores the pointer while the
+cursor is locked, so an orbit drag never selects a body; and because the pan
+shares the left button, a body is selected only when the press and release stay
+inside `ClickSlopPixels` (4 px). A left press that moves further is a map pan
+and opens no details screen.
 
 # Wheel normalisation
 
@@ -223,11 +229,12 @@ fourth scans for an `OnGUI` method, `GUI.*` calls, `new GUIStyle`, and
 # What still needs a human
 
 The suite proves the mapping and the object graph, not the feel. In Play mode,
-check the right-drag orbit rate and map pan at a few zoom levels, the cursor
-capture and release, one wheel notch on the target OS, every panel button, that
-a click on a panel does not also select the body behind it, and that the click
-which opens the details screen cannot press a button underneath. The
-`EventSystem`'s pointer-over-panel answer depends on the previous frame's
+check the right-drag orbit rate and the left-drag map pan at a few zoom levels,
+the cursor capture and release, one wheel notch on the target OS, every panel
+button, that a click on a panel does not also select the body behind it, that a
+left-drag that starts on a body pans without opening the details screen, and
+that the click which opens the details screen cannot press a button underneath.
+The `EventSystem`'s pointer-over-panel answer depends on the previous frame's
 raycast; the immediate panel-rect test covers the first frame, but a real
 pointer is still the human check. See
 [Selection and camera focus](/technical/selection-and-camera.md) for the camera

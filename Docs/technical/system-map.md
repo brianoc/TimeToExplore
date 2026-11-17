@@ -102,9 +102,12 @@ not matter. Local precision is untouched.
 
 # Panning
 
-* In the map (`w > 0.5`), **right-drag pans** instead of orbiting. The button
-  keeps its "move the view" meaning; orbiting has no meaning when the pitch is
-  locked top-down. Left click stays selection.
+* In the map (`w > 0.5`), **left-drag pans**. The right button keeps one
+  meaning at every zoom — **right-drag rotates** — so a player never has to
+  remember a different gesture for the map.
+* A left press that moves further than the 4 px click slop is a pan. Inside the
+  slop it is still a click: release selects the body picked at the press, and a
+  drag never opens the details screen.
 * The pan is a look-at offset in render units, capped at about 60 AU so the
   player cannot lose the system. The camera looks at `ship + pan`, not at the
   ship.
@@ -132,9 +135,10 @@ look-at point are described below.
 
 | Input | Local (`w ≤ 0.5`) | Map (`w > 0.5`) |
 |---|---|---|
-| Right drag | Orbit; clears auto-aim | Pan; clears both auto flags |
+| Right drag | Orbit; clears auto-aim | Orbit; clears auto-aim |
+| Left drag | Nothing | Pan; clears both auto flags |
 | Wheel | 1.25× per notch, local 5-million-unit ceiling | 1.25× per notch, map 12-million-unit ceiling |
-| Left click | Selection (unchanged) | Selection (step 3) |
+| Left click | Selection (unchanged) | Selection, when the press stayed inside the 4 px slop |
 
 **Pan scale.** The look-at moves by `2 · d · tan(fov/2) / screenHeight` units
 per pixel, times the drag. The factor comes from the camera distance, so the
@@ -184,7 +188,7 @@ The map is for selecting big things. Its rendering rules follow from that:
 
 | Element | Rule |
 |---|---|
-| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. On the map the line width follows the camera distance instead of the orbit radius, so a planet's orbit cannot become a ribbon at close zoom; the local rule is unchanged. |
+| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. Every orbit uses the shared 3 px camera-distance width (`LineWidth`), so a planet's orbit is a fine line at every zoom and can never become a ribbon. |
 | Markers | The minimum-apparent-size aid stays, easing from 4.5 px locally to 6 px on the map so every planet and station is a comfortable click target. The `T` true-scale toggle still overrides it. |
 | Labels | Sun, planets, and stations always. Moon labels appear on the map when the camera is inside 5× the parent's SOI — zoom into a neighbourhood to read its moons. Asteroids label on hover and selection only. |
 | Ship | The ten-pixel marker, with a "YOU ARE HERE" label on the map. |
@@ -198,13 +202,14 @@ the HUD only projects and draws. The class rule is a `Priority` on
 when `ShipCameraRig.IsMapSide` is true, which is why the local picker and
 `SolarSystem.unity` do not change.
 
-The orbit-line width is a blend too: `OrbitLine.WidthForView` keeps the old
-orbit-sized rule at `w = 0` and eases to `0.0015 × camera distance` on the map.
-The map floor of 0.35 units and ceiling of 20,000 units keep the line about a
-pixel wide from the neighbourhood to the 12-billion-km ceiling.
+The orbit-line width has no local/map blend and no orbit-sized term. `LineWidth`
+converts 3 screen pixels to render units at the camera distance, so the same
+fine line appears from the neighbourhood to the 12-billion-km ceiling. The old
+world-unit floor and ceiling are gone; they made the apparent width depend on
+the zoom range rather than on the screen.
 
-The route preview (below) draws on the map with the same camera-distance width
-rule as today, so a plotted curve stays about 1.5 px wide at any zoom.
+The route preview (below) uses the same `LineWidth` rule, so a plotted curve
+stays about 3 px wide at any zoom.
 
 # The local view stops inflating distant bodies
 
@@ -346,11 +351,12 @@ Each step is one session-sized piece of work with its tests, in order:
    the smoothstep midpoint, the exact round trip, the Moon-inside-Earth choice
    at Gateway, the deep-space fallback, the pan cap, and the zoom clamp.
 2. **Rig integration — done.** `ShipCameraRig` blends the pose toward the
-  top-down map with a yaw-dependent horizontal up, routes right-drag to orbit
-  locally and pan on the map, scales the pan per pixel from the camera
-  distance, eases the pan home on re-entry, suspends auto-framing on the map,
-  routes the wheel through the extended map range, and blends the near plane
-  from today's local rule to one thousandth of the map distance.
+   top-down map with a yaw-dependent horizontal up, keeps right-drag as orbit
+   at every zoom, routes left-drag to pan on the map, scales the pan per pixel
+   from the camera distance, eases the pan home on re-entry, suspends
+   auto-framing on the map, routes the wheel through the extended map range,
+   and blends the near plane from today's local rule to one thousandth of the
+   map distance.
   `CameraRigTests` covers the pose, the round trip, the routing, the pan and
   its cap, the ease, the zoom range, the near plane, and the local view with
   the map off. `SolarSystemBootstrap.EnableMapView` and
