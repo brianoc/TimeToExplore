@@ -126,6 +126,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | Type | File | Responsibility |
 |---|---|---|
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
+| `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the three runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Screen-width-aware orbit polyline; orbit-sized locally, camera-sized on the map |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Route path, dashed capture, flip, arrival, and target-arrival ghost markers |
@@ -193,14 +194,29 @@ origin; the world moves around it. See
 
 # Rendering
 
+The project renders through the **Universal Render Pipeline** (URP 17.3.0,
+`com.unity.render-pipelines.universal`). The graphics default is
+`Assets/Settings/TimeToExploreUniversalRenderPipeline.asset`, which points at
+`Assets/Settings/TimeToExploreUniversalRenderer.asset`; the quality levels keep
+their pipeline override empty so the graphics default applies to every level.
+The pipeline is deliberately cheap: HDR and MSAA are off, render scale is 1,
+depth and opaque copies are off, shadows are off, and no post-processing runs.
+URP's main and additional light rendering is disabled; the orrery shades itself
+from `_SunPosition`, so the light and shadow paths have nothing to do.
+
 Each body gets a Unity primitive:
 
 * sphere for star, planet, moon, asteroid;
 * cube for station.
 
-The material is a small unlit-with-lighting shader,
-`Resources/Shaders/BodyLit.shader`, which computes Lambert shading from a global
-`_SunPosition`. The Sun itself uses `Unlit/Color`.
+Three small shaders in `Assets/Resources/Shaders/` are looked up at runtime, so
+they survive `Shader.Find` in a player build:
+
+| Shader | Used by | Responsibility |
+|---|---|---|
+| `TimeToExplore/BodyLit` | planets, moons, asteroids, stations | Lambert from the global `_SunPosition`, with `_Ambient` and per-body `_Color` |
+| `TimeToExplore/Unlit` | the Sun, the ship marker, plan markers | flat `_Color`, no lighting |
+| `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for the dashed capture |
 
 `BodyView.Refresh` handles:
 
@@ -306,7 +322,8 @@ catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
-rules and neighbourhood aid fade, the flight core, and the scene's frame loop.
+rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
+core, and the scene's frame loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -322,8 +339,8 @@ Unity, and `tools/check.sh` regenerates the catalogue offline to prove the
 committed file is reproducible.
 
 The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
-project is intended to be opened in Unity 6.3 (6000.3.28f1) with the built-in
-render pipeline and the old input manager.
+project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
+Render Pipeline and the old input manager.
 
 The next layer is PlayMode tests for the renderer, bootstrap, and HUD; they are
 deferred until the presentation code settles.
@@ -350,8 +367,9 @@ deferred until the presentation code settles.
   frame-loop acceptance (step 6) is not built yet. The `EnableMapView`
   comparison switch is temporary; it also gates the aid fade so the shipped
   scene keeps its old local look until the switch defaults on.
-* The shader and materials are built-in-pipeline only. URP/HDRP would need a
-  different shader and a camera stack for the far field.
+* The rendering migration stops at the URP forward path: there is no
+  post-processing, no SSAO, no shadow system, and no two-camera far field. Those
+  remain future work, and the shaders are intentionally minimal.
 * Warp drops in the clock's power-of-ten steps, not continuously.
 
 # Extension points

@@ -39,7 +39,7 @@ namespace TimeToExplore.Rendering
             _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _renderer.receiveShadows = false;
 
-            Shader shader = Shader.Find("Unlit/Color");
+            Shader shader = Shader.Find(RenderingShaders.Unlit);
             var material = new Material(shader) { name = "Ship Marker Material" };
             material.SetColor("_Color", new Color(0.86f, 0.90f, 0.96f));
             _renderer.sharedMaterial = material;

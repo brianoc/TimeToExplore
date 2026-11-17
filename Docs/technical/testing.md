@@ -51,7 +51,8 @@ the predefined `Assembly-CSharp`.
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the map's class priority and the unchanged local nearest-hit rule, smoothstep/slerp transition, approach offset |
-| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports |
+| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports; both cameras carry `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear |
+| `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; cheap settings (HDR off, MSAA 1, scale 1, no depth/opaque copy, no shadows); quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
 | `PlanGeometryTests` | quintic endpoint conditions and peak factors, parking radius and its gravity ceiling across the catalogue, circular/equatorial/prograde orbits, SOI radii |
@@ -69,7 +70,7 @@ the predefined `Assembly-CSharp`.
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, and discard leaves the ship alone |
 
-The suite currently has **277 tests**. It deliberately tests the shipped
+The suite currently has **289 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -162,6 +163,35 @@ first. Mars and the Moon are pinned to their old radii, so the ceiling cannot
 silently move the shallow wells; Earth, Venus, and the giants are pinned to their
 new ones, and Jupiter is asserted **feasible** at 177,965 km.
 
+# Rendering pipeline anchors
+
+The URP migration is checked without rendering a frame:
+
+* `GraphicsSettings.defaultRenderPipeline` is
+  `Assets/Settings/TimeToExploreUniversalRenderPipeline.asset`, a
+  `UniversalRenderPipelineAsset` whose first renderer is
+  `Assets/Settings/TimeToExploreUniversalRenderer.asset`.
+* Every quality level's `customRenderPipeline` is empty, so the graphics default
+  applies at every level.
+* The pipeline is deliberately cheap: HDR off, MSAA 1, render scale 1, camera
+  depth and opaque textures off, main/additional/soft shadows off, URP main
+  and additional light rendering disabled, and intermediate texture mode Auto
+  (with no renderer features, nothing is allocated).
+* `TimeToExplore/BodyLit`, `TimeToExplore/Unlit`, and `TimeToExplore/Line` all
+  resolve through `Shader.Find`, live under `Assets/Resources/Shaders/`,
+  declare `RenderPipeline = UniversalPipeline` and a
+  `LightMode = UniversalForward` pass, and report no shader compile errors.
+* `_Color` is declared by every coloured shader, so `material.color` and the
+  renderer's `SetColor("_Color", …)` calls keep working; `_Ambient` is on the
+  body shader and `_MainTex` is on the line shader.
+* Both scene cameras carry `UniversalAdditionalCameraData` with post-processing,
+  depth texture, and colour texture requests off.
+
+Batch mode runs with `-nographics`, which does not populate pass tags:
+`Shader.FindPassTagValue` reports one pass for every shader, built-in or URP.
+The test therefore asserts the pipeline and forward-pass tags in the shader
+source, and the rendered frame remains a human check.
+
 # Precision notes
 
 Julian dates are large doubles. At 2.4 million, one unit in the last place is
@@ -204,6 +234,8 @@ non-empty `parent` for orbits) and keep a regression test for it.
   bootstrap's order of operations, and the wiring is covered by
   `BootstrapSmokeTests`, which invokes the real `Awake`/`Update`/`LateUpdate` in
   edit mode; what remains is the actual `OnGUI` draw and the rendered frame.
+  The URP migration has the same gap: `RenderingPipelineTests` proves the
+  pipeline and shaders are configured, but not what a frame looks like.
 * Screen-space picking at the edges of the view and on a moving camera; the
   pure picker is tested, but the projection step needs a PlayMode scene.
 * The trajectory line's rendering and the dash texture; only its data sources

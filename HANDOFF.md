@@ -10,7 +10,7 @@
 
 **From:** the session that landed step 2 (commit `4f5fe12`).
 **Date:** 2026-11-16.
-**Project:** Time to Explore, Unity 6000.3.28f1 (built-in pipeline, old Input Manager).
+**Project:** Time to Explore, Unity 6000.3.28f1 (URP 17.3.0, old Input Manager).
 **Milestone:** 2.5, the system map and route preview.
 
 ## Read first

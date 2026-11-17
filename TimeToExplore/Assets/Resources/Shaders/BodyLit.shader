@@ -7,52 +7,67 @@ Shader "TimeToExplore/BodyLit"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" "Queue"="Geometry" }
+        Tags
+        {
+            "RenderPipeline" = "UniversalPipeline"
+            "RenderType" = "Opaque"
+            "Queue" = "Geometry"
+        }
         LOD 100
 
         Pass
         {
-            CGPROGRAM
+            Name "ForwardLit"
+            Tags { "LightMode" = "UniversalForward" }
+
+            HLSLPROGRAM
+            #pragma target 2.0
             #pragma vertex vert
             #pragma fragment frag
-            #include "UnityCG.cginc"
 
-            struct appdata
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
             {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
             };
 
-            struct v2f
+            struct Varyings
             {
-                float4 position : SV_POSITION;
-                float3 worldPosition : TEXCOORD0;
-                float3 normal : TEXCOORD1;
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                float3 normalWS : TEXCOORD1;
             };
 
-            fixed4 _Color;
-            float _Ambient;
-            float4 _SunPosition; // set globally, in render-world units
+            CBUFFER_START(UnityPerMaterial)
+                half4 _Color;
+                half _Ambient;
+            CBUFFER_END
 
-            v2f vert (appdata v)
+            float4 _SunPosition; // Set globally, in render-world units.
+
+            Varyings vert(Attributes input)
             {
-                v2f o;
-                o.position = UnityObjectToClipPos(v.vertex);
-                o.worldPosition = mul(unity_ObjectToWorld, v.vertex).xyz;
-                o.normal = UnityObjectToWorldNormal(v.normal);
-                return o;
+                Varyings output;
+                VertexPositionInputs positions = GetVertexPositionInputs(input.positionOS.xyz);
+                VertexNormalInputs normals = GetVertexNormalInputs(input.normalOS);
+                output.positionCS = positions.positionCS;
+                output.positionWS = positions.positionWS;
+                output.normalWS = normals.normalWS;
+                return output;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            half4 frag(Varyings input) : SV_Target
             {
-                float3 n = normalize(i.normal);
-                float3 toSun = normalize(_SunPosition.xyz - i.worldPosition);
-                float ndl = saturate(dot(n, toSun));
-                float3 colour = _Color.rgb * (_Ambient + (1.0 - _Ambient) * ndl);
-                return fixed4(colour, 1.0);
+                float3 n = normalize(input.normalWS);
+                float3 toSun = normalize(_SunPosition.xyz - input.positionWS);
+                half ndl = saturate(dot(n, toSun));
+                half3 colour = _Color.rgb * (_Ambient + (1.0h - _Ambient) * ndl);
+                return half4(colour, 1.0h);
             }
-            ENDCG
+            ENDHLSL
         }
     }
-    Fallback "Unlit/Color"
+    Fallback "Universal Render Pipeline/Unlit"
 }

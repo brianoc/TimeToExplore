@@ -88,7 +88,7 @@ namespace TimeToExplore.Rendering
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
 
-            var material = new Material(Shader.Find("Sprites/Default")) { name = name + " Line Material" };
+            var material = new Material(Shader.Find(RenderingShaders.Line)) { name = name + " Line Material" };
             if (dashed) material.mainTexture = CreateDashTexture();
             line.material = material;
             line.startColor = colour;
@@ -135,7 +135,7 @@ namespace TimeToExplore.Rendering
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
-            Shader shader = Shader.Find("Unlit/Color");
+            Shader shader = Shader.Find(RenderingShaders.Unlit);
             var material = new Material(shader) { name = name + " Marker Material" };
             material.SetColor("_Color", colour);
             renderer.sharedMaterial = material;

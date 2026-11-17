@@ -81,6 +81,7 @@ See [ADR-002](../decisions/adr-002-double-precision.md) and
 
 | Setting | Value | Why |
 |---|---:|---|
+| Pipeline | URP 17.3.0, forward | See [ADR-010](../decisions/adr-010-urp-rendering.md) |
 | Near clip | 2% of the orbit distance, clamped to 0.0002–0.05 units | 200 km at the closest orbit, 50 km at the default; a fixed 50 km clip would cut a moon open when the camera zooms in |
 | Far clip | 20,000,000 units | 20 billion km; beyond Neptune's orbit |
 | Field of view | 60° | Comfortable navigation view |
@@ -168,19 +169,34 @@ wants them.
 
 # Materials and lighting
 
-`Resources/Shaders/BodyLit.shader` is a minimal built-in-pipeline shader:
+The prototype renders through URP 17.3.0. The geometry is unchanged; only the
+shader language and the pipeline asset are new.
 
-* Lambert term from a global `_SunPosition`,
-* 5.5% ambient so the night side is not pure black,
-* per-body `_Color`,
-* no textures, no normal maps, no shadows.
+Three minimal URP shaders live in `Assets/Resources/Shaders/` so a runtime
+`Shader.Find` resolves them in a build:
 
-The Sun uses `Unlit/Color`. Stations and asteroids use the same lit shader as
-planets; a cube with a day/night terminator reads surprisingly well.
+* `TimeToExplore/BodyLit` — Lambert term from a global `_SunPosition`, 5.5%
+  ambient so the night side is not pure black, per-body `_Color`, no textures,
+  no normal maps, no shadows. It uses a `UniversalForward` pass and declares
+  `RenderPipeline = UniversalPipeline`.
+* `TimeToExplore/Unlit` — flat `_Color`, used by the Sun, the ship marker, and
+  the plan markers.
+* `TimeToExplore/Line` — transparent, vertex-coloured, samples a `_MainTex` with
+  `TRANSFORM_TEX` so the capture arc's tiled dash texture still works.
+
+Stations and asteroids use the same lit shader as planets; a cube with a
+day/night terminator reads surprisingly well. `material.color` and `_Color`
+remain the contract: every shader that the C# code colours declares `_Color`.
+
+The pipeline asset keeps the cost down: render scale 1, MSAA off, HDR off, no
+depth or opaque texture, no main or additional shadows, no soft shadows, URP
+main and additional lights disabled, and no post-processing volume.
+`UniversalAdditionalCameraData` is on both scene cameras with post-processing
+and depth/colour texture requests off, black clear colour.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
-be a final planet renderer. A URP/HDRP pass would replace it with a proper
-atmosphere/ring/cloud stack and a different far-field strategy.
+be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
+bloom, and the far-field camera stack without changing the scale rules.
 
 # What breaks at this scale
 

@@ -51,7 +51,7 @@ namespace TimeToExplore.Rendering
             _line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _line.receiveShadows = false;
 
-            Shader shader = Shader.Find("Sprites/Default");
+            Shader shader = Shader.Find(RenderingShaders.Line);
             _line.material = new Material(shader) { name = body.Name + " Orbit Material" };
             _line.startColor = colour;
             _line.endColor = colour;

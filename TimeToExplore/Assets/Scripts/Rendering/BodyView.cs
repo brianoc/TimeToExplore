@@ -49,9 +49,9 @@ namespace TimeToExplore.Rendering
             Renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             Renderer.receiveShadows = false;
 
-            string shaderName = body.Data.IsStar ? "Unlit/Color" : "TimeToExplore/BodyLit";
-            Shader shader = Shader.Find(shaderName);
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = Shader.Find(RenderingShaders.ForBody(body.Data.IsStar));
+            if (shader == null) shader = Shader.Find(RenderingShaders.Unlit);
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
             _material = new Material(shader) { name = body.Name + " Material" };
 
             Color colour = ColorFrom(body.Data);

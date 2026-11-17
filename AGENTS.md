@@ -8,8 +8,8 @@ new feature or piece of work.
 
 - `Docs/` is the design knowledge base. It is an **OKF v0.2 bundle**: Markdown
   files with YAML frontmatter, a root `index.md`, and a root `log.md`.
-- `TimeToExplore/` is the Unity 6000.3.28f1 project (built-in render pipeline,
-  old Input Manager).
+- `TimeToExplore/` is the Unity 6000.3.28f1 project (Universal Render Pipeline
+  17.3.0, old Input Manager).
 - `tools/generate_solar_system.py` regenerates
   `TimeToExplore/Assets/Resources/solar_system.json`.
 - `tools/validate_okf.py` checks the design bundle.

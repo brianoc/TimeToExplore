@@ -64,3 +64,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-006: quintic reference arcs for Go To](/decisions/adr-006-quintic-plan.md) — escape, cruise, and capture arcs matched in position, velocity, and acceleration.
 * [ADR-007: one owner for the ship, and an automatic warp cap](/decisions/adr-007-flight-director.md) — the flight session owns the ship; warp drops by clearance, local dynamics, and the next plan event.
 * [ADR-008: an orbit camera around the ship](/decisions/adr-008-orbit-camera.md) — keep the ship at the render origin, orbit the camera, and size the plan line from the camera distance.
+* [ADR-010: Universal Render Pipeline for the prototype](/decisions/adr-010-urp-rendering.md) — move to URP 17.3.0 with three minimal runtime shaders and a deliberately cheap forward renderer. (ADR-009 is reserved for the deferred map-camera decision.)
