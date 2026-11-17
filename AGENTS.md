@@ -17,6 +17,8 @@ progress — clear it when the plan is done.
   Presentation ← Editor/Tests ([ADR-012](Docs/decisions/adr-012-assembly-layout.md)).
 - `tools/generate_solar_system.py` regenerates
   `TimeToExplore/Assets/Resources/solar_system.json`.
+- `tools/generate_skybox.py` regenerates the Milky Way skybox texture at
+  `TimeToExplore/Assets/Resources/Sky/milky_way.png`.
 - `tools/validate_okf.py` checks the design bundle.
 
 ## Documentation is part of done
@@ -93,7 +95,7 @@ stays in the concepts and ADRs.
 - A change to orbital maths or catalogue data should be checked numerically
   against known values at the epoch (2026-11-15, JD 2461359.5).
 - Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.
-  It validates the OKF bundle, the catalogue schema, and generator
+  It validates the OKF bundle, the catalogue schema, and both generators'
   reproducibility in a few seconds.
 - Run `tools/check.sh` before finishing any C# change. It runs the Unity
   EditMode suite on a throwaway copy of the project, so it is safe with the

@@ -51,6 +51,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.
+* [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, and the galactic frame behind the orrery.
 
 # Production
 

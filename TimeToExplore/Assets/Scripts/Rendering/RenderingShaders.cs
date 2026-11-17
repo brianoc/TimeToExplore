@@ -3,7 +3,7 @@ using UnityEngine;
 namespace TimeToExplore.Rendering
 {
     /// <summary>
-    /// Names of the shaders the renderer builds at runtime. All three live in
+    /// Names of the shaders the renderer builds at runtime. All four live in
     /// <c>Assets/Resources/Shaders</c>, so <see cref="Shader.Find"/> resolves
     /// them in a player build as well as in the editor.
     /// </summary>
@@ -17,6 +17,9 @@ namespace TimeToExplore.Rendering
 
         /// <summary>Transparent vertex-coloured line shader with an alpha texture.</summary>
         public const string Line = "TimeToExplore/Line";
+
+        /// <summary>Skybox: the baked Milky Way band plus procedural stars.</summary>
+        public const string Skybox = "TimeToExplore/Skybox";
 
         /// <summary>
         /// The body shader for a catalogue body. The Sun is unlit; planets,

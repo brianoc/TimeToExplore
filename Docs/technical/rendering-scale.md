@@ -85,7 +85,7 @@ See [ADR-002](../decisions/adr-002-double-precision.md) and
 | Near clip | 2% of the orbit distance, clamped to 0.0002–0.05 units | 200 km at the closest orbit, 50 km at the default; a fixed 50 km clip would cut a moon open when the camera zooms in |
 | Far clip | 20,000,000 units | 20 billion km; beyond Neptune's orbit |
 | Field of view | 60° | Comfortable navigation view |
-| Clear flags | Solid black | Space |
+| Clear flags | `Skybox` | The Milky Way and stars; solid black if the sky asset is missing. See [The sky](/technical/sky.md) |
 | Depth | Unity 6 reversed-Z | Handles the extreme near/far ratio on supported platforms |
 
 The near/far ratio is therefore between about 4 × 10⁸ and 10¹¹, depending on the
@@ -190,6 +190,13 @@ Three minimal URP shaders live in `Assets/Resources/Shaders/` so a runtime
 * `TimeToExplore/Line` — transparent, vertex-coloured, samples a `_MainTex` with
   `TRANSFORM_TEX` so the capture arc's tiled dash texture still works.
 
+A fourth shader, `TimeToExplore/Skybox`, is a background pass rather than a URP
+forward pass: it is queued at `Background`, writes no depth, and draws the Milky
+Way texture plus procedural stars. Skybox shaders are exempt from the
+`RenderPipeline` and forward-pass tags because Unity draws them through its own
+skybox path; everything else about it follows the same rules. See
+[The sky](/technical/sky.md).
+
 Stations and asteroids use the same lit shader as planets; a cube with a
 day/night terminator reads surprisingly well. `material.color` and `_Color`
 remain the contract: every shader that the C# code colours declares `_Color`.
@@ -198,7 +205,8 @@ The pipeline asset keeps the cost down: render scale 1, MSAA off, HDR off, no
 depth or opaque texture, no main or additional shadows, no soft shadows, URP
 main and additional lights disabled, and no post-processing volume.
 `UniversalAdditionalCameraData` is on both scene cameras with post-processing
-and depth/colour texture requests off, black clear colour.
+and depth/colour texture requests off, and a black serialized clear that the
+bootstrap switches to `Skybox` at runtime.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
@@ -227,13 +235,16 @@ bloom, and the far-field camera stack without changing the scale rules.
 2. **Billboard/impostor planets** at long range, with a smooth handover to
    spheres up close.
 3. **Instanced asteroid belt** with per-instance colour and size.
-4. **Starfield** with real bright stars and the Milky Way; currently the
-   background is black.
+4. ~~**Starfield** with real bright stars and the Milky Way; currently the
+   background is black.~~ Done: a generated Milky Way band plus procedural
+   stars ([The sky](/technical/sky.md)). Real bright-star positions are still a
+   follow-up.
 5. **Rings for Saturn and Uranus**, and a tenuous atmosphere shell for Earth,
    Venus, Titan, and the gas giants.
 6. **Local lighting** for stations and ships: running lights, docking guides,
    radiators.
-7. **Post-processing** for bloom on the Sun and stations, used sparingly.
+7. **Post-processing** for bloom on the Sun, stations, and the brightest stars,
+   used sparingly.
 
 The scale rules—double simulation, ship-relative render, minimum apparent size—
 should survive all of these. They are the load-bearing decisions.

@@ -34,6 +34,7 @@ namespace TimeToExplore.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
+            if (_bootstrap != null && _bootstrap.Sky != null) _bootstrap.Sky.Remove();
             if (_root != null) Object.DestroyImmediate(_root);
             if (_cameraObject != null) Object.DestroyImmediate(_cameraObject);
 

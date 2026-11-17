@@ -154,7 +154,8 @@ The prototype camera orbits the ship at the render origin and uses:
 * near clip 2% of the orbit distance, clamped to 200 km–50 km,
 * far clip 20,000,000 units (20 billion km),
 * 60° field of view,
-* solid black background.
+* a skybox clear drawing the generated Milky Way
+  ([The sky](../technical/sky.md)).
 
 That near/far ratio is about 4 × 10⁸, which would destroy a conventional depth
 buffer. Unity 6 uses a reversed-Z depth buffer on supported platforms, which

@@ -34,6 +34,7 @@ namespace TimeToExplore
         public TrajectoryLine Trajectory { get; private set; }
         public ShipCameraRig Rig { get; private set; }
         public ShipView ShipMarker { get; private set; }
+        public SkyView Sky { get; private set; }
         public BodyRuntime Selected { get; private set; }
         public bool ShowHud = true;
         public bool ShowLabels = true;
@@ -97,6 +98,9 @@ namespace TimeToExplore
             Clock = new SimulationClock { JulianDate = Model.Data.startJulianDate };
 
             EnsureCamera();
+
+            Sky = gameObject.AddComponent<SkyView>();
+            Sky.Initialise(ViewCamera);
 
             Ship = gameObject.AddComponent<ShipController>();
             Ship.PositionSource = () => Flight != null ? Flight.State.PositionM : Vector3d.Zero;

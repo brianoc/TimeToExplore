@@ -15,13 +15,14 @@ tools/check.sh --fast   # docs, catalogue, generator only (a few seconds)
 tools/check.sh --keep   # keep the throwaway Unity project and logs
 ```
 
-`check.sh` runs four gates in order:
+`check.sh` runs five gates in order:
 
 | Gate | Tool | What it proves |
 |---|---|---|
 | Design bundle | `tools/validate_okf.py` | OKF v0.2 structure, frontmatter, links, index coverage |
 | Catalogue schema | `tools/validate_catalogue.py` | Field types, ids, parents, counts, orbit ranges, epoch maths |
-| Generator | `tools/generate_solar_system.py --offline --output …` | The committed JSON is byte-identical to a fresh generation |
+| Catalogue generator | `tools/generate_solar_system.py --offline --output …` | The committed JSON is byte-identical to a fresh generation |
+| Sky generator | `tools/generate_skybox.py --out …` | The committed `milky_way.png` is pixel-identical to a fresh generation |
 | Runtime | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock |
 
 The Unity run uses a throwaway copy of `Assets/`, `Packages/`, and
@@ -54,8 +55,9 @@ because Unity test assemblies cannot reference the predefined
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the map's class priority and the unchanged local nearest-hit rule, smoothstep/slerp transition, approach offset |
-| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports; both cameras carry `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear |
+| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports; both cameras carry `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
 | `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; cheap settings (HDR off, MSAA 1, scale 1, no depth/opaque copy, no shadows); quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
+| `SkyboxTests` | the committed `Sky/milky_way` texture is 2048 × 1024 with no mip chain, is dark overall and has a bright band covering part of the sky, and the skybox shader is found under `Resources` with no compile errors; `SkyView` points `RenderSettings.skybox` at its material and clears the camera to `Skybox`, `Remove` restores the previous skybox and clear flags, and a missing texture or shader is refused without half-applying |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
 | `PlanGeometryTests` | quintic endpoint conditions and peak factors, parking radius and its gravity ceiling across the catalogue, circular/equatorial/prograde orbits, SOI radii |
@@ -78,7 +80,7 @@ because Unity test assemblies cannot reference the predefined
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 | `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, `ShowHud`/`ShowLabels`, the one-frame opening guard, and the route/begin/jump/close `onClick` handlers reaching the same owner methods |
 
-The suite currently has **342 tests**. It deliberately tests the shipped
+The suite currently has **348 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -209,6 +211,12 @@ The URP migration is checked without rendering a frame:
   body shader and `_MainTex` is on the line shader.
 * Both scene cameras carry `UniversalAdditionalCameraData` with post-processing,
   depth texture, and colour texture requests off.
+* `TimeToExplore/Skybox` is deliberately **not** in `RenderingPipelineTests`'
+  forward-pass assertion: it is a background pass drawn by Unity's skybox path,
+  so it carries no pipeline or `LightMode` tags. `SkyboxTests` proves it compiles
+  and that the texture import keeps its uncompressed, non-mipmapped sRGB,
+  repeat-wrapped shape. The camera's serialized clear is still solid colour; the
+  bootstrap switches it to `Skybox` at runtime.
 
 Batch mode runs with `-nographics`, which does not populate pass tags:
 `Shader.FindPassTagValue` reports one pass for every shader, built-in or URP.

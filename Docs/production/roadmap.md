@@ -18,14 +18,18 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 * Lagrange-point station positions computed from the moving pair.
 * Ship-relative rendering at 1 unit = 1,000 km.
 * Universal Render Pipeline 17.3.0, with a project pipeline asset, a minimal
-  forward renderer, and three small runtime shaders (lit bodies, unlit markers,
-  vertex-coloured lines).
+  forward renderer, and four small runtime shaders (lit bodies, unlit markers,
+  vertex-coloured lines, and the Milky Way skybox).
 * Input System 1.20.1 behind one `PlayerControls` gameplay seam and one
   `UiInput` uGUI module, with Active Input Handling **New** only; no runtime code
   reads the legacy backend.
 * Minimum-apparent-size markers and a true-scale toggle.
 * Time warp from 1× to 1,000,000× and pause.
 * Planet and moon orbit lines.
+* A generated Milky Way sky in place of the black clear: a baked band texture
+  from `tools/generate_skybox.py`, procedural stars in the shader, and `SkyView`
+  owning and restoring the camera's clear flags
+  ([The sky](/technical/sky.md)).
 * Free-flight debug camera and a runtime-built uGUI HUD with labels, panels,
   and the details screen.
 * HUD and input migration done: uGUI replaced IMGUI
@@ -37,8 +41,8 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
-  validator, a byte-for-byte generator check, and the Unity EditMode suite.
-  The suite is 337 tests.
+  validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
+  the Unity EditMode suite. The suite is 348 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -225,6 +229,10 @@ milestone 2 so the scene work is not blocked on a new propagator.
    step down the power-of-ten ladder.
 5. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
+6. Add a fourth sky layer from a small catalogue of real bright stars
+   (RA/Dec/magnitude for the brightest few hundred), so the procedural field
+   gains the navigable constellations it is missing
+   ([The sky](/technical/sky.md)).
 
 # Risks
 

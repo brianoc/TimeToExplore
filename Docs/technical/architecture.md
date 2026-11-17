@@ -166,13 +166,14 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | Type | File | Responsibility |
 |---|---|---|
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
-| `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the three runtime shaders and the Sun-versus-lit choice |
+| `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the four runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
 | `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line: 3 px converted to render units at the camera depth, FOV, and viewport height |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed capture, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
+| `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `PlayerControls` | `Scripts/Player/PlayerControls.cs` | The one input seam: device polling, intents, key table, mouse sensitivity, scroll normalisation |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
@@ -288,7 +289,7 @@ Each body gets a Unity primitive:
 * sphere for star, planet, moon, asteroid;
 * cube for station.
 
-Three small shaders in `Assets/Resources/Shaders/` are looked up at runtime, so
+Four small shaders in `Assets/Resources/Shaders/` are looked up at runtime, so
 they survive `Shader.Find` in a player build:
 
 | Shader | Used by | Responsibility |
@@ -296,6 +297,15 @@ they survive `Shader.Find` in a player build:
 | `TimeToExplore/BodyLit` | planets, moons, asteroids, stations | Lambert from the global `_SunPosition`, with `_Ambient` and per-body `_Color` |
 | `TimeToExplore/Unlit` | the Sun, the ship marker, plan markers | flat `_Color`, no lighting |
 | `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for the dashed capture, and `fwidth` edge coverage for antialiasing without MSAA |
+| `TimeToExplore/Skybox` | the camera's skybox | the baked Milky Way band from `_MainTex` plus three procedural star layers, with per-material band and star gain |
+
+`SkyView` builds the skybox material at runtime and points the camera at it: the
+camera clears to `Skybox` and `RenderSettings.skybox` holds the material. Removing
+the view restores the previous clear flags and skybox, which is how the tests and
+the bootstrap's teardown leave the scene as they found it. The shader is a
+background pass with no URP pipeline or `LightMode` tags, because it is drawn by
+Unity's own skybox path rather than a forward pass; the full design is in
+[The sky](/technical/sky.md).
 
 `BodyView.Refresh` handles:
 
@@ -386,6 +396,8 @@ of trigonometric operations. The expensive parts are rendering and HUD:
 * 30 orbit lines × 161 points updated per frame,
 * one plan trajectory line, up to a few thousand curvature-adaptive points,
   re-projected per frame while a plan is live,
+* one skybox pass: the baked band's texture fetch plus, at each star layer, one
+  more fetch where a star exists,
 * one uGUI canvas: three panels, up to 37 pooled row texts, four buttons, and up
   to a few dozen world labels.
 
@@ -407,7 +419,7 @@ moved. A dirty-flag or lower update rate (5–10 Hz) is an easy win.
 Automated verification is one command:
 
 ```bash
-tools/check.sh          # docs, catalogue, generator, Unity EditMode tests
+tools/check.sh          # docs, catalogue, both generators, Unity EditMode tests
 tools/check.sh --fast   # skip Unity for a few-second loop
 ```
 
@@ -418,10 +430,11 @@ catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
-rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
-core, the input seam's key table and mouse conversions, the uGUI HUD's object
-graph, content, and button wiring, the assembly layout graph, the scene's frame
-loop, and the same map-to-arrival flight through the real bootstrap.
+rules and neighbourhood aid fade, the URP pipeline and shader wiring, the sky's
+texture and shader, the flight core, the input seam's key table and mouse
+conversions, the uGUI HUD's object graph, content, and button wiring, the
+assembly layout graph, the scene's frame loop, and the same map-to-arrival
+flight through the real bootstrap.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -433,8 +446,8 @@ values:
 * Lagrange point distances for all six stations.
 
 `tools/validate_catalogue.py` enforces the catalogue checklist without opening
-Unity, and `tools/check.sh` regenerates the catalogue offline to prove the
-committed file is reproducible.
+Unity, and `tools/check.sh` regenerates the catalogue and the sky offline to
+prove the committed files are reproducible.
 
 The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
 project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
@@ -488,5 +501,5 @@ deferred until the presentation code settles.
   it, so the player can hand-fly and then resume or re-plan.
 * **Save/load:** persist Julian date, ship state, fuel, and contract state; the
   world itself is reproducible from the catalogue.
-* **Visual pass:** replace primitives with meshes, add rings, textures, and a
-  starfield; keep the scale and floating-origin rules.
+* **Visual pass:** replace primitives with meshes, add rings, surface textures,
+  and a real bright-star catalogue; keep the scale and floating-origin rules.

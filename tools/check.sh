@@ -2,7 +2,7 @@
 #
 # One-command verification for Time to Explore.
 #
-#   tools/check.sh          # docs, catalogue, generator determinism, Unity EditMode tests
+#   tools/check.sh          # docs, catalogue and sky determinism, Unity EditMode tests
 #   tools/check.sh --fast   # everything except Unity (a few seconds)
 #   tools/check.sh --keep   # keep the temporary Unity project and its log
 #
@@ -82,12 +82,45 @@ if ! cmp -s "$GENERATED" TimeToExplore/Assets/Resources/solar_system.json; then
 fi
 echo "Generator output is byte-identical to the committed catalogue."
 
+# 4. Sky reproducibility ----------------------------------------------------
+step "Sky reproducibility"
+SKY="$WORK/milky_way.png"
+"$PYTHON" tools/generate_skybox.py --out "$SKY" >/dev/null || fail "sky generator"
+if ! "$PYTHON" - "$SKY" TimeToExplore/Assets/Resources/Sky/milky_way.png <<'PY'
+import sys
+
+import numpy as np
+from PIL import Image
+
+fresh = np.asarray(Image.open(sys.argv[1]).convert("RGB"))
+committed = np.asarray(Image.open(sys.argv[2]).convert("RGB"))
+
+if fresh.shape != committed.shape:
+    print(
+        f"committed sky is {committed.shape}, a fresh generation is {fresh.shape}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+different = int(np.count_nonzero(np.any(fresh != committed, axis=-1)))
+if different:
+    print(
+        f"committed sky differs from a fresh generation in {different} pixels",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+then
+    fail "sky generator output is not reproducible"
+fi
+echo "Sky output matches the committed texture (2048x1024)."
+
 if (( FAST )); then
     step "Fast checks passed; skipping Unity"
     exit 0
 fi
 
-# 4. Unity EditMode tests ---------------------------------------------------
+# 5. Unity EditMode tests ---------------------------------------------------
 step "Unity EditMode tests"
 
 UNITY_BIN="${UNITY_BIN:-}"

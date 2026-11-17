@@ -25,6 +25,7 @@ namespace TimeToExplore.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
+            if (_bootstrap != null && _bootstrap.Sky != null) _bootstrap.Sky.Remove();
             if (_root != null) Object.DestroyImmediate(_root);
             if (_cameraObject != null) Object.DestroyImmediate(_cameraObject);
         }
@@ -43,6 +44,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Rig, Is.Not.Null);
             Assert.That(_bootstrap.ShipMarker, Is.Not.Null);
             Assert.That(_bootstrap.ViewCamera, Is.Not.Null);
+            Assert.That(_bootstrap.Sky, Is.Not.Null);
+            Assert.That(_bootstrap.Sky.Applied, Is.True,
+                "the sky texture and shader must resolve from Resources");
+            Assert.That(_bootstrap.ViewCamera.clearFlags,
+                Is.EqualTo(CameraClearFlags.Skybox));
 
             _bootstrap.Model.ComputeState(_bootstrap.Model.Get("gateway"),
                 _bootstrap.Clock.JulianDate, out Vector3d gateway, out _);
