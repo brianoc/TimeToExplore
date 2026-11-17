@@ -1,29 +1,23 @@
-# Handoff — system map step 3: map drawing and picking
+# Handoff — after the URP, Input System, assembly, and uGUI migrations
 
-> **Status (2026-11-17):** the HUD is **uGUI**, not IMGUI, and Active Input
-> Handling is **Input System Package (New)** only (`activeInputHandler: 1`).
-> `SolarSystemHud` builds one Screen Space Overlay canvas, panels, pooled text,
-> and buttons at runtime; `UiInput` creates the one `EventSystem` with an
-> `InputSystemUIInputModule`. `PlayerControls` remains the gameplay seam for
-> world picking, the camera, free flight, and hotkeys. The UI migration is
-> [ADR-013](Docs/decisions/adr-013-ugui-hud.md) and supersedes ADR-011's
-> **Both** requirement. The suite is **329 tests**, all green under
-> `tools/check.sh`.
+> **Status (2026-11-17):** the four migrations are landed and committed. The
+> project runs **URP 17.3.0**, **Input System 1.20.1** with Active Input
+> Handling **New** only, and **uGUI 2.0.0** for the runtime HUD. The runtime is
+> split into `TimeToExplore.Core`, `.Simulation`, `.Presentation`, and
+> `.Editor`; the rule is **Core ← Simulation ← Presentation ← Editor/Tests**
+> ([ADR-012](Docs/decisions/adr-012-assembly-layout.md)). The suite is
+> **329 tests**, 0 failed, 0 skipped under `tools/check.sh`.
 >
-> Earlier status: steps 3, 4, and 5 of the system map are done. The rendering
-> migration (commit `a6e1eda`) and the Input System migration followed. The
-> project runs URP 17.3.0 and Input System 1.20.1; every gameplay device read
-> goes through `Assets/Scripts/Player/PlayerControls.cs`. The runtime is split
-> into `TimeToExplore.Core`, `.Simulation`, and `.Presentation` assemblies, with
-> `.Editor` for tooling; `tools/check.sh` proves the graph. Step 6,
-> **frame-loop acceptance**, is next; see the implementation steps in
-> `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a preview
-> that never moves the ship, a 1% staleness window, the PREVIEW panel rows, and
-> a ghost at the target's arrival position; the idle ship coasts under gravity
-> so the clock and preview age with it.
+> The Editor has been restarted after the input-backend change. SRP Core
+> recompiled without the legacy `Input.GetButton` branch, and the
+> `InvalidOperationException` stream from URP's `DebugUpdater` is gone. A
+> Play-mode look confirmed the uGUI HUD renders.
+>
+> Next work is **system map step 6, frame-loop acceptance**, then step 7
+> (ADR-009 and the docs pass). Steps 1–5 of the map are done.
 
-**From:** the session that landed step 2 (commit `4f5fe12`).
-**Date:** 2026-11-16.
+**From:** the migration session (URP → Input System → assemblies → uGUI).
+**Date:** 2026-11-17.
 **Project:** Time to Explore, Unity 6000.3.28f1 (URP 17.3.0, Input System
 1.20.1, uGUI 2.0.0, Active Input Handling New only).
 **Milestone:** 2.5, the system map and route preview.
@@ -31,170 +25,151 @@
 ## Read first
 
 1. `AGENTS.md` and `Docs/working-agreement.md`.
-2. `Docs/technical/system-map.md` — the design. Steps 1 and 2 are done; **step 3
-   is this session**. Do not jump ahead to steps 4–7.
-3. `Docs/technical/selection-and-camera.md` — the picking, the details screen,
-   and the blended map pose as built.
-4. `Docs/decisions/adr-008-orbit-camera.md` — the camera contract the map bends.
-5. `Assets/Scripts/Player/MapView.cs`, `ShipCameraRig.cs`, and
-   `Assets/Tests/EditMode/CameraRigTests.cs` — the step-2 API and its tests.
-6. `Assets/Scripts/Rendering/BodyView.cs`, `SolarSystemRenderer.cs`,
-   `Assets/Scripts/UI/BodyPicker.cs`, `SolarSystemHud.cs`, and
-   `Assets/Tests/EditMode/SelectionAndFocusTests.cs` — where the map drawing and
-   picking land.
-7. `Assets/Scenes/SystemMap.unity` — the comparison scene. It turns on
-   `SolarSystemBootstrap.EnableMapView`; `SolarSystem.unity` leaves it off.
+2. `Docs/technical/architecture.md` — runtime shape, assembly layout, rendering,
+   input, and the HUD.
+3. `Docs/technical/input.md` — the two input files, New-only, the uGUI module,
+   and the Editor-restart gotcha.
+4. `Docs/technical/testing.md` — the one-command suite, the test matrix, and the
+   numerical anchors.
+5. `Docs/technical/system-map.md` — steps 1–5 are done; **step 6 is next**.
+6. `Docs/production/roadmap.md` — milestone 2.5 and the deferred work.
 
-## What step 2 left you
+## What is done
 
-Commit `4f5fe12` adds the camera-rig integration and the comparison scene. The
-suite is **236 tests**, all green. The important API:
+**Rendering — URP 17.3.0** ([ADR-010](Docs/decisions/adr-010-urp-rendering.md))
 
-- `ShipCameraRig.MapEnabled` — the development switch, set from
-  `SolarSystemBootstrap.EnableMapView`.
-- `ShipCameraRig.MapBlendWeight` and `IsMapSide` (`MapView.UsesPan(w)`, strict
-  `w > 0.5`). Read these when deciding whether the map rules apply.
-- `ShipCameraRig.Map` — the `MapView`: `PanOffsetM`, `PanOffsetUnits`,
-  `PanReturnRatePerSecond`, `LocalRadiusM`, `BlendWeight`.
-- `ShipCameraRig.PosePositionUnits`, `PoseRotation`, `PoseNearClipUnits`,
-  `LookAtUnits` — the last placed pose, relative to the ship. The map looks at
-  `ship + pan`; the look-at is `LookAtUnits`, in render units.
-- `MapView.MapScreenUp(yaw)`, `MapRotation(yaw)`, `BlendRotation(...)`,
-  `NearClipUnits(distance, w)`, `UnitsPerPixel(...)`,
-  `PanDeltaForDrag(...)`.
-- `MapView.MaxDistanceUnits = 12_000_000f`, `PanThreshold = 0.5f`,
-  `FarClipUnits = 40_000_000f` (applied when the map is enabled).
-- `OrbitCamera.Direction(yaw, pitch)` and
-  `OrbitCamera.ZoomDistanceUnits(...)` — the pure local helpers.
-- `CameraRigTests` covers the map pose, the exact round trip, input routing,
-  both zoom ceilings, the pan and its 60 AU cap, the pan ease, the near plane,
-  auto-framing suspended on the map, and the unchanged local view.
-- `SystemMap.unity` is generated by
-  `Tools > Time to Explore > Create System Map Scene`; both scenes load in
-  `SceneSmokeTests`.
+* `Assets/Settings/TimeToExploreUniversalRenderPipeline.asset` and
+  `TimeToExploreUniversalRenderer.asset`; the pipeline is the graphics default.
+* Deliberately cheap: HDR off, MSAA 1, render scale 1, no depth/opaque copies,
+  no shadows, no post-processing, intermediate texture mode Auto.
+* Three runtime shaders under `Assets/Resources/Shaders/`:
+  `TimeToExplore/BodyLit`, `TimeToExplore/Unlit`, `TimeToExplore/Line`.
+  `RenderingShaders` centralises the names. `BodyLit` keeps its original GUID.
 
-Step 2 did **not** change the renderer, `BodyView`, the picker, the HUD, the
-aid fade, the route preview, or `FlightSession`.
+**Input — Input System 1.20.1** ([ADR-011](Docs/decisions/adr-011-input-system.md),
+[ADR-013](Docs/decisions/adr-013-ugui-hud.md))
 
-## Scope for this session: step 3 only
+* `Assets/Scripts/Player/PlayerControls.cs` is the gameplay seam: device polling,
+  intents, key table, the legacy 0.1 mouse sensitivity, and wheel normalisation.
+* `Assets/Scripts/UI/UiInput.cs` is the uGUI bridge: one `EventSystem` with an
+  `InputSystemUIInputModule`, navigation events off, `PointerOverUi`.
+* `activeInputHandler: 1`. No runtime code calls `UnityEngine.Input`; only those
+  two files name `UnityEngine.InputSystem`. `InputSeamTests` enforces both.
+* The HUD is uGUI: one Screen Space Overlay canvas, 1920×1080 `CanvasScaler`,
+  runtime-built panels, pooled `Text`, legacy `LegacyRuntime.ttf` (no TMP
+  assets), and buttons wired to the same owner methods the IMGUI screen used.
+* World picking still goes through `PlayerControls` and `BodyPicker`; panel
+  clicks are swallowed by the EventSystem plus an immediate panel-rect guard.
 
-> **Map drawing and picking.** The 6 px map marker minimum, the label density
-> rule, class-priority picking at full-system zoom. Extend the picker tests.
+**Assemblies** ([ADR-012](Docs/decisions/adr-012-assembly-layout.md))
 
-Deliver the map's *reading rules*. Do **not** implement the local aid fade
-(step 4), the route preview (step 5), the frame-loop acceptance (step 6), or
-ADR-009 (step 7).
+* `TimeToExplore.Core` — no project references.
+* `TimeToExplore.Simulation` — Core only, `noEngineReferences: true`, so the
+  plain-C# flight core cannot take a UnityEngine dependency.
+* `TimeToExplore.Presentation` — Core + Simulation + Input System + uGUI.
+* `TimeToExplore.Editor` — Editor-only scene builder.
+* `AssemblyLayoutTests` reads the `.asmdef` files and fails on a forward
+  reference, a stray assembly, or a duplicate GUID.
 
-### Behaviour to implement
+**System map — steps 1–5** ([The system map](Docs/technical/system-map.md))
 
-1. **The map marker minimum is 6 px.** The existing minimum-apparent-size aid is
-   4.5 px (`SolarSystemRenderer` passes `minPixels = 4.5`). On the map side the
-   minimum rises to about 6 px so every planet and station is a comfortable
-   click target. Keep the local 4.5 px rule exactly. Make the pixel minimum a
-   pure function of `w` (or of `IsMapSide`) so it is testable without a camera.
-   The `T` true-scale toggle still overrides everything.
-2. **Labels follow the zoom.** Sun, planets, and stations always label on the
-   map. Moon labels appear when the view spans less than about **5× the parent's
-   SOI**; zoom into a neighbourhood to read its moons. Asteroids label on hover
-   and selection only. Keep the local view's label behaviour workable; the map
-   rules should not make the opening shot unreadable. The decision should be a
-   pure function of the body, the camera distance, `w`, hover, and selection.
-3. **Class-priority picking at full-system zoom.** The existing `BodyPicker`
-   picks the nearest hit after a 9 px minimum radius. On the map at full-system
-   zoom, ties resolve by class: Sun, planet, or station wins over a moon or
-   asteroid behind it. Moons and asteroids become selectable as the view zooms
-   into their neighbourhood, where the existing nearest-hit rule already does
-   the right thing. Do not change the local picker rule. Feed the picker the
-   *drawn* marker radius, including the 6 px map minimum.
-4. **The ship gets a "you are here" label on the map.** The ten-pixel ship
-   marker already exists. In the map it should carry a label; in the local view
-   it should stay as it is.
-5. **Do not regress the map camera.** The camera looks at `ship + pan`; the
-   picker and the projection must use the actual camera (which already does).
-   Panning and the map pose must not break picking.
+* `MapView`, the camera-rig blend, the map drawing/picking rules, the
+  neighbourhood-aware aid fade, and Plot route → Begin with the 1% staleness
+  window and the arrival ghost are all built and tested.
+* `SystemMap.unity` is the comparison scene; `SolarSystem.unity` keeps
+  `EnableMapView` off.
 
-### Known traps
+## Commits from this session
 
-- The marker aid is smoothed in `BodyView.Refresh` with
-  `Mathf.Lerp(_scaleFactor, target, 1 − e^(−8·dt))`. In Play mode it settles; a
-  single edit-mode call does not move it because `Time.deltaTime` is zero. If
-  you screenshot or test in edit mode, settle it explicitly or run a few
-  frames; do not assume the first refresh shows the final size.
-- `BodyView.VisualRadiusUnits` is the *drawn* radius, so the picker already
-  sees the aid. The 6 px map minimum must flow through the same path.
-- `SolarSystemRenderer.Refresh` computes `_minAngularSize` from
-  `Screen.height` and `camera.fieldOfView`. The picker uses
-  `BodyView.VisualRadiusUnits`; keep the two consistent.
-- The map's screen space is the camera's, and the camera is at
-  `ship + pan + offset`. Do not reintroduce a ship-origin assumption in the
-  labels or picking.
-- `Screen.height` can be tiny in batch mode. Tests should exercise the pure
-  pixel/angle functions, not the raw screen.
-- The map blend is a *band*: `w > 0.5` is the input side, but labels and the
-  aid may want a different threshold. Decide and document one; do not scatter
-  magic numbers.
-- The local view must not inflate distant bodies — that is step 4. This step
-  raises the map minimum only; do not implement the local fade yet.
-- **Check the orbit-line width before adding labels.** `OrbitLine.Refresh`
-  scales `widthMultiplier` from `max(parent distance, orbit radius)`, not the
-  camera distance. At close map zoom the Earth orbit line becomes a broad
-  ribbon that swamps the Earth–Moon neighbourhood (visible in the step-2
-  renders). The local view looks correct, so a fix must be map-aware or driven
-  by the camera distance, with a test. Do not change the local look.
-- `SolarSystem.unity` must keep the old camera and the old 4.5 px/9 px rules.
+```text
+131f91c Add the URP project settings Unity generated on reopen
+4aee3d9 Document the input backend restart gotcha
+cf48fa9 Move the HUD to uGUI and drop the legacy input backend
+dcdb9b0 Split the runtime into layered assemblies
+7a2b592 Move input to the Input System behind one seam
+a6e1eda Migrate the prototype to URP 17.3.0
+```
 
-## Tests to add (minimum)
+## Next: system map step 6
 
-- **Map marker minimum:** 4.5 px local, about 6 px map, the boundary is stable,
-  and the `T` override still wins. Pure, no scene.
-- **Label density:** Sun/planet/station always on the map; a moon labels only
-  inside the 5× parent-SOI window; an asteroid labels only on hover/selection;
-  the local opening shot stays readable. Pure.
-- **Picking:** at full-system zoom a planet wins over a moon behind it; a moon
-  becomes selectable when the camera is in its neighbourhood; the 9 px hit
-  radius and the nearest hit still work; the local rule is unchanged.
-- **Ship label:** present on the map, absent locally.
-- The existing 236 tests stay green.
+> **Frame-loop acceptance.** Extend `BootstrapSmokeTests`: zoom out to the map,
+> select Mars, plot, Begin, arrive — through the real bootstrap.
 
-## Definition of done
+1. Drive the acceptance through `SolarSystemBootstrap`, not a hand-built
+   session: zoom to the map side, select Mars, plot, Begin, advance the frame
+   loop, and assert arrival on the parking orbit with the existing exactness.
+2. Keep the existing `SceneFlightTests` Gateway→Mars numbers green
+   (4.44 days, 0.0 m, 0.0000 m/s, three orbits).
+3. Then **step 7**: write ADR-009 (the map bends ADR-008's "always looks at the
+   ship"), refresh the camera/flight-session concepts, the roadmap acceptance
+   numbers, and the log.
+4. Acceptance from the design: one wheel gesture zooms from a parking orbit to
+   the whole system and back to the exact prior angle; pan to Jupiter, click it,
+   plot a route, see the curve and the arrival ghost, press Begin, and arrive
+   exactly.
 
-1. The map marker minimum, label density, ship label, and class-priority picking
-   work as above.
-2. The local view, the local picker, and `SolarSystem.unity` are unchanged; the
-   comparison scene still shows the map.
-3. Docs updated as changes happen:
-   - `Docs/technical/system-map.md` — mark step 3 done and note any deviation.
-   - `Docs/technical/selection-and-camera.md` — the map marker, label, and
-     picking rules.
-   - `Docs/technical/architecture.md` — the renderer/picker/HUD
-     responsibilities.
-   - `Docs/technical/testing.md` — the new tests and the new total.
-   - `Docs/production/roadmap.md` — milestone 2.5 progress.
-   - `Docs/log.md` — dated **Creation**/**Update** entries under `2026-11-16`
-     (or the current date).
-4. `tools/check.sh` full run, not just `--fast`, and report the exact count.
-5. Commit as the `brianoc` identity (`user.name=brianoc`,
-   `user.email=brianoc@users.noreply.github.com`). There is no remote
-   configured; the commit stays local unless one is added.
-
-## Baseline verification
-
-At commit `8341d7c` (step 3):
+## Verification baseline
 
 ```text
 tools/check.sh --fast
-  27 concepts, 0 warnings, 0 errors
+  32 concepts, 0 warnings, 0 errors
   Catalogue OK: 137 bodies at JD 2461359.5
   Generator output byte-identical
 
 tools/check.sh
-  Unity EditMode: 255 tests, 0 failed, 0 skipped
+  Unity EditMode: 329 tests, 0 failed, 0 skipped
   All checks passed.
 ```
 
-At step 5 the suite was **277 tests**, all green. After the input migration the
-suite was **310 tests** (21 input tests), and after the assembly split **320
-tests**. After the uGUI HUD and New-only migration it is **329 tests** (7 new
-`SolarSystemHudTests` and 2 new `InputSeamTests` guards), all green. PyYAML lives
-in `.venv/bin/python`; `check.sh` already prefers it. The full Unity run uses a
-throwaway copy of the project, so it is safe with the editor open.
+`329 = 320 baseline + 7 SolarSystemHudTests + 2 InputSeamTests guards`. PyYAML
+lives in `.venv/bin/python`; `check.sh` prefers it. The Unity run uses a
+throwaway copy of `Assets`, `Packages`, and `ProjectSettings`, so it is safe
+with the editor open.
+
+## Traps worth knowing
+
+* **Restart the Editor after changing Active Input Handling.** Package
+  assemblies keep the branch they were compiled with. A stale
+  `Unity.RenderPipelines.Core.Runtime.dll` keeps URP's `DebugUpdater` on
+  `Input.GetButton` and throws every frame. The symptom and stack are in
+  [Input](Docs/technical/input.md); the fix is a full Editor restart, not a
+  code change.
+* **The HUD's panel guard is two-layered.** `IsPointerOverGameObject()` can lag
+  a frame, so `SolarSystemHud` also tests the three panel rects with
+  `RectTransformUtility` before world picking. Keep both if you move panels.
+* **uGUI navigation is deliberately off.** Space is pause; do not turn
+  `sendNavigationEvents` back on without checking every gameplay key.
+* **`Screen.height` is tiny in batch mode.** Test pure pixel/angle functions,
+  not raw screen geometry.
+* **`Time.deltaTime` is zero in EditMode.** `BodyView`'s marker aid is smoothed;
+  settle it explicitly or run frames before asserting a drawn size.
+* **The map is a blend band, not a mode.** `w > 0.5` is the input side; markers
+  blend continuously. Do not scatter a second threshold.
+* **No PlayMode suite yet.** Real pointer clicks, the rendered frame, button hit
+  areas, label overlap, and wheel feel still need a human. `SolarSystemHudTests`
+  invokes `onClick` directly and proves the object graph, not the frame.
+
+## Definition of done for the next session
+
+1. Step 6 acceptance passes through the bootstrap, and the existing flight
+   numbers are unchanged.
+2. Step 7 docs: ADR-009, the camera and flight-session concepts, the roadmap,
+   the testing matrix and totals, and a dated `Docs/log.md` entry.
+3. `tools/check.sh` full run, with the exact test count reported.
+4. Commit as `brianoc` (`user.name=brianoc`,
+   `user.email=brianoc@users.noreply.github.com`). There is no remote
+   configured; commits stay local unless one is added.
+5. `Screenshots/` is untracked user material; leave it alone.
+
+## Known limitations
+
+The full list is in [Architecture](Docs/technical/architecture.md#known-limitations).
+The ones that matter for the next session:
+
+* No fuel or delta-v spending; the plan reports delta-v but does not consume it.
+* No attitude dynamics or slew limits; thrust direction is instantaneous.
+* No mid-flight replan beyond pressing **Replan**.
+* No PlayMode suite for rendering, pointer input, or the HUD.
+* The map's `EnableMapView` comparison switch is temporary; it also gates the
+  aid fade.
+* The belt is not drawn; 100 asteroid orbits would clutter the map.
