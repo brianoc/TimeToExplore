@@ -1,8 +1,9 @@
 # Agent Instructions — Time to Explore
 
 **Every session:** read [the working agreement](Docs/working-agreement.md)
-first. Two rules: update the docs as changes happen, and add tests for every
-new feature or piece of work.
+first. Three rules: update the docs as changes happen, add tests for every new
+feature or piece of work, and keep `HANDOFF.md` live only while a plan is in
+progress — clear it when the plan is done.
 
 ## Project shape
 
@@ -53,6 +54,21 @@ A pure refactor still gets a short log entry when it changes how the prototype
 is built, run, or verified. Implementation details that a reader of the design
 bundle does not need may stay out of the concept docs, but they belong in the
 log.
+
+## Handoff
+
+The repository-root `HANDOFF.md` is a live session handoff, not a historic log
+and not a source of design truth. While a multi-step plan is in progress:
+
+- Keep it current: what is done, what is next, the verification command and its
+  last result, and the traps that would cost the next session time.
+- Update it in the same commit as the work it describes.
+- Link to the concept docs and ADRs for the reasoning rather than restating
+  design in the handoff.
+
+When the plan is complete, clear it back to a short "no active handoff" stub in
+the same commit as the final step. History stays in `Docs/log.md`; reasoning
+stays in the concepts and ADRs.
 
 ## OKF rules to preserve
 
