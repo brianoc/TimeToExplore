@@ -71,7 +71,7 @@ because Unity test assemblies cannot reference the predefined
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
-| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the line width: 3 px at every zoom, proportional to camera distance, and resolution-independent |
+| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, the line width: 3 px at every zoom, proportional to camera distance, and resolution-independent; and the orbit-line pass: 3 px local to 10 px map with the blend clamped and monotonic, the thick line still resolution-independent, Mercury warm and Neptune cool, all eight planets distinct in orbital order, one planet taking the warm end, and the palette ignoring the view |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the map ceiling and returns to the exact remembered angle, one wheel gesture eases to the map through the frame loop instead of snapping, and the full map acceptance — zoom out, select Mars, plot, Begin — arrives on the parking orbit through the bootstrap's own frame loop |
 | `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, the 4 px click slop that separates a click from a map pan, and null devices returning neutral values |
@@ -80,7 +80,7 @@ because Unity test assemblies cannot reference the predefined
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 | `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, `ShowHud`/`ShowLabels`, the one-frame opening guard, and the route/begin/jump/close `onClick` handlers reaching the same owner methods |
 
-The suite currently has **348 tests**. It deliberately tests the shipped
+The suite currently has **356 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -161,11 +161,15 @@ The map drawing rules have these anchors: the marker radius is 4.5 px at
 parent's SOI, which is 4,620,000 km for Earth's Moon (Earth SOI 924,000 km, so
 the boundary is about 4,620 render units) and therefore not at full-system
 zoom; the class rank puts the Sun, planets, and stations at 1 and moons and
-asteroids at 0; and every orbit and plan line is 3 px through `LineWidth`,
-which is `2 × depth × tan(fov/2) / screenHeight × 3` render units at the
-camera distance. At 60° and 1080p that is 0.0032 × depth, a fine line from the
-nearest camera pose to the 12,000,000-unit map ceiling; at 2160p the world width
-halves and the apparent width stays 3 px.
+asteroids at 0; plan lines stay 3 px through `LineWidth`, which is
+`2 × depth × tan(fov/2) / viewportHeight × pixels` render units at the camera
+distance; and orbit lines use the same formula with the pixel count blended
+from 3 px at `w = 0` to 10 px at `w = 1`. At 60° and 1080p a 3 px line is
+0.0032 × depth and a 10 px map orbit line is 0.0107 × depth; at 2160p the world
+width halves and the apparent widths stay 3 px and 10 px. The planet palette is
+anchored on Mercury `#FFA347` (warm orange) and Neptune `#B76BED` (cool purple),
+with eight distinct samples in orbital order and no dependence on the blend
+weight.
 
 The neighbourhood aid is anchored at Gateway, where the Moon's 66,194 km SOI is
 the local scale: the aid is full at the SOI edge, part-way down at 2× (132,388 km),

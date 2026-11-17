@@ -155,19 +155,35 @@ Kepler ellipse.
 * The line is drawn in ship-relative render coordinates, so it moves with the
   world.
 * Width is one apparent-width rule shared with the plan line. `LineWidth`
-  converts **3 screen pixels** to render units at the camera's look-at depth:
+  converts a pixel count to render units at the camera's look-at depth.
+  **Plan lines stay at 3 px**, while orbit lines blend with the map weight:
 
   ```text
-  width = 2 × depth × tan(fov / 2) / screenHeight × 3
+  orbitPixels = lerp(3 px, 10 px, w)          // LineWidth.OrbitPixels
+  width       = 2 × depth × tan(fov / 2) / viewportHeight × orbitPixels
   ```
 
-  The orbit's radius is not an input. The old rule multiplied the orbit size,
-  which was only correct at the single distance where the whole ellipse was
-  framed; inside the orbit it became a screen-filling ribbon. The pixel form is
-  also correct at other fields of view and resolutions, and needs no world-unit
-  clamp that breaks at the map ceiling. A `LineRenderer` has one world width
-  for the whole ellipse, so the near and far arcs share it and thin naturally
-  with perspective.
+  The local view is therefore the same fine line as before, and the solar
+  system view draws a bold 10 px stroke as the zoom tilts toward the map. The
+  blend uses the same `w` as the camera pose, so the lines thicken through the
+  zoom tween instead of popping at the map threshold. The viewport height comes
+  from the camera, so the apparent width also holds when the camera renders
+  into a RenderTexture. The orbit's radius is not an input. The old rule
+  multiplied the orbit size, which was only correct at the single distance
+  where the whole ellipse was framed; inside the orbit it became a
+  screen-filling ribbon. The pixel form is also correct at other fields of view
+  and resolutions, and needs no world-unit clamp that breaks at the map ceiling.
+  A `LineRenderer` has one world width for the whole ellipse, so the near and
+  far arcs share it and thin naturally with perspective.
+* Colour belongs to the body and does not change with the view.
+  `OrbitColours` samples one warm-to-cool ramp by orbital rank, evenly spaced
+  rather than by semi-major axis (which would collapse Mercury to Mars into the
+  first two percent). Mercury is warm orange, the four inner planets step
+  through coral and red, and the outer planets finish in magenta and violet:
+  Mercury `#FFA347`, Venus `#FC754D`, Earth `#FA525A`, Mars `#F7578B`,
+  Jupiter `#F55CB7`, Saturn `#F261DF`, Uranus `#DC66F0`, Neptune `#B76BED`, all
+  at 50% alpha. Moon orbits stay neutral grey so they read as subordinate to
+  their planet.
 
 Asteroid orbits are not drawn by default; 100 ellipses would clutter the view
 and cost more than they add. The data is available if a later "belt map" mode

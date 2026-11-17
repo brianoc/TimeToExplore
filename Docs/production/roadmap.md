@@ -42,7 +42,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
-  the Unity EditMode suite. The suite is 348 tests.
+  the Unity EditMode suite. The suite is 356 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug

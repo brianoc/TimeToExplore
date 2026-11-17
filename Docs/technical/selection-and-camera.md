@@ -70,10 +70,11 @@ while the local view keeps its old thresholds:
   hovered or selected; locally it keeps the old 200,000-km threshold.
 * **The ship.** `BodyLabels.ShouldLabelShip` names the ten-pixel marker
   "YOU ARE HERE" on the map side only.
-* **Orbit lines.** `LineWidth` turns 3 screen pixels into render units at the
-  camera distance, with no orbit-sized term and no local/map blend. An orbit is
-  a fine line at the neighbourhood, at a whole-orbit framing, and at the
-  12-billion-km map ceiling, and a distant orbit can never become a ribbon.
+* **Orbit lines.** `LineWidth` turns a pixel count into render units at the
+  camera distance, with no orbit-sized term: 3 px in the local view, blending to
+  10 px in the solar system view. A distant orbit can never become a ribbon.
+  Each planet's colour is fixed by `OrbitColours` (warm orange Mercury to cool
+  purple Neptune) and is identical in both views; moons stay neutral grey.
 
 # The details screen
 

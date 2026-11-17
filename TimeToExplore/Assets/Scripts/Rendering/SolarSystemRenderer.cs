@@ -56,12 +56,18 @@ namespace TimeToExplore.Rendering
                 if (body.Data.IsStar) _sunView = view;
             }
 
+            // Planets share one warm-to-cool ramp, assigned outward from
+            // Mercury so the orbit lines read as a system rather than eight
+            // arbitrary colours. Moons stay neutral: they are subordinate to
+            // their planet, not another stop on the ramp.
+            Dictionary<string, Color> planetColours = OrbitColours.ForPlanets(model.Ordered);
+
             foreach (BodyRuntime body in model.Ordered)
             {
                 if (!body.HasOrbit) continue;
-                if (body.Kind == "planet")
+                if (body.Kind == "planet" && planetColours.TryGetValue(body.Id, out Color colour))
                 {
-                    _planetOrbits.Add(CreateOrbit(body, new Color(0.55f, 0.72f, 1f, 0.22f)));
+                    _planetOrbits.Add(CreateOrbit(body, colour));
                 }
                 else if (body.Kind == "moon")
                 {
@@ -97,9 +103,18 @@ namespace TimeToExplore.Rendering
             LocalAidRadiusM = localRadiusM;
 
             float fieldOfView = _camera != null ? _camera.fieldOfView : 60f;
+
+            // The marker and line rules are per screen pixel, so they follow the
+            // viewport the camera is actually drawing into. In play that is the
+            // screen; a camera rendering into a RenderTexture reports that
+            // texture's height, which keeps the apparent width correct there too.
+            int viewportHeight = _camera != null && _camera.pixelHeight > 0
+                ? _camera.pixelHeight
+                : Screen.height;
+
             float minPixels = MarkerSizing.MinimumPixels(mapBlendWeight);
             float baseMinAngularSize = MarkerSizing.MinimumAngularSize(
-                minPixels, fieldOfView, Screen.height);
+                minPixels, fieldOfView, viewportHeight);
             double cameraDistanceM = UnitsPerMeter > 0f
                 ? cameraDistanceUnits / (double)UnitsPerMeter
                 : 0.0;
@@ -119,11 +134,15 @@ namespace TimeToExplore.Rendering
             // Every line shares one apparent width. The camera distance is the
             // depth of the look-at plane; a LineRenderer cannot vary its width
             // per vertex, so the near and far arcs of one ellipse still share
-            // one world width and fall off naturally with perspective.
+            // one world width and fall off naturally with perspective. Orbit
+            // lines thicken with the map blend, from the local 3 px thread to
+            // the solar system view's 10 px stroke.
             float lineDepth = cameraDistanceUnits > 0f
                 ? cameraDistanceUnits
                 : (_camera != null ? _camera.transform.position.magnitude : 0f);
-            float lineWidth = LineWidth.WorldWidth(lineDepth, fieldOfView, Screen.height);
+            float orbitPixels = LineWidth.OrbitPixels(mapBlendWeight);
+            float lineWidth = LineWidth.WorldWidth(lineDepth, fieldOfView, viewportHeight,
+                orbitPixels);
 
             foreach (OrbitLine orbit in _planetOrbits)
                 orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits, lineWidth);

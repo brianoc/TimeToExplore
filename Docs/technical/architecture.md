@@ -168,7 +168,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
 | `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the four runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
-| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line: 3 px converted to render units at the camera depth, FOV, and viewport height |
+| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight |
+| `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed capture, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
@@ -318,11 +319,14 @@ Unity's own skybox path rather than a forward pass; the full design is in
 
 Orbit lines sample the Kepler ellipse once per frame in the body's element frame,
 transform to the parent's frame, add the parent's current position, and then
-convert to ship-relative render coordinates. Every line takes its width from
-`LineWidth`, which converts 3 screen pixels to render units at the camera
-distance and the viewport's FOV and height. The orbit radius is not an input, so
-the line is a fine line at every zoom; the near and far arcs share the one world
-width and thin naturally with perspective.
+convert to ship-relative render coordinates. Every orbit line takes its width
+from `LineWidth`, which converts the blended apparent width — 3 px in the local
+view, 10 px in the solar system view — to render units at the camera distance
+and the viewport's FOV and height. The orbit radius is not an input, so the line
+can never become a ribbon; the near and far arcs share the one world width and
+thin naturally with perspective. Its colour comes from `OrbitColours`, one
+fixed warm-to-cool ramp sample per planet, so the local and solar system views
+draw the same hue.
 
 `TrajectoryLine` is the same idea for a plan, with two differences. It samples
 each arc once when the plan is made with `PathTessellation`, which subdivides by

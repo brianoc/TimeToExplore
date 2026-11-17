@@ -304,6 +304,110 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo(LineWidth.Pixels).Within(1e-3f));
         }
 
+        [Test]
+        public void OrbitLinesAreThreePixelsInTheLocalViewAndTenOnTheMap()
+        {
+            Assert.That(LineWidth.OrbitPixels(0f), Is.EqualTo(3f).Within(1e-6f));
+            Assert.That(LineWidth.OrbitPixels(1f), Is.EqualTo(10f).Within(1e-6f));
+            Assert.That(LineWidth.OrbitPixels(0.5f), Is.EqualTo(6.5f).Within(1e-5f));
+        }
+
+        [Test]
+        public void TheOrbitWidthClampsOutsideTheBlend()
+        {
+            Assert.That(LineWidth.OrbitPixels(-1f), Is.EqualTo(3f).Within(1e-6f),
+                "a weight below zero is the local view");
+            Assert.That(LineWidth.OrbitPixels(2f), Is.EqualTo(10f).Within(1e-6f),
+                "a weight above one is the map");
+        }
+
+        [Test]
+        public void TheOrbitWidthGrowsSmoothlyThroughTheBlend()
+        {
+            float previous = -1f;
+            for (int i = 0; i <= 100; i++)
+            {
+                float pixels = LineWidth.OrbitPixels(i / 100f);
+                Assert.That(pixels, Is.GreaterThanOrEqualTo(previous));
+                previous = pixels;
+            }
+        }
+
+        [Test]
+        public void TheThickMapOrbitLineIsStillResolutionIndependent()
+        {
+            float width = LineWidth.WorldWidth(1_000f, 60f, 1080f,
+                LineWidth.OrbitPixels(1f));
+
+            Assert.That(LineWidth.PixelsAt(width, 1_000f, 60f, 1080f),
+                Is.EqualTo(10f).Within(1e-3f));
+            Assert.That(LineWidth.WorldWidth(1_000f, 60f, 2160f,
+                    LineWidth.OrbitPixels(1f)),
+                Is.EqualTo(width * 0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void MercuryIsWarmAndNeptuneIsCool()
+        {
+            Color mercury = OrbitColours.Planet(0f);
+            Color neptune = OrbitColours.Planet(1f);
+
+            Assert.That(mercury.r, Is.GreaterThan(mercury.g),
+                "Mercury's orange has more red than green");
+            Assert.That(mercury.g, Is.GreaterThan(mercury.b),
+                "Mercury's orange has more green than blue");
+            Assert.That(neptune.b, Is.GreaterThan(neptune.r),
+                "Neptune's purple has more blue than red");
+            Assert.That(neptune.b, Is.GreaterThan(neptune.g));
+            Assert.That(mercury.r, Is.GreaterThan(neptune.r),
+                "the ramp cools from Mercury to Neptune");
+            Assert.That(mercury.b, Is.LessThan(neptune.b));
+        }
+
+        [Test]
+        public void EveryPlanetInTheCatalogueGetsADistinctOrbitColour()
+        {
+            var colours = OrbitColours.ForPlanets(_model.Ordered);
+
+            Assert.That(colours.Count, Is.EqualTo(8), "the catalogue has eight planets");
+            Assert.That(colours["mercury"], Is.EqualTo(OrbitColours.Planet(0f)));
+            Assert.That(colours["neptune"], Is.EqualTo(OrbitColours.Planet(1f)));
+
+            // Orbital order, not catalogue order, drives the ramp: the four
+            // inner planets must not collapse into one end of it.
+            string[] outward = { "mercury", "venus", "earth", "mars", "jupiter",
+                "saturn", "uranus", "neptune" };
+            for (int i = 1; i < outward.Length; i++)
+            {
+                Color inner = colours[outward[i - 1]];
+                Color outer = colours[outward[i]];
+                Assert.That(inner, Is.Not.EqualTo(outer),
+                    $"{outward[i - 1]} and {outward[i]} need different orbit colours");
+                Assert.That(outer.r, Is.LessThan(inner.r),
+                    $"{outward[i]} should be cooler than {outward[i - 1]}");
+            }
+        }
+
+        [Test]
+        public void TheOrbitColourDoesNotDependOnTheView()
+        {
+            // The palette is a function of the body's place in the ramp only;
+            // nothing in the mapping takes a blend weight, so both views draw
+            // the same colour. Only LineWidth.OrbitPixels reads the blend.
+            Color local = OrbitColours.Planet(2, 8);
+            Color map = OrbitColours.Planet(2, 8);
+
+            Assert.That(map, Is.EqualTo(local));
+            Assert.That(local.a, Is.EqualTo(OrbitColours.PlanetAlpha).Within(1e-6f));
+        }
+
+        [Test]
+        public void ASinglePlanetStillGetsAWarmOrbit()
+        {
+            Assert.That(OrbitColours.ForPlanets(new[] { _model.Get("earth") })["earth"],
+                Is.EqualTo(OrbitColours.Planet(0f)));
+        }
+
         // ---------------------------------------------------------------- helper
 
         private bool Label(BodyRuntime body, double distanceToShipM, float cameraDistanceUnits,

@@ -31,6 +31,29 @@ namespace TimeToExplore.Rendering
         public const float Pixels = 3f;
 
         /// <summary>
+        /// Apparent orbit-line width in the local view, in screen pixels. It is
+        /// the shared 3 px rule, unchanged.
+        /// </summary>
+        public const float OrbitLocalPixels = Pixels;
+
+        /// <summary>
+        /// Apparent orbit-line width in the solar system view, in screen pixels.
+        /// The planets are what the map is read by, so their orbits are drawn
+        /// as a bold stroke there instead of the local fine line.
+        /// </summary>
+        public const float OrbitMapPixels = 10f;
+
+        /// <summary>
+        /// Orbit-line width in pixels for a blend weight: 3 px in the local
+        /// view, 10 px in the solar system view, linear in between. The blend
+        /// uses the same weight as the camera pose, so the lines thicken as the
+        /// zoom tilts toward the map rather than popping at the map threshold.
+        /// The colour does not blend; it belongs to the body.
+        /// </summary>
+        public static float OrbitPixels(float mapBlendWeight) =>
+            Mathf.Lerp(OrbitLocalPixels, OrbitMapPixels, Mathf.Clamp01(mapBlendWeight));
+
+        /// <summary>
         /// Render-unit width that covers <paramref name="pixels"/> pixels at a
         /// view depth of <paramref name="depthUnits"/>.
         ///

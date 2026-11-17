@@ -1,7 +1,8 @@
 # Handoff
 
-**No active handoff (2026-11-17).** The camera zoom tween and the transition
-between the local view and the solar system view are complete and verified.
+**No active handoff (2026-11-17).** The planet orbit lines are coloured and
+thicken from 3 px in the local view to 10 px in the solar system view; the
+camera zoom tween, the map blend, and the sky are complete and verified.
 
 Start from [the design bundle](Docs/index.md),
 [the glossary](Docs/glossary.md),

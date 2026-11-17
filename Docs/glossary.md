@@ -32,8 +32,9 @@ The top-down reading of the same camera: as the zoom crosses the local sphere of
 influence, the pose blends to looking straight down the ecliptic pole, left-drag
 pans, and the range opens to 12 billion km. It is also called the **map view**
 or **the map** in code and in the system-map concept. Markers keep a 6 px
-minimum so every planet and station stays clickable, and the ship is labelled
-"YOU ARE HERE".
+minimum so every planet and station stays clickable, the ship is labelled
+"YOU ARE HERE", and the planet orbit lines thicken from their local 3 px to a
+10 px coloured stroke without changing hue.
 
 It is not a second camera and not a coordinate space: the world stays
 ship-relative and only the pose changes ([ADR-009](/decisions/adr-009-map-camera-pan.md)).
