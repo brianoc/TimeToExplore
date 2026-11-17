@@ -4,13 +4,15 @@
 > (commit `a6e1eda`) and the Input System migration followed. The project now
 > runs URP 17.3.0 and Input System 1.20.1 with Active Input Handling **Both**
 > (IMGUI needs the legacy backend for `OnGUI` events); every device read goes
-> through `Assets/Scripts/Player/PlayerControls.cs`. The suite is 310 tests.
-> This document is kept as the step-3 handoff and has not been rewritten. Step
-> 6, **frame-loop acceptance**, is next; see the implementation steps in
-> `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a preview
-> that never moves the ship, a 1% staleness window, the PREVIEW panel rows, and
-> a ghost at the target's arrival position; the idle ship coasts under gravity so the
-> clock and preview age with it.
+> through `Assets/Scripts/Player/PlayerControls.cs`. The runtime is split into
+> `TimeToExplore.Core`, `.Simulation`, and `.Presentation` assemblies, with
+> `.Editor` for tooling; `tools/check.sh` proves the graph. The suite is **320
+> tests**. This document is kept as the step-3 handoff and has not been
+> rewritten. Step 6, **frame-loop acceptance**, is next; see the implementation
+> steps in `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a
+> preview that never moves the ship, a 1% staleness window, the PREVIEW panel
+> rows, and a ghost at the target's arrival position; the idle ship coasts under
+> gravity so the clock and preview age with it.
 
 **From:** the session that landed step 2 (commit `4f5fe12`).
 **Date:** 2026-11-16.

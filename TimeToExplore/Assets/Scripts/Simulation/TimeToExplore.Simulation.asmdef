@@ -1,0 +1,16 @@
+{
+  "name": "TimeToExplore.Simulation",
+  "rootNamespace": "TimeToExplore.Simulation",
+  "references": [
+    "TimeToExplore.Core"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": true
+}

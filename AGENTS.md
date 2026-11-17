@@ -10,7 +10,10 @@ new feature or piece of work.
   files with YAML frontmatter, a root `index.md`, and a root `log.md`.
 - `TimeToExplore/` is the Unity 6000.3.28f1 project (Universal Render Pipeline
   17.3.0, Input System 1.20.1 with Active Input Handling **Both** because the
-  HUD is IMGUI).
+  HUD is IMGUI). Code is split into `TimeToExplore.Core`,
+  `TimeToExplore.Simulation`, `TimeToExplore.Presentation`, and
+  `TimeToExplore.Editor` assemblies; the rule is Core ← Simulation ←
+  Presentation ← Editor/Tests ([ADR-012](Docs/decisions/adr-012-assembly-layout.md)).
 - `tools/generate_solar_system.py` regenerates
   `TimeToExplore/Assets/Resources/solar_system.json`.
 - `tools/validate_okf.py` checks the design bundle.

@@ -147,7 +147,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2d1576a3d19140f4a859ce7a463ce4f, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: TimeToExplore.Runtime::TimeToExplore.SolarSystemBootstrap
+  m_EditorClassIdentifier: TimeToExplore.Presentation::TimeToExplore.SolarSystemBootstrap
   UnitsPerMeter: 0.000001
   ShowHud: 1
   ShowLabels: 1

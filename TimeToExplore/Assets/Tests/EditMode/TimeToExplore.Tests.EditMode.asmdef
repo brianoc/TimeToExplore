@@ -2,7 +2,10 @@
   "name": "TimeToExplore.Tests.EditMode",
   "rootNamespace": "TimeToExplore.Tests.EditMode",
   "references": [
-    "TimeToExplore.Runtime",
+    "TimeToExplore.Core",
+    "TimeToExplore.Simulation",
+    "TimeToExplore.Presentation",
+    "TimeToExplore.Editor",
     "Unity.RenderPipelines.Universal.Runtime",
     "Unity.InputSystem",
     "Unity.InputSystem.TestFramework",

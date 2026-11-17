@@ -67,3 +67,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-008: an orbit camera around the ship](/decisions/adr-008-orbit-camera.md) — keep the ship at the render origin, orbit the camera, and size the plan line from the camera distance.
 * [ADR-010: Universal Render Pipeline for the prototype](/decisions/adr-010-urp-rendering.md) — move to URP 17.3.0 with three minimal runtime shaders and a deliberately cheap forward renderer. (ADR-009 is reserved for the deferred map-camera decision.)
 * [ADR-011: The Input System behind one seam](/decisions/adr-011-input-system.md) — `com.unity.inputsystem` 1.20.1, device polling through `PlayerControls`, and Active Input Handling **Both** because the HUD is IMGUI.
+* [ADR-012: An assembly layout that enforces the layering](/decisions/adr-012-assembly-layout.md) — Core, Simulation, and Presentation runtime assemblies plus Editor and test assemblies, with the dependency direction checked by `AssemblyLayoutTests`.

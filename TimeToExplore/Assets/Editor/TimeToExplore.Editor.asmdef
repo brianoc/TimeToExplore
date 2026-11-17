@@ -1,0 +1,20 @@
+{
+  "name": "TimeToExplore.Editor",
+  "rootNamespace": "TimeToExplore.EditorTools",
+  "references": [
+    "TimeToExplore.Core",
+    "TimeToExplore.Simulation",
+    "TimeToExplore.Presentation"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

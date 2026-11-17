@@ -37,9 +37,12 @@ the gate for any C# change.
 # Unity EditMode suite
 
 Tests live in `Assets/Tests/EditMode/` behind the `TimeToExplore.Tests.EditMode`
-assembly. The runtime is in `Assets/Scripts/TimeToExplore.Runtime.asmdef`; an
-assembly definition is required because Unity test assemblies cannot reference
-the predefined `Assembly-CSharp`.
+assembly. The runtime is split into `TimeToExplore.Core`,
+`TimeToExplore.Simulation`, and `TimeToExplore.Presentation`, with
+`TimeToExplore.Editor` for editor tooling; an assembly definition is required
+because Unity test assemblies cannot reference the predefined
+`Assembly-CSharp`. The suite references all four project assemblies, and
+`AssemblyLayoutTests` asserts the graph itself.
 
 | File | Covers |
 |---|---|
@@ -72,8 +75,9 @@ the predefined `Assembly-CSharp`.
 | `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-IMGUI pointer flip, and null devices returning neutral values |
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly one runtime file, the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, and `activeInputHandler: 2` pinned so the IMGUI legacy backend is not dropped by accident |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
+| `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 
-The suite currently has **310 tests**. It deliberately tests the shipped
+The suite currently has **320 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 

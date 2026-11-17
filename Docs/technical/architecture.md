@@ -46,6 +46,36 @@ and no Unity physics, and is verified entirely in EditMode tests. The scene flie
 it through one plain-C# owner, `FlightSession`; the bootstrap only advances the
 clock and asks the session to reach it.
 
+# Assembly layout
+
+The code is split into five assembly definitions, and the compile graph encodes
+the layer rule **Core ← Simulation ← Presentation ← Editor/Tests**: an assembly
+may only reference an assembly to its left. The direction is enforced by Unity
+(and by `AssemblyLayoutTests`), not by convention.
+
+| Assembly | Folder | References | Platforms |
+|---|---|---|---|
+| `TimeToExplore.Core` | `Assets/Scripts/Core/TimeToExplore.Core.asmdef` | none | all |
+| `TimeToExplore.Simulation` | `Assets/Scripts/Simulation/TimeToExplore.Simulation.asmdef` | `TimeToExplore.Core` | all |
+| `TimeToExplore.Presentation` | `Assets/Scripts/TimeToExplore.Presentation.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `Unity.InputSystem` | all |
+| `TimeToExplore.Editor` | `Assets/Editor/TimeToExplore.Editor.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `TimeToExplore.Presentation` | Editor only |
+| `TimeToExplore.Tests.EditMode` | `Assets/Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef` | Core, Simulation, Presentation, `TimeToExplore.Editor`, URP, Input System, test runner | Editor only |
+
+`Presentation` covers `Assets/Scripts/Player/`, `Assets/Scripts/Rendering/`,
+`Assets/Scripts/UI/`, and the root `SolarSystemBootstrap` on purpose. Those
+folders are a tight cluster — `UI` uses both `Player` and `Rendering`, and the
+bootstrap uses all of them — so splitting them would add asmdefs and edges
+without protecting a boundary that matters yet. `Core` holds the catalogue,
+orbital maths, and the clock; `Simulation` is the plain-C# flight core and sets
+`noEngineReferences: true`, so a UnityEngine call there is a compile error; the
+editor assembly holds the optional scene builder and can never enter a player
+build.
+
+The layer rule has one deliberate consequence: Unity assembly references are
+not transitive, so each consumer lists every project assembly it uses. The test
+assembly is the top of the graph and reads the `.asmdef` files as the source of
+truth. See [ADR-012](/decisions/adr-012-assembly-layout.md).
+
 # Runtime flow
 
 1. `SolarSystemBootstrap` loads `Resources/solar_system.json`.
@@ -335,8 +365,8 @@ Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
 rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
-core, the input seam's key table and mouse conversions, and the scene's frame
-loop.
+core, the input seam's key table and mouse conversions, the assembly layout
+graph, and the scene's frame loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
