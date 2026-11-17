@@ -12,6 +12,19 @@ namespace TimeToExplore.Rendering
     {
         private const int Samples = 160;
 
+        /// <summary>Line width as a fraction of the camera distance: ~1.5 px at 60°/1080p.</summary>
+        public const float WidthPerCameraDistance = 0.0015f;
+
+        /// <summary>The old local ceiling, kept so the local look does not change.</summary>
+        public const float LocalMaxWidthUnits = 4000f;
+
+        /// <summary>
+        /// The map ceiling at the 12-million-unit zoom: 20,000 units is about
+        /// 1.5 px at 60°/1080p, so the line stays visible instead of thinning
+        /// to sub-pixel as the view opens out.
+        /// </summary>
+        public const float MapMaxWidthUnits = 20_000f;
+
         private LineRenderer _line;
         private BodyRuntime _body;
         private SolarSystemModel _model;
@@ -44,7 +57,8 @@ namespace TimeToExplore.Rendering
             _line.endColor = colour;
         }
 
-        public void Refresh(Vector3d shipPositionM, float unitsPerMeter, bool visible)
+        public void Refresh(Vector3d shipPositionM, float unitsPerMeter, bool visible,
+            float cameraDistanceUnits = 0f, float mapBlendWeight = 0f)
         {
             if (_line == null) return;
             _line.enabled = visible;
@@ -57,13 +71,31 @@ namespace TimeToExplore.Rendering
                 _line.SetPosition(i, relative.ToUnity());
             }
 
-            // Keep the line roughly 1-2 pixels wide at any zoom level.
+            // The local rule sizes the line from the orbit, which is correct
+            // while the camera is inside it but turns a planet's orbit into a
+            // ribbon at close map zoom. The map rule sizes it from the camera
+            // distance instead, so it stays about a pixel wide at any zoom.
             double parentDistance = _body.Parent != null
                 ? Vector3d.Distance(_body.Parent.PositionM, shipPositionM)
                 : 0.0;
             double orbitRadius = _body.Elements.semiMajorAxisM;
             float reference = (float)(System.Math.Max(parentDistance, orbitRadius) * unitsPerMeter);
-            _line.widthMultiplier = Mathf.Clamp(reference * 0.0015f, 0.35f, 4000f);
+            _line.widthMultiplier = WidthForView(reference, cameraDistanceUnits, mapBlendWeight);
+        }
+
+        /// <summary>
+        /// Width of an orbit line for a view: the original orbit-sized rule at
+        /// w = 0 (the local look, unchanged), easing to a camera-distance rule
+        /// on the map so a distant orbit can never swamp the neighbourhood.
+        /// </summary>
+        public static float WidthForView(float referenceUnits, float cameraDistanceUnits,
+            float blendWeight)
+        {
+            float local = Mathf.Clamp(referenceUnits * WidthPerCameraDistance, 0.35f,
+                LocalMaxWidthUnits);
+            float map = Mathf.Clamp(cameraDistanceUnits * WidthPerCameraDistance, 0.35f,
+                MapMaxWidthUnits);
+            return Mathf.Lerp(local, map, Mathf.Clamp01(blendWeight));
         }
 
         public void SetColour(Color colour)

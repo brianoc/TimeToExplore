@@ -27,7 +27,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite
-  (236 tests).
+  (255 tests).
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -116,12 +116,16 @@ implementation steps are the task list, each with its tests. In order:
    blends the pose, routes right-drag to orbit or pan, scales the pan from the
    camera distance, eases it home on re-entry, suspends auto-framing on the
    map, and routes the wheel through the extended range. `SystemMap.unity` and
-   the `EnableMapView` switch provide the side-by-side comparison. Map drawing
-   and picking are next.
+   the `EnableMapView` switch provide the side-by-side comparison.
 2. Map reading rules: bigger markers, label density by zoom, class-priority
-   picking — the map selects big things.
+   picking, the map-only ship label, and the camera-distance orbit width. **Step
+   3 is done:** `MarkerSizing` eases markers from 4.5 to 6 px, `BodyLabels`
+   applies the 5× parent-SOI moon window and the hover/selection-only
+   asteroids, `BodyPicker` ranks Sun/planet/station above moons and asteroids
+   on the map, and `OrbitLine` stops a distant orbit becoming a ribbon at close
+   map zoom.
 3. The local view stops inflating distant bodies; the marker aid becomes
-   neighbourhood-aware.
+   neighbourhood-aware. **Next.**
 4. **Plot route** draws the plan as a smooth preview curve with an arrival
    ghost; **Begin** replans from the current state and flies it. The preview
    is a promise of shape, not a contract: time passes between Plot and Begin.

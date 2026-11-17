@@ -162,8 +162,105 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(BodyPicker.Pick(targets, new Vector2(55f, 50f), 0f), Is.Null);
         }
 
-        private static ScreenTarget Target(BodyRuntime body, Vector2 centre, float radius, float depth) =>
-            new ScreenTarget { Body = body, Centre = centre, RadiusPixels = radius, Depth = depth };
+        [Test]
+        public void MajorBodiesOutrankMoonsWhenMarkersOverlapOnTheMap()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            BodyRuntime moon = _model.Get("moon");
+
+            // The Moon is nearer, but it sits on top of Earth's marker at
+            // full-system zoom: the map reading is Earth.
+            var targets = new List<ScreenTarget>
+            {
+                Target(moon, new Vector2(200f, 200f), 6f, 40f, BodyPicker.MinorBodyPriority),
+                Target(earth, new Vector2(200f, 200f), 6f, 900f, BodyPicker.MajorBodyPriority)
+            };
+
+            Assert.That(
+                BodyPicker.Pick(targets, new Vector2(200f, 200f),
+                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
+                Is.SameAs(earth));
+        }
+
+        [Test]
+        public void TheLocalPickerStillPrefersTheNearestMarker()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            BodyRuntime moon = _model.Get("moon");
+            var targets = new List<ScreenTarget>
+            {
+                Target(moon, new Vector2(200f, 200f), 6f, 40f, BodyPicker.MinorBodyPriority),
+                Target(earth, new Vector2(200f, 200f), 6f, 900f, BodyPicker.MajorBodyPriority)
+            };
+
+            // No class priority off the map: the nearest hit wins as before.
+            Assert.That(BodyPicker.Pick(targets, new Vector2(200f, 200f)), Is.SameAs(moon));
+        }
+
+        [Test]
+        public void AMoonSeparatedFromItsPlanetIsSelectableOnTheMap()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            BodyRuntime moon = _model.Get("moon");
+
+            // Zoomed into the neighbourhood the markers no longer overlap, so
+            // the Moon is the only hit even with class priority on.
+            var targets = new List<ScreenTarget>
+            {
+                Target(moon, new Vector2(100f, 100f), 6f, 40f, BodyPicker.MinorBodyPriority),
+                Target(earth, new Vector2(140f, 100f), 6f, 900f, BodyPicker.MajorBodyPriority)
+            };
+
+            Assert.That(
+                BodyPicker.Pick(targets, new Vector2(100f, 100f),
+                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
+                Is.SameAs(moon));
+        }
+
+        [Test]
+        public void ClassPriorityStillPicksTheNearestOfTheSameClass()
+        {
+            BodyRuntime near = _model.Get("earth");
+            BodyRuntime far = _model.Get("mars");
+            var targets = new List<ScreenTarget>
+            {
+                Target(far, new Vector2(200f, 200f), 14f, 900f, BodyPicker.MajorBodyPriority),
+                Target(near, new Vector2(204f, 200f), 14f, 40f, BodyPicker.MajorBodyPriority)
+            };
+
+            Assert.That(
+                BodyPicker.Pick(targets, new Vector2(202f, 200f),
+                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
+                Is.SameAs(near));
+        }
+
+        [Test]
+        public void ClassRanksSunPlanetsAndStationsAboveMoonsAndAsteroids()
+        {
+            Assert.That(BodyPicker.PriorityOf(_model.Get("sun")),
+                Is.EqualTo(BodyPicker.MajorBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("earth")),
+                Is.EqualTo(BodyPicker.MajorBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("gateway")),
+                Is.EqualTo(BodyPicker.MajorBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("moon")),
+                Is.EqualTo(BodyPicker.MinorBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("ast_1")),
+                Is.EqualTo(BodyPicker.MinorBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(null),
+                Is.EqualTo(BodyPicker.MinorBodyPriority));
+        }
+
+        private static ScreenTarget Target(BodyRuntime body, Vector2 centre, float radius, float depth,
+            int priority = 0) =>
+            new ScreenTarget
+            {
+                Body = body,
+                Centre = centre,
+                RadiusPixels = radius,
+                Depth = depth,
+                Priority = priority
+            };
 
         // -------------------------------------------------------------- transition
 

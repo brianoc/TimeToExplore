@@ -76,9 +76,7 @@ namespace TimeToExplore.Rendering
             float distance = relative.magnitude;
             float angularSize = (float)(displayRadius / Mathf.Max(distance, 1e-6f));
 
-            float targetFactor = 1f;
-            if (!trueScale && angularSize < minAngularSize)
-                targetFactor = minAngularSize / Mathf.Max(angularSize, 1e-9f);
+            float targetFactor = TargetScaleFactor(angularSize, minAngularSize, trueScale);
 
             // Smooth the marker-size transition so distant bodies do not pop.
             _scaleFactor = Mathf.Lerp(_scaleFactor, targetFactor, 1f - Mathf.Exp(-8f * Time.deltaTime));
@@ -102,5 +100,18 @@ namespace TimeToExplore.Rendering
         }
 
         public float DistanceTo(Vector3d pointM) => (float)(Body.PositionM - pointM).Magnitude;
+
+        /// <summary>
+        /// How much the true radius must grow to reach the minimum apparent
+        /// size. Pure so the aid and the true-scale override are testable in
+        /// edit mode, where the smoothed scale does not move in one call.
+        /// </summary>
+        public static float TargetScaleFactor(float angularRadius, float minAngularSize,
+            bool trueScale)
+        {
+            if (trueScale) return 1f;
+            if (angularRadius >= minAngularSize) return 1f;
+            return minAngularSize / Mathf.Max(angularRadius, 1e-9f);
+        }
     }
 }

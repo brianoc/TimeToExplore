@@ -178,11 +178,14 @@ namespace TimeToExplore.UI
                     Body = view.Body,
                     Centre = new Vector2(screen.x, Screen.height - screen.y),
                     RadiusPixels = radius,
-                    Depth = world.magnitude
+                    Depth = world.magnitude,
+                    Priority = BodyPicker.PriorityOf(view.Body)
                 });
             }
 
-            return BodyPicker.Pick(_targets, pointer);
+            bool classPriority = _owner.Rig != null && _owner.Rig.IsMapSide;
+            return BodyPicker.Pick(_targets, pointer, BodyPicker.MinimumHitRadiusPixels,
+                classPriority);
         }
 
         private void OnGUI()
@@ -462,9 +465,11 @@ namespace TimeToExplore.UI
                 new Color(0.55f, 1f, 0.72f));
         }
 
-        private void DrawWorldLabel(Camera camera, Vector3 position, string text, Color colour)
+        private void DrawWorldLabel(Camera camera, Vector3 position, string text, Color colour,
+            bool hideAtOrigin = true)
         {
-            if (position == Vector3.zero) return;
+            if (camera == null) return;
+            if (hideAtOrigin && position == Vector3.zero) return;
 
             Vector3 screen = camera.WorldToScreenPoint(position);
             if (screen.z <= 0f) return;
@@ -501,13 +506,22 @@ namespace TimeToExplore.UI
         private void DrawLabels()
         {
             Camera camera = _owner.ViewCamera;
+            if (camera == null || _owner.Renderer == null) return;
+
             Vector3d shipPosition = _owner.ShipPositionM;
+            float blendWeight = _owner.Rig != null ? _owner.Rig.MapBlendWeight : 0f;
+            float cameraDistance = _owner.Rig != null ? _owner.Rig.Orbit.DistanceUnits : 0f;
+            bool mapSide = _owner.Rig != null && _owner.Rig.IsMapSide;
 
             foreach (BodyView view in _owner.Renderer.Views)
             {
                 BodyRuntime body = view.Body;
                 double distance = Vector3d.Distance(body.PositionM, shipPosition);
-                if (!ShouldLabel(body, distance)) continue;
+                bool hovered = body == _hover;
+                bool selected = body == _owner.Selected;
+                if (!BodyLabels.ShouldLabel(body, distance, cameraDistance, blendWeight,
+                        hovered, selected, _owner.UnitsPerMeter))
+                    continue;
 
                 Vector3 screen = camera.WorldToScreenPoint(view.transform.position);
                 if (screen.z <= 0f) continue;
@@ -519,30 +533,17 @@ namespace TimeToExplore.UI
 
                 GUI.color = new Color(0f, 0f, 0f, 0.85f);
                 GUI.Label(new Rect(rect.x + 1f, rect.y + 1f, rect.width, rect.height), text, _label);
-                GUI.color = body == _owner.Selected
+                GUI.color = selected
                     ? new Color(1f, 0.85f, 0.4f)
                     : new Color(0.85f, 0.92f, 1f, 0.92f);
                 GUI.Label(rect, text, _label);
             }
-            GUI.color = Color.white;
-        }
 
-        private bool ShouldLabel(BodyRuntime body, double distance)
-        {
-            if (body == _owner.Selected) return true;
-            switch (body.Kind)
-            {
-                case "star":
-                case "planet":
-                case "station":
-                    return true;
-                case "moon":
-                    return distance < 2.0e9; // 2 million km
-                case "asteroid":
-                    return distance < 2.0e8; // 200,000 km
-                default:
-                    return false;
-            }
+            if (BodyLabels.ShouldLabelShip(mapSide))
+                DrawWorldLabel(camera, Vector3.zero, "YOU ARE HERE",
+                    new Color(0.86f, 0.90f, 0.96f), hideAtOrigin: false);
+
+            GUI.color = Color.white;
         }
 
         private void DrawCrosshair()

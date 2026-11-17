@@ -125,8 +125,9 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 
 | Type | File | Responsibility |
 |---|---|---|
-| `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin |
-| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Screen-width-aware orbit polyline |
+| `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
+| `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, and its angular conversion |
+| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Screen-width-aware orbit polyline; orbit-sized locally, camera-sized on the map |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Go To path, dashed capture, flip and arrival markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global |
@@ -136,7 +137,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit locally and pan on the map, wheel zoom on both ranges, destination framing, blended pose, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
-| `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers |
+| `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: nearest locally, class-priority on the map |
+| `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, countdown, and formatting |
 | `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | IMGUI panels, labels, hover, and details screen |
@@ -204,14 +206,17 @@ The material is a small unlit-with-lighting shader,
 
 * ship-relative position,
 * true physical radius,
-* minimum apparent size (unless true scale is on),
+* minimum apparent size (unless true scale is on), from the map blend's
+  4.5–6 px rule,
 * axial tilt and spin,
 * station cube rotation.
 
 Orbit lines sample the Kepler ellipse once per frame in the body's element frame,
 transform to the parent's frame, add the parent's current position, and then
-convert to ship-relative render coordinates. Line width scales with camera
-distance so the line stays roughly a pixel or two wide at any zoom.
+convert to ship-relative render coordinates. Locally the line width scales with
+the orbit's size, as before; on the map it eases to a fraction of the camera
+distance so the line stays roughly a pixel or two wide and a distant orbit can
+never become a ribbon at close map zoom.
 
 `TrajectoryLine` is the same idea for a plan: it samples each arc once when the
 plan is made, then subtracts the ship position every frame. The capture arc uses
@@ -339,9 +344,10 @@ deferred until the presentation code settles.
 * No save/load.
 * The HUD is immediate-mode and allocation-heavy; fine for a prototype.
 * The scene is generated at runtime; there is no authored art scene.
-* The system map is a camera pose only: map markers, label density, and
-  class-priority picking are not built yet (milestone 2.5, steps 3–4). The
-  `EnableMapView` comparison switch is temporary.
+* The system map has its camera pose, markers, labels, picking, and orbit-line
+  width (milestone 2.5, steps 1–3). The local marker-aid fade (step 4) and the
+  route preview (steps 5–6) are not built yet. The `EnableMapView` comparison
+  switch is temporary.
 * The shader and materials are built-in-pipeline only. URP/HDRP would need a
   different shader and a camera stack for the far field.
 * Warp drops in the clock's power-of-ten steps, not continuously.

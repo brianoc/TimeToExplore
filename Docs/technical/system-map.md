@@ -24,11 +24,11 @@ always at the player's angle. Three things are missing:
    **Begin** button.
 
 This document is the design for that work. It is the next milestone
-([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1 and 2 are
-implemented: the plain-C# map state and the camera-rig integration.** Map
-drawing, picking, the local aid fade, and the route preview are not yet. The
-implementation steps at the end are the task list, and each step carries its
-tests.
+([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–3 are
+implemented: the plain-C# map state, the camera-rig integration, and the map's
+drawing and picking rules.** The local aid fade and the route preview are not
+yet. The implementation steps at the end are the task list, and each step
+carries its tests.
 
 # One zoom, two readings of the same camera
 
@@ -182,11 +182,24 @@ The map is for selecting big things. Its rendering rules follow from that:
 
 | Element | Rule |
 |---|---|
-| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. |
-| Markers | The minimum-apparent-size aid stays, with the map minimum raised to about 6 px so every planet and station is a comfortable click target. |
-| Labels | Sun, planets, and stations always. Moon labels appear when the view spans less than about 5× the parent's SOI — zoom into a neighbourhood to read its moons. Asteroids label on hover and selection only. |
-| Ship | The ten-pixel marker, with a "you are here" label in the map. |
-| Picking | The existing screen-space picker. At full-system zoom, ties resolve by class: Sun, planet, or station wins over a moon or asteroid behind it. Moons and asteroids become selectable as the view zooms into their neighbourhood, where the existing nearest-hit rule already does the right thing. |
+| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. On the map the line width follows the camera distance instead of the orbit radius, so a planet's orbit cannot become a ribbon at close zoom; the local rule is unchanged. |
+| Markers | The minimum-apparent-size aid stays, easing from 4.5 px locally to 6 px on the map so every planet and station is a comfortable click target. The `T` true-scale toggle still overrides it. |
+| Labels | Sun, planets, and stations always. Moon labels appear on the map when the camera is inside 5× the parent's SOI — zoom into a neighbourhood to read its moons. Asteroids label on hover and selection only. |
+| Ship | The ten-pixel marker, with a "YOU ARE HERE" label on the map. |
+| Picking | The existing screen-space picker against the drawn marker. At full-system zoom, overlapping hits resolve by class: Sun, planet, or station wins over a moon or asteroid drawn behind it. A moon or asteroid separated from its parent's marker is the only hit and stays selectable. The local 9 px nearest-hit rule is unchanged. |
+
+The marker and label rules are pure C#. `MarkerSizing` owns
+`4.5 px → 6 px` as a function of the blend weight and converts it to an angular
+size for `BodyView`. `BodyLabels` owns the density rule and the ship label, so
+the HUD only projects and draws. The class rule is a `Priority` on
+`ScreenTarget`; `BodyPicker.Pick` switches to highest-class-then-nearest only
+when `ShipCameraRig.IsMapSide` is true, which is why the local picker and
+`SolarSystem.unity` do not change.
+
+The orbit-line width is a blend too: `OrbitLine.WidthForView` keeps the old
+orbit-sized rule at `w = 0` and eases to `0.0015 × camera distance` on the map.
+The map floor of 0.35 units and ceiling of 20,000 units keep the line about a
+pixel wide from the neighbourhood to the 12-billion-km ceiling.
 
 The route preview (below) draws on the map with the same camera-distance width
 rule as today, so a plotted curve stays about 1.5 px wide at any zoom.
@@ -289,8 +302,21 @@ Each step is one session-sized piece of work with its tests, in order:
   its cap, the ease, the zoom range, the near plane, and the local view with
   the map off. `SolarSystemBootstrap.EnableMapView` and
   `Assets/Scenes/SystemMap.unity` provide the side-by-side comparison.
-3. **Map drawing and picking.** The 6 px map marker minimum, the label density
-  rule, class-priority picking at full-system zoom. Extend the picker tests.
+3. **Map drawing and picking — done.** `MarkerSizing` raises the
+  minimum-apparent-size aid from 4.5 px locally to 6 px on the map as a pure
+  function of the blend weight; `BodyView.TargetScaleFactor` keeps the `T`
+  true-scale override and is testable without a settled frame. `BodyLabels`
+  keeps the local distance thresholds and applies the map's density rule:
+  Sun, planets, and stations always; a moon inside 5× its parent's SOI;
+  asteroids only on hover or selection. The HUD draws a "YOU ARE HERE" ship
+  label on the map side. `BodyPicker` gained a class rank and a
+  `classPriority` mode that only the map uses, so a planet wins an overlapping
+  hit while a separated moon keeps the nearest-hit rule. `OrbitLine` gained a
+  camera-distance width rule on the map, leaving the local width exact. Tests:
+  `MapDrawingTests` covers the marker endpoints and the true-scale override,
+  the label window and the local opening shot, the ship label, and the orbit
+  width; `SelectionAndFocusTests` covers the class ranks, the overlap, the
+  separated moon, the same-class tie, and the unchanged local picker.
 4. **The local aid fade.** The neighbourhood falloff as a pure function;
   tests for full strength inside the SOI, true scale far outside, and the
   `T` override.

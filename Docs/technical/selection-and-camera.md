@@ -26,19 +26,48 @@ Picking is done in screen space against the **drawn marker**:
 
 1. Project each body's render position with `Camera.WorldToScreenPoint`.
 2. Measure the marker radius by projecting a point offset by
-   `BodyView.VisualRadiusUnits` along the camera's right axis.
+   `BodyView.VisualRadiusUnits` along the camera's right axis. This is the
+   drawn radius, so the minimum-apparent-size aid — including the map's 6 px
+   minimum — flows into picking.
 3. Give every marker a minimum hit radius of 9 pixels.
-4. Choose the hit with the smallest camera distance, so a near moon wins over
-   the planet behind it.
+4. Locally, choose the hit with the smallest camera distance, so a near moon
+   wins over the planet behind it.
+5. On the map, choose the highest class first — Sun, planet, or station above
+   moon or asteroid — and use the camera distance only to break a tie within a
+   class. A moon or asteroid whose marker does not overlap a major body is the
+   only hit, so it stays selectable as the view zooms into its neighbourhood.
 
-`BodyPicker` owns step 4 as a pure function over a list of `ScreenTarget`
+`BodyPicker` owns steps 4–5 as a pure function over a list of `ScreenTarget`
 values, which keeps it testable without a camera or a scene. The renderer and
-camera only feed it coordinates.
+camera only feed it coordinates. `ScreenTarget.Priority` carries the class
+rank; the local HUD leaves `classPriority` off, so the shipped picker rule is
+exactly the pre-map one.
 
 The pointer is ignored when the cursor is locked for mouse look, and while it
 is over the status panel or the details screen. The click that opens the
 details screen cannot also press a button in it: buttons are disabled for that
 frame.
+
+# Map drawing
+
+The map is a reading surface, so its drawing rules differ from the local view
+while the local view keeps its old thresholds:
+
+* **Markers.** `MarkerSizing.MinimumPixels(w)` eases the aid from 4.5 px at
+  `w = 0` to 6 px at `w = 1`; the smooth blend avoids a pop at the band edge.
+  `BodyView.TargetScaleFactor` applies it unless `T` true scale is on.
+* **Labels.** `BodyLabels.ShouldLabel` is the pure rule. Sun, planets, and
+  stations always label. A moon labels on the map when the camera is inside
+  5× its parent's SOI (`BodyLabels.InMoonNeighbourhood`), and locally it keeps
+  the old 2-million-km threshold. An asteroid labels on the map only when
+  hovered or selected; locally it keeps the old 200,000-km threshold.
+* **The ship.** `BodyLabels.ShouldLabelShip` names the ten-pixel marker
+  "YOU ARE HERE" on the map side only.
+* **Orbit lines.** `OrbitLine.WidthForView` keeps the orbit-sized width at
+  `w = 0` and eases to `0.0015 × camera distance` on the map. The map ceiling
+  of 20,000 units is about 1.5 px at the 12-billion-km zoom, so the line does
+  not thin to nothing and a distant orbit cannot become a ribbon at the
+  neighbourhood.
 
 # The details screen
 
@@ -131,8 +160,10 @@ is serialized per scene and passed to the rig. `SolarSystem.unity` leaves it
 off; `SystemMap.unity` turns it on. It is a development comparison aid, not a
 gameplay mode, and a later step removes it or defaults it on.
 
-The remaining work for this layer is map drawing and picking (step 3), the
-local marker-aid fade (step 4), and the plotted route with Begin (step 5).
+The remaining work for this layer is the local marker-aid fade (step 4) and the
+plotted route with Begin (step 5). Map drawing and picking (step 3) are built:
+the 6 px marker minimum, the zoom-aware labels, the "YOU ARE HERE" ship label,
+class-priority picking, and the camera-distance orbit width.
 
 # The focus transition (debug jump)
 

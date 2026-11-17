@@ -50,7 +50,7 @@ the predefined `Assembly-CSharp`.
 | `CatalogueTests` | shipped JSON: counts, ids, names, hierarchy, units, stations, epochs |
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
-| `SelectionAndFocusTests` | details rows and physics, screen-space picking, smoothstep/slerp transition, approach offset |
+| `SelectionAndFocusTests` | details rows and physics, screen-space picking, the map's class priority and the unchanged local nearest-hit rule, smoothstep/slerp transition, approach offset |
 | `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
@@ -65,10 +65,11 @@ the predefined `Assembly-CSharp`.
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the plan line's width-to-distance rule, the map pose and its stored-pose round trip, input routing and both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
+| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, and the map switch reaches the rig and raises the far clip |
 
-The suite currently has **236 tests**. It deliberately tests the shipped
+The suite currently has **255 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -131,6 +132,14 @@ vector at yaw 0 is `(0, 0, −1)` in Unity space; the map near plane at the
 ceiling is 12,000 units (12 million km); and the map far plane is 40,000,000
 units (40 billion km, about 267 AU). The pan ease is 3/s, so ten seconds leaves
 less than a metre of a 60 AU offset.
+
+The map drawing rules have these anchors: the marker radius is 4.5 px at
+`w = 0` and 6 px at `w = 1`; a moon labels while the camera is inside 5× its
+parent's SOI, which is 4,620,000 km for Earth's Moon (Earth SOI 924,000 km, so
+the boundary is about 4,620 render units) and therefore not at full-system
+zoom; the class rank puts the Sun, planets, and stations at 1 and moons and
+asteroids at 0; and the map orbit line is `0.0015 × camera distance`, capped at
+20,000 units.
 
 The gravity ceiling is asserted for every planet and moon in the catalogue: the
 parking gravity is at most 40% of the drive unless the Hill sphere caps the orbit

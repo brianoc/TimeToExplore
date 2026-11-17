@@ -75,12 +75,15 @@ namespace TimeToExplore.Rendering
         public BodyView GetView(BodyRuntime body) =>
             body != null && _views.TryGetValue(body.Id, out BodyView view) ? view : null;
 
-        public void Refresh(Vector3d shipPositionM, double julianDate)
+        public void Refresh(Vector3d shipPositionM, double julianDate,
+            float mapBlendWeight = 0f, float cameraDistanceUnits = 0f)
         {
             if (_model == null) return;
 
-            float minPixels = 4.5f;
-            _minAngularSize = _camera.fieldOfView * Mathf.Deg2Rad * minPixels / Mathf.Max(Screen.height, 1);
+            float fieldOfView = _camera != null ? _camera.fieldOfView : 60f;
+            float minPixels = MarkerSizing.MinimumPixels(mapBlendWeight);
+            _minAngularSize = MarkerSizing.MinimumAngularSize(
+                minPixels, fieldOfView, Screen.height);
 
             foreach (BodyView view in _views.Values)
                 view.Refresh(_camera, shipPositionM, julianDate, TrueScale, _minAngularSize);
@@ -89,10 +92,12 @@ namespace TimeToExplore.Rendering
                 Shader.SetGlobalVector("_SunPosition", _sunView.transform.position);
 
             foreach (OrbitLine orbit in _planetOrbits)
-                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits);
+                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits,
+                    cameraDistanceUnits, mapBlendWeight);
 
             foreach (OrbitLine orbit in _moonOrbits)
-                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits && ShowMoonOrbits);
+                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits && ShowMoonOrbits,
+                    cameraDistanceUnits, mapBlendWeight);
         }
     }
 }

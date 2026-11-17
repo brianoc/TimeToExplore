@@ -127,7 +127,9 @@ namespace TimeToExplore
             BuildTargets();
             Selected = Model.Get("earth") ?? Model.Sun;
 
-            Renderer.Refresh(ShipPositionM, Clock.JulianDate);
+            Renderer.Refresh(ShipPositionM, Clock.JulianDate,
+                Rig != null ? Rig.MapBlendWeight : 0f,
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
         }
 
         private void EnsureCamera()
@@ -221,7 +223,9 @@ namespace TimeToExplore
                     ShipVelocityMps);
             }
 
-            Renderer.Refresh(ShipPositionM, Clock.JulianDate);
+            Renderer.Refresh(ShipPositionM, Clock.JulianDate,
+                Rig != null ? Rig.MapBlendWeight : 0f,
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
             if (Trajectory != null) Trajectory.Refresh(ShipPositionM, ViewCamera);
         }
 
