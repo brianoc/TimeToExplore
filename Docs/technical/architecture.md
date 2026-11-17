@@ -410,8 +410,8 @@ details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
 rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
 core, the input seam's key table and mouse conversions, the uGUI HUD's object
-graph, content, and button wiring, the assembly layout graph, and the scene's
-frame loop.
+graph, content, and button wiring, the assembly layout graph, the scene's frame
+loop, and the same map-to-arrival flight through the real bootstrap.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -454,9 +454,9 @@ deferred until the presentation code settles.
   coverage yet, so button hit areas and canvas scaling still need a human eye.
 * The scene is generated at runtime; there is no authored art scene.
 * The system map has its camera pose, markers, labels, picking, orbit-line
-  width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), and the
-  Plot route → Begin preview with its target-arrival ghost (step 5). The
-  frame-loop acceptance (step 6) is not built yet. The `EnableMapView`
+  width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), the
+  Plot route → Begin preview with its target-arrival ghost (step 5), and the
+  frame-loop acceptance through the real bootstrap (step 6). The `EnableMapView`
   comparison switch is temporary; it also gates the aid fade so the shipped
   scene keeps its old local look until the switch defaults on.
 * The rendering migration stops at the URP forward path: there is no

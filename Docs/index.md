@@ -46,7 +46,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Input](/technical/input.md) — the input map, the Input System seam and uGUI input module, why Active Input Handling is New only, and the mouse and wheel rules.
 * [The flight session](/technical/flight-session.md) — plot a route, press Begin, watch the ship fly: ship ownership, the warp cap, the trajectory line, and the flight panel.
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it in debug flight.
-* [The system map and route preview](/technical/system-map.md) — in progress: the blended top-down map, map drawing and picking, the local aid fade, and Plot route → Begin are built; frame-loop acceptance is next.
+* [The system map and route preview](/technical/system-map.md) — the blended top-down map, map drawing and picking, the local aid fade, Plot route → Begin, and the frame-loop acceptance are built; the ADR/docs pass is next.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.

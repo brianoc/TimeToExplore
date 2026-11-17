@@ -24,12 +24,12 @@ always at the player's angle. Three things are missing:
    **Begin** button.
 
 This document is the design for that work. It is the next milestone
-([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–5 are
+([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–6 are
 implemented: the plain-C# map state, the camera-rig integration, the map's
-drawing and picking rules, the neighbourhood-aware marker aid, and the
-Plot route → Begin preview.** The frame-loop acceptance (step 6) is next. The
-implementation steps at the end are the task list, and each step carries its
-tests.
+drawing and picking rules, the neighbourhood-aware marker aid, the Plot route →
+Begin preview, and the frame-loop acceptance through the real bootstrap.** The
+documentation pass (step 7) is next. The implementation steps at the end are the
+task list, and each step carries its tests.
 
 # One zoom, two readings of the same camera
 
@@ -393,10 +393,18 @@ Each step is one session-sized piece of work with its tests, in order:
    the flight; `FlightReportTests` covers the preview and stale rows;
    `BootstrapSmokeTests` covers the preview drawing the ghost without flying,
    Begin replanning at the current date, and discard leaving the ship alone.
-6. **Frame-loop acceptance.** Extend `BootstrapSmokeTests`: zoom out to the
-  map, select Mars, plot, Begin, arrive — through the real bootstrap.
+6. **Frame-loop acceptance — done.** `BootstrapSmokeTests` zooms through the
+   rig's real wheel routing from the neighbourhood to the 12-billion-km map
+   ceiling and back, proving the exact remembered angle through the composition
+   root; then it starts on the map, selects Mars, plots, presses Begin, and runs
+   the bootstrap's own `Update`/`LateUpdate` to arrival. `SolarSystemBootstrap`
+   gained a `DeltaTimeSeconds` seam for this: it defaults to `Time.deltaTime`,
+   which EditMode leaves at zero, and the test supplies a fixed 1/60 s step.
+   The acceptance reproduces the scene flight exactly — 3,939 frames, 65.7 real
+   seconds, arrival 2026-11-19 10:29:02 UTC, 0.0 m and 0.0000 m/s, on the
+   3,898 km parking orbit — so the map path and the direct scene path agree.
 7. **Docs.** ADR-009, the camera and flight-session concepts, the roadmap
-  acceptance numbers, and the log.
+   acceptance numbers, and the log.
 
 # Acceptance
 
@@ -409,6 +417,14 @@ Each step is one session-sized piece of work with its tests, in order:
   (0.0 m, 0.0000 m/s in the frame-loop test).
 * In the local view, a body an AU away is a true-scale dot, not an inflated
   marker.
+
+The frame-loop acceptance is measured (`BootstrapSmokeTests`,
+`PlottingAndBeginningMarsFromTheMapArrivesOnTheParkingOrbit`): from the map
+ceiling, select Mars, plot, Begin, and the bootstrap's own frame loop arrives at
+2026-11-19 10:29:02 UTC after 4.44 days — 3,939 frames, 65.7 real seconds at the
+suggested 10,000×, 0.0 m and 0.0000 m/s from the plan, on the 3,898 km parking
+orbit at e = 4.3 × 10⁻⁹. Those are the scene flight's numbers exactly, because
+the map changes the camera, not the trajectory.
 
 # Open questions
 

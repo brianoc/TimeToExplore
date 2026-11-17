@@ -38,7 +38,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite.
-  The suite is 329 tests at milestone 2.5.
+  The suite is 331 tests at milestone 2.5.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -150,8 +150,11 @@ implementation steps are the task list, each with its tests. In order:
    state without moving the ship; a 1% staleness window ages the panel and
    **Replot** refreshes it; `TrajectoryLine` draws a ghost at the target's
    arrival position; the details footer splits **Plot route** and **Begin
-   flight**, and the flight panel shows the PREVIEW rows. The frame-loop
-   acceptance (step 6) and the docs pass (step 7) remain.
+   flight**, and the flight panel shows the PREVIEW rows. **Step 6 is done:**
+   `BootstrapSmokeTests` drives the real bootstrap from the map ceiling through
+   select, plot, Begin, and arrival in 3,939 frames, reproducing the scene
+   flight exactly (2026-11-19 10:29:02, 0.0 m, 0.0000 m/s, 3,898 km, e = 4.3 ×
+   10⁻⁹). The docs pass (step 7) remains.
 
 **Acceptance:** zoom from a parking orbit to the whole system and back to the
 exact prior angle; pan to Jupiter and click it; plot a route, see the curve,
@@ -193,9 +196,8 @@ milestone 2 so the scene work is not blocked on a new propagator.
 # Immediate next tasks
 
 1. **Finish the system map and route preview (milestone 2.5, above).** Steps
-   1–5 are done; continue with the frame-loop acceptance (step 6) and the docs
-   pass (step 7). The design doc's implementation steps are the ordered task
-   list.
+   1–6 are done; continue with the docs pass (step 7). The design doc's
+   implementation steps are the ordered task list.
 2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
    time and delta-v compete. A transfer conic (above) closes part of it in
    delta-v rather than time.

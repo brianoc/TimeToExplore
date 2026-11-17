@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using NUnit.Framework;
 using TimeToExplore.Core;
@@ -219,6 +220,155 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.HasPreview, Is.False);
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.False);
+        }
+
+        /// <summary>
+        /// Step 6 of the system map: one wheel gesture from the neighbourhood to
+        /// the whole system and back, through the real bootstrap. The pose is
+        /// blended, not saved and restored, so the remembered angle must come
+        /// back exactly.
+        /// </summary>
+        [Test]
+        public void ZoomingOutToTheMapAndBackRestoresTheExactAngleThroughTheBootstrap()
+        {
+            Build(enableMapView: true);
+            _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
+
+            // The wheel takes the camera, so the opening auto-framing stops,
+            // exactly as a real notch clears AutoDistance in the rig's input.
+            _bootstrap.Rig.ClearAuto();
+            _bootstrap.Rig.Orbit.YawDegrees = 123.5f;
+            _bootstrap.Rig.Orbit.PitchDegrees = -22.25f;
+            _bootstrap.Rig.Orbit.DistanceUnits =
+                (float)(0.5 * MapView.LocalRadiusM(_bootstrap.Model, _bootstrap.ShipPositionM)
+                        * _bootstrap.UnitsPerMeter);
+            Invoke("LateUpdate");
+
+            float yaw = _bootstrap.Rig.Orbit.YawDegrees;
+            float pitch = _bootstrap.Rig.Orbit.PitchDegrees;
+            Quaternion localRotation = _bootstrap.Rig.PoseRotation;
+            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
+
+            // One gesture is many notches, each routed by the blend at the time
+            // it arrives, which is what the real wheel does over the band.
+            for (int i = 0; i < MapNotches; i++) ScrollOnce(1f);
+
+            Assert.That(_bootstrap.Rig.IsMapSide, Is.True, "the gesture reaches the map");
+            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-5f));
+            Assert.That(_bootstrap.Rig.Orbit.DistanceUnits,
+                Is.EqualTo(MapView.MaxDistanceUnits), "the map ceiling");
+            Assert.That(Vector3.Angle(_bootstrap.Rig.PoseRotation * Vector3.forward, Vector3.down),
+                Is.LessThan(1e-3f), "the map looks straight down the pole");
+            Assert.That(_bootstrap.ViewCamera.farClipPlane, Is.EqualTo(MapView.FarClipUnits));
+
+            for (int i = 0; i < MapNotches; i++) ScrollOnce(-1f);
+
+            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
+            Assert.That(_bootstrap.Rig.Orbit.YawDegrees, Is.EqualTo(yaw));
+            Assert.That(_bootstrap.Rig.Orbit.PitchDegrees, Is.EqualTo(pitch));
+            Assert.That(Quaternion.Angle(_bootstrap.Rig.PoseRotation, localRotation),
+                Is.LessThan(1e-3f), "the exact remembered angle is back");
+            Assert.That(_bootstrap.Rig.LookAtUnits.magnitude, Is.LessThan(1e-6f),
+                "the local view looks at the ship again");
+        }
+
+        /// <summary>
+        /// Step 6's frame-loop acceptance: map, select Mars, plot, Begin, and
+        /// arrive — all through the real composition root. The existing
+        /// Gateway→Mars numbers must hold, so this is the scene-level version of
+        /// <c>SceneFlightTests</c>.
+        /// </summary>
+        [Test]
+        public void PlottingAndBeginningMarsFromTheMapArrivesOnTheParkingOrbit()
+        {
+            Build(enableMapView: true);
+            _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
+            _bootstrap.Rig.ClearAuto();
+            for (int i = 0; i < MapNotches; i++) ScrollOnce(1f);
+            Assert.That(_bootstrap.Rig.IsMapSide, Is.True, "the mission starts on the map");
+
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            Assert.That(_bootstrap.Selected, Is.SameAs(mars));
+
+            _bootstrap.PlotRoute(mars);
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
+            Assert.That(_bootstrap.Rig.IsMapSide, Is.True,
+                "plotting frames the target without yanking the map back");
+
+            _bootstrap.BeginPlottedFlight();
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_bootstrap.Flight.Plan.TargetId, Is.EqualTo("mars"));
+
+            TrajectoryPlan plan = _bootstrap.Flight.Plan;
+            int frames = 0;
+            while (_bootstrap.Flight.IsFlying && frames < MaxFrames)
+            {
+                Invoke("Update");
+                Invoke("LateUpdate");
+                frames++;
+            }
+
+            TestContext.WriteLine(
+                $"bootstrap map flight: arrived {JulianDate.Format(_bootstrap.Flight.ArrivedJulianDate)} " +
+                $"in {frames:N0} frames ({frames * FrameSeconds:F1} s real), " +
+                $"warp {SolarSystemBootstrap.ScaleLabel(_bootstrap.RequestedScaleIndex)}");
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Arrived),
+                "the flight must finish through the frame loop, not a teleport");
+            Assert.That(frames, Is.LessThan(MaxFrames), "the loop is bounded");
+            Assert.That(_bootstrap.Clock.JulianDate,
+                Is.EqualTo(_bootstrap.Flight.State.JulianDate).Within(1e-9),
+                "the world never runs ahead of the ship");
+            Assert.That(_bootstrap.Flight.ArrivedJulianDate,
+                Is.EqualTo(plan.ArrivalJulianDate).Within(1e-6));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.Rig.IsMapSide, Is.True,
+                "the map stays usable for the whole flight");
+
+            double positionError = Vector3d.Distance(_bootstrap.Flight.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (_bootstrap.Flight.State.VelocityMps
+                - plan.ArrivalState.VelocityMps).Magnitude;
+            TestContext.WriteLine($"arrival error {positionError:F1} m, {velocityError:F4} m/s");
+
+            Assert.That(positionError, Is.LessThan(10_000.0), "matched within 10 km");
+            Assert.That(velocityError, Is.LessThan(10.0), "matched within 10 m/s");
+
+            BodyRuntime marsAtArrival = _bootstrap.Model.Get("mars");
+            _bootstrap.Model.ComputeState(marsAtArrival, _bootstrap.Flight.State.JulianDate,
+                out Vector3d marsPosition, out Vector3d marsVelocity);
+            Vector3d relativePosition = _bootstrap.Flight.State.PositionM - marsPosition;
+            Vector3d relativeVelocity = _bootstrap.Flight.State.VelocityMps - marsVelocity;
+            double radius = ParkingOrbit.RadiusM(marsAtArrival, plan.MaxAccelerationMps2);
+            double eccentricity = TwoBody.Eccentricity(relativePosition, relativeVelocity,
+                marsAtArrival.Gm);
+
+            TestContext.WriteLine($"parking orbit r={relativePosition.Magnitude / 1000.0:F0} km " +
+                                  $"(target {radius / 1000.0:F0} km), e={eccentricity:E3}");
+
+            Assert.That(Math.Abs(relativePosition.Magnitude - radius) / radius,
+                Is.LessThan(0.02), "the ship is on the parking orbit");
+            Assert.That(eccentricity, Is.LessThan(0.03), "and the orbit is near-circular");
+            Assert.That(_bootstrap.Flight.CurrentThrust.IsActive, Is.False, "the drive is off");
+        }
+
+        private const float FrameSeconds = 1f / 60f;
+        private const int MapNotches = 90;
+        private const int MaxFrames = 20_000;
+
+        /// <summary>One wheel notch through the rig's real routing, then the
+        /// camera frame that applies it.</summary>
+        private void ScrollOnce(float steps)
+        {
+            ShipCameraRig rig = _bootstrap.Rig;
+            rig.Orbit.DistanceUnits = rig.WheelDistanceUnits(
+                rig.Orbit.DistanceUnits, steps, rig.MapBlendWeight);
+            Invoke("LateUpdate");
         }
 
         private void Build(bool enableMapView = false)

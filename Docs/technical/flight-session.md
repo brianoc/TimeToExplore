@@ -248,7 +248,9 @@ wrap, zoom limits, the shortest turn, the slew rate, and the distance easing.
 `SceneFlightTests` is the frame-loop acceptance flight. `BootstrapSmokeTests`
 runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit mode,
 including drawing the preview and its arrival ghost without flying, Begin
-replanning at the current date, and discard leaving the ship alone.
+replanning at the current date, discard leaving the ship alone, and the full
+map-to-arrival acceptance (3,939 frames, 0.0 m and 0.0000 m/s, on the 3,898 km
+parking orbit).
 
 See [Testing and verification](/technical/testing.md) for the suite and the
 numerical anchors, and [Navigation and arrival](/simulation/navigation-and-arrival.md)

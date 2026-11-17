@@ -71,16 +71,22 @@ because Unity test assemblies cannot reference the predefined
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
 | `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
-| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, and discard leaves the ship alone |
+| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the map ceiling and returns to the exact remembered angle, and the full map acceptance — zoom out, select Mars, plot, Begin — arrives on the parking orbit through the bootstrap's own frame loop |
 | `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, and null devices returning neutral values |
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 | `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, `ShowHud`/`ShowLabels`, the one-frame opening guard, and the route/begin/jump/close `onClick` handlers reaching the same owner methods |
 
-The suite currently has **329 tests**. It deliberately tests the shipped
+The suite currently has **331 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
+
+EditMode does not advance `Time.deltaTime`, so `SolarSystemBootstrap` exposes a
+`DeltaTimeSeconds` seam: the scene leaves its default (`() => Time.deltaTime`)
+alone, and the frame-loop acceptance supplies a fixed 1/60 s step. The test
+still calls the real `Update`/`LateUpdate`, so the frame order, the warp policy,
+the clock clamp, and the arrival are the shipped ones.
 
 # Numerical references at the epoch
 
@@ -132,6 +138,12 @@ the suggested initial warp of 10,000×:
 | Mid-cruise plan-event cap | 8,673 s (100,000×) |
 | Flip point | 3.3 hours after departure |
 | Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 05:53, clock never ahead of the ship |
+
+`BootstrapSmokeTests` repeats the same flight through the real composition root,
+from the system map: 3,939 frames, 65.7 s, arrival 2026-11-19 10:29:02 UTC,
+0.0 m and 0.0000 m/s, 3,898 km and e = 4.3 × 10⁻⁹ at arrival. The identical
+counts are the point: the map is a camera pose, so the flight path does not
+depend on how the player found the target.
 
 The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the

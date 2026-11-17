@@ -59,6 +59,13 @@ namespace TimeToExplore
         /// <summary>RK4 substeps one frame may spend on the ship.</summary>
         public int SubstepsPerFrame = FlightSession.DefaultSubstepsPerFrame;
 
+        /// <summary>
+        /// The frame's elapsed seconds. Defaults to <see cref="Time.deltaTime"/>,
+        /// which the scene uses; the frame-loop acceptance test supplies a fixed
+        /// step because EditMode does not advance time.
+        /// </summary>
+        public System.Func<float> DeltaTimeSeconds { get; set; } = () => Time.deltaTime;
+
         public Vector3d ShipPositionM => Flight != null ? Flight.State.PositionM : Vector3d.Zero;
         public Vector3d ShipVelocityMps => Flight != null ? Flight.State.VelocityMps : Vector3d.Zero;
 
@@ -163,6 +170,15 @@ namespace TimeToExplore
             ViewCamera.fieldOfView = 60f;
         }
 
+        /// <summary>
+        /// The frame time this frame uses, from the scene or from the test seam.
+        /// </summary>
+        private float FrameDeltaSeconds()
+        {
+            float seconds = DeltaTimeSeconds != null ? DeltaTimeSeconds() : Time.deltaTime;
+            return seconds > 0f ? seconds : 0f;
+        }
+
         private void Update()
         {
             if (Model == null) return;
@@ -170,7 +186,7 @@ namespace TimeToExplore
             HandleHotkeys();
             if (Flight == null) return;
 
-            float deltaTime = Time.deltaTime;
+            float deltaTime = FrameDeltaSeconds();
 
             if (FreeFlight)
             {
@@ -232,7 +248,7 @@ namespace TimeToExplore
                 }
             }
 
-            if (Rig != null) Rig.Apply(ShipPositionM, Time.deltaTime);
+            if (Rig != null) Rig.Apply(ShipPositionM, FrameDeltaSeconds());
 
             if (ShipMarker != null)
             {
