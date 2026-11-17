@@ -26,11 +26,11 @@ SolarSystemModel ──► BodyRuntime (positions in metres, doubles)
         │                            │
         │                            ├── TripPlanner ──► TrajectoryPlan
         │                            ├── Autopilot ──► thrust command
-        │                            └── FlightSession ──► owns ship + plan + warp
+        │                            └── FlightSession ──► owns ship + plan + preview + warp
         ▼
 SolarSystemRenderer ──► BodyView (spheres / cubes)
         │              ├── OrbitLine (planet and moon ellipses)
-        │              └── TrajectoryLine (Go To plan, dashed capture)
+        │              └── TrajectoryLine (route path, dashed capture, arrival ghost)
         ▼
 Camera at render origin ◄── ShipController (input only; debug free flight)
         │
@@ -64,8 +64,8 @@ clock and asks the session to reach it.
    * If the budget ran out, the clock is clamped back to the date the ship
      reached, so the world never runs ahead of it.
    * `SolarSystemRenderer.Refresh` subtracts the ship position, scales to Unity
-     units, and updates every view and orbit line; `TrajectoryLine` re-projects
-     the plan.
+     units, applies the neighbourhood aid strength, and updates every view and
+     orbit line; `TrajectoryLine` re-projects the plan.
    * The HUD draws date, warp, nearest body, target, and labels, plus the flight
      panel. A left click projects the drawn markers and picks a body; the details
      screen updates from the same model state.
@@ -106,7 +106,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
 | `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve: three arcs, moving-target loop, thrust check |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, and the flight loop |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, and integrator; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
 Gateway→Mars and Mars→Earth are both exercised end to end by the suite, and the
@@ -126,11 +126,11 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | Type | File | Responsibility |
 |---|---|---|
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
-| `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, and its angular conversion |
+| `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Screen-width-aware orbit polyline; orbit-sized locally, camera-sized on the map |
-| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Go To path, dashed capture, flip and arrival markers |
+| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Route path, dashed capture, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
-| `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global |
+| `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
 | `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
@@ -140,7 +140,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: nearest locally, class-priority on the map |
 | `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
-| `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, countdown, and formatting |
+| `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |
 | `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | IMGUI panels, labels, hover, and details screen |
 | `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, hotkeys, and the `EnableMapView` comparison switch |
 | `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu (shipped scene and system-map scene) |
@@ -305,8 +305,8 @@ solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
-blend (pose, input routing, pan, extended zoom, near plane), the flight core,
-and the scene's frame loop.
+blend (pose, input routing, pan, extended zoom, near plane), the map drawing
+rules and neighbourhood aid fade, the flight core, and the scene's frame loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -336,18 +336,20 @@ deferred until the presentation code settles.
   instantaneous. The camera slew is decorative only.
 * No manual thrust: a flight is plan-and-watch. Free flight is a debug teleport,
   not a hand-flown ship.
-* No mid-flight re-plan beyond pressing Go To again, which replans from the
-  current state and discards the old plan.
+* No mid-flight re-plan beyond pressing **Replan** again, which replans from
+  the current state and discards the old plan and any preview.
 * No Lambert solver, no coasting transfers, and no gravity assists.
 * No stationkeeping drift.
 * No N-body perturbations.
 * No save/load.
 * The HUD is immediate-mode and allocation-heavy; fine for a prototype.
 * The scene is generated at runtime; there is no authored art scene.
-* The system map has its camera pose, markers, labels, picking, and orbit-line
-  width (milestone 2.5, steps 1–3). The local marker-aid fade (step 4) and the
-  route preview (steps 5–6) are not built yet. The `EnableMapView` comparison
-  switch is temporary.
+* The system map has its camera pose, markers, labels, picking, orbit-line
+  width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), and the
+  Plot route → Begin preview with its target-arrival ghost (step 5). The
+  frame-loop acceptance (step 6) is not built yet. The `EnableMapView`
+  comparison switch is temporary; it also gates the aid fade so the shipped
+  scene keeps its old local look until the switch defaults on.
 * The shader and materials are built-in-pipeline only. URP/HDRP would need a
   different shader and a camera stack for the far field.
 * Warp drops in the clock's power-of-ten steps, not continuously.

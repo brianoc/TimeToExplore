@@ -26,8 +26,8 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
-  validator, a byte-for-byte generator check, and the Unity EditMode suite
-  (255 tests).
+  validator, a byte-for-byte generator check, and the Unity EditMode suite.
+  The suite is 277 tests at milestone 2.5.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -99,7 +99,7 @@ rather than a model; the camera can still be orbited inside a planet (it is
 pulled out, but as a rescue); there is no manual thrust; and a second Go To
 replans from scratch rather than correcting the existing plan.
 
-# Milestone 2.5 — the system map and route preview (next)
+# Milestone 2.5 — the system map and route preview (in progress)
 
 **Goal: one continuous zoom from the ship to the whole system, a top-down map
 the player can pan and click, and a route they can see before they fly it.**
@@ -125,10 +125,22 @@ implementation steps are the task list, each with its tests. In order:
    on the map, and `OrbitLine` stops a distant orbit becoming a ribbon at close
    map zoom.
 3. The local view stops inflating distant bodies; the marker aid becomes
-   neighbourhood-aware. **Next.**
+   neighbourhood-aware. **Step 4 is done:** `MarkerSizing.AidStrength` keeps
+   the aid full inside the dominant SOI, fades it to true scale by 3× along the
+   camera blend's log-distance band, lets the camera distance widen the
+   neighbourhood, and restores the full aid on the map.
+   `SolarSystemRenderer` applies the per-body strength, and `EnableMapView`
+   gates the fade so the shipped scene keeps its old look during the
+   comparison.
 4. **Plot route** draws the plan as a smooth preview curve with an arrival
    ghost; **Begin** replans from the current state and flies it. The preview
    is a promise of shape, not a contract: time passes between Plot and Begin.
+   **Step 5 is done:** `FlightSession.Plot` holds a preview on a copy of the
+   state without moving the ship; a 1% staleness window ages the panel and
+   **Replot** refreshes it; `TrajectoryLine` draws a ghost at the target's
+   arrival position; the details footer splits **Plot route** and **Begin
+   flight**, and the flight panel shows the PREVIEW rows. The frame-loop
+   acceptance (step 6) and the docs pass (step 7) remain.
 
 **Acceptance:** zoom from a parking orbit to the whole system and back to the
 exact prior angle; pan to Jupiter and click it; plot a route, see the curve,
@@ -169,8 +181,9 @@ milestone 2 so the scene work is not blocked on a new propagator.
 
 # Immediate next tasks
 
-1. **Build the system map and route preview (milestone 2.5, above).** This is
-   the next work; the design doc's implementation steps are the ordered task
+1. **Finish the system map and route preview (milestone 2.5, above).** Steps
+   1–5 are done; continue with the frame-loop acceptance (step 6) and the docs
+   pass (step 7). The design doc's implementation steps are the ordered task
    list.
 2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
    time and delta-v compete. A transfer conic (above) closes part of it in

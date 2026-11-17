@@ -103,8 +103,10 @@ namespace TimeToExplore.Rendering
 
         /// <summary>
         /// How much the true radius must grow to reach the minimum apparent
-        /// size. Pure so the aid and the true-scale override are testable in
-        /// edit mode, where the smoothed scale does not move in one call.
+        /// size. A zero minimum means the neighbourhood aid has faded out, so
+        /// the body stays at its true radius. Pure so the aid and the
+        /// true-scale override are testable in edit mode, where the smoothed
+        /// scale does not move in one call.
         /// </summary>
         public static float TargetScaleFactor(float angularRadius, float minAngularSize,
             bool trueScale)

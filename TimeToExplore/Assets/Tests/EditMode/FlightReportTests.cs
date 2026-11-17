@@ -76,6 +76,45 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void APreviewReportsItsPlanAndTheTimeLeftBeforeItGoesStale()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x1,000", _epoch);
+
+            Assert.That(Find(rows, "Target")?.Value, Is.EqualTo("Mars"));
+            Assert.That(Find(rows, "Status")?.Value, Is.EqualTo("Preview"));
+            Assert.That(Find(rows, "Plotted")?.Value, Does.StartWith("T−"));
+            Assert.That(Find(rows, "Arrival")?.Value,
+                Does.Match(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"));
+            Assert.That(Find(rows, "Flight time"), Is.Not.Null);
+            Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Throttle"), Is.Null, "a preview is not flying");
+            Assert.That(Find(rows, "Note"), Is.Null);
+
+            Assert.That(FlightReport.StatusLabel(_session, _epoch), Is.EqualTo("Preview"));
+            Assert.That(FlightReport.PreviewNextEvent(_session, _epoch),
+                Does.StartWith("Arrival  T−"));
+            Assert.That(preview.FlightTimeDays, Is.GreaterThan(0.0));
+        }
+
+        [Test]
+        public void AStalePreviewIsFlaggedButStillReportsItsPlan()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double staleDate = _epoch + 1.01 * FlightSession.PreviewStaleFraction *
+                                       preview.FlightTimeDays;
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x1,000", staleDate);
+
+            Assert.That(Find(rows, "Status")?.Value, Is.EqualTo("Preview, stale"));
+            Assert.That(Find(rows, "Plotted")?.Value, Does.StartWith("T+"));
+            Assert.That(Find(rows, "Note")?.Value, Does.Contain("stale"));
+            Assert.That(Find(rows, "Target")?.Value, Is.EqualTo("Mars"));
+            Assert.That(FlightReport.StatusLabel(_session, staleDate), Is.EqualTo("Preview, stale"));
+        }
+
+        [Test]
         public void EveryStatusHasAReadableLabel()
         {
             Assert.That(FlightReport.StatusLabel(FlightStatus.Idle), Is.EqualTo("Idle"));

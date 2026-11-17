@@ -24,11 +24,12 @@ always at the player's angle. Three things are missing:
    **Begin** button.
 
 This document is the design for that work. It is the next milestone
-([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–3 are
-implemented: the plain-C# map state, the camera-rig integration, and the map's
-drawing and picking rules.** The local aid fade and the route preview are not
-yet. The implementation steps at the end are the task list, and each step
-carries its tests.
+([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–5 are
+implemented: the plain-C# map state, the camera-rig integration, the map's
+drawing and picking rules, the neighbourhood-aware marker aid, and the
+Plot route → Begin preview.** The frame-loop acceptance (step 6) is next. The
+implementation steps at the end are the task list, and each step carries its
+tests.
 
 # One zoom, two readings of the same camera
 
@@ -217,6 +218,28 @@ local-aware:
   map instead.
 * The `T` true-scale toggle still overrides everything for inspection.
 
+`MarkerSizing.AidStrength(cameraDistanceM, bodyDistanceM, localRadiusM, w)` is
+the pure rule. Inside the neighbourhood the aid is full; beyond it the local
+strength is `1 − smoothstep(x)` with
+`x = clamp(ln(bodyDistance / neighbourhood) / ln(3), 0, 1)`, exactly zero at
+three times the neighbourhood. That is the same log-distance band and
+smoothstep as the camera blend, with the aid on the inside. The map weight then
+eases the strength back to full: `strength = lerp(local, 1, w)`.
+
+The neighbourhood is the larger of the dominant body's SOI radius and the
+camera distance. Zooming out within the local band therefore widens what counts
+as local, so bodies do not disappear while the local camera is still framing a
+wide view. Passing a non-positive or infinite local radius disables the fade and
+returns full aid; the shipped scene does that while `EnableMapView` is off, so it
+keeps the old look during the comparison.
+
+`SolarSystemRenderer.Refresh` converts the strength into a per-body minimum
+angular size, `baseMinAngular × strength`, and hands it to `BodyView`. A body
+outside the neighbourhood is therefore drawn at its true radius, while a partly
+faded body gets a proportionally smaller marker. The drawn radius still feeds
+picking, so a true-scale dot is also a true-scale click target; labels keep
+their existing rules.
+
 The fade is a pure function of camera distance, body distance, and `w`, so it
 is testable without a scene, like the existing aid.
 
@@ -262,6 +285,35 @@ Only one preview exists at a time. Selecting another body replaces it;
 `Esc` or **Close** discards it. While a flight is running, the preview footer
 is replaced by the live flight panel, and the map stays usable: zoom out and
 watch the ship cross the system along the active plan line.
+
+## As built (step 5)
+
+`FlightSession.Plot(targetId, date)` plans from the ship's current state with
+the requested date stamped on a **copy** of the state, stores the result in
+`Preview`, and records `PreviewJulianDate`. It never writes `_state`, changes
+`Status`, raises warp, or touches `Plan`, so a preview cannot move the ship.
+`Begin` discards the preview and replans from `_state` at the current date;
+`Cancel`, `PlaceAt`, and `Teleport` discard it too. A second plot replaces the
+first.
+
+The staleness rule is pure C#: `PreviewStaleFraction = 0.01` of
+`Preview.FlightTimeDays`, exposed as `IsPreviewStale(date)`,
+`PreviewAgeDays(date)`, and `PreviewStaleInSeconds(date)`. `FlightReport`
+builds the PREVIEW rows (status, `Plotted T−…` countdown, stale note) from the
+same plan rows as a live flight, so the phase table, flight time, delta-v, and
+arrival date do not drift between preview and flight. With no active plan the
+bootstrap calls `FlightSession.Coast`, which integrates the idle ship under
+gravity with the drive off, so the ship stays with Gateway and the clock, and
+the preview really ages.
+
+`TrajectoryLine.Show(plan, gravity, targetArrivalPositionM)` adds a smaller
+pale-blue **ghost marker** at the target body's position on the arrival date,
+labelled `TARGET AT ARRIVAL`; the arrival marker stays at the ship's parking
+position. `SolarSystemBootstrap.PlotRoute` draws that preview and frames the
+target without changing the clock; `BeginPlottedFlight` consumes the preview
+and calls the existing `BeginGoTo`, which replans and raises warp. The details
+footer becomes **Plot route** / **Replot route**, **Begin flight**, **Jump
+(debug)**, and **Close**; the live footer keeps **Replan**.
 
 # What this does not change
 
@@ -317,14 +369,29 @@ Each step is one session-sized piece of work with its tests, in order:
   the label window and the local opening shot, the ship label, and the orbit
   width; `SelectionAndFocusTests` covers the class ranks, the overlap, the
   separated moon, the same-class tie, and the unchanged local picker.
-4. **The local aid fade.** The neighbourhood falloff as a pure function;
-  tests for full strength inside the SOI, true scale far outside, and the
-  `T` override.
-5. **Preview and Begin.** `FlightSession` holds a preview without taking
-  ownership; Begin replans and flies; the staleness computation; the preview
-  rows in `FlightReport`. Tests: a preview never moves the ship; Begin after
-  a clock advance replans from the new state and still arrives exactly;
-  cancel clears; one preview at a time.
+4. **The local aid fade — done.** The neighbourhood falloff is a pure function;
+  full inside the dominant body's SOI, then `1 − smoothstep` along the same
+  factor-of-3 log-distance band, and a lerp back to full by the map weight.
+  The neighbourhood is `max(SOI radius, camera distance)`, so the local view
+  widens it as the camera zooms out. `SolarSystemRenderer.Refresh` receives the
+  local radius and passes `baseMinAngular × strength` to each `BodyView`, so
+  the drawn marker and picking follow the faded size. `BootstrapSmokeTests`
+  proves the `EnableMapView` switch gates the fade; the shipped scene keeps the
+  old full-strength aid. Tests: `MapDrawingTests` covers full strength inside
+  the SOI, the monotonic fade to true scale at 3×, the map restoring the aid,
+  the camera widening the neighbourhood, the disabled fallback, and the `T`
+  override.
+5. **Preview and Begin — done.** `FlightSession.Plot` holds a preview on a
+   copy of the state without taking ownership; `Begin` consumes it, replans
+   from the current state and date, and flies; `PreviewStaleFraction = 0.01`
+   drives the staleness computation; `FlightReport` gains the PREVIEW rows and
+   the `Plotted T−…` countdown; `TrajectoryLine` draws the arrival ghost; the
+   details footer splits Plot/Replot and Begin. Tests: `FlightSessionTests`
+   proves a preview never moves the ship, one preview replaces another, Begin
+   consumes it, Cancel clears it, and the staleness window is one percent of
+   the flight; `FlightReportTests` covers the preview and stale rows;
+   `BootstrapSmokeTests` covers the preview drawing the ghost without flying,
+   Begin replanning at the current date, and discard leaving the ship alone.
 6. **Frame-loop acceptance.** Extend `BootstrapSmokeTests`: zoom out to the
   map, select Mars, plot, Begin, arrive — through the real bootstrap.
 7. **Docs.** ADR-009, the camera and flight-session concepts, the roadmap

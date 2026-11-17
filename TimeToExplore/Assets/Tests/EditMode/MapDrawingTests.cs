@@ -12,6 +12,7 @@ namespace TimeToExplore.Tests.EditMode
     public class MapDrawingTests
     {
         private const float UnitsPerMeter = 1e-6f;
+        private const double CloseCameraM = 2.0e6; // 2,000 km, inside the Moon's SOI
 
         private SolarSystemModel _model;
 
@@ -76,6 +77,110 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(MarkerSizing.MinimumAngularSize(4.5f, 60f, 0),
                 Is.EqualTo(MarkerSizing.MinimumAngularSize(4.5f, 60f, 1)),
                 "a degenerate screen height must not divide by zero");
+        }
+
+        // ------------------------------------------------------- neighbourhood aid
+
+        [Test]
+        public void TheMarkerAidIsFullInsideTheLocalNeighbourhood()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 0.5 * moonSoiM, moonSoiM, 0f),
+                Is.EqualTo(1f).Within(1e-6f));
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, moonSoiM, moonSoiM, 0f),
+                Is.EqualTo(1f).Within(1e-6f),
+                "the SOI boundary itself is still the neighbourhood");
+        }
+
+        [Test]
+        public void TheMarkerAidFadesToTrueScaleBeyondTheNeighbourhood()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+
+            float halfwayOut = MarkerSizing.AidStrength(CloseCameraM, 2.0 * moonSoiM, moonSoiM, 0f);
+            Assert.That(halfwayOut, Is.GreaterThan(0f).And.LessThan(1f),
+                "the fade is gradual, not a step at the SOI edge");
+
+            Assert.That(
+                MarkerSizing.AidStrength(CloseCameraM,
+                    MarkerSizing.NeighbourhoodFadeRatio * moonSoiM, moonSoiM, 0f),
+                Is.EqualTo(0f).Within(1e-6f));
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, MapView.AstronomicalUnitM,
+                    moonSoiM, 0f),
+                Is.EqualTo(0f).Within(1e-6f),
+                "a planet an AU away renders at true scale");
+        }
+
+        [Test]
+        public void TheMarkerAidFallsMonotonicallyAcrossTheFadeBand()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+            float previous = 2f;
+
+            for (int i = 0; i <= 100; i++)
+            {
+                double ratio = 1.0 + 2.0 * i / 100.0;
+                float value = MarkerSizing.AidStrength(CloseCameraM, ratio * moonSoiM,
+                    moonSoiM, 0f);
+
+                Assert.That(value, Is.LessThanOrEqualTo(previous + 1e-6f));
+                previous = value;
+            }
+        }
+
+        [Test]
+        public void TheAidNeighbourhoodGrowsAsTheCameraZoomsOut()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+            double bodyM = 2.0 * moonSoiM;
+
+            float close = MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0f);
+            float wide = MarkerSizing.AidStrength(4.0 * moonSoiM, bodyM, moonSoiM, 0f);
+
+            Assert.That(close, Is.GreaterThan(0f).And.LessThan(1f));
+            Assert.That(wide, Is.EqualTo(1f).Within(1e-6f),
+                "a body inside the zoomed-out view keeps its marker");
+        }
+
+        [Test]
+        public void TheMapRestoresTheAidEverywhere()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+            double bodyM = MapView.AstronomicalUnitM;
+
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0f),
+                Is.EqualTo(0f).Within(1e-6f));
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0.5f),
+                Is.EqualTo(0.5f).Within(1e-5f),
+                "the blend eases the aid back before the map is fully engaged");
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 1f),
+                Is.EqualTo(1f).Within(1e-6f));
+        }
+
+        [Test]
+        public void AnUnknownNeighbourhoodKeepsTheOldFullAid()
+        {
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 1e13, 0.0, 0f),
+                Is.EqualTo(1f), "the shipped scene passes no local scale");
+            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 1e13,
+                    double.PositiveInfinity, 0f),
+                Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void TheFadedAidStillYieldsToTrueScale()
+        {
+            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
+            float strength = MarkerSizing.AidStrength(CloseCameraM,
+                MarkerSizing.NeighbourhoodFadeRatio * moonSoiM, moonSoiM, 0f);
+            float baseMinAngular = MarkerSizing.MinimumAngularSize(4.5f, 60f, 1080);
+
+            Assert.That(strength, Is.EqualTo(0f).Within(1e-6f));
+            Assert.That(BodyView.TargetScaleFactor(1e-9f, baseMinAngular * strength,
+                trueScale: false), Is.EqualTo(1f));
+            Assert.That(BodyView.TargetScaleFactor(1e-9f, baseMinAngular, trueScale: true),
+                Is.EqualTo(1f), "T bypasses the aid whether or not it is faded");
         }
 
         // --------------------------------------------------------------- labels

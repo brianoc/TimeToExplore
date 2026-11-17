@@ -69,6 +69,25 @@ namespace TimeToExplore.Tests.EditMode
                 "the map camera needs the larger far clip");
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheMapSwitchGatesTheNeighbourhoodAidFade(bool enableMapView)
+        {
+            Build(enableMapView);
+
+            if (!enableMapView)
+            {
+                Assert.That(_bootstrap.Renderer.LocalAidRadiusM, Is.Zero,
+                    "the shipped scene keeps the old full-strength aid");
+                return;
+            }
+
+            double moonSoiM = SphereOfInfluence.RadiusM(_bootstrap.Model.Get("moon"));
+            Assert.That(_bootstrap.Renderer.LocalAidRadiusM,
+                Is.EqualTo(moonSoiM).Within(1.0),
+                "Gateway's neighbourhood is the Moon's SOI");
+        }
+
         [Test]
         public void PressingGoToDrawsThePlanAndStartsTheFlight()
         {
@@ -120,6 +139,86 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.LessThan(1e-6));
             Assert.That(_bootstrap.Flight.IsFlying, Is.True);
             Assert.That(_bootstrap.FreeFlight, Is.False);
+        }
+
+        [Test]
+        public void PlottingDrawsThePreviewAndTheArrivalGhostWithoutFlying()
+        {
+            Build();
+            Vector3d before = _bootstrap.ShipPositionM;
+            double date = _bootstrap.Clock.JulianDate;
+
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
+            Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.Zero,
+                "a preview must not move the ship");
+            Assert.That(_bootstrap.Clock.JulianDate, Is.EqualTo(date));
+            Assert.That(_bootstrap.RequestedScaleIndex, Is.EqualTo(0),
+                "a preview must not raise warp");
+
+            Invoke("LateUpdate");
+
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Model.ComputeState(mars, _bootstrap.Flight.Preview.ArrivalJulianDate,
+                out Vector3d marsAtArrival, out _);
+            Vector3 expected = ((marsAtArrival - _bootstrap.ShipPositionM) *
+                                _bootstrap.UnitsPerMeter).ToUnity();
+
+            Assert.That(Vector3.Distance(_bootstrap.Trajectory.GhostMarkerPosition, expected),
+                Is.LessThan(1e-3f), "the ghost marks where Mars will be on arrival");
+        }
+
+        [Test]
+        public void BeginningAPlottedRouteReplansAtTheCurrentDateAndFlies()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            double later = _bootstrap.Clock.JulianDate + 0.05;
+            _bootstrap.Clock.JulianDate = later;
+
+            _bootstrap.BeginPlottedFlight();
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_bootstrap.Flight.Plan.DepartureJulianDate,
+                Is.EqualTo(later).Within(1e-12));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
+            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void TheClockRunsWhileIdleSoAPlottedPreviewCanAge()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            double staleDate = _bootstrap.Clock.JulianDate + 0.08;
+
+            _bootstrap.Clock.JulianDate = staleDate;
+            Invoke("Update");
+
+            Assert.That(_bootstrap.Clock.JulianDate, Is.GreaterThanOrEqualTo(staleDate),
+                "with no active flight the clock must not be clamped back to the ship");
+            Assert.That(_bootstrap.Flight.IsPreviewStale(_bootstrap.Clock.JulianDate), Is.True);
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True, "ageing does not discard the preview");
+        }
+
+        [Test]
+        public void DiscardingAPreviewLeavesTheShipAndItsFlightAlone()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+
+            _bootstrap.DiscardPreview();
+
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False);
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.False);
         }
 
         private void Build(bool enableMapView = false)

@@ -58,18 +58,18 @@ the predefined `Assembly-CSharp`.
 | `ShipIntegratorTests` | orbit stability, Kepler agreement, kinematic thrust, the brachistochrone table, step-size independence, collision, step cap |
 | `TripPlannerTests` | arc chain and phases, exact arrival, seam continuity, flight-time envelope, Venus, Jupiter at the ceiling, the Moon, LEO departure, determinism, no mutation |
 | `FlightExecutionTests` | plan, fly, and arrive at Mars and Jupiter in stable orbits; feedback from a perturbed start; Mars back to Earth; the orrery is untouched |
-| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation |
+| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window), and the idle coast that keeps the ship moving with the clock |
 | `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
 | `PlanPathTests` | arc boundary walking and the flip point's sign change |
-| `FlightReportTests` | the phase table, live rows, arrival rows, status labels, countdown formatting |
+| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, status labels, countdown formatting |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the plan line's width-to-distance rule, the map pose and its stored-pose round trip, input routing and both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
-| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
+| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
-| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, and the map switch reaches the rig and raises the far clip |
+| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, and discard leaves the ship alone |
 
-The suite currently has **255 tests**. It deliberately tests the shipped
+The suite currently has **277 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -140,6 +140,21 @@ the boundary is about 4,620 render units) and therefore not at full-system
 zoom; the class rank puts the Sun, planets, and stations at 1 and moons and
 asteroids at 0; and the map orbit line is `0.0015 × camera distance`, capped at
 20,000 units.
+
+The neighbourhood aid is anchored at Gateway, where the Moon's 66,194 km SOI is
+the local scale: the aid is full at the SOI edge, part-way down at 2× (132,388 km),
+and exactly zero at 3× (198,582 km). The map weight lerps it back to full, so a
+body an AU away is true-scale in the local view and a 6 px marker on the map.
+The neighbourhood is the larger of the SOI radius and the camera distance, and a
+non-positive or infinite radius disables the fade for the shipped scene.
+
+The route preview uses the same Gateway→Mars plan, 4.44 days: the staleness
+window is `PreviewStaleFraction = 0.01` of the flight, about 3,836 s
+(1 h 4 m), so the `Plotted T−…` row starts near that value. Begin replans at the
+current date rather than flying the preview, and the ghost marker sits at Mars's
+position on the arrival date, not at the ship's parking position. While idle the
+session coasts the ship under gravity with the drive off, so the ship stays with
+Gateway and the clock, and a 1.2-hour coast is already past the Mars window.
 
 The gravity ceiling is asserted for every planet and moon in the catalogue: the
 parking gravity is at most 40% of the drive unless the Hill sphere caps the orbit

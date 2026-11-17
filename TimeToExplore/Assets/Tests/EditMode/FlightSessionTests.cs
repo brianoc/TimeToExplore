@@ -194,6 +194,117 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void PlottingARouteNeverMovesTheShipOrTakesOwnership()
+        {
+            ShipState before = _session.State;
+
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+
+            Assert.That(preview, Is.Not.Null);
+            Assert.That(preview.TargetId, Is.EqualTo("mars"));
+            Assert.That(_session.HasPreview, Is.True);
+            Assert.That(_session.IsPreviewing, Is.True);
+            Assert.That(_session.Plan, Is.Null, "a preview is not a flight plan");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_session.State.JulianDate, Is.EqualTo(before.JulianDate));
+            Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM), Is.Zero);
+            Assert.That(_session.State.VelocityMps.Magnitude, Is.EqualTo(before.VelocityMps.Magnitude));
+        }
+
+        [Test]
+        public void BeginAfterAPlotReplansFromTheCurrentDateAndArrivesExactly()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double later = _epoch + 0.05;
+
+            TrajectoryPlan plan = _session.Begin("mars", later);
+
+            Assert.That(plan, Is.Not.SameAs(preview), "Begin must replan, not fly the preview");
+            Assert.That(plan.DepartureJulianDate, Is.EqualTo(later).Within(1e-12));
+            Assert.That(_session.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_session.State.JulianDate, Is.EqualTo(later));
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+
+            FlightStep step = _session.Advance(plan.ArrivalJulianDate, 50_000);
+
+            Assert.That(step.Arrived, Is.True);
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived));
+            Assert.That(Vector3d.Distance(_session.State.PositionM, plan.ArrivalState.PositionM),
+                Is.LessThan(10_000.0));
+        }
+
+        [Test]
+        public void ASecondPlotReplacesTheFirstAndCancelClearsIt()
+        {
+            _session.Plot("mars", _epoch);
+            TrajectoryPlan venus = _session.Plot("venus", _epoch);
+
+            Assert.That(_session.Preview, Is.SameAs(venus), "only one preview exists");
+            Assert.That(_session.Preview.TargetId, Is.EqualTo("venus"));
+
+            _session.Cancel();
+
+            Assert.That(_session.HasPreview, Is.False);
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+        }
+
+        [Test]
+        public void APreviewIsFreshUntilOnePercentOfItsFlightTimeHasPassed()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double window = FlightSession.PreviewStaleFraction * preview.FlightTimeDays;
+
+            Assert.That(window, Is.GreaterThan(0.0));
+            Assert.That(_session.IsPreviewStale(_epoch), Is.False);
+            Assert.That(_session.IsPreviewStale(_epoch + 0.5 * window), Is.False);
+            Assert.That(_session.IsPreviewStale(_epoch + 1.01 * window), Is.True);
+            Assert.That(_session.PreviewStaleInSeconds(_epoch + 0.5 * window),
+                Is.GreaterThan(0.0));
+            Assert.That(_session.PreviewStaleInSeconds(_epoch + 1.01 * window),
+                Is.LessThan(0.0));
+        }
+
+        [Test]
+        public void AnIdleShipCoastsWithTheClockAndKeepsItsPreview()
+        {
+            _session.Plot("mars", _epoch);
+            ShipState before = _session.State;
+            double later = _epoch + 1.2 / 24.0;
+
+            FlightStep step = _session.Coast(later, 20_000);
+
+            Assert.That(step.ReachedJulianDate, Is.EqualTo(later).Within(1e-9));
+            Assert.That(_session.State.JulianDate, Is.EqualTo(later).Within(1e-9));
+            Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM),
+                Is.GreaterThan(1.0), "the ship moves on its orbit");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_session.HasPreview, Is.True, "coasting must not discard the preview");
+            Assert.That(_session.IsPreviewStale(later), Is.True,
+                "1.2 hours is past the Mars preview's one-percent window");
+        }
+
+        [Test]
+        public void CoastingIsRefusedWhileAFlightOwnsTheShip()
+        {
+            _session.Begin("mars", _epoch);
+            ShipState before = _session.State;
+
+            FlightStep step = _session.Coast(_epoch + 0.01, 20_000);
+
+            Assert.That(step.ReachedJulianDate, Is.EqualTo(before.JulianDate));
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+        }
+
+        [Test]
+        public void AnUnknownPreviewTargetIsRejectedAndLeavesTheOldPreviewAlone()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+
+            Assert.Throws<ArgumentException>(() => _session.Plot("planet-x", _epoch));
+            Assert.That(_session.Preview, Is.SameAs(preview));
+        }
+
+        [Test]
         public void PlanningAndFlyingLeaveTheOrreryUntouched()
         {
             double date = _model.CurrentJulianDate;

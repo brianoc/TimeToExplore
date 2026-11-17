@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: The flight session
-description: How pressing Go To flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
+description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-16T00:00:00Z }
@@ -15,9 +15,10 @@ for tests. Now the scene has a ship:
 
 * it starts at Gateway Station, so the default trip is the one the suite
   measures;
-* **Go To** on the details screen plans the trip and flies it;
+* **Plot route** on the details screen plans the trip and draws it as a
+  preview; **Begin flight** replans from the current state and flies it;
 * the plan is drawn in the world, with the capture arc dashed, a flip marker,
-  and an arrival marker;
+  an arrival marker, and a ghost at the target's arrival position;
 * the flight panel shows the phase table, the countdown, the throttle, and the
   delta-v;
 * time warp drops by itself near a body and before each plan boundary;
@@ -38,8 +39,9 @@ session to reach it.
 3. `Clock.Advance(Time.deltaTime)` with the capped scale.
 4. `FlightSession.Advance(Clock.JulianDate, SubstepsPerFrame)` — integrate the
    ship, split at plan arc boundaries, stopping on the arrival date.
-5. If the session reached an earlier date than the clock asked for, the clock is
-   **clamped back** to the session's date. Then `Model.Update` again.
+5. If a flight is active and the session reached an earlier date than the clock
+   asked for, the clock is **clamped back** to the session's date. Then
+   `Model.Update` again.
 
 Step 5 is the important one. The integrator has a per-frame substep budget
 (2,000 by default). In cruise a 600-second step covers most of an arc; in a Mars
@@ -47,6 +49,12 @@ parking orbit the step is about 12 seconds, so a 16,700-second frame would need
 roughly 1,400 substeps. When the budget runs out, the ship is left at the last
 completed substep and the world follows it, so rendering and physics never
 disagree and the next frame resumes from there.
+
+The clamp applies whether a flight is integrating or an idle ship is coasting.
+With no active plan the session coasts the ship under gravity with the drive
+off, so the clock, the ship, and a plotted preview all advance together and the
+orrery keeps moving while the player reads it. Begin then replans from the
+current state and date.
 
 The session also stops at the plan's arrival date even when the clock asks for
 longer. That is what makes the arrival exact: the last leg's target is the
@@ -79,6 +87,30 @@ real seconds. Gateway→Mars is 4.44 days, so it starts at 10,000× (38 s) and t
 policy takes over near Mars. The status panel says `warp held by the flight
 policy · auto from x1,000,000` whenever the cap is binding.
 
+# Plot route, then Begin
+
+The details footer splits the old one-press **Go To** into two actions:
+
+1. **Plot route** calls `FlightSession.Plot(targetId, Clock.JulianDate)`.
+   The planner runs on a copy of the ship state with the requested date, and
+   the result is held as `Preview`. It is data, not a flight: the ship, its
+   `Status`, the clock, and the warp are untouched.
+2. **Begin flight** calls `BeginGoTo`, which always replans from the current
+   state and date. `FlightSession.Begin` discards the preview, so the flown
+   curve is close to the preview but never stale.
+
+The preview is a promise of shape, not a contract. The clock keeps running,
+warp may be raised, and the ship keeps moving, so the panel ages the preview:
+after the clock advances `PreviewStaleFraction` (1%) of the planned flight time
+since the plot, the status reads `Preview, stale` and a note says **replot or
+begin anyway**. **Replot route** refreshes it on demand. There is no automatic
+per-frame replanning.
+
+Only one preview exists. A second plot replaces it; selecting another body,
+`Esc`, **Close**, Cancel, teleport, and reset all discard it. `Begin` consumes
+it. While a flight is running the live panel takes over and the route stays
+usable.
+
 # The plan in the world
 
 `TrajectoryLine` samples the plan once, at 64 points per arc, and re-projects it
@@ -91,7 +123,10 @@ into the ship-relative frame every frame. It draws
 * an **orange marker at the flip** — the point where the along-track thrust
   changes sign, which is the top of the arc rather than a bang-bang switch. On
   the Mars plan it is 3.3 hours after departure;
-* a **green marker at the arrival point**, on the parking orbit.
+* a **green marker at the arrival point**, on the parking orbit;
+* a smaller pale-blue **ghost at the target's arrival position**, so the player
+  sees where the planet will be when the route meets it. `TARGET AT ARRIVAL`
+  labels it, and the ghost is drawn for a preview and a live flight alike.
 
 Line width follows the **camera distance**, not the path: `0.0015 × camera
 distance`, which is about 1.5 pixels at the near end. The earlier rule used the
@@ -129,17 +164,31 @@ countdown to the next action (`Arrival  T− 12m 04s`). On arrival the status
 reads `Arrived, in orbit`, the countdown reads `Arrived`, and the flip reads
 `passed`.
 
+A route preview uses the same plan rows with `PREVIEW` in place of `NOW`:
+
+```
+PREVIEW
+  Status        Preview
+  Plotted       T− 58m 12s
+```
+
+`Plotted` counts down the staleness window, not the flight: when it reaches
+zero the status becomes `Preview, stale` and the note says **Preview stale ·
+replot or begin anyway**. The header line counts down to the planned arrival.
+
 # Input in the scene
 
 | Input | Action |
 |---|---|
-| **Go To …** on the details screen | Plan and fly to the selected body; raises the warp. Reads **Plan infeasible** and is disabled if the body's last plan was rejected |
+| **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
+| **Begin flight** | Replan from the current state and date, then fly; enabled once a preview exists |
+| **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |
-| `X` | Cancel the flight; the ship keeps its state |
-| `` ` `` | Toggle debug free flight; cancels the flight |
-| `R` | Reset the ship to Gateway and the warp to 1× |
+| `X` | Cancel the flight and discard any preview; the ship keeps its state |
+| `` ` `` | Toggle debug free flight; cancels the flight and preview |
+| `R` | Reset the ship to Gateway, discard the preview, and set warp to 1× |
 | `1`–`7`, `Space` | Requested warp and pause; the policy may lower the request |
-| `Esc` | Close the details screen / cancel a debug jump |
+| `Esc` | Close the details screen and discard a preview / cancel a debug jump |
 | Right-drag, wheel | Orbit the camera and zoom |
 | `W A S D Q E`, `,` `.` | Debug free flight only (move and change speed) |
 
@@ -187,16 +236,19 @@ ahead of the ship.
 # Verification
 
 `FlightSessionTests` covers ownership, planning, the exact arrival, budget
-clamping, cancel, teleport, a flight through a body, and that planning leaves the
-orrery untouched. `WarpPolicyTests` covers the three caps and the scale
-rounding. `PlanPathTests` covers the arc boundaries and the flip.
-`FlightReportTests` covers the panel rows and the countdown format.
-`OrbitCameraTests` covers the pitch clamp, yaw wrap, zoom limits, the shortest
-turn, the slew rate, and the distance easing. `CameraRigTests` covers the
-framing distance and the follow flags. `SceneFlightTests` is the frame-loop
-acceptance flight. `BootstrapSmokeTests`
+clamping, cancel, teleport, a flight through a body, that planning leaves the
+orrery untouched, and the preview: it never moves the ship, one replaces
+another, Begin consumes it and replans at the current date, Cancel clears it,
+and the staleness window is one percent of the flight. `WarpPolicyTests` covers
+the three caps and the scale rounding. `PlanPathTests` covers the arc boundaries
+and the flip. `FlightReportTests` covers the panel rows, the preview and stale
+rows, and the countdown format. `OrbitCameraTests` covers the pitch clamp, yaw
+wrap, zoom limits, the shortest turn, the slew rate, and the distance easing.
+`CameraRigTests` covers the framing distance and the follow flags.
+`SceneFlightTests` is the frame-loop acceptance flight. `BootstrapSmokeTests`
 runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit mode,
-so the scene wiring is checked without pressing Play.
+including drawing the preview and its arrival ghost without flying, Begin
+replanning at the current date, and discard leaving the ship alone.
 
 See [Testing and verification](/technical/testing.md) for the suite and the
 numerical anchors, and [Navigation and arrival](/simulation/navigation-and-arrival.md)

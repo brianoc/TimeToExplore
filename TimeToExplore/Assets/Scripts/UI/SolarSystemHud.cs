@@ -48,6 +48,7 @@ namespace TimeToExplore.UI
         public void CloseDetails()
         {
             _detailsOpen = false;
+            _owner?.DiscardPreview();
         }
 
         private void EnsureStyles()
@@ -121,7 +122,7 @@ namespace TimeToExplore.UI
         {
             if (_owner == null || _owner.Model == null) return;
 
-            if (Input.GetKeyDown(KeyCode.Escape)) _detailsOpen = false;
+            if (Input.GetKeyDown(KeyCode.Escape)) CloseDetails();
 
             UpdatePointer();
         }
@@ -153,7 +154,8 @@ namespace TimeToExplore.UI
             (_detailsOpen && _detailsRect.Contains(pointer)) ||
             HasFlightPanel && _flightRect.Contains(pointer);
 
-        private bool HasFlightPanel => _owner?.Flight?.Plan != null;
+        private bool HasFlightPanel =>
+            _owner?.Flight != null && (_owner.Flight.Plan != null || _owner.Flight.HasPreview);
 
         private BodyRuntime PickAt(Vector2 pointer)
         {
@@ -305,7 +307,7 @@ namespace TimeToExplore.UI
                 rowsHeight += row.IsHeading ? headingHeight : rowHeight;
 
             const float headerHeight = 95f;
-            const float footerHeight = 86f;
+            const float footerHeight = 122f;
             float height = headerHeight + rowsHeight + footerHeight;
             Rect panel = new Rect(Screen.width - DetailsWidth - Margin, Margin, DetailsWidth, height);
             _detailsRect = panel;
@@ -353,31 +355,48 @@ namespace TimeToExplore.UI
                 y += row.IsHeading ? headingHeight : rowHeight;
             }
 
-            float buttonY = panel.y + panel.height - 76f;
+            float buttonY = panel.y + panel.height - 112f;
 
             // The click that opened this panel must not also press a button.
             bool interactive = Time.frameCount != _detailsOpenedFrame;
-            bool flying = _owner.Flight != null && _owner.Flight.IsFlying;
-            bool rejected = _owner.Flight != null &&
-                            _owner.Flight.Status == FlightStatus.Rejected &&
-                            _owner.Flight.TargetId == body.Id;
+            FlightSession flight = _owner.Flight;
+            bool flying = flight != null && flight.IsFlying;
+            bool rejected = flight != null &&
+                            flight.Status == FlightStatus.Rejected &&
+                            flight.TargetId == body.Id;
+            bool hasPreview = flight != null && flight.HasPreview &&
+                              flight.Preview.TargetId == body.Id;
+            bool plottable = body.Gm > 0.0 && !rejected;
 
             bool previousEnabled = GUI.enabled;
-            GUI.enabled = interactive && body.Gm > 0.0 && !rejected;
+            GUI.enabled = interactive && plottable;
 
-            string goLabel;
-            if (rejected) goLabel = "Plan infeasible";
-            else if (flying) goLabel = $"Replan to {body.Name}";
-            else goLabel = $"Go To {body.Name}";
+            string routeLabel;
+            if (rejected) routeLabel = "Plan infeasible";
+            else if (flying) routeLabel = $"Replan to {body.Name}";
+            else if (hasPreview) routeLabel = $"Replot route to {body.Name}";
+            else routeLabel = $"Plot route to {body.Name}";
 
-            if (GUI.Button(new Rect(x, buttonY, contentWidth, 30f), goLabel, _button))
-                _owner.BeginGoTo(body);
+            if (GUI.Button(new Rect(x, buttonY, contentWidth, 30f), routeLabel, _button))
+            {
+                if (flying) _owner.BeginGoTo(body);
+                else _owner.PlotRoute(body);
+            }
+
+            GUI.enabled = interactive && plottable && !flying && hasPreview;
+            if (GUI.Button(new Rect(x, buttonY + 36f, contentWidth - 106f, 28f),
+                    "Begin flight", _button))
+                _owner.BeginPlottedFlight();
+
+            GUI.enabled = interactive;
+            if (GUI.Button(new Rect(x + contentWidth - 98f, buttonY + 36f, 98f, 28f),
+                    "Close", _button))
+                CloseDetails();
 
             GUI.enabled = interactive && !flying;
-            if (GUI.Button(new Rect(x, buttonY + 36f, contentWidth - 106f, 28f), "Jump (debug)", _button))
+            if (GUI.Button(new Rect(x, buttonY + 70f, contentWidth - 106f, 28f),
+                    "Jump (debug)", _button))
                 _owner.FocusSelected();
-            if (GUI.Button(new Rect(x + contentWidth - 98f, buttonY + 36f, 98f, 28f), "Close", _button))
-                _detailsOpen = false;
 
             GUI.enabled = previousEnabled;
             GUI.color = Color.white;
@@ -386,10 +405,11 @@ namespace TimeToExplore.UI
         private void DrawFlightPanel()
         {
             FlightSession flight = _owner.Flight;
+            double now = _owner.Clock.JulianDate;
             string warp = _owner.Clock.Label +
                           (string.IsNullOrEmpty(_owner.WarpNote) ? "" : "  (" + _owner.WarpNote + ")");
 
-            List<DetailRow> rows = FlightReport.Build(flight, _owner.Model, warp);
+            List<DetailRow> rows = FlightReport.Build(flight, _owner.Model, warp, now);
 
             float headingHeight = 20f;
             float rowHeight = 17f;
@@ -414,12 +434,15 @@ namespace TimeToExplore.UI
             float y = panel.y + 8f;
 
             GUI.Label(new Rect(x, y, contentWidth - 120f, 20f),
-                "FLIGHT  /  " + (flight.TargetId ?? "—").ToUpperInvariant(), _title);
+                "FLIGHT  /  " +
+                ((flight.Plan ?? flight.Preview)?.TargetId ?? "—").ToUpperInvariant(), _title);
             GUI.Label(new Rect(panel.x + panel.width - 150f, y + 4f, 134f, 16f),
-                FlightReport.StatusLabel(flight).ToUpperInvariant(), _section);
+                FlightReport.StatusLabel(flight, now).ToUpperInvariant(), _section);
             y += 24f;
 
-            string next = FlightReport.NextEvent(flight);
+            string next = flight.Plan != null
+                ? FlightReport.NextEvent(flight)
+                : FlightReport.PreviewNextEvent(flight, now);
             GUI.Label(new Rect(x, y, contentWidth, 20f), next, _text);
             y += 26f;
 
@@ -460,9 +483,17 @@ namespace TimeToExplore.UI
 
             DrawWorldLabel(camera, trajectory.FlipMarkerPosition, "FLIP  thrust reversal",
                 new Color(1f, 0.55f, 0.35f));
-            DrawWorldLabel(camera, trajectory.ArrivalMarkerPosition,
-                "ARRIVAL  " + (_owner.Flight?.TargetId ?? "").ToUpperInvariant(),
-                new Color(0.55f, 1f, 0.72f));
+            if (trajectory.HasGhost)
+            {
+                DrawWorldLabel(camera, trajectory.GhostMarkerPosition,
+                    "TARGET AT ARRIVAL", new Color(0.62f, 0.78f, 1f));
+            }
+            else
+            {
+                DrawWorldLabel(camera, trajectory.ArrivalMarkerPosition,
+                    "ARRIVAL  " + (_owner.Flight?.TargetId ?? "").ToUpperInvariant(),
+                    new Color(0.55f, 1f, 0.72f));
+            }
         }
 
         private void DrawWorldLabel(Camera camera, Vector3 position, string text, Color colour,

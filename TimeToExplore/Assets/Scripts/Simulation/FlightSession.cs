@@ -57,6 +57,10 @@ namespace TimeToExplore.Simulation
         /// below any physical quantity and safely above the representation floor.</summary>
         public const double ArrivalToleranceDays = 1e-8;
 
+        /// <summary>The clock may advance this fraction of the planned flight
+        /// time before a plotted preview is flagged stale.</summary>
+        public const double PreviewStaleFraction = 0.01;
+
         private readonly SolarSystemModel _model;
         private readonly GravityField _gravity;
         private readonly TripPlanner _planner;
@@ -82,6 +86,20 @@ namespace TimeToExplore.Simulation
 
         /// <summary>The plan being flown, or the last plan the session built.</summary>
         public TrajectoryPlan Plan { get; private set; }
+
+        /// <summary>A route the player plotted but has not begun, or null. The
+        /// preview owns nothing: it never moves the ship and never changes
+        /// <see cref="Status"/>. Begin consumes it by replanning from the
+        /// current state.</summary>
+        public TrajectoryPlan Preview { get; private set; }
+
+        /// <summary>The date the preview was plotted at, or NaN.</summary>
+        public double PreviewJulianDate { get; private set; } = double.NaN;
+
+        public bool HasPreview => Preview != null;
+
+        /// <summary>True while a preview exists and no flight owns the ship.</summary>
+        public bool IsPreviewing => Preview != null && Plan == null;
 
         /// <summary>Why the flight stopped, when it did not arrive.</summary>
         public string Failure { get; private set; }
@@ -173,13 +191,64 @@ namespace TimeToExplore.Simulation
             RefreshTelemetry();
         }
 
+        /// <summary>
+        /// Build a route preview from the ship's current state at a date,
+        /// without moving the ship or taking ownership of it. A second plot
+        /// replaces the first: there is only ever one preview.
+        /// </summary>
+        public TrajectoryPlan Plot(string targetId, double julianDate)
+        {
+            if (targetId == null) throw new ArgumentNullException(nameof(targetId));
+
+            Preview = _planner.Plan(_state.WithJulianDate(julianDate), targetId);
+            PreviewJulianDate = julianDate;
+            return Preview;
+        }
+
+        /// <summary>Forget the preview, if there is one.</summary>
+        public void DiscardPreview()
+        {
+            Preview = null;
+            PreviewJulianDate = double.NaN;
+        }
+
+        /// <summary>
+        /// Days of clock advance after which the preview is stale, or NaN when
+        /// there is no preview. The window is a fraction of the planned flight
+        /// time, so a long trip tolerates a longer look.
+        /// </summary>
+        public double PreviewStaleAfterDays =>
+            Preview != null ? PreviewStaleFraction * Preview.FlightTimeDays : double.NaN;
+
+        /// <summary>Clock days since the preview was plotted, or NaN when there
+        /// is no preview.</summary>
+        public double PreviewAgeDays(double julianDate) =>
+            Preview != null ? julianDate - PreviewJulianDate : double.NaN;
+
+        /// <summary>
+        /// True when the clock has advanced far enough that the preview should
+        /// be checked again. Begin is always allowed: the planner is
+        /// deterministic and replans from the current state.
+        /// </summary>
+        public bool IsPreviewStale(double julianDate) =>
+            Preview != null && PreviewAgeDays(julianDate) > PreviewStaleAfterDays;
+
+        /// <summary>Seconds left before the preview goes stale (negative once
+        /// it has), or NaN when there is no preview.</summary>
+        public double PreviewStaleInSeconds(double julianDate) =>
+            Preview != null
+                ? (PreviewStaleAfterDays - PreviewAgeDays(julianDate)) * JulianDate.SecondsPerDay
+                : double.NaN;
+
         /// <summary>Build a Go To plan from the current state and start flying
         /// it. Returns the plan even when it is rejected, so the UI can explain
-        /// why. A rejected or infeasible plan leaves the ship where it was.</summary>
+        /// why. A rejected or infeasible plan leaves the ship where it was.
+        /// Begin consumes any preview; begin always replans.</summary>
         public TrajectoryPlan Begin(string targetId, double julianDate)
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
+            DiscardPreview();
             _state.JulianDate = julianDate;
             Plan = _planner.Plan(_state, targetId);
             FlipJulianDate = Plan.FindFlipJulianDate(_gravity);
@@ -202,7 +271,8 @@ namespace TimeToExplore.Simulation
             return Plan;
         }
 
-        /// <summary>Stop the flight and keep the ship where it is.</summary>
+        /// <summary>Stop the flight and keep the ship where it is. A preview is
+        /// discarded too: it belongs to the ship's current situation.</summary>
         public void Cancel()
         {
             if (Plan != null && Status == FlightStatus.Flying)
@@ -211,12 +281,62 @@ namespace TimeToExplore.Simulation
             }
 
             Plan = null;
+            DiscardPreview();
             _autopilot = null;
             FlipJulianDate = double.NaN;
             ArrivedJulianDate = double.NaN;
             Status = FlightStatus.Idle;
             CurrentThrust = ThrustCommand.None;
             Throttle = 0.0;
+        }
+
+        /// <summary>
+        /// Advance an idle ship under gravity with the drive off, so time can
+        /// pass while the player reads a preview and the ship stays in its
+        /// parking orbit. A live flight owns the ship; call
+        /// <see cref="Advance"/> for that instead.
+        /// </summary>
+        public FlightStep Coast(double toJulianDate, int substepBudget = DefaultSubstepsPerFrame)
+        {
+            var step = new FlightStep
+            {
+                ReachedJulianDate = _state.JulianDate
+            };
+
+            if (IsActive) return step;
+            if (!(toJulianDate > _state.JulianDate)) return step;
+
+            if (substepBudget <= 0)
+            {
+                step.BudgetExhausted = true;
+                BudgetExhaustedLastFrame = true;
+                SubstepsLastFrame = 0;
+                return step;
+            }
+
+            int savedLimit = _integrator.MaxSubsteps;
+            _integrator.MaxSubsteps = substepBudget;
+
+            try
+            {
+                IntegrationReport report = _integrator.Advance(
+                    ref _state, toJulianDate, (state, date) => ThrustCommand.None);
+
+                step.Substeps = report.Substeps;
+                step.BudgetExhausted = report.StepLimitReached;
+                step.CollisionDetected = report.CollisionDetected;
+                step.CollisionBodyId = report.CollisionBodyId;
+            }
+            finally
+            {
+                _integrator.MaxSubsteps = savedLimit;
+            }
+
+            step.ReachedJulianDate = _state.JulianDate;
+            SubstepsLastFrame = step.Substeps;
+            BudgetExhaustedLastFrame = step.BudgetExhausted;
+            RefreshTelemetry();
+            return step;
         }
 
         /// <summary>

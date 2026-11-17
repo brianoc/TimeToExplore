@@ -15,14 +15,18 @@ namespace TimeToExplore.UI
         /// <summary>
         /// Rows for the flight panel. <paramref name="warpLabel"/> is the HUD's
         /// own clock label, passed in so this class does not need the clock.
+        /// <paramref name="currentJulianDate"/> is used only to age a route
+        /// preview; NaN (the default) reports a fresh preview.
         /// </summary>
         public static List<DetailRow> Build(FlightSession session, SolarSystemModel model,
-            string warpLabel)
+            string warpLabel, double currentJulianDate = double.NaN)
         {
             var rows = new List<DetailRow>();
-            if (session == null || session.Plan == null) return rows;
+            if (session == null) return rows;
 
-            TrajectoryPlan plan = session.Plan;
+            TrajectoryPlan plan = session.Plan ?? session.Preview;
+            if (plan == null) return rows;
+
             BodyRuntime target = model?.Get(plan.TargetId);
 
             rows.Add(DetailRow.Heading("PLAN"));
@@ -40,6 +44,25 @@ namespace TimeToExplore.UI
             rows.Add(DetailRow.Of("Peak thrust",
                 $"{plan.PeakThrustMps2:0.00} m/s²  ({plan.PeakThrottle * 100.0:0}%)"));
             rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
+
+            if (session.Plan == null)
+            {
+                rows.Add(DetailRow.Heading("PREVIEW"));
+                rows.Add(DetailRow.Of("Status",
+                    PreviewStatusLabel(session, currentJulianDate)));
+
+                double staleSeconds = session.PreviewStaleInSeconds(currentJulianDate);
+                rows.Add(DetailRow.Of("Plotted",
+                    double.IsNaN(staleSeconds) ? "—" : FormatCountdown(staleSeconds)));
+
+                if (session.IsPreviewStale(currentJulianDate))
+                    rows.Add(DetailRow.Of("Note", "Preview stale · replot or begin anyway"));
+
+                if (!string.IsNullOrEmpty(warpLabel))
+                    rows.Add(DetailRow.Of("Warp", warpLabel));
+
+                return rows;
+            }
 
             rows.Add(DetailRow.Heading("NOW"));
             rows.Add(DetailRow.Of("Status", StatusLabel(session)));
@@ -81,7 +104,32 @@ namespace TimeToExplore.UI
         }
 
         public static string StatusLabel(FlightSession session) =>
-            session == null ? "—" : StatusLabel(session.Status);
+            session == null ? "—" : StatusLabel(session, double.NaN);
+
+        /// <summary>The status shown in the panel header. A preview has its own
+        /// label and can be flagged stale once the clock has moved.</summary>
+        public static string StatusLabel(FlightSession session, double currentJulianDate)
+        {
+            if (session == null) return "—";
+            if (session.Plan != null) return StatusLabel(session.Status);
+            return PreviewStatusLabel(session, currentJulianDate);
+        }
+
+        public static string PreviewStatusLabel(FlightSession session, double currentJulianDate)
+        {
+            if (session == null || session.Preview == null) return "Idle";
+            return session.IsPreviewStale(currentJulianDate) ? "Preview, stale" : "Preview";
+        }
+
+        /// <summary>The countdown a preview shows in the panel header.</summary>
+        public static string PreviewNextEvent(FlightSession session, double currentJulianDate)
+        {
+            if (session?.Preview == null) return "—";
+
+            double seconds = (session.Preview.ArrivalJulianDate - currentJulianDate)
+                             * JulianDate.SecondsPerDay;
+            return seconds <= 0.0 ? "Arrival due" : "Arrival  " + FormatCountdown(seconds);
+        }
 
         public static string StatusLabel(FlightStatus status)
         {

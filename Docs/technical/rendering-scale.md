@@ -117,13 +117,23 @@ With 60° FOV, 4.5 pixels, and a 1080-pixel screen, `minAngular ≈ 0.00436 rad`
 (0.25°). A body smaller than that is scaled up until it is about 4.5 pixels
 across. The scale factor is smoothed so distant bodies do not pop.
 
-Examples:
+Examples with the full aid (on the map, or in the shipped scene while its map
+switch is off):
 
 | Body | Distance | True angular size | Scale factor | Rendered size |
 |---|---:|---:|---:|---:|
 | Earth | 1 AU | 4.3 × 10⁻⁵ rad | ~100× | ~4.5 px |
 | Ceres | 3 AU | 1.0 × 10⁻⁶ rad | ~4,000× | ~4.5 px |
 | 2 km station | 1.5 million km | 6.7 × 10⁻⁷ rad | ~6,500× | ~4.5 px |
+
+In the map build the aid is **local-aware**. `MarkerSizing.AidStrength` keeps it
+at full strength inside the dominant body's sphere of influence and fades it to
+true scale by three times that radius along the same log-distance band as the
+camera blend. The map weight restores the full aid, so a planet an AU away is a
+sub-pixel dot in the local view and a 6 px marker on the map. The neighbourhood
+also grows with the camera distance, so zooming out locally does not make the
+system vanish. The multiplications above remain the full-aid numbers; a body
+outside the local neighbourhood simply has no inflation applied.
 
 This is a **marker aid**, not a physical size. It is essential for playability:
 without it, most of the catalogue is invisible. Press `T` to toggle true scale

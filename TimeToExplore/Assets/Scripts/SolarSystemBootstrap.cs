@@ -129,7 +129,19 @@ namespace TimeToExplore
 
             Renderer.Refresh(ShipPositionM, Clock.JulianDate,
                 Rig != null ? Rig.MapBlendWeight : 0f,
-                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f,
+                LocalAidRadiusM());
+        }
+
+        /// <summary>
+        /// The local scale for the neighbourhood-aware marker aid, or 0 when the
+        /// map is off. The shipped scene keeps its old full-strength aid; the
+        /// map scene stops inflating bodies outside the dominant body's SOI.
+        /// </summary>
+        private double LocalAidRadiusM()
+        {
+            if (Rig == null || !Rig.MapEnabled) return 0.0;
+            return Rig.NeighbourhoodRadiusM;
         }
 
         private void EnsureCamera()
@@ -183,7 +195,13 @@ namespace TimeToExplore
 
             Clock.Advance(deltaTime);
 
-            FlightStep step = Flight.Advance(Clock.JulianDate, SubstepsPerFrame);
+            FlightStep step = Flight.IsActive
+                ? Flight.Advance(Clock.JulianDate, SubstepsPerFrame)
+                : Flight.Coast(Clock.JulianDate, SubstepsPerFrame);
+
+            // The world must never run ahead of the ship, whether a flight is
+            // integrating or an idle ship is coasting. The clock still runs
+            // with a preview because the coast keeps the ship moving too.
             if (step.ReachedJulianDate < Clock.JulianDate)
                 Clock.JulianDate = step.ReachedJulianDate;
 
@@ -225,7 +243,8 @@ namespace TimeToExplore
 
             Renderer.Refresh(ShipPositionM, Clock.JulianDate,
                 Rig != null ? Rig.MapBlendWeight : 0f,
-                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f,
+                LocalAidRadiusM());
             if (Trajectory != null) Trajectory.Refresh(ShipPositionM, ViewCamera);
         }
 
@@ -288,7 +307,8 @@ namespace TimeToExplore
 
         /// <summary>Start a Go To flight to a body. Raises the clock so the trip
         /// is watchable, and draws the plan. The ship's position becomes the
-        /// flight session's for the duration.</summary>
+        /// flight session's for the duration. Begin always replans, so it
+        /// consumes a plotted preview and flies the fresh plan.</summary>
         public void BeginGoTo(BodyRuntime body)
         {
             if (body == null || Flight == null || Model == null) return;
@@ -302,13 +322,63 @@ namespace TimeToExplore
 
             if (Flight.Status == FlightStatus.Flying)
             {
-                Trajectory.Show(plan, _gravity);
+                ShowPlan(plan, body);
                 Rig?.Frame(body);
                 SetScaleIndex(WarpPolicy.SuggestInitialScaleIndex(plan));
             }
             else
             {
                 Trajectory.Hide();
+            }
+        }
+
+        /// <summary>
+        /// Plot a route for inspection without starting the flight. The preview
+        /// never moves the ship; Begin flight replans from the current state.
+        /// </summary>
+        public void PlotRoute(BodyRuntime body)
+        {
+            if (body == null || Flight == null || Model == null) return;
+            if (body.Gm <= 0.0) return;
+
+            TrajectoryPlan preview = Flight.Plot(body.Id, Clock.JulianDate);
+            if (preview == null) return;
+
+            ShowPlan(preview, body);
+            Rig?.Frame(body);
+        }
+
+        /// <summary>Begin the plotted route. Replans from the current state and
+        /// date, so the flown curve is close to the preview but never stale.</summary>
+        public void BeginPlottedFlight()
+        {
+            if (Flight == null || !Flight.HasPreview) return;
+            BeginGoTo(Model?.Get(Flight.Preview.TargetId));
+        }
+
+        /// <summary>Throw away a preview, leaving a live flight alone.</summary>
+        public void DiscardPreview()
+        {
+            if (Flight == null || !Flight.HasPreview) return;
+
+            bool flightIsLive = Flight.Plan != null;
+            Flight.DiscardPreview();
+            if (!flightIsLive) Trajectory?.Hide();
+        }
+
+        private void ShowPlan(TrajectoryPlan plan, BodyRuntime target)
+        {
+            if (plan == null || Trajectory == null) return;
+
+            if (Model != null && target != null)
+            {
+                Model.ComputeState(target, plan.ArrivalJulianDate,
+                    out Vector3d arrivalPosition, out _);
+                Trajectory.Show(plan, _gravity, arrivalPosition);
+            }
+            else
+            {
+                Trajectory.Show(plan, _gravity);
             }
         }
 
@@ -376,7 +446,13 @@ namespace TimeToExplore
         public void Select(BodyRuntime body)
         {
             if (body == null) return;
-            if (body != Selected) Focus?.Cancel();
+            if (body != Selected)
+            {
+                Focus?.Cancel();
+                if (Flight != null && Flight.HasPreview && Flight.Preview.TargetId != body.Id)
+                    DiscardPreview();
+            }
+
             Selected = body;
         }
     }

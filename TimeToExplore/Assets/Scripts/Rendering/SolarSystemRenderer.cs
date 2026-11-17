@@ -24,9 +24,15 @@ namespace TimeToExplore.Rendering
         private BodyView _sunView;
         private Transform _bodyRoot;
         private Transform _orbitRoot;
-        private float _minAngularSize;
 
         public IEnumerable<BodyView> Views => _views.Values;
+
+        /// <summary>
+        /// The local scale used by the last <see cref="Refresh"/>, in metres.
+        /// Zero means the neighbourhood fade is off and the aid is full
+        /// everywhere, as in the shipped scene while its map switch is off.
+        /// </summary>
+        public double LocalAidRadiusM { get; private set; }
 
         public void Initialise(SolarSystemModel model, Camera camera, float unitsPerMeter)
         {
@@ -75,18 +81,37 @@ namespace TimeToExplore.Rendering
         public BodyView GetView(BodyRuntime body) =>
             body != null && _views.TryGetValue(body.Id, out BodyView view) ? view : null;
 
+        /// <summary>
+        /// Rebuild the frame: positions, marker sizes, and orbit lines.
+        /// <paramref name="localRadiusM"/> is the dominant body's SOI radius.
+        /// A non-positive or infinite value disables the neighbourhood fade
+        /// and keeps the old full-strength aid everywhere, which is what the
+        /// shipped scene passes while its map switch is off.
+        /// </summary>
         public void Refresh(Vector3d shipPositionM, double julianDate,
-            float mapBlendWeight = 0f, float cameraDistanceUnits = 0f)
+            float mapBlendWeight = 0f, float cameraDistanceUnits = 0f,
+            double localRadiusM = 0.0)
         {
             if (_model == null) return;
 
+            LocalAidRadiusM = localRadiusM;
+
             float fieldOfView = _camera != null ? _camera.fieldOfView : 60f;
             float minPixels = MarkerSizing.MinimumPixels(mapBlendWeight);
-            _minAngularSize = MarkerSizing.MinimumAngularSize(
+            float baseMinAngularSize = MarkerSizing.MinimumAngularSize(
                 minPixels, fieldOfView, Screen.height);
+            double cameraDistanceM = UnitsPerMeter > 0f
+                ? cameraDistanceUnits / (double)UnitsPerMeter
+                : 0.0;
 
             foreach (BodyView view in _views.Values)
-                view.Refresh(_camera, shipPositionM, julianDate, TrueScale, _minAngularSize);
+            {
+                double bodyDistanceM = Vector3d.Distance(view.Body.PositionM, shipPositionM);
+                float aidStrength = MarkerSizing.AidStrength(cameraDistanceM, bodyDistanceM,
+                    localRadiusM, mapBlendWeight);
+                view.Refresh(_camera, shipPositionM, julianDate, TrueScale,
+                    baseMinAngularSize * aidStrength);
+            }
 
             if (_sunView != null)
                 Shader.SetGlobalVector("_SunPosition", _sunView.transform.position);

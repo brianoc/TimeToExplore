@@ -79,6 +79,13 @@ namespace TimeToExplore.Player
         /// <summary>The blend weight placed on the last frame (0 local, 1 map).</summary>
         public float MapBlendWeight { get; private set; }
 
+        /// <summary>
+        /// The local scale used on the last frame: the dominant body's SOI
+        /// radius, or the deep-space fallback. The renderer uses it to fade the
+        /// marker aid outside the neighbourhood.
+        /// </summary>
+        public double NeighbourhoodRadiusM { get; private set; } = MapView.DeepSpaceRadiusM;
+
         /// <summary>True when the last frame was on the map side of the blend.</summary>
         public bool IsMapSide => MapEnabled && MapView.UsesPan(MapBlendWeight);
 
@@ -276,6 +283,7 @@ namespace TimeToExplore.Player
 
         private void RefreshBlendWeight(double localRadiusM)
         {
+            NeighbourhoodRadiusM = localRadiusM;
             MapBlendWeight = MapEnabled
                 ? Map.BlendWeight(Orbit.DistanceUnits, localRadiusM)
                 : 0f;

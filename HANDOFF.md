@@ -1,5 +1,13 @@
 # Handoff — system map step 3: map drawing and picking
 
+> **Status (2026-11-17):** steps 3, 4, and 5 are done. This document is kept as
+> the step-3 handoff and has not been rewritten. Step 6, **frame-loop
+> acceptance**, is next; see the implementation steps in
+> `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a preview
+> that never moves the ship, a 1% staleness window, the PREVIEW panel rows, and
+> a ghost at the target's arrival position; the idle ship coasts under gravity so the
+> clock and preview age with it. The suite is 277 tests.
+
 **From:** the session that landed step 2 (commit `4f5fe12`).
 **Date:** 2026-11-16.
 **Project:** Time to Explore, Unity 6000.3.28f1 (built-in pipeline, old Input Manager).
@@ -156,7 +164,7 @@ ADR-009 (step 7).
 
 ## Baseline verification
 
-At commit `4f5fe12`:
+At commit `8341d7c` (step 3):
 
 ```text
 tools/check.sh --fast
@@ -165,10 +173,10 @@ tools/check.sh --fast
   Generator output byte-identical
 
 tools/check.sh
-  Unity EditMode: 236 tests, 0 failed, 0 skipped
+  Unity EditMode: 255 tests, 0 failed, 0 skipped
   All checks passed.
 ```
 
-PyYAML lives in `.venv/bin/python`; `check.sh` already prefers it. The full
-Unity run uses a throwaway copy of the project, so it is safe with the editor
-open.
+At step 5 the suite is **277 tests**, all green. PyYAML lives in
+`.venv/bin/python`; `check.sh` already prefers it. The full Unity run uses a
+throwaway copy of the project, so it is safe with the editor open.

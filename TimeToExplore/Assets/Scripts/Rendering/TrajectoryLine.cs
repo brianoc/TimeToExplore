@@ -28,9 +28,12 @@ namespace TimeToExplore.Rendering
         private Material _dashedMaterial;
         private Transform _flipMarker;
         private Transform _arrivalMarker;
+        private Transform _ghostMarker;
         private TrajectoryPlan _plan;
         private Vector3d _flipPositionM;
         private Vector3d _arrivalPositionM;
+        private Vector3d _ghostPositionM;
+        private bool _hasGhost;
 
         public bool IsShowing => _plan != null;
 
@@ -49,6 +52,12 @@ namespace TimeToExplore.Rendering
         /// <summary>Render-space position of the arrival marker, for a screen label.</summary>
         public Vector3 ArrivalMarkerPosition => _arrivalMarker != null ? _arrivalMarker.position : Vector3.zero;
 
+        /// <summary>Render-space position of the target at the arrival date, for
+        /// the "where the planet will be" label. Zero unless one is drawn.</summary>
+        public Vector3 GhostMarkerPosition => _ghostMarker != null ? _ghostMarker.position : Vector3.zero;
+
+        public bool HasGhost => _hasGhost;
+
         public void Initialise(float unitsPerMeter)
         {
             _unitsPerMeter = unitsPerMeter;
@@ -58,6 +67,7 @@ namespace TimeToExplore.Rendering
 
             _flipMarker = CreateMarker("Flip", new Color(1f, 0.42f, 0.25f));
             _arrivalMarker = CreateMarker("Arrival", new Color(0.55f, 1f, 0.72f));
+            _ghostMarker = CreateMarker("Arrival Ghost", new Color(0.62f, 0.78f, 1f));
 
             Hide();
         }
@@ -133,11 +143,24 @@ namespace TimeToExplore.Rendering
         }
 
         /// <summary>Sample a plan into the solid and dashed polylines.</summary>
-        public void Show(TrajectoryPlan plan, IGravityField gravity)
+        public void Show(TrajectoryPlan plan, IGravityField gravity) =>
+            Show(plan, gravity, default, false);
+
+        /// <summary>
+        /// Sample a plan and mark where the target body will be on the arrival
+        /// date. The ghost is the planet, not the ship's parking position, so
+        /// the player sees where the route has to meet it.
+        /// </summary>
+        public void Show(TrajectoryPlan plan, IGravityField gravity, Vector3d targetArrivalPositionM)
+            => Show(plan, gravity, targetArrivalPositionM, true);
+
+        private void Show(TrajectoryPlan plan, IGravityField gravity,
+            Vector3d targetArrivalPositionM, bool showGhost)
         {
             _plan = plan;
             _solid.Clear();
             _dashed.Clear();
+            _hasGhost = false;
 
             if (plan == null)
             {
@@ -163,9 +186,13 @@ namespace TimeToExplore.Rendering
                 : plan.ReferencePositionAt(flip);
             _arrivalPositionM = plan.ArrivalState.PositionM;
 
+            _ghostPositionM = targetArrivalPositionM;
+            _hasGhost = showGhost;
+
             bool hasFlip = !double.IsNaN(flip);
             _flipMarker.gameObject.SetActive(hasFlip);
             _arrivalMarker.gameObject.SetActive(true);
+            _ghostMarker.gameObject.SetActive(_hasGhost);
 
             // Refresh fills the buffers later in the same frame; hide the lines
             // until it does so a stale path is never drawn.
@@ -178,11 +205,13 @@ namespace TimeToExplore.Rendering
             _plan = null;
             _solid.Clear();
             _dashed.Clear();
+            _hasGhost = false;
 
             if (_solidLine != null) _solidLine.enabled = false;
             if (_dashedLine != null) _dashedLine.enabled = false;
             if (_flipMarker != null) _flipMarker.gameObject.SetActive(false);
             if (_arrivalMarker != null) _arrivalMarker.gameObject.SetActive(false);
+            if (_ghostMarker != null) _ghostMarker.gameObject.SetActive(false);
         }
 
         public void Refresh(Vector3d shipPositionM, Camera camera)
@@ -203,6 +232,7 @@ namespace TimeToExplore.Rendering
             UpdateDashScale(DashLengthUnits(_dashed, shipPositionM), Mathf.Max(width * 8f, 1e-6f));
             UpdateMarker(_flipMarker, _flipPositionM, shipPositionM, camera);
             UpdateMarker(_arrivalMarker, _arrivalPositionM, shipPositionM, camera);
+            UpdateMarker(_ghostMarker, _ghostPositionM, shipPositionM, camera, 0.65f);
         }
 
         private void UpdateDashScale(float lengthUnits, float periodUnits)
@@ -221,7 +251,7 @@ namespace TimeToExplore.Rendering
         }
 
         private void UpdateMarker(Transform marker, Vector3d positionM, Vector3d shipPositionM,
-            Camera camera)
+            Camera camera, float scale = 1f)
         {
             if (marker == null || !marker.gameObject.activeSelf) return;
 
@@ -236,7 +266,7 @@ namespace TimeToExplore.Rendering
             float pixels = camera != null
                 ? camera.fieldOfView * Mathf.Deg2Rad * MarkerPixels / Mathf.Max(Screen.height, 1)
                 : 0.01f;
-            float size = Mathf.Max(cameraDistance * pixels, 1e-6f);
+            float size = Mathf.Max(cameraDistance * pixels * scale, 1e-6f);
             marker.localScale = Vector3.one * size;
         }
 

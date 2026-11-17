@@ -14,8 +14,9 @@ planet is there without learning anything about it. Selection is the first
 interaction layer on top of the orrery. It answers two questions:
 
 1. **What is that?** — a details screen with physical and orbital data.
-2. **Can I go there?** — **Go To**, which plans a real flight and flies it; and
-   **Jump (debug)**, a three-second camera move kept for inspection.
+2. **Can I go there?** — **Plot route → Begin flight**, which draws a real
+   route before flying it; and **Jump (debug)**, a three-second camera move
+   kept for inspection.
 
 # Picking
 
@@ -55,7 +56,10 @@ while the local view keeps its old thresholds:
 
 * **Markers.** `MarkerSizing.MinimumPixels(w)` eases the aid from 4.5 px at
   `w = 0` to 6 px at `w = 1`; the smooth blend avoids a pop at the band edge.
-  `BodyView.TargetScaleFactor` applies it unless `T` true scale is on.
+  `MarkerSizing.AidStrength` then fades the aid outside the local neighbourhood
+  in the local view, so distant bodies render at true scale there while the map
+  restores the full marker. `BodyView.TargetScaleFactor` applies the resulting
+  minimum unless `T` true scale is on.
 * **Labels.** `BodyLabels.ShouldLabel` is the pure rule. Sun, planets, and
   stations always label. A moon labels on the map when the camera is inside
   5× its parent's SOI (`BodyLabels.InMoonNeighbourhood`), and locally it keeps
@@ -91,8 +95,14 @@ field. Rotation periods are signed; a negative value is shown as retrograde.
 The panel is immediate-mode IMGUI, drawn on the right. It is a **screen**, not
 a world-space canvas: world-space UI does not survive solar-scale distances.
 The selected body's catalogue colour is used for the accent bar and hover
-prompt. The footer holds **Go To …** (the flight), **Jump (debug)** (the eased
-teleport), and **Close**.
+prompt. The footer holds **Plot route …**, **Begin flight** (enabled once that
+body's route is plotted), **Jump (debug)** (the eased teleport), and **Close**.
+While a flight is running the primary button becomes **Replan …**.
+
+A plotted route belongs to the body it targets. Selecting another body, `Esc`,
+or **Close** discards it; plotting the same body again refreshes it. The flight
+panel switches to the PREVIEW rows while one exists, and **Begin flight**
+replans from the current state before flying.
 
 # The camera
 
@@ -160,18 +170,20 @@ is serialized per scene and passed to the rig. `SolarSystem.unity` leaves it
 off; `SystemMap.unity` turns it on. It is a development comparison aid, not a
 gameplay mode, and a later step removes it or defaults it on.
 
-The remaining work for this layer is the local marker-aid fade (step 4) and the
-plotted route with Begin (step 5). Map drawing and picking (step 3) are built:
-the 6 px marker minimum, the zoom-aware labels, the "YOU ARE HERE" ship label,
-class-priority picking, and the camera-distance orbit width.
+Map drawing, picking, the local marker-aid fade, and the route preview are built
+(steps 3–5): the 6 px map minimum, the zoom-aware labels, the "YOU ARE HERE"
+ship label, class-priority picking, the camera-distance orbit width, the
+neighbourhood falloff that stops the local view inflating distant bodies, and
+the **Plot route → Begin flight** preview with its target-arrival ghost. The
+remaining work for this layer is the frame-loop acceptance (step 6).
 
 # The focus transition (debug jump)
 
-The details screen has two actions: **Go To**, which starts a real flight
-([The flight session](/technical/flight-session.md)), and **Jump (debug)**, which
-keeps the original eased camera move. The jump is explicitly a teleport: it
-cancels any running plan and clears the ship's velocity, because it is not a
-trajectory through the gravity field.
+The details screen's flight actions are **Plot route → Begin flight**, which
+plans a real flight ([The flight session](/technical/flight-session.md)), and
+**Jump (debug)**, which keeps the original eased camera move. The jump is explicitly a
+teleport: it cancels any running plan and clears the ship's velocity, because it
+is not a trajectory through the gravity field.
 
 `CameraFocusDirector` owns a `FocusTransition`. `FocusTransition` is plain C#
 with an explicit start position and an eased progress:
@@ -205,9 +217,10 @@ flight is running the jump is disabled: the flight owns the ship.
 | Input | Action |
 |---|---|
 | Left click a body | Select it and open the details screen |
-| **Go To …** button | Plan and fly to the selected body |
+| **Plot route …** button | Plan the route and draw the preview without flying |
+| **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
-| `Close`, `Esc` | Close the details screen; `Esc` also cancels a debug jump |
+| `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
 | Right mouse drag | Orbit the camera around the ship; pan on the map (`w > 0.5`) |
 | Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km) |
 | `Tab` | Cycle planet/station targets without opening the screen |
@@ -235,6 +248,10 @@ flight is running the jump is disabled: the flight owns the ship.
 * the distance-scaled pan (content follows the cursor), the 60 AU cap through
   the rig, the exponential ease home, and the near plane at both ends of the
   blend;
-* both scenes loading, and the bootstrap switch reaching the rig.
+* the neighbourhood marker aid: full inside the SOI, monotonic to true scale at
+  3×, restored in full by the map, widened by the camera distance, disabled
+  when no local scale is supplied, and still overridden by `T`;
+* both scenes loading, the bootstrap switch reaching the rig, and that switch
+  gating the aid fade.
 
 See [Testing and verification](/technical/testing.md) for the full suite.
