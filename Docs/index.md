@@ -43,6 +43,7 @@ bundle-relative paths that stay valid when a document moves.
 # Technical
 
 * [Architecture](/technical/architecture.md) — how the Unity prototype is structured, from catalogue load to render frame.
+* [Input](/technical/input.md) — the input map, the Input System seam, why Active Input Handling stays on Both, and the mouse and wheel rules.
 * [The flight session](/technical/flight-session.md) — plot a route, press Begin, watch the ship fly: ship ownership, the warp cap, the trajectory line, and the flight panel.
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it in debug flight.
 * [The system map and route preview](/technical/system-map.md) — in progress: the blended top-down map, map drawing and picking, the local aid fade, and Plot route → Begin are built; frame-loop acceptance is next.
@@ -65,3 +66,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-007: one owner for the ship, and an automatic warp cap](/decisions/adr-007-flight-director.md) — the flight session owns the ship; warp drops by clearance, local dynamics, and the next plan event.
 * [ADR-008: an orbit camera around the ship](/decisions/adr-008-orbit-camera.md) — keep the ship at the render origin, orbit the camera, and size the plan line from the camera distance.
 * [ADR-010: Universal Render Pipeline for the prototype](/decisions/adr-010-urp-rendering.md) — move to URP 17.3.0 with three minimal runtime shaders and a deliberately cheap forward renderer. (ADR-009 is reserved for the deferred map-camera decision.)
+* [ADR-011: The Input System behind one seam](/decisions/adr-011-input-system.md) — `com.unity.inputsystem` 1.20.1, device polling through `PlayerControls`, and Active Input Handling **Both** because the HUD is IMGUI.

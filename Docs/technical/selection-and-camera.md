@@ -214,6 +214,10 @@ flight is running the jump is disabled: the flight owns the ship.
 
 # Input summary
 
+Device input reaches the camera and HUD through the
+[Input](/technical/input.md) seam; the table below is the behaviour, not a
+second mapping.
+
 | Input | Action |
 |---|---|
 | Left click a body | Select it and open the details screen |

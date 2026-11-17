@@ -33,7 +33,9 @@ SolarSystemRenderer ──► BodyView (spheres / cubes)
         │              └── TrajectoryLine (route path, dashed capture, arrival ghost)
         ▼
 Camera at render origin ◄── ShipController (input only; debug free flight)
-        │
+        │                        ▲
+        │                        │
+        │              PlayerControls (the Input System seam)
         ▼
 SolarSystemHud (IMGUI)
 ```
@@ -133,6 +135,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
+| `PlayerControls` | `Scripts/Player/PlayerControls.cs` | The one input seam: device polling, intents, key table, mouse sensitivity, scroll normalisation |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
 | `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
 | `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Drag-orbit locally and pan on the map, wheel zoom on both ranges, destination framing, blended pose, camera placement |
@@ -241,6 +244,15 @@ to the line width, so the dashes stay the same apparent length at any zoom.
 
 # Input
 
+The project runs on the **Input System** (`com.unity.inputsystem` 1.20.1) with
+Active Input Handling set to **Both**. `PlayerControls` is the one seam that
+polls `Keyboard.current` and `Mouse.current`; every other script asks for an
+intent. **Both** is required because the HUD is IMGUI: under "Input System
+Package (New)" alone, `OnGUI` receives no events and every button stops
+working. The legacy backend therefore survives only to feed IMGUI; no project
+code reads its axes. The full rules are in [Input](/technical/input.md) and
+[ADR-011](/decisions/adr-011-input-system.md).
+
 The controller is an inspection tool now, not a flight model:
 
 | Input | Action |
@@ -323,7 +335,8 @@ Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
 rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
-core, and the scene's frame loop.
+core, the input seam's key table and mouse conversions, and the scene's frame
+loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -340,7 +353,8 @@ committed file is reproducible.
 
 The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
 project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
-Render Pipeline and the old input manager.
+Render Pipeline, the Input System package, and Active Input Handling set to
+Both (the HUD is IMGUI).
 
 The next layer is PlayMode tests for the renderer, bootstrap, and HUD; they are
 deferred until the presentation code settles.
@@ -359,7 +373,8 @@ deferred until the presentation code settles.
 * No stationkeeping drift.
 * No N-body perturbations.
 * No save/load.
-* The HUD is immediate-mode and allocation-heavy; fine for a prototype.
+* The HUD is immediate-mode and allocation-heavy; fine for a prototype, but its
+  IMGUI dependence is also why Active Input Handling cannot be "New" only.
 * The scene is generated at runtime; there is no authored art scene.
 * The system map has its camera pose, markers, labels, picking, orbit-line
   width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), and the

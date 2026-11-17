@@ -42,36 +42,22 @@ namespace TimeToExplore.Player
 
         private void HandleMovement()
         {
-            float forward = 0f;
-            float right = 0f;
-            float up = 0f;
-
-            if (Input.GetKey(KeyCode.W)) forward += 1f;
-            if (Input.GetKey(KeyCode.S)) forward -= 1f;
-            if (Input.GetKey(KeyCode.D)) right += 1f;
-            if (Input.GetKey(KeyCode.A)) right -= 1f;
-            if (Input.GetKey(KeyCode.E)) up += 1f;
-            if (Input.GetKey(KeyCode.Q)) up -= 1f;
-
-            if (forward != 0f || right != 0f || up != 0f)
+            Vector3 move = PlayerControls.MoveAxes;
+            if (move != Vector3.zero)
             {
-                Vector3 local = new Vector3(right, up, forward).normalized;
+                Vector3 local = move.normalized;
                 Vector3 direction = Camera.main != null
                     ? Camera.main.transform.TransformDirection(local)
                     : local;
 
-                double multiplier = 1.0;
-                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) multiplier = 10.0;
-                if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) multiplier = 0.1;
+                double multiplier = PlayerControls.SpeedMultiplier;
 
                 MoveTo(PositionM + Vector3d.FromUnity(direction) * (FlySpeedMps * multiplier * Time.deltaTime));
             }
 
             // The wheel belongs to the camera orbit. Free-flight speed uses
             // comma and period so the two controls never fight.
-            float speedSteps = 0f;
-            if (Input.GetKey(KeyCode.Period)) speedSteps += 1f;
-            if (Input.GetKey(KeyCode.Comma)) speedSteps -= 1f;
+            float speedSteps = PlayerControls.SpeedSteps;
             if (speedSteps != 0f)
             {
                 FlySpeedMps = System.Math.Clamp(

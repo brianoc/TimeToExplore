@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using TimeToExplore.Core;
+using TimeToExplore.Player;
 using TimeToExplore.Rendering;
 using TimeToExplore.Simulation;
 
@@ -122,7 +123,7 @@ namespace TimeToExplore.UI
         {
             if (_owner == null || _owner.Model == null) return;
 
-            if (Input.GetKeyDown(KeyCode.Escape)) CloseDetails();
+            if (PlayerControls.CancelPressed) CloseDetails();
 
             UpdatePointer();
         }
@@ -139,7 +140,7 @@ namespace TimeToExplore.UI
 
             _hover = PickAt(pointer);
 
-            if (!Input.GetMouseButtonDown(0) || _hover == null) return;
+            if (!PlayerControls.LeftClickPressed || _hover == null) return;
 
             _owner.Select(_hover);
             _detailsOpen = true;
@@ -147,7 +148,7 @@ namespace TimeToExplore.UI
         }
 
         private static Vector2 GuiPointer() =>
-            new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            PlayerControls.ToGuiPointer(PlayerControls.PointerPosition, Screen.height);
 
         private bool PointerOverPanel(Vector2 pointer) =>
             _hudRect.Contains(pointer) ||

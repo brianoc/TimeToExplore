@@ -250,27 +250,26 @@ namespace TimeToExplore
 
         private void HandleHotkeys()
         {
-            if (Input.GetKeyDown(KeyCode.Space)) Clock.TogglePause();
+            PlayerControls.Hotkeys keys = PlayerControls.ReadHotkeys();
+            if (keys.Pause) Clock.TogglePause();
 
-            for (int i = 0; i < SimulationClock.TimeScales.Length; i++)
-            {
-                if (Input.GetKeyDown(KeyCode.Alpha1 + i)) SetScaleIndex(i);
-            }
+            if (keys.ScaleIndex >= 0 && keys.ScaleIndex < SimulationClock.TimeScales.Length)
+                SetScaleIndex(keys.ScaleIndex);
 
-            if (Input.GetKeyDown(KeyCode.Tab)) CycleTarget(1);
-            if (Input.GetKeyDown(KeyCode.F)) FocusSelected();
-            if (Input.GetKeyDown(KeyCode.Escape)) Focus?.Cancel();
-            if (Input.GetKeyDown(KeyCode.R)) ResetToGateway();
-            if (Input.GetKeyDown(KeyCode.X)) CancelFlight();
-            if (Input.GetKeyDown(KeyCode.BackQuote)) SetFreeFlight(!FreeFlight);
-            if (Input.GetKeyDown(KeyCode.T)) Renderer.TrueScale = !Renderer.TrueScale;
-            if (Input.GetKeyDown(KeyCode.O))
+            if (keys.CycleTarget) CycleTarget(1);
+            if (keys.FocusSelected) FocusSelected();
+            if (keys.CancelFocus) Focus?.Cancel();
+            if (keys.Reset) ResetToGateway();
+            if (keys.CancelFlight) CancelFlight();
+            if (keys.ToggleFreeFlight) SetFreeFlight(!FreeFlight);
+            if (keys.ToggleTrueScale) Renderer.TrueScale = !Renderer.TrueScale;
+            if (keys.ToggleOrbits)
             {
                 Renderer.ShowOrbits = !Renderer.ShowOrbits;
                 Renderer.ShowMoonOrbits = Renderer.ShowOrbits;
             }
-            if (Input.GetKeyDown(KeyCode.L)) ShowLabels = !ShowLabels;
-            if (Input.GetKeyDown(KeyCode.H)) ShowHud = !ShowHud;
+            if (keys.ToggleLabels) ShowLabels = !ShowLabels;
+            if (keys.ToggleHud) ShowHud = !ShowHud;
         }
 
         public void SetScaleIndex(int index)

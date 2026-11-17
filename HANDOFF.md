@@ -1,16 +1,21 @@
 # Handoff — system map step 3: map drawing and picking
 
-> **Status (2026-11-17):** steps 3, 4, and 5 are done. This document is kept as
-> the step-3 handoff and has not been rewritten. Step 6, **frame-loop
-> acceptance**, is next; see the implementation steps in
+> **Status (2026-11-17):** steps 3, 4, and 5 are done. The rendering migration
+> (commit `a6e1eda`) and the Input System migration followed. The project now
+> runs URP 17.3.0 and Input System 1.20.1 with Active Input Handling **Both**
+> (IMGUI needs the legacy backend for `OnGUI` events); every device read goes
+> through `Assets/Scripts/Player/PlayerControls.cs`. The suite is 310 tests.
+> This document is kept as the step-3 handoff and has not been rewritten. Step
+> 6, **frame-loop acceptance**, is next; see the implementation steps in
 > `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a preview
 > that never moves the ship, a 1% staleness window, the PREVIEW panel rows, and
 > a ghost at the target's arrival position; the idle ship coasts under gravity so the
-> clock and preview age with it. The suite is 277 tests.
+> clock and preview age with it.
 
 **From:** the session that landed step 2 (commit `4f5fe12`).
 **Date:** 2026-11-16.
-**Project:** Time to Explore, Unity 6000.3.28f1 (URP 17.3.0, old Input Manager).
+**Project:** Time to Explore, Unity 6000.3.28f1 (URP 17.3.0, Input System
+1.20.1, Active Input Handling Both).
 **Milestone:** 2.5, the system map and route preview.
 
 ## Read first
@@ -177,6 +182,7 @@ tools/check.sh
   All checks passed.
 ```
 
-At step 5 the suite is **277 tests**, all green. PyYAML lives in
+At step 5 the suite was **277 tests**, all green. After the input migration the
+suite is **310 tests** (21 input tests), all green. PyYAML lives in
 `.venv/bin/python`; `check.sh` already prefers it. The full Unity run uses a
 throwaway copy of the project, so it is safe with the editor open.

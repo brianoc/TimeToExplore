@@ -43,9 +43,9 @@ namespace TimeToExplore.Player
         public bool MapEnabled;
 
         /// <summary>
-        /// Screen pixels per unit of the old Input Manager's Mouse X/Y axes.
-        /// Unity's default mouse axes use a 0.1 sensitivity, so one axis unit is
-        /// ten pixels.
+        /// Screen pixels per unit of the seam's mouse-drag axis. The seam applies
+        /// the old Input Manager's 0.1 sensitivity to the raw pixel delta, so one
+        /// axis unit is ten pixels and a map pan still follows the cursor.
         /// </summary>
         public float PanPixelsPerMouseUnit = 10f;
 
@@ -231,13 +231,13 @@ namespace TimeToExplore.Player
         {
             bool mapSide = MapEnabled && MapView.UsesPan(blendWeight);
 
-            if (Input.GetMouseButtonDown(1))
+            if (PlayerControls.RightDragStarted)
             {
                 _dragging = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
-            else if (Input.GetMouseButtonUp(1))
+            else if (PlayerControls.RightDragEnded)
             {
                 _dragging = false;
                 Cursor.lockState = CursorLockMode.None;
@@ -246,8 +246,9 @@ namespace TimeToExplore.Player
 
             if (_dragging)
             {
-                float x = Input.GetAxis("Mouse X");
-                float y = Input.GetAxis("Mouse Y");
+                Vector2 axis = PlayerControls.DragDelta;
+                float x = axis.x;
+                float y = axis.y;
                 if (x != 0f || y != 0f)
                 {
                     if (mapSide)
@@ -266,7 +267,7 @@ namespace TimeToExplore.Player
                 }
             }
 
-            float scroll = Input.mouseScrollDelta.y;
+            float scroll = PlayerControls.WheelSteps;
             if (Mathf.Abs(scroll) > 0.01f)
             {
                 Orbit.DistanceUnits = WheelDistanceUnits(Orbit.DistanceUnits, scroll, blendWeight);

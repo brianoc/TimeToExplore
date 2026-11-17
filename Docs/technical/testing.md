@@ -69,8 +69,11 @@ the predefined `Assembly-CSharp`.
 | `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, and discard leaves the ship alone |
+| `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-IMGUI pointer flip, and null devices returning neutral values |
+| `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly one runtime file, the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, and `activeInputHandler: 2` pinned so the IMGUI legacy backend is not dropped by accident |
+| `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 
-The suite currently has **289 tests**. It deliberately tests the shipped
+The suite currently has **310 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -192,6 +195,29 @@ Batch mode runs with `-nographics`, which does not populate pass tags:
 The test therefore asserts the pipeline and forward-pass tags in the shader
 source, and the rendered frame remains a human check.
 
+# Input anchors
+
+The seam keeps the pre-migration feel with two explicit conversions:
+
+* **Mouse delta.** The legacy `Mouse X`/`Mouse Y` axes applied a 0.1
+  sensitivity, so `axis = raw pixels × 0.1`. With `OrbitDegreesPerMouseUnit = 3`
+  that is 0.3° per raw pixel of orbit drag; with `PanPixelsPerMouseUnit = 10` it
+  is one screen pixel of map pan per raw pixel.
+* **Wheel.** Windows reports 120 units per notch, macOS about 1.
+  `NormaliseScroll` divides by 120 only on `WindowsPlayer`/`WindowsEditor`, so
+  one notch is one `ZoomFactorPerStep` (1.25×) step on both camera ranges.
+
+The digit table is explicit: `Digit1`–`Digit9` map to indices 0–8 and `Digit0`
+to 9. The clock has seven scales, so `8`, `9`, and `0` are mapped but ignored by
+the bootstrap, exactly as the old ascending loop did. Two digits in one frame
+take the highest index. The pointer conversion is `y = Screen.height − y`.
+
+`InputTestFixture` is documented by Unity as a Play mode tool. It still works
+for these EditMode tests because `Press`, `Release`, `Move`, and `Set` queue
+device state and the fixture updates the Input System itself; it does not run
+the player loop, so it proves the device edges and not frame ordering. The
+fixture's own keyboard and mouse are isolated from the machine's devices.
+
 # Precision notes
 
 Julian dates are large doubles. At 2.4 million, one unit in the last place is
@@ -236,6 +262,8 @@ non-empty `parent` for orbits) and keep a regression test for it.
   edit mode; what remains is the actual `OnGUI` draw and the rendered frame.
   The URP migration has the same gap: `RenderingPipelineTests` proves the
   pipeline and shaders are configured, but not what a frame looks like.
+  Likewise the input mapping is tested, but the orbit rate, wheel rate, cursor
+  capture, and IMGUI button events need a Play mode frame.
 * Screen-space picking at the edges of the view and on a moving camera; the
   pure picker is tested, but the projection step needs a PlayMode scene.
 * The trajectory line's rendering and the dash texture; only its data sources

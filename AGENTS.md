@@ -9,7 +9,8 @@ new feature or piece of work.
 - `Docs/` is the design knowledge base. It is an **OKF v0.2 bundle**: Markdown
   files with YAML frontmatter, a root `index.md`, and a root `log.md`.
 - `TimeToExplore/` is the Unity 6000.3.28f1 project (Universal Render Pipeline
-  17.3.0, old Input Manager).
+  17.3.0, Input System 1.20.1 with Active Input Handling **Both** because the
+  HUD is IMGUI).
 - `tools/generate_solar_system.py` regenerates
   `TimeToExplore/Assets/Resources/solar_system.json`.
 - `tools/validate_okf.py` checks the design bundle.
@@ -64,6 +65,10 @@ log.
 ## Verification expectations
 
 - Runtime and editor C# must compile against Unity 6.3.
+- Read input through `Assets/Scripts/Player/PlayerControls.cs`. No runtime script
+  outside that seam may call `UnityEngine.Input` or `UnityEngine.InputSystem`;
+  `InputSeamTests` scans the sources and fails the suite if one does. Do not set
+  Active Input Handling to "New" only while the HUD is IMGUI.
 - A change to orbital maths or catalogue data should be checked numerically
   against known values at the epoch (2026-11-15, JD 2461359.5).
 - Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.

@@ -1,7 +1,9 @@
 {
   "name": "TimeToExplore.Runtime",
   "rootNamespace": "TimeToExplore",
-  "references": [],
+  "references": [
+    "Unity.InputSystem"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

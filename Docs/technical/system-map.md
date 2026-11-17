@@ -140,8 +140,9 @@ look-at point are described below.
 per pixel, times the drag. The factor comes from the camera distance, so the
 content under the cursor stays under the cursor at any zoom. Dragging right or
 up moves the look-at left or down, which is what makes the map follow the
-pointer rather than run away from it. The rig converts the old Input Manager's
-Mouse X/Y axes at ten pixels per axis unit (Unity's default 0.1 sensitivity).
+pointer rather than run away from it. The input seam supplies the drag at ten
+pixels per axis unit: it scales the raw device delta by the old 0.1 sensitivity,
+so the pan still follows the cursor one pixel for one pixel.
 
 **Pan ease.** Returning to the local band starts an exponential decay of the
 pan at `PanReturnRatePerSecond` (3/s by default). It never snaps, and ten
