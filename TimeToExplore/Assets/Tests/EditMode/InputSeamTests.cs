@@ -7,15 +7,22 @@ using UnityEngine;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
-    /// The regression that protects the input migration: the legacy
-    /// <c>UnityEngine.Input</c> API may appear only in the seam's documentation,
-    /// and the Input System may be touched only by the seam. A new call site
-    /// outside <c>PlayerControls</c> fails here before it can reintroduce a
-    /// backend dependency.
+    /// The regression that protects the input and UI migration: the legacy
+    /// <c>UnityEngine.Input</c> API may not appear outside the seam, the Input
+    /// System may be touched only by the seam and the uGUI input module, no
+    /// runtime script draws immediate-mode GUI, and Active Input Handling is
+    /// pinned to the new backend.
     /// </summary>
     public class InputSeamTests
     {
         private const string SeamFileName = "PlayerControls.cs";
+        private const string UiInputFileName = "UiInput.cs";
+
+        private static readonly string[] InputSystemFiles =
+        {
+            "Scripts/Player/PlayerControls.cs",
+            "Scripts/UI/UiInput.cs"
+        };
 
         private static readonly Regex LegacyInputCall = new Regex(
             @"(?<![\w.])Input\.(GetKey|GetKeyDown|GetKeyUp|GetAxis|GetAxisRaw|" +
@@ -30,6 +37,20 @@ namespace TimeToExplore.Tests.EditMode
         private static readonly Regex InputSystemReference = new Regex(
             @"UnityEngine\.InputSystem\b",
             RegexOptions.Compiled);
+
+        private static readonly Regex ImGuiMethod = new Regex(
+            @"\bvoid\s+OnGUI\s*\(", RegexOptions.Compiled);
+
+        private static readonly Regex ImGuiCall = new Regex(
+            @"(?<![\w.])GUI\.(Label|Button|DrawTexture|Box|TextField|Toggle|" +
+            @"color|enabled|skin|BeginGroup|EndGroup)\b",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ImGuiStyle = new Regex(
+            @"\bnew\s+GUIStyle\b", RegexOptions.Compiled);
+
+        private static readonly Regex ImGuiTexture = new Regex(
+            @"\bTexture2D\.whiteTexture\b", RegexOptions.Compiled);
 
         [Test]
         public void NoRuntimeScriptOutsideTheSeamCallsTheLegacyInputApi()
@@ -50,7 +71,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void OnlyTheSeamReferencesTheInputSystem()
+        public void OnlyTheSeamAndTheUiInputModuleNameTheInputSystem()
         {
             var users = new List<string>();
 
@@ -60,8 +81,9 @@ namespace TimeToExplore.Tests.EditMode
                     users.Add(Relative(file));
             }
 
-            Assert.That(users, Is.EqualTo(new[] { "Scripts/Player/PlayerControls.cs" }),
-                "the Input System is reached through one seam, not scattered through the runtime");
+            users.Sort();
+            Assert.That(users, Is.EqualTo(InputSystemFiles),
+                "gameplay input stays behind PlayerControls and uGUI input behind UiInput");
         }
 
         [Test]
@@ -78,14 +100,48 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void ActiveInputHandlingStaysOnBothWhileTheHudIsImGui()
+        public void TheUiInputModuleExistsAndAssignsDefaultActions()
+        {
+            string file = Path.Combine(Application.dataPath, "Scripts", "UI", UiInputFileName);
+            Assert.That(File.Exists(file), Is.True, file);
+
+            string source = File.ReadAllText(file);
+            Assert.That(source, Does.Contain("InputSystemUIInputModule"));
+            Assert.That(source, Does.Contain("AssignDefaultActions"));
+            Assert.That(source, Does.Contain("FindFirstObjectByType<EventSystem>"),
+                "an authored EventSystem must not be double-equipped");
+        }
+
+        [Test]
+        public void NoRuntimeScriptDrawsImmediateModeGui()
+        {
+            var offenders = new List<string>();
+
+            foreach (string file in RuntimeScripts())
+            {
+                string source = File.ReadAllText(file);
+                if (ImGuiMethod.IsMatch(source) || ImGuiCall.IsMatch(source) ||
+                    ImGuiStyle.IsMatch(source) || ImGuiTexture.IsMatch(source))
+                    offenders.Add(Relative(file));
+            }
+
+            Assert.That(offenders, Is.Empty,
+                "the HUD is uGUI; no runtime script may fall back to IMGUI: " +
+                string.Join(", ", offenders));
+        }
+
+        [Test]
+        public void ActiveInputHandlingIsTheNewBackendOnly()
         {
             string path = Path.GetFullPath(Path.Combine(
                 Application.dataPath, "..", "ProjectSettings", "ProjectSettings.asset"));
             Assert.That(File.Exists(path), Is.True, path);
 
-            StringAssert.Contains("activeInputHandler: 2", File.ReadAllText(path),
-                "IMGUI needs the legacy backend for OnGUI events; see ADR-011");
+            string settings = File.ReadAllText(path);
+            StringAssert.Contains("activeInputHandler: 1", settings,
+                "uGUI receives Input System events; see ADR-013");
+            Assert.That(settings, Does.Not.Contain("activeInputHandler: 2"),
+                "the legacy backend is no longer needed by the IMGUI HUD");
         }
 
         private static IEnumerable<string> RuntimeScripts()

@@ -37,7 +37,9 @@ Camera at render origin ◄── ShipController (input only; debug free flight)
         │                        │
         │              PlayerControls (the Input System seam)
         ▼
-SolarSystemHud (IMGUI)
+SolarSystemHud (uGUI Canvas)
+        │
+        └── UiInput (EventSystem + InputSystemUIInputModule)
 ```
 
 The flight core (`Assets/Scripts/Simulation/`) is deliberately separate from the
@@ -57,9 +59,9 @@ may only reference an assembly to its left. The direction is enforced by Unity
 |---|---|---|---|
 | `TimeToExplore.Core` | `Assets/Scripts/Core/TimeToExplore.Core.asmdef` | none | all |
 | `TimeToExplore.Simulation` | `Assets/Scripts/Simulation/TimeToExplore.Simulation.asmdef` | `TimeToExplore.Core` | all |
-| `TimeToExplore.Presentation` | `Assets/Scripts/TimeToExplore.Presentation.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `Unity.InputSystem` | all |
+| `TimeToExplore.Presentation` | `Assets/Scripts/TimeToExplore.Presentation.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `Unity.InputSystem`, `UnityEngine.UI` | all |
 | `TimeToExplore.Editor` | `Assets/Editor/TimeToExplore.Editor.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `TimeToExplore.Presentation` | Editor only |
-| `TimeToExplore.Tests.EditMode` | `Assets/Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef` | Core, Simulation, Presentation, `TimeToExplore.Editor`, URP, Input System, test runner | Editor only |
+| `TimeToExplore.Tests.EditMode` | `Assets/Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef` | Core, Simulation, Presentation, `TimeToExplore.Editor`, URP, Input System, Unity UI, test runner | Editor only |
 
 `Presentation` covers `Assets/Scripts/Player/`, `Assets/Scripts/Rendering/`,
 `Assets/Scripts/UI/`, and the root `SolarSystemBootstrap` on purpose. Those
@@ -72,9 +74,12 @@ editor assembly holds the optional scene builder and can never enter a player
 build.
 
 The layer rule has one deliberate consequence: Unity assembly references are
-not transitive, so each consumer lists every project assembly it uses. The test
-assembly is the top of the graph and reads the `.asmdef` files as the source of
-truth. See [ADR-012](/decisions/adr-012-assembly-layout.md).
+not transitive, so each consumer lists every project assembly it uses. Package
+references follow the same rule and are not project edges: `Presentation` adds
+`Unity.InputSystem` for the gameplay seam and `UnityEngine.UI` for the uGUI HUD,
+and the test assembly lists both as well. The test assembly is the top of the
+graph and reads the `.asmdef` files as the source of truth. See
+[ADR-012](/decisions/adr-012-assembly-layout.md).
 
 # Runtime flow
 
@@ -98,9 +103,11 @@ truth. See [ADR-012](/decisions/adr-012-assembly-layout.md).
    * `SolarSystemRenderer.Refresh` subtracts the ship position, scales to Unity
      units, applies the neighbourhood aid strength, and updates every view and
      orbit line; `TrajectoryLine` re-projects the plan.
-   * The HUD draws date, warp, nearest body, target, and labels, plus the flight
-     panel. A left click projects the drawn markers and picks a body; the details
-     screen updates from the same model state.
+   * The HUD updates the uGUI panels from the model: date, warp, nearest body,
+     target, labels, and the flight panel. A left click projects the drawn
+     markers and picks a body; the details screen updates from the same model
+     state. uGUI owns the pointer over a panel, so a button press never also
+     selects the body behind it.
 6. **Go To** calls `TripPlanner.Plan`, raises the warp, draws the plan, and hands
    the ship to the session. On arrival the plan completes, the drive goes off,
    and the ship coasts in the parking orbit.
@@ -175,7 +182,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |
-| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | IMGUI panels, labels, hover, and details screen |
+| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, and details screen |
+| `UiInput` | `Scripts/UI/UiInput.cs` | The one EventSystem and the Input System UI module; the pointer-over-panel query |
 | `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, hotkeys, and the `EnableMapView` comparison switch |
 | `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu (shipped scene and system-map scene) |
 
@@ -206,6 +214,42 @@ orbit camera; `SystemMap.unity` turns it on and the bootstrap passes it to
 is added at runtime. `Tools > Time to Explore > Create System Map Scene`
 recreates the comparison scene. The switch is a development aid, not a gameplay
 mode, and is due to be removed or defaulted on once the map work is done.
+
+# The HUD
+
+The HUD is **uGUI**, built from code by `SolarSystemHud.Initialise`; only the
+camera and the bootstrap are serialized, so there are no prefabs or scene UI
+objects to keep in sync. The object graph is created once and then only text,
+visibility, colours, and anchored positions change. The panel text still comes
+from the pure builders (`BodyDetails`, `FlightReport`, `BodyLabels`), which is
+why the content is tested without a rendered frame.
+
+| Object | Responsibility |
+|---|---|
+| `Canvas` | Screen Space Overlay, sorting order 10, drawn above the orrery |
+| `CanvasScaler` | Scale With Screen Size, 1920×1080 reference, match 0.5; the IMGUI pixel sizes hold at 1080p and scale with the window |
+| `GraphicRaycaster` | turns the pointer into uGUI hits, so panels swallow clicks |
+| `EventSystem` + `InputSystemUIInputModule` | created by `UiInput` only when the scene has none; carries the Input System's default UI actions |
+| Panel `Image`s | status, details, and flight backgrounds; `raycastTarget = true` |
+| `Text` widgets | legacy `Text` with `LegacyRuntime.ttf` (no TextMeshPro assets); role-separated colours and sizes match the IMGUI styles |
+| Button widgets | `Button.onClick`, with the same labels and the same `interactive` rules as before |
+| Label pool | one `Text` + `Shadow` per world label, `raycastTarget = false`, placed from projected screen points |
+| Crosshair | a 4×4 non-raycast `Image` at the canvas centre |
+
+The detail and flight rows are pooled: the builders return at most 19 and 17
+rows, so the panel creates 20 and 18 row entries and toggles them. Selecting a
+new body rewrites the same entries instead of rebuilding the panel.
+
+Panel input is a uGUI question (`EventSystem.current.IsPointerOverGameObject()`)
+rather than a rectangle test. That covers the whole panel including its buttons,
+and it means a click on a panel cannot reach the world. The click that opens the
+details screen is guarded by one frame (`_detailsOpenedThisFrame`): the buttons
+are non-interactable during the frame the panel appears, in whichever order the
+EventSystem and the HUD update. World picking stays on `PlayerControls`.
+
+`ShowHud` hides the status panel; `ShowLabels` hides body, ship, and trajectory
+labels. The details screen, flight panel, hover prompt, and crosshair keep their
+old visibility rules. See [ADR-013](/decisions/adr-013-ugui-hud.md).
 
 # Double precision boundary
 
@@ -275,13 +319,12 @@ to the line width, so the dashes stay the same apparent length at any zoom.
 # Input
 
 The project runs on the **Input System** (`com.unity.inputsystem` 1.20.1) with
-Active Input Handling set to **Both**. `PlayerControls` is the one seam that
-polls `Keyboard.current` and `Mouse.current`; every other script asks for an
-intent. **Both** is required because the HUD is IMGUI: under "Input System
-Package (New)" alone, `OnGUI` receives no events and every button stops
-working. The legacy backend therefore survives only to feed IMGUI; no project
-code reads its axes. The full rules are in [Input](/technical/input.md) and
-[ADR-011](/decisions/adr-011-input-system.md).
+Active Input Handling set to **New** only. Two files read it and no others:
+`PlayerControls` is the gameplay seam that polls `Keyboard.current` and
+`Mouse.current`; `UiInput` gives uGUI its pointer and click actions through an
+`InputSystemUIInputModule`. Every other script asks the seam for an intent, and
+no project code reads the legacy Input Manager. The full rules are in
+[Input](/technical/input.md) and [ADR-013](/decisions/adr-013-ugui-hud.md).
 
 The controller is an inspection tool now, not a flight model:
 
@@ -333,7 +376,8 @@ of trigonometric operations. The expensive parts are rendering and HUD:
 * 30 orbit lines × 161 points updated per frame,
 * one plan trajectory line, ~192 points, re-projected per frame while a plan is
   live,
-* two `OnGUI` panels and up to a few dozen labels.
+* one uGUI canvas: three panels, up to 37 pooled row texts, four buttons, and up
+  to a few dozen world labels.
 
 This is comfortably within a desktop frame budget. If the catalogue grows to
 thousands of asteroids, the next step is GPU instancing or a point cloud for the
@@ -365,8 +409,9 @@ Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
 rules and neighbourhood aid fade, the URP pipeline and shader wiring, the flight
-core, the input seam's key table and mouse conversions, the assembly layout
-graph, and the scene's frame loop.
+core, the input seam's key table and mouse conversions, the uGUI HUD's object
+graph, content, and button wiring, the assembly layout graph, and the scene's
+frame loop.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -383,8 +428,8 @@ committed file is reproducible.
 
 The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
 project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
-Render Pipeline, the Input System package, and Active Input Handling set to
-Both (the HUD is IMGUI).
+Render Pipeline, the Input System package, uGUI, and Active Input Handling set to
+**Input System Package (New)**.
 
 The next layer is PlayMode tests for the renderer, bootstrap, and HUD; they are
 deferred until the presentation code settles.
@@ -403,8 +448,10 @@ deferred until the presentation code settles.
 * No stationkeeping drift.
 * No N-body perturbations.
 * No save/load.
-* The HUD is immediate-mode and allocation-heavy; fine for a prototype, but its
-  IMGUI dependence is also why Active Input Handling cannot be "New" only.
+* The HUD is uGUI built at runtime and updates its text every frame. The object
+  graph is stable, but a panel's text is re-evaluated per frame; a dirty flag
+  would shave allocations when nothing changed. There is no PlayMode click
+  coverage yet, so button hit areas and canvas scaling still need a human eye.
 * The scene is generated at runtime; there is no authored art scene.
 * The system map has its camera pose, markers, labels, picking, orbit-line
   width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), and the

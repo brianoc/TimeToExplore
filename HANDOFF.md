@@ -1,23 +1,31 @@
 # Handoff — system map step 3: map drawing and picking
 
-> **Status (2026-11-17):** steps 3, 4, and 5 are done. The rendering migration
-> (commit `a6e1eda`) and the Input System migration followed. The project now
-> runs URP 17.3.0 and Input System 1.20.1 with Active Input Handling **Both**
-> (IMGUI needs the legacy backend for `OnGUI` events); every device read goes
-> through `Assets/Scripts/Player/PlayerControls.cs`. The runtime is split into
-> `TimeToExplore.Core`, `.Simulation`, and `.Presentation` assemblies, with
-> `.Editor` for tooling; `tools/check.sh` proves the graph. The suite is **320
-> tests**. This document is kept as the step-3 handoff and has not been
-> rewritten. Step 6, **frame-loop acceptance**, is next; see the implementation
-> steps in `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a
-> preview that never moves the ship, a 1% staleness window, the PREVIEW panel
-> rows, and a ghost at the target's arrival position; the idle ship coasts under
-> gravity so the clock and preview age with it.
+> **Status (2026-11-17):** the HUD is **uGUI**, not IMGUI, and Active Input
+> Handling is **Input System Package (New)** only (`activeInputHandler: 1`).
+> `SolarSystemHud` builds one Screen Space Overlay canvas, panels, pooled text,
+> and buttons at runtime; `UiInput` creates the one `EventSystem` with an
+> `InputSystemUIInputModule`. `PlayerControls` remains the gameplay seam for
+> world picking, the camera, free flight, and hotkeys. The UI migration is
+> [ADR-013](Docs/decisions/adr-013-ugui-hud.md) and supersedes ADR-011's
+> **Both** requirement. The suite is **329 tests**, all green under
+> `tools/check.sh`.
+>
+> Earlier status: steps 3, 4, and 5 of the system map are done. The rendering
+> migration (commit `a6e1eda`) and the Input System migration followed. The
+> project runs URP 17.3.0 and Input System 1.20.1; every gameplay device read
+> goes through `Assets/Scripts/Player/PlayerControls.cs`. The runtime is split
+> into `TimeToExplore.Core`, `.Simulation`, and `.Presentation` assemblies, with
+> `.Editor` for tooling; `tools/check.sh` proves the graph. Step 6,
+> **frame-loop acceptance**, is next; see the implementation steps in
+> `Docs/technical/system-map.md`. Step 5 added Plot route → Begin: a preview
+> that never moves the ship, a 1% staleness window, the PREVIEW panel rows, and
+> a ghost at the target's arrival position; the idle ship coasts under gravity
+> so the clock and preview age with it.
 
 **From:** the session that landed step 2 (commit `4f5fe12`).
 **Date:** 2026-11-16.
 **Project:** Time to Explore, Unity 6000.3.28f1 (URP 17.3.0, Input System
-1.20.1, Active Input Handling Both).
+1.20.1, uGUI 2.0.0, Active Input Handling New only).
 **Milestone:** 2.5, the system map and route preview.
 
 ## Read first
@@ -185,6 +193,8 @@ tools/check.sh
 ```
 
 At step 5 the suite was **277 tests**, all green. After the input migration the
-suite is **310 tests** (21 input tests), all green. PyYAML lives in
-`.venv/bin/python`; `check.sh` already prefers it. The full Unity run uses a
+suite was **310 tests** (21 input tests), and after the assembly split **320
+tests**. After the uGUI HUD and New-only migration it is **329 tests** (7 new
+`SolarSystemHudTests` and 2 new `InputSeamTests` guards), all green. PyYAML lives
+in `.venv/bin/python`; `check.sh` already prefers it. The full Unity run uses a
 throwaway copy of the project, so it is safe with the editor open.

@@ -44,10 +44,13 @@ camera only feed it coordinates. `ScreenTarget.Priority` carries the class
 rank; the local HUD leaves `classPriority` off, so the shipped picker rule is
 exactly the pre-map one.
 
-The pointer is ignored when the cursor is locked for mouse look, and while it
-is over the status panel or the details screen. The click that opens the
-details screen cannot also press a button in it: buttons are disabled for that
-frame.
+The pointer is ignored when the cursor is locked for mouse look, and whenever
+`EventSystem.current.IsPointerOverGameObject()` says it is over a raycast-target
+panel — the status panel, the details screen, the flight panel, or one of their
+buttons. A click on a panel is therefore swallowed by uGUI and never reaches the
+world. The click that opens the details screen cannot also press a button in it:
+the buttons are non-interactable during the frame the panel appears, whichever
+order the EventSystem and the HUD update in.
 
 # Map drawing
 
@@ -92,12 +95,16 @@ Mass comes from the catalogue's gravitational parameter (`M = GM/G`), so it
 stays consistent with the simulation rather than with a second, hand-typed
 field. Rotation periods are signed; a negative value is shown as retrograde.
 
-The panel is immediate-mode IMGUI, drawn on the right. It is a **screen**, not
-a world-space canvas: world-space UI does not survive solar-scale distances.
-The selected body's catalogue colour is used for the accent bar and hover
-prompt. The footer holds **Plot route …**, **Begin flight** (enabled once that
-body's route is plotted), **Jump (debug)** (the eased teleport), and **Close**.
-While a flight is running the primary button becomes **Replan …**.
+The panel is a runtime-built uGUI overlay on the right, on a canvas scaled from
+a 1920×1080 reference. It is a **screen**, not a world-space canvas: world-space
+UI does not survive solar-scale distances. `BodyDetails` supplies the rows; the
+HUD writes them into a fixed pool of `Text` entries, so the panel is not rebuilt
+when the selection changes. The selected body's catalogue colour is used for the
+accent bar, the divider, and the hover prompt. The footer holds **Plot route …**,
+**Begin flight** (enabled once that body's route is plotted), **Jump (debug)**
+(the eased teleport), and **Close**. While a flight is running the primary
+button becomes **Replan …**. A button is only interactive once the
+opening-frame guard has cleared.
 
 A plotted route belongs to the body it targets. Selecting another body, `Esc`,
 or **Close** discards it; plotting the same body again refreshes it. The flight
@@ -257,5 +264,13 @@ second mapping.
   when no local scale is supplied, and still overridden by `T`;
 * both scenes loading, the bootstrap switch reaching the rig, and that switch
   gating the aid fade.
+
+`SolarSystemHudTests` covers the uGUI replacement: one overlay Canvas with the
+1920×1080 scaler and a raycaster, one EventSystem with an
+`InputSystemUIInputModule`, the status text tracking the clock and the ship, the
+details rows matching `BodyDetails.Build`, the flight panel for a preview and a
+plan, `ShowHud`/`ShowLabels`, the opening-frame guard, and every button's
+`onClick` reaching the same owner method. What it cannot cover is a real
+pointer: see [Input](/technical/input.md#what-still-needs-a-human).
 
 See [Testing and verification](/technical/testing.md) for the full suite.

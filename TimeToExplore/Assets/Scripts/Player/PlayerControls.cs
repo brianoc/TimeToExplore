@@ -5,16 +5,17 @@ using UnityEngine.InputSystem;
 namespace TimeToExplore.Player
 {
     /// <summary>
-    /// The project's single input seam. It polls the Input System's keyboard and
-    /// mouse devices directly and exposes intents (pause, scale index, pointer,
-    /// drag delta, wheel steps, movement axes) so no other runtime script
-    /// mentions <see cref="UnityEngine.InputSystem"/> or the legacy
-    /// <c>UnityEngine.Input</c> API.
+    /// The project's single gameplay input seam. It polls the Input System's
+    /// keyboard and mouse devices directly and exposes intents (pause, scale
+    /// index, pointer, drag delta, wheel steps, movement axes) so no other
+    /// gameplay script mentions <see cref="UnityEngine.InputSystem"/> or the
+    /// legacy <c>UnityEngine.Input</c> API.
     ///
-    /// The project keeps Active Input Handling at **Both**: the Input System feeds
-    /// this seam, and the legacy backend still feeds IMGUI's <c>OnGUI</c> events,
-    /// which would stop arriving under "Input System Package (New)" alone. No
-    /// project code reads the legacy manager's axes.
+    /// Active Input Handling is **New** only. uGUI receives its own pointer and
+    /// click events from <c>UiInput</c>'s <c>InputSystemUIInputModule</c>; the
+    /// two paths read the same devices but never duplicate a mapping. No project
+    /// code reads the legacy Input Manager, and <c>InputManager.asset</c> is
+    /// inert.
     ///
     /// Every device read is null-guarded, and the pure helpers take the device (or
     /// a key predicate) explicitly, so the mapping is testable without hardware.

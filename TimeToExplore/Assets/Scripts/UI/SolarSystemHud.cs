@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using TimeToExplore.Core;
 using TimeToExplore.Player;
 using TimeToExplore.Rendering;
@@ -8,43 +9,139 @@ using TimeToExplore.Simulation;
 namespace TimeToExplore.UI
 {
     /// <summary>
-    /// Immediate-mode HUD for the prototype: status panel, flight panel, body
-    /// labels, and the body details screen opened by left-clicking a body.
+    /// The runtime-built uGUI HUD: status panel, flight panel, details screen,
+    /// body and trajectory labels, the hover prompt, and the crosshair.
+    ///
+    /// The object graph is created once in <see cref="Initialise"/>. Every frame
+    /// only text, visibility, colours, and positions change, so there is no
+    /// per-frame allocation of GameObjects and no layout rebuild of the panels.
+    /// The text itself comes from the pure builders — <see cref="BodyDetails"/>,
+    /// <see cref="FlightReport"/>, and <see cref="BodyLabels"/> — exactly as it
+    /// did under IMGUI.
+    ///
+    /// The Canvas is a Screen Space Overlay with a 1920×1080 reference and a 0.5
+    /// match, so the IMGUI pixel sizes are kept at 1080p and scale with the
+    /// window. Panel backgrounds accept raycasts; labels, the hover prompt, and
+    /// the crosshair never do, so they cannot swallow a click.
     /// </summary>
     public class SolarSystemHud : MonoBehaviour
     {
         private const float PanelWidth = 430f;
         private const float DetailsWidth = 392f;
         private const float Margin = 16f;
+        private const float StatusPanelHeight = 252f;
+
+        private const float DetailsHeaderHeight = 95f;
+        private const float DetailsFooterHeight = 122f;
+        private const float DetailsHeadingHeight = 22f;
+        private const float DetailsRowHeight = 17f;
+        private const float FlightHeaderHeight = 58f;
+        private const float FlightHeadingHeight = 20f;
+        private const float FlightRowHeight = 17f;
+
+        private const int MaxDetailsRows = 20;
+        private const int MaxFlightRows = 18;
+        private const int InitialLabelPool = 24;
+
+        private static readonly Color StatusBackground = new Color(0.01f, 0.02f, 0.04f, 0.82f);
+        private static readonly Color DetailsBackground = new Color(0.015f, 0.025f, 0.045f, 0.92f);
+        private static readonly Color FlightBackground = new Color(0.012f, 0.03f, 0.05f, 0.90f);
+
+        private static readonly Color TitleColour = new Color(0.85f, 0.93f, 1f);
+        private static readonly Color PanelTitleColour = new Color(0.94f, 0.97f, 1f);
+        private static readonly Color TextColour = new Color(0.88f, 0.90f, 0.94f);
+        private static readonly Color DimColour = new Color(0.62f, 0.68f, 0.76f);
+        private static readonly Color SectionColour = new Color(0.48f, 0.66f, 0.88f);
+        private static readonly Color RowLabelColour = new Color(0.62f, 0.68f, 0.76f);
+        private static readonly Color RowValueColour = new Color(0.90f, 0.93f, 0.97f);
+        private static readonly Color WrapColour = new Color(0.76f, 0.82f, 0.89f);
+        private static readonly Color LabelColour = new Color(0.85f, 0.92f, 1f, 0.92f);
+        private static readonly Color SelectedLabelColour = new Color(1f, 0.85f, 0.4f);
+        private static readonly Color ShipLabelColour = new Color(0.86f, 0.90f, 0.96f);
+        private static readonly Color FlipLabelColour = new Color(1f, 0.55f, 0.35f);
+        private static readonly Color GhostLabelColour = new Color(0.62f, 0.78f, 1f);
+        private static readonly Color ArrivalLabelColour = new Color(0.55f, 1f, 0.72f);
+        private static readonly Color ButtonTextColour = new Color(0.92f, 0.95f, 1f);
+        private static readonly Color CrosshairColour = new Color(1f, 1f, 1f, 0.65f);
+        private static readonly Color FallbackAccent = new Color(0.55f, 0.75f, 1f);
+
+        private const string HelpText =
+            "LMB select body · RMB drag orbit · wheel zoom · 1–7 warp · Space pause\n" +
+            "Tab target · R reset to Gateway · Esc cancel · T true scale · O orbits\n" +
+            "L labels · H HUD · ` debug free flight (WASD fly, , . speed) · X cancel flight";
 
         private SolarSystemBootstrap _owner;
-        private GUIStyle _title;
-        private GUIStyle _text;
-        private GUIStyle _dim;
-        private GUIStyle _label;
-        private GUIStyle _panelTitle;
-        private GUIStyle _section;
-        private GUIStyle _rowLabel;
-        private GUIStyle _rowValue;
-        private GUIStyle _wrap;
-        private GUIStyle _button;
-        private Texture2D _pixel;
+        private bool _built;
+        private Font _font;
+        private Canvas _canvas;
+        private RectTransform _canvasRect;
+        private RectTransform _overlay;
+        private GameObject _canvasObject;
+        private GameObject _eventSystemObject;
+
+        private GameObject _statusPanel;
+        private RectTransform _statusRect;
+        private Text _statusClock;
+        private Text _statusDistance;
+        private Text _statusNearest;
+        private Text _statusWarpNote;
+        private Text _statusTarget;
+        private Text _statusTargetOrbit;
+        private Text _statusHelp;
+
+        private GameObject _detailsPanel;
+        private RectTransform _detailsRect;
+        private Image _detailsAccent;
+        private Image _detailsDivider;
+        private Text _detailsTitle;
+        private Text _detailsKind;
+        private Text _detailsSubtitle;
+        private Text _detailsDescription;
+        private readonly List<RowView> _detailsRows = new List<RowView>();
+        private Button _routeButton;
+        private Text _routeLabel;
+        private Button _beginButton;
+        private Button _closeButton;
+        private Button _jumpButton;
+        private BodyRuntime _detailsBody;
+
+        private GameObject _flightPanel;
+        private RectTransform _flightRect;
+        private Image _flightAccent;
+        private Text _flightTitle;
+        private Text _flightStatus;
+        private Text _flightNext;
+        private readonly List<RowView> _flightRows = new List<RowView>();
+
+        private readonly List<LabelView> _labels = new List<LabelView>();
+        private int _labelCursor;
+        private GameObject _crosshair;
 
         private bool _detailsOpen;
-        private int _detailsOpenedFrame = -1;
-        private Rect _hudRect = new Rect(12f, 12f, PanelWidth, 252f);
-        private Rect _detailsRect;
-        private Rect _flightRect;
+        private bool _detailsOpenedThisFrame;
         private BodyRuntime _hover;
         private readonly List<ScreenTarget> _targets = new List<ScreenTarget>();
+
+        // --- Public API ---------------------------------------------------------
 
         public void Initialise(SolarSystemBootstrap owner)
         {
             _owner = owner;
+            BuildUi();
         }
 
         /// <summary>The details screen is open. Clicking a body opens it.</summary>
         public bool DetailsOpen => _detailsOpen;
+
+        /// <summary>Open the details screen for the current selection.</summary>
+        public void OpenDetails()
+        {
+            if (_owner == null || _owner.Selected == null) return;
+
+            _detailsOpen = true;
+            _detailsBody = _owner.Selected;
+            _detailsOpenedThisFrame = true;
+        }
 
         public void CloseDetails()
         {
@@ -52,80 +149,35 @@ namespace TimeToExplore.UI
             _owner?.DiscardPreview();
         }
 
-        private void EnsureStyles()
-        {
-            if (_text != null) return;
-
-            _pixel = Texture2D.whiteTexture;
-            _title = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 18,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.85f, 0.93f, 1f) }
-            };
-            _text = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 12,
-                normal = { textColor = new Color(0.88f, 0.90f, 0.94f) }
-            };
-            _dim = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                normal = { textColor = new Color(0.62f, 0.68f, 0.76f) }
-            };
-            _label = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = Color.white }
-            };
-            _panelTitle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 22,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.94f, 0.97f, 1f) }
-            };
-            _section = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 10,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.48f, 0.66f, 0.88f) }
-            };
-            _rowLabel = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.62f, 0.68f, 0.76f) }
-            };
-            _rowValue = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.90f, 0.93f, 0.97f) }
-            };
-            _wrap = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                wordWrap = true,
-                normal = { textColor = new Color(0.76f, 0.82f, 0.89f) }
-            };
-            _button = new GUIStyle(GUI.skin.button)
-            {
-                fontSize = 12,
-                alignment = TextAnchor.MiddleCenter,
-                padding = new RectOffset(8, 8, 4, 4)
-            };
-        }
+        // --- Frame --------------------------------------------------------------
 
         private void Update()
         {
             if (_owner == null || _owner.Model == null) return;
+            if (!_built) BuildUi();
 
             if (PlayerControls.CancelPressed) CloseDetails();
 
             UpdatePointer();
+            Refresh();
+
+            // One clear frame of protection: the click that opened the details
+            // screen cannot also press a button inside it, whichever order the
+            // EventSystem and this Update run in.
+            _detailsOpenedThisFrame = false;
+        }
+
+        private void OnDestroy()
+        {
+            DestroyObject(_canvasObject);
+            DestroyObject(_eventSystemObject);
+        }
+
+        private static void DestroyObject(GameObject target)
+        {
+            if (target == null) return;
+            if (Application.isPlaying) Destroy(target);
+            else DestroyImmediate(target);
         }
 
         private void UpdatePointer()
@@ -135,25 +187,36 @@ namespace TimeToExplore.UI
             // With the cursor locked for mouse look there is no pointer to aim.
             if (Cursor.lockState != CursorLockMode.None) return;
 
-            Vector2 pointer = GuiPointer();
-            if (PointerOverPanel(pointer)) return;
+            Vector2 screen = PlayerControls.PointerPosition;
 
+            // Any raycast-target panel swallows the pointer before the world sees
+            // it. IsPointerOverGameObject can lag the EventSystem by a frame, so
+            // the panel rects are tested immediately as well.
+            if (UiInput.PointerOverUi() || PointerOverPanel(screen)) return;
+
+            Vector2 pointer = PlayerControls.ToGuiPointer(screen, Screen.height);
             _hover = PickAt(pointer);
 
             if (!PlayerControls.LeftClickPressed || _hover == null) return;
 
             _owner.Select(_hover);
-            _detailsOpen = true;
-            _detailsOpenedFrame = Time.frameCount;
+            OpenDetails();
         }
 
-        private static Vector2 GuiPointer() =>
-            PlayerControls.ToGuiPointer(PlayerControls.PointerPosition, Screen.height);
+        /// <summary>Immediate screen-space guard for the three HUD panels.</summary>
+        private bool PointerOverPanel(Vector2 screenPoint) =>
+            ContainsScreenPoint(_statusRect, screenPoint) ||
+            (_detailsOpen && ContainsScreenPoint(_detailsRect, screenPoint)) ||
+            (HasFlightPanel && ContainsScreenPoint(_flightRect, screenPoint));
 
-        private bool PointerOverPanel(Vector2 pointer) =>
-            _hudRect.Contains(pointer) ||
-            (_detailsOpen && _detailsRect.Contains(pointer)) ||
-            HasFlightPanel && _flightRect.Contains(pointer);
+        /// <summary>
+        /// Whether a screen point is inside an active overlay-canvas rect. Used
+        /// alongside the EventSystem so a panel click cannot reach the world on
+        /// the frame the EventSystem has not raycast yet.
+        /// </summary>
+        public static bool ContainsScreenPoint(RectTransform rect, Vector2 screenPoint) =>
+            rect != null && rect.gameObject.activeInHierarchy &&
+            RectTransformUtility.RectangleContainsScreenPoint(rect, screenPoint, null);
 
         private bool HasFlightPanel =>
             _owner?.Flight != null && (_owner.Flight.Plan != null || _owner.Flight.HasPreview);
@@ -191,29 +254,21 @@ namespace TimeToExplore.UI
                 classPriority);
         }
 
-        private void OnGUI()
+        private void Refresh()
         {
-            if (_owner == null || _owner.Model == null) return;
-            EnsureStyles();
-
-            if (_owner.ShowHud) DrawPanel();
-            if (_owner.ShowLabels) DrawLabels();
-            DrawHover();
-            DrawCrosshair();
-            if (_detailsOpen) DrawDetailsPanel();
-            if (HasFlightPanel) DrawFlightPanel();
-            DrawTrajectoryLabels();
+            RefreshStatus();
+            RefreshDetails();
+            RefreshFlight();
+            RefreshOverlay();
         }
 
-        private void DrawPanel()
-        {
-            const float height = 252f;
-            Rect panel = new Rect(12f, 12f, PanelWidth, height);
-            _hudRect = panel;
+        // --- Status panel -------------------------------------------------------
 
-            GUI.color = new Color(0.01f, 0.02f, 0.04f, 0.82f);
-            GUI.DrawTexture(panel, _pixel);
-            GUI.color = Color.white;
+        private void RefreshStatus()
+        {
+            bool show = _owner.ShowHud;
+            if (_statusPanel.activeSelf != show) _statusPanel.SetActive(show);
+            if (!show) return;
 
             Vector3d shipPosition = _owner.ShipPositionM;
             BodyRuntime sun = _owner.Model.Sun;
@@ -221,50 +276,47 @@ namespace TimeToExplore.UI
             BodyRuntime nearest = _owner.Model.FindNearest(shipPosition);
             BodyRuntime selected = _owner.Selected;
 
-            float x = panel.x + 14f;
-            float y = panel.y + 10f;
+            _statusClock.text = JulianDate.Format(_owner.Clock.JulianDate) + "     " + _owner.Clock.Label;
+            _statusDistance.text =
+                $"Heliocentric distance {FormatDistance(sunDistance)}     {ShipStatusText()}";
+            _statusNearest.text = nearest != null
+                ? $"Nearest body: {nearest.Name} ({FormatDistance(Vector3d.Distance(nearest.PositionM, shipPosition))})"
+                : "Nearest body: —";
 
-            GUI.Label(new Rect(x, y, PanelWidth - 28f, 24f), "TIME TO EXPLORE  /  SOL", _title);
-            y += 28f;
-            GUI.Label(new Rect(x, y, PanelWidth - 28f, 18f),
-                JulianDate.Format(_owner.Clock.JulianDate) + "     " + _owner.Clock.Label, _text);
-            y += 19f;
-            GUI.Label(new Rect(x, y, PanelWidth - 28f, 18f),
-                $"Heliocentric distance {FormatDistance(sunDistance)}     {ShipStatusText()}", _text);
-            y += 19f;
-            GUI.Label(new Rect(x, y, PanelWidth - 28f, 18f),
-                nearest != null
-                    ? $"Nearest body: {nearest.Name} ({FormatDistance(Vector3d.Distance(nearest.PositionM, shipPosition))})"
-                    : "Nearest body: —",
-                _text);
-            y += 22f;
+            float y = 98f;
 
-            if (!string.IsNullOrEmpty(_owner.WarpNote))
+            bool hasNote = !string.IsNullOrEmpty(_owner.WarpNote);
+            if (_statusWarpNote.gameObject.activeSelf != hasNote)
+                _statusWarpNote.gameObject.SetActive(hasNote);
+            if (hasNote)
             {
-                GUI.Label(new Rect(x, y, PanelWidth - 28f, 16f),
-                    "warp held by the flight policy  ·  " + _owner.WarpNote, _dim);
+                _statusWarpNote.text = "warp held by the flight policy  ·  " + _owner.WarpNote;
+                PlaceTopLeft(_statusWarpNote, 14f, y, PanelWidth - 28f, 16f);
                 y += 16f;
             }
 
-            if (selected != null)
+            bool hasTarget = selected != null;
+            if (_statusTarget.gameObject.activeSelf != hasTarget)
+                _statusTarget.gameObject.SetActive(hasTarget);
+            if (_statusTargetOrbit.gameObject.activeSelf != hasTarget)
+                _statusTargetOrbit.gameObject.SetActive(hasTarget);
+
+            if (hasTarget)
             {
                 string parent = selected.Parent != null ? selected.Parent.Name : "—";
                 string period = selected.HasOrbit
                     ? FormatDuration(selected.Elements.PeriodSeconds)
                     : "—";
-                GUI.Label(new Rect(x, y, PanelWidth - 28f, 18f),
-                    $"Target: {selected.Name}   R {FormatDistance(selected.RadiusM)}   GM {selected.Gm:0.00E+00} m³/s²", _text);
-                y += 18f;
-                GUI.Label(new Rect(x, y, PanelWidth - 28f, 18f),
-                    $"Orbits {parent}   sidereal period {period}   {BodyDetails.KindLabel(selected)}", _dim);
-                y += 22f;
+                _statusTarget.text =
+                    $"Target: {selected.Name}   R {FormatDistance(selected.RadiusM)}   GM {selected.Gm:0.00E+00} m³/s²";
+                _statusTargetOrbit.text =
+                    $"Orbits {parent}   sidereal period {period}   {BodyDetails.KindLabel(selected)}";
+                PlaceTopLeft(_statusTarget, 14f, y, PanelWidth - 28f, 18f);
+                PlaceTopLeft(_statusTargetOrbit, 14f, y + 18f, PanelWidth - 28f, 18f);
+                y += 40f;
             }
 
-            GUI.Label(new Rect(x, y, PanelWidth - 28f, 58f),
-                "LMB select body · RMB drag orbit · wheel zoom · 1–7 warp · Space pause\n" +
-                "Tab target · R reset to Gateway · Esc cancel · T true scale · O orbits\n" +
-                "L labels · H HUD · ` debug free flight (WASD fly, , . speed) · X cancel flight",
-                _dim);
+            PlaceTopLeft(_statusHelp, 14f, y, PanelWidth - 28f, 58f);
         }
 
         private string ShipStatusText()
@@ -290,76 +342,88 @@ namespace TimeToExplore.UI
             }
         }
 
-        private void DrawDetailsPanel()
+        // --- Details panel ------------------------------------------------------
+
+        private void RefreshDetails()
         {
             BodyRuntime body = _owner.Selected;
-            if (body == null)
+
+            if (!_detailsOpen || body == null)
             {
-                _detailsOpen = false;
+                if (body == null) _detailsOpen = false;
+                if (_detailsPanel.activeSelf) _detailsPanel.SetActive(false);
                 return;
             }
 
+            if (!_detailsPanel.activeSelf) _detailsPanel.SetActive(true);
+            _detailsBody = body;
+
             List<DetailRow> rows = BodyDetails.Build(body, _owner.Model, _owner.ShipPositionM);
 
-            float headingHeight = 22f;
-            float rowHeight = 17f;
             float rowsHeight = 0f;
             foreach (DetailRow row in rows)
-                rowsHeight += row.IsHeading ? headingHeight : rowHeight;
+                rowsHeight += row.IsHeading ? DetailsHeadingHeight : DetailsRowHeight;
 
-            const float headerHeight = 95f;
-            const float footerHeight = 122f;
-            float height = headerHeight + rowsHeight + footerHeight;
-            Rect panel = new Rect(Screen.width - DetailsWidth - Margin, Margin, DetailsWidth, height);
-            _detailsRect = panel;
+            float height = DetailsHeaderHeight + rowsHeight + DetailsFooterHeight;
+            _detailsRect.sizeDelta = new Vector2(DetailsWidth, height);
 
-            GUI.color = new Color(0.015f, 0.025f, 0.045f, 0.92f);
-            GUI.DrawTexture(panel, _pixel);
+            _detailsTitle.text = body.Name;
+            _detailsKind.text = BodyDetails.KindLabel(body).ToUpperInvariant();
+            _detailsSubtitle.text = BodyDetails.Subtitle(body, _owner.Model);
+
+            bool hasDescription = !string.IsNullOrEmpty(body.Data.description);
+            if (_detailsDescription.gameObject.activeSelf != hasDescription)
+                _detailsDescription.gameObject.SetActive(hasDescription);
+            if (hasDescription) _detailsDescription.text = body.Data.description;
 
             Color accent = BodyColour(body);
-            GUI.color = accent;
-            GUI.DrawTexture(new Rect(panel.x, panel.y, 4f, panel.height), _pixel);
+            _detailsAccent.color = accent;
+            _detailsDivider.color = new Color(accent.r, accent.g, accent.b, 0.28f);
 
-            GUI.color = new Color(accent.r, accent.g, accent.b, 0.28f);
-            GUI.DrawTexture(new Rect(panel.x + 4f, panel.y + 93f, panel.width - 4f, 1f), _pixel);
-            GUI.color = Color.white;
-
-            float x = panel.x + 18f;
-            float contentWidth = panel.width - 36f;
-            float y = panel.y + 10f;
-
-            GUI.Label(new Rect(x, y, contentWidth - 54f, 28f), body.Name, _panelTitle);
-            string kind = BodyDetails.KindLabel(body);
-            GUI.Label(new Rect(panel.x + panel.width - 90f, y + 7f, 74f, 18f), kind.ToUpperInvariant(), _section);
-            y += 31f;
-
-            GUI.Label(new Rect(x, y, contentWidth, 17f), BodyDetails.Subtitle(body, _owner.Model), _dim);
-            y += 20f;
-
-            if (!string.IsNullOrEmpty(body.Data.description))
+            float contentWidth = DetailsWidth - 36f;
+            float y = DetailsHeaderHeight;
+            for (int i = 0; i < _detailsRows.Count; i++)
             {
-                GUI.Label(new Rect(x, y, contentWidth, 30f), body.Data.description, _wrap);
-            }
-            y += 34f;
+                RowView entry = _detailsRows[i];
+                bool used = i < rows.Count;
+                if (entry.Heading.gameObject.activeSelf != used)
+                {
+                    entry.Heading.gameObject.SetActive(used);
+                    entry.Label.gameObject.SetActive(used);
+                    entry.Value.gameObject.SetActive(used);
+                }
+                if (!used) continue;
 
-            foreach (DetailRow row in rows)
-            {
+                DetailRow row = rows[i];
                 if (row.IsHeading)
                 {
-                    GUI.Label(new Rect(x, y, contentWidth, 18f), row.Label, _section);
+                    if (entry.Value.gameObject.activeSelf) entry.Value.gameObject.SetActive(false);
+                    if (entry.Label.gameObject.activeSelf) entry.Label.gameObject.SetActive(false);
+                    entry.Heading.gameObject.SetActive(true);
+                    entry.Heading.text = row.Label;
+                    PlaceTopLeft(entry.Heading, 18f, y, contentWidth, 18f);
                 }
                 else
                 {
-                    GUI.Label(new Rect(x, y - 1f, 138f, 17f), row.Label, _rowLabel);
-                    GUI.Label(new Rect(x + 140f, y - 1f, contentWidth - 140f, 17f), row.Value, _rowValue);
+                    if (entry.Heading.gameObject.activeSelf) entry.Heading.gameObject.SetActive(false);
+                    entry.Label.gameObject.SetActive(true);
+                    entry.Value.gameObject.SetActive(true);
+                    entry.Label.text = row.Label;
+                    entry.Value.text = row.Value;
+                    PlaceTopLeft(entry.Label, 18f, y - 1f, 138f, 17f);
+                    PlaceTopLeft(entry.Value, 158f, y - 1f, contentWidth - 140f, 17f);
                 }
-                y += row.IsHeading ? headingHeight : rowHeight;
+                y += row.IsHeading ? DetailsHeadingHeight : DetailsRowHeight;
             }
 
-            float buttonY = panel.y + panel.height - 112f;
+            float buttonY = height - 112f;
+            PlaceTopLeft(_routeButton.image, 18f, buttonY, contentWidth, 30f);
+            PlaceTopLeft(_beginButton.image, 18f, buttonY + 36f, contentWidth - 106f, 28f);
+            PlaceTopLeft(_closeButton.image, 18f + contentWidth - 98f, buttonY + 36f, 98f, 28f);
+            PlaceTopLeft(_jumpButton.image, 18f, buttonY + 70f, contentWidth - 106f, 28f);
 
             // The click that opened this panel must not also press a button.
-            bool interactive = Time.frameCount != _detailsOpenedFrame;
+            bool interactive = !_detailsOpenedThisFrame;
             FlightSession flight = _owner.Flight;
             bool flying = flight != null && flight.IsFlying;
             bool rejected = flight != null &&
@@ -369,42 +433,56 @@ namespace TimeToExplore.UI
                               flight.Preview.TargetId == body.Id;
             bool plottable = body.Gm > 0.0 && !rejected;
 
-            bool previousEnabled = GUI.enabled;
-            GUI.enabled = interactive && plottable;
+            _routeLabel.text = rejected
+                ? "Plan infeasible"
+                : flying
+                    ? $"Replan to {body.Name}"
+                    : hasPreview
+                        ? $"Replot route to {body.Name}"
+                        : $"Plot route to {body.Name}";
 
-            string routeLabel;
-            if (rejected) routeLabel = "Plan infeasible";
-            else if (flying) routeLabel = $"Replan to {body.Name}";
-            else if (hasPreview) routeLabel = $"Replot route to {body.Name}";
-            else routeLabel = $"Plot route to {body.Name}";
-
-            if (GUI.Button(new Rect(x, buttonY, contentWidth, 30f), routeLabel, _button))
-            {
-                if (flying) _owner.BeginGoTo(body);
-                else _owner.PlotRoute(body);
-            }
-
-            GUI.enabled = interactive && plottable && !flying && hasPreview;
-            if (GUI.Button(new Rect(x, buttonY + 36f, contentWidth - 106f, 28f),
-                    "Begin flight", _button))
-                _owner.BeginPlottedFlight();
-
-            GUI.enabled = interactive;
-            if (GUI.Button(new Rect(x + contentWidth - 98f, buttonY + 36f, 98f, 28f),
-                    "Close", _button))
-                CloseDetails();
-
-            GUI.enabled = interactive && !flying;
-            if (GUI.Button(new Rect(x, buttonY + 70f, contentWidth - 106f, 28f),
-                    "Jump (debug)", _button))
-                _owner.FocusSelected();
-
-            GUI.enabled = previousEnabled;
-            GUI.color = Color.white;
+            _routeButton.interactable = interactive && plottable;
+            _beginButton.interactable = interactive && plottable && !flying && hasPreview;
+            _closeButton.interactable = interactive;
+            _jumpButton.interactable = interactive && !flying;
         }
 
-        private void DrawFlightPanel()
+        private void OnRouteClicked()
         {
+            BodyRuntime body = _detailsBody ?? _owner?.Selected;
+            if (body == null || _owner == null) return;
+
+            bool flying = _owner.Flight != null && _owner.Flight.IsFlying;
+            if (flying) _owner.BeginGoTo(body);
+            else _owner.PlotRoute(body);
+        }
+
+        private void OnBeginClicked()
+        {
+            _owner?.BeginPlottedFlight();
+        }
+
+        private void OnCloseClicked()
+        {
+            CloseDetails();
+        }
+
+        private void OnJumpClicked()
+        {
+            _owner?.FocusSelected();
+        }
+
+        // --- Flight panel -------------------------------------------------------
+
+        private void RefreshFlight()
+        {
+            if (!HasFlightPanel)
+            {
+                if (_flightPanel.activeSelf) _flightPanel.SetActive(false);
+                return;
+            }
+
+            if (!_flightPanel.activeSelf) _flightPanel.SetActive(true);
             FlightSession flight = _owner.Flight;
             double now = _owner.Clock.JulianDate;
             string warp = _owner.Clock.Label +
@@ -412,56 +490,56 @@ namespace TimeToExplore.UI
 
             List<DetailRow> rows = FlightReport.Build(flight, _owner.Model, warp, now);
 
-            float headingHeight = 20f;
-            float rowHeight = 17f;
             float rowsHeight = 0f;
             foreach (DetailRow row in rows)
-                rowsHeight += row.IsHeading ? headingHeight : rowHeight;
+                rowsHeight += row.IsHeading ? FlightHeadingHeight : FlightRowHeight;
 
-            float height = 58f + rowsHeight;
-            Rect panel = new Rect(12f, Screen.height - height - 12f, PanelWidth, height);
-            _flightRect = panel;
+            float height = FlightHeaderHeight + rowsHeight;
+            _flightRect.sizeDelta = new Vector2(PanelWidth, height);
 
-            GUI.color = new Color(0.012f, 0.03f, 0.05f, 0.90f);
-            GUI.DrawTexture(panel, _pixel);
-
-            Color accent = FlightAccent(flight.Status);
-            GUI.color = accent;
-            GUI.DrawTexture(new Rect(panel.x, panel.y, 4f, panel.height), _pixel);
-            GUI.color = Color.white;
-
-            float x = panel.x + 16f;
-            float contentWidth = panel.width - 32f;
-            float y = panel.y + 8f;
-
-            GUI.Label(new Rect(x, y, contentWidth - 120f, 20f),
-                "FLIGHT  /  " +
-                ((flight.Plan ?? flight.Preview)?.TargetId ?? "—").ToUpperInvariant(), _title);
-            GUI.Label(new Rect(panel.x + panel.width - 150f, y + 4f, 134f, 16f),
-                FlightReport.StatusLabel(flight, now).ToUpperInvariant(), _section);
-            y += 24f;
-
-            string next = flight.Plan != null
+            _flightTitle.text = "FLIGHT  /  " +
+                                ((flight.Plan ?? flight.Preview)?.TargetId ?? "—").ToUpperInvariant();
+            _flightStatus.text = FlightReport.StatusLabel(flight, now).ToUpperInvariant();
+            _flightNext.text = flight.Plan != null
                 ? FlightReport.NextEvent(flight)
                 : FlightReport.PreviewNextEvent(flight, now);
-            GUI.Label(new Rect(x, y, contentWidth, 20f), next, _text);
-            y += 26f;
+            _flightAccent.color = FlightAccent(flight.Status);
 
-            foreach (DetailRow row in rows)
+            float contentWidth = PanelWidth - 32f;
+            float y = FlightHeaderHeight;
+            for (int i = 0; i < _flightRows.Count; i++)
             {
+                RowView entry = _flightRows[i];
+                bool used = i < rows.Count;
+                if (entry.Heading.gameObject.activeSelf != used)
+                {
+                    entry.Heading.gameObject.SetActive(used);
+                    entry.Label.gameObject.SetActive(used);
+                    entry.Value.gameObject.SetActive(used);
+                }
+                if (!used) continue;
+
+                DetailRow row = rows[i];
                 if (row.IsHeading)
                 {
-                    GUI.Label(new Rect(x, y, contentWidth, 16f), row.Label, _section);
+                    if (entry.Value.gameObject.activeSelf) entry.Value.gameObject.SetActive(false);
+                    if (entry.Label.gameObject.activeSelf) entry.Label.gameObject.SetActive(false);
+                    entry.Heading.gameObject.SetActive(true);
+                    entry.Heading.text = row.Label;
+                    PlaceTopLeft(entry.Heading, 16f, y, contentWidth, 16f);
                 }
                 else
                 {
-                    GUI.Label(new Rect(x, y - 1f, 118f, 17f), row.Label, _rowLabel);
-                    GUI.Label(new Rect(x + 120f, y - 1f, contentWidth - 120f, 17f), row.Value, _rowValue);
+                    if (entry.Heading.gameObject.activeSelf) entry.Heading.gameObject.SetActive(false);
+                    entry.Label.gameObject.SetActive(true);
+                    entry.Value.gameObject.SetActive(true);
+                    entry.Label.text = row.Label;
+                    entry.Value.text = row.Value;
+                    PlaceTopLeft(entry.Label, 16f, y - 1f, 118f, 17f);
+                    PlaceTopLeft(entry.Value, 136f, y - 1f, contentWidth - 120f, 17f);
                 }
-                y += row.IsHeading ? headingHeight : rowHeight;
+                y += row.IsHeading ? FlightHeadingHeight : FlightRowHeight;
             }
-
-            GUI.color = Color.white;
         }
 
         private static Color FlightAccent(FlightStatus status)
@@ -476,66 +554,28 @@ namespace TimeToExplore.UI
             }
         }
 
-        private void DrawTrajectoryLabels()
-        {
-            TrajectoryLine trajectory = _owner.Trajectory;
-            Camera camera = _owner.ViewCamera;
-            if (trajectory == null || camera == null || !trajectory.IsShowing) return;
+        // --- Labels, hover, crosshair ------------------------------------------
 
-            DrawWorldLabel(camera, trajectory.FlipMarkerPosition, "FLIP  thrust reversal",
-                new Color(1f, 0.55f, 0.35f));
-            if (trajectory.HasGhost)
+        private void RefreshOverlay()
+        {
+            _labelCursor = 0;
+
+            if (_owner.ShowLabels) DrawBodyLabels();
+            DrawHover();
+            DrawTrajectoryLabels();
+
+            // Only the labels this frame did not use are switched off, so an
+            // unchanged label is not deactivated and reactivated every frame.
+            for (int i = _labelCursor; i < _labels.Count; i++)
             {
-                DrawWorldLabel(camera, trajectory.GhostMarkerPosition,
-                    "TARGET AT ARRIVAL", new Color(0.62f, 0.78f, 1f));
+                GameObject label = _labels[i].Text.gameObject;
+                if (label.activeSelf) label.SetActive(false);
             }
-            else
-            {
-                DrawWorldLabel(camera, trajectory.ArrivalMarkerPosition,
-                    "ARRIVAL  " + (_owner.Flight?.TargetId ?? "").ToUpperInvariant(),
-                    new Color(0.55f, 1f, 0.72f));
-            }
+
+            if (!_crosshair.activeSelf) _crosshair.SetActive(true);
         }
 
-        private void DrawWorldLabel(Camera camera, Vector3 position, string text, Color colour,
-            bool hideAtOrigin = true)
-        {
-            if (camera == null) return;
-            if (hideAtOrigin && position == Vector3.zero) return;
-
-            Vector3 screen = camera.WorldToScreenPoint(position);
-            if (screen.z <= 0f) return;
-
-            var rect = new Rect(screen.x + 9f, Screen.height - screen.y - 9f, 250f, 18f);
-            GUI.color = new Color(0f, 0f, 0f, 0.85f);
-            GUI.Label(new Rect(rect.x + 1f, rect.y + 1f, rect.width, rect.height), text, _label);
-            GUI.color = colour;
-            GUI.Label(rect, text, _label);
-            GUI.color = Color.white;
-        }
-
-        private static Color BodyColour(BodyRuntime body)
-        {
-            if (body?.Data?.color == null || body.Data.color.Length < 3)
-                return new Color(0.55f, 0.75f, 1f);
-            return new Color(body.Data.color[0], body.Data.color[1], body.Data.color[2]);
-        }
-
-        private void DrawHover()
-        {
-            if (_hover == null || _hover == _owner.Selected) return;
-
-            Color accent = BodyColour(_hover);
-            Vector2 pointer = GuiPointer();
-            string text = "LMB  " + _hover.Name;
-            GUI.color = new Color(0f, 0f, 0f, 0.85f);
-            GUI.Label(new Rect(pointer.x + 15f, pointer.y + 13f, 260f, 18f), text, _label);
-            GUI.color = accent;
-            GUI.Label(new Rect(pointer.x + 14f, pointer.y + 12f, 260f, 18f), text, _label);
-            GUI.color = Color.white;
-        }
-
-        private void DrawLabels()
+        private void DrawBodyLabels()
         {
             Camera camera = _owner.ViewCamera;
             if (camera == null || _owner.Renderer == null) return;
@@ -561,29 +601,448 @@ namespace TimeToExplore.UI
                     screen.y < -40f || screen.y > Screen.height + 40f) continue;
 
                 string text = body.Name + "   " + FormatDistance(distance);
-                Rect rect = new Rect(screen.x + 9f, Screen.height - screen.y - 9f, 250f, 18f);
-
-                GUI.color = new Color(0f, 0f, 0f, 0.85f);
-                GUI.Label(new Rect(rect.x + 1f, rect.y + 1f, rect.width, rect.height), text, _label);
-                GUI.color = selected
-                    ? new Color(1f, 0.85f, 0.4f)
-                    : new Color(0.85f, 0.92f, 1f, 0.92f);
-                GUI.Label(rect, text, _label);
+                PlaceLabel(text, selected ? SelectedLabelColour : LabelColour,
+                    new Vector2(screen.x, screen.y), 9f, 9f);
             }
 
             if (BodyLabels.ShouldLabelShip(mapSide))
-                DrawWorldLabel(camera, Vector3.zero, "YOU ARE HERE",
-                    new Color(0.86f, 0.90f, 0.96f), hideAtOrigin: false);
-
-            GUI.color = Color.white;
+                DrawWorldLabel(camera, Vector3.zero, "YOU ARE HERE", ShipLabelColour,
+                    hideAtOrigin: false);
         }
 
-        private void DrawCrosshair()
+        private void DrawTrajectoryLabels()
         {
-            GUI.color = new Color(1f, 1f, 1f, 0.65f);
-            GUI.DrawTexture(new Rect(Screen.width * 0.5f - 2f, Screen.height * 0.5f - 2f, 4f, 4f), _pixel);
-            GUI.color = Color.white;
+            TrajectoryLine trajectory = _owner.Trajectory;
+            Camera camera = _owner.ViewCamera;
+            if (trajectory == null || camera == null || !trajectory.IsShowing) return;
+
+            DrawWorldLabel(camera, trajectory.FlipMarkerPosition, "FLIP  thrust reversal",
+                FlipLabelColour);
+            if (trajectory.HasGhost)
+            {
+                DrawWorldLabel(camera, trajectory.GhostMarkerPosition,
+                    "TARGET AT ARRIVAL", GhostLabelColour);
+            }
+            else
+            {
+                DrawWorldLabel(camera, trajectory.ArrivalMarkerPosition,
+                    "ARRIVAL  " + (_owner.Flight?.TargetId ?? "").ToUpperInvariant(),
+                    ArrivalLabelColour);
+            }
         }
+
+        private void DrawWorldLabel(Camera camera, Vector3 position, string text, Color colour,
+            bool hideAtOrigin = true)
+        {
+            if (camera == null) return;
+            if (hideAtOrigin && position == Vector3.zero) return;
+
+            Vector3 screen = camera.WorldToScreenPoint(position);
+            if (screen.z <= 0f) return;
+
+            PlaceLabel(text, colour, new Vector2(screen.x, screen.y), 9f, 9f);
+        }
+
+        private void DrawHover()
+        {
+            if (_hover == null || _hover == _owner.Selected) return;
+
+            // The prompt sits just below and right of the pointer, and is placed
+            // from the bottom-left screen point so it does not depend on IMGUI.
+            PlaceLabel("LMB  " + _hover.Name, BodyColour(_hover),
+                PlayerControls.PointerPosition, 14f, -12f);
+        }
+
+        private void PlaceLabel(string text, Color colour, Vector2 screenPoint, float dx, float dy)
+        {
+            if (_labelCursor >= _labels.Count)
+                _labels.Add(CreateLabel(_overlay, "Label" + _labels.Count));
+
+            LabelView label = _labels[_labelCursor++];
+            if (!label.Text.gameObject.activeSelf) label.Text.gameObject.SetActive(true);
+            label.Text.text = text;
+            label.Text.color = colour;
+
+            float scale = _canvas != null && _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
+            label.Rect.anchoredPosition =
+                new Vector2(screenPoint.x + dx, screenPoint.y + dy) / scale;
+        }
+
+        private static Color BodyColour(BodyRuntime body)
+        {
+            if (body?.Data?.color == null || body.Data.color.Length < 3)
+                return FallbackAccent;
+            return new Color(body.Data.color[0], body.Data.color[1], body.Data.color[2]);
+        }
+
+        // --- Construction -------------------------------------------------------
+
+        private void BuildUi()
+        {
+            if (_built) return;
+            _built = true;
+
+            _font = LoadFont();
+
+            _canvasObject = new GameObject("HUD Canvas", typeof(RectTransform), typeof(Canvas),
+                typeof(CanvasScaler), typeof(GraphicRaycaster));
+            _canvasObject.transform.SetParent(transform, false);
+
+            _canvas = _canvasObject.GetComponent<Canvas>();
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _canvas.sortingOrder = 10;
+            _canvasRect = (RectTransform)_canvasObject.transform;
+
+            CanvasScaler scaler = _canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            EventSystemLink();
+
+            _overlay = CreateRect("Overlay", _canvasRect, Vector2.zero, Vector2.one,
+                new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            BuildStatusPanel();
+            BuildDetailsPanel();
+            BuildFlightPanel();
+
+            for (int i = 0; i < InitialLabelPool; i++)
+                _labels.Add(CreateLabel(_overlay, "Label" + i));
+
+            _crosshair = CreateImage(_canvasRect, "Crosshair", CrosshairColour,
+                new Vector2(4f, 4f)).gameObject;
+            RectTransform crosshairRect = (RectTransform)_crosshair.transform;
+            crosshairRect.anchorMin = new Vector2(0.5f, 0.5f);
+            crosshairRect.anchorMax = new Vector2(0.5f, 0.5f);
+            crosshairRect.pivot = new Vector2(0.5f, 0.5f);
+            crosshairRect.anchoredPosition = Vector2.zero;
+            crosshairRect.sizeDelta = new Vector2(4f, 4f);
+
+            Refresh();
+        }
+
+        private void EventSystemLink()
+        {
+            var system = UiInput.EnsureEventSystem(out bool created);
+            _eventSystemObject = created ? system.gameObject : null;
+        }
+
+        private void BuildStatusPanel()
+        {
+            _statusPanel = CreatePanel("StatusPanel", new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(12f, -12f), new Vector2(PanelWidth, StatusPanelHeight),
+                StatusBackground);
+            _statusRect = (RectTransform)_statusPanel.transform;
+
+            Transform parent = _statusPanel.transform;
+            const float left = 14f;
+            const float width = PanelWidth - 28f;
+
+            Text title = CreateText(parent, "StatusTitle", "TIME TO EXPLORE  /  SOL", 18,
+                TitleColour, FontStyle.Bold);
+            PlaceTopLeft(title, left, 10f, width, 24f);
+
+            _statusClock = CreateText(parent, "StatusClock", "", 12, TextColour);
+            PlaceTopLeft(_statusClock, left, 38f, width, 18f);
+
+            _statusDistance = CreateText(parent, "StatusDistance", "", 12, TextColour);
+            PlaceTopLeft(_statusDistance, left, 57f, width, 18f);
+
+            _statusNearest = CreateText(parent, "StatusNearest", "", 12, TextColour);
+            PlaceTopLeft(_statusNearest, left, 76f, width, 18f);
+
+            _statusWarpNote = CreateText(parent, "StatusWarpNote", "", 11, DimColour);
+            PlaceTopLeft(_statusWarpNote, left, 98f, width, 16f);
+
+            _statusTarget = CreateText(parent, "StatusTarget", "", 12, TextColour);
+            PlaceTopLeft(_statusTarget, left, 98f, width, 18f);
+
+            _statusTargetOrbit = CreateText(parent, "StatusTargetOrbit", "", 11, DimColour);
+            PlaceTopLeft(_statusTargetOrbit, left, 116f, width, 18f);
+
+            _statusHelp = CreateText(parent, "StatusHelp", HelpText, 11, DimColour);
+            PlaceTopLeft(_statusHelp, left, 138f, width, 58f);
+        }
+
+        private void BuildDetailsPanel()
+        {
+            _detailsPanel = CreatePanel("DetailsPanel", new Vector2(1f, 1f), new Vector2(1f, 1f),
+                new Vector2(-Margin, -Margin),
+                new Vector2(DetailsWidth, DetailsHeaderHeight + DetailsFooterHeight),
+                DetailsBackground);
+            _detailsRect = (RectTransform)_detailsPanel.transform;
+
+            Transform parent = _detailsPanel.transform;
+            _detailsAccent = CreateAccentBar(parent, "DetailsAccent");
+
+            _detailsDivider = CreateImage(parent, "DetailsDivider",
+                new Color(0.55f, 0.75f, 1f, 0.28f), Vector2.zero);
+            RectTransform divider = (RectTransform)_detailsDivider.transform;
+            divider.anchorMin = new Vector2(0f, 1f);
+            divider.anchorMax = new Vector2(1f, 1f);
+            divider.pivot = new Vector2(0f, 1f);
+            divider.anchoredPosition = new Vector2(4f, -93f);
+            divider.sizeDelta = new Vector2(-4f, 1f);
+
+            _detailsTitle = CreateText(parent, "DetailsTitle", "", 22, PanelTitleColour,
+                FontStyle.Bold);
+            PlaceTopLeft(_detailsTitle, 18f, 10f, DetailsWidth - 36f - 54f, 28f);
+
+            _detailsKind = CreateText(parent, "DetailsKind", "", 10, SectionColour,
+                FontStyle.Bold, TextAnchor.MiddleLeft);
+            RectTransform kindRect = _detailsKind.rectTransform;
+            kindRect.anchorMin = new Vector2(1f, 1f);
+            kindRect.anchorMax = new Vector2(1f, 1f);
+            kindRect.pivot = new Vector2(1f, 1f);
+            kindRect.anchoredPosition = new Vector2(-16f, -17f);
+            kindRect.sizeDelta = new Vector2(74f, 18f);
+
+            _detailsSubtitle = CreateText(parent, "DetailsSubtitle", "", 11, DimColour);
+            PlaceTopLeft(_detailsSubtitle, 18f, 41f, DetailsWidth - 36f, 17f);
+
+            _detailsDescription = CreateText(parent, "DetailsDescription", "", 11, WrapColour,
+                FontStyle.Normal, TextAnchor.UpperLeft, wrap: true);
+            PlaceTopLeft(_detailsDescription, 18f, 61f, DetailsWidth - 36f, 30f);
+
+            for (int i = 0; i < MaxDetailsRows; i++)
+                _detailsRows.Add(CreateRow(parent, "DetailsRow" + i));
+
+            _routeButton = CreateButton(parent, "RouteButton", "");
+            _routeLabel = _routeButton.GetComponentInChildren<Text>(true);
+            _routeButton.onClick.AddListener(OnRouteClicked);
+
+            _beginButton = CreateButton(parent, "BeginButton", "Begin flight");
+            _beginButton.onClick.AddListener(OnBeginClicked);
+
+            _closeButton = CreateButton(parent, "CloseButton", "Close");
+            _closeButton.onClick.AddListener(OnCloseClicked);
+
+            _jumpButton = CreateButton(parent, "JumpButton", "Jump (debug)");
+            _jumpButton.onClick.AddListener(OnJumpClicked);
+
+            _detailsPanel.SetActive(false);
+        }
+
+        private void BuildFlightPanel()
+        {
+            _flightPanel = CreatePanel("FlightPanel", new Vector2(0f, 0f), new Vector2(0f, 0f),
+                new Vector2(12f, 12f), new Vector2(PanelWidth, FlightHeaderHeight + 220f),
+                FlightBackground);
+            _flightRect = (RectTransform)_flightPanel.transform;
+
+            Transform parent = _flightPanel.transform;
+            _flightAccent = CreateAccentBar(parent, "FlightAccent");
+
+            _flightTitle = CreateText(parent, "FlightTitle", "", 18, TitleColour,
+                FontStyle.Bold);
+            PlaceTopLeft(_flightTitle, 16f, 8f, PanelWidth - 32f - 120f, 20f);
+
+            _flightStatus = CreateText(parent, "FlightStatus", "", 10, SectionColour,
+                FontStyle.Bold, TextAnchor.MiddleLeft);
+            RectTransform statusRect = _flightStatus.rectTransform;
+            statusRect.anchorMin = new Vector2(1f, 1f);
+            statusRect.anchorMax = new Vector2(1f, 1f);
+            statusRect.pivot = new Vector2(1f, 1f);
+            statusRect.anchoredPosition = new Vector2(-16f, -12f);
+            statusRect.sizeDelta = new Vector2(134f, 16f);
+
+            _flightNext = CreateText(parent, "FlightNext", "", 12, TextColour);
+            PlaceTopLeft(_flightNext, 16f, 32f, PanelWidth - 32f, 20f);
+
+            for (int i = 0; i < MaxFlightRows; i++)
+                _flightRows.Add(CreateRow(parent, "FlightRow" + i));
+
+            _flightPanel.SetActive(false);
+        }
+
+        // --- Widget helpers -----------------------------------------------------
+
+        private static Font LoadFont()
+        {
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font != null) return font;
+
+            return Font.CreateDynamicFontFromOSFont(
+                new[] { "Arial", "Helvetica", "Liberation Sans" }, 12);
+        }
+
+        private GameObject CreatePanel(string name, Vector2 anchor, Vector2 pivot,
+            Vector2 position, Vector2 size, Color colour)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image));
+            go.transform.SetParent(_canvasRect, false);
+
+            RectTransform rect = (RectTransform)go.transform;
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = pivot;
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+
+            Image image = go.GetComponent<Image>();
+            image.color = colour;
+            image.raycastTarget = true;
+            return go;
+        }
+
+        private static Image CreateImage(Transform parent, string name, Color colour,
+            Vector2 size)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image));
+            go.transform.SetParent(parent, false);
+
+            Image image = go.GetComponent<Image>();
+            image.color = colour;
+            image.raycastTarget = false;
+
+            RectTransform rect = (RectTransform)go.transform;
+            rect.sizeDelta = size;
+            return image;
+        }
+
+        private static Image CreateAccentBar(Transform parent, string name)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image));
+            go.transform.SetParent(parent, false);
+
+            Image image = go.GetComponent<Image>();
+            image.color = FallbackAccent;
+            image.raycastTarget = false;
+
+            RectTransform rect = (RectTransform)go.transform;
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(4f, 0f);
+            return image;
+        }
+
+        private static RectTransform CreateRect(string name, Transform parent,
+            Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 position,
+            Vector2 size)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+
+            RectTransform rect = (RectTransform)go.transform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.pivot = pivot;
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            return rect;
+        }
+
+        private Text CreateText(Transform parent, string name, string value, int fontSize,
+            Color colour, FontStyle style = FontStyle.Normal,
+            TextAnchor alignment = TextAnchor.UpperLeft, bool wrap = false)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Text));
+            go.transform.SetParent(parent, false);
+
+            Text text = go.GetComponent<Text>();
+            text.font = _font;
+            text.text = value;
+            text.fontSize = fontSize;
+            text.color = colour;
+            text.fontStyle = style;
+            text.alignment = alignment;
+            text.supportRichText = false;
+            text.raycastTarget = false;
+            text.horizontalOverflow = wrap
+                ? HorizontalWrapMode.Wrap
+                : HorizontalWrapMode.Overflow;
+            text.verticalOverflow = wrap
+                ? VerticalWrapMode.Truncate
+                : VerticalWrapMode.Overflow;
+            return text;
+        }
+
+        private RowView CreateRow(Transform parent, string name)
+        {
+            return new RowView
+            {
+                Heading = CreateText(parent, name + "Heading", "", 10, SectionColour,
+                    FontStyle.Bold),
+                Label = CreateText(parent, name + "Label", "", 11, RowLabelColour),
+                Value = CreateText(parent, name + "Value", "", 11, RowValueColour)
+            };
+        }
+
+        private LabelView CreateLabel(Transform parent, string name)
+        {
+            Text text = CreateText(parent, name, "", 11, Color.white, FontStyle.Normal,
+                TextAnchor.MiddleLeft);
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(250f, 18f);
+
+            Shadow shadow = text.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+            shadow.useGraphicAlpha = true;
+
+            text.gameObject.SetActive(false);
+            return new LabelView { Text = text, Rect = rect };
+        }
+
+        private Button CreateButton(Transform parent, string name, string label)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(Image), typeof(Button));
+            go.transform.SetParent(parent, false);
+
+            Image image = go.GetComponent<Image>();
+            image.color = Color.white;
+            image.raycastTarget = true;
+
+            Button button = go.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            ColorBlock colours = button.colors;
+            colours.normalColor = new Color(0.16f, 0.23f, 0.34f, 0.95f);
+            colours.highlightedColor = new Color(0.24f, 0.34f, 0.47f, 0.98f);
+            colours.pressedColor = new Color(0.11f, 0.16f, 0.24f, 1f);
+            colours.selectedColor = colours.normalColor;
+            colours.disabledColor = new Color(0.12f, 0.14f, 0.18f, 0.45f);
+            colours.colorMultiplier = 1f;
+            colours.fadeDuration = 0.05f;
+            button.colors = colours;
+
+            Text text = CreateText(go.transform, "Label", label, 12, ButtonTextColour,
+                FontStyle.Normal, TextAnchor.MiddleCenter);
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(8f, 4f);
+            rect.offsetMax = new Vector2(-8f, -4f);
+
+            return button;
+        }
+
+        private static void PlaceTopLeft(Graphic graphic, float x, float y, float width,
+            float height)
+        {
+            RectTransform rect = graphic.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(x, -y);
+            rect.sizeDelta = new Vector2(width, height);
+        }
+
+        // --- Formatting ---------------------------------------------------------
 
         public static string FormatDistance(double metres)
         {
@@ -607,6 +1066,21 @@ namespace TimeToExplore.UI
             if (metresPerSecond < 1000.0)
                 return $"{metresPerSecond:N1} m/s";
             return $"{metresPerSecond / 1000.0:N0} km/s";
+        }
+
+        // --- Small types --------------------------------------------------------
+
+        private sealed class RowView
+        {
+            public Text Heading;
+            public Text Label;
+            public Text Value;
+        }
+
+        private sealed class LabelView
+        {
+            public Text Text;
+            public RectTransform Rect;
         }
     }
 }

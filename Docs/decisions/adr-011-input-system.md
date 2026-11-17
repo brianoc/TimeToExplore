@@ -9,6 +9,16 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
 
 # Context
 
+> **Superseded in part (2026-11-17):** ADR-011's decision item 2 and its
+> "Both" consequences are superseded by
+> [ADR-013](/decisions/adr-013-ugui-hud.md). The HUD is now uGUI with an
+> `InputSystemUIInputModule`, so Active Input Handling is **Input System Package
+> (New)** only (`activeInputHandler: 1`) and the legacy backend is no longer
+> initialised. Everything else here still stands: package 1.20.1, the
+> `PlayerControls` seam, direct device polling, no `InputActionAsset` for
+> gameplay, the mouse-sensitivity and wheel conversions, and the test strategy.
+> The history below is kept as written.
+
 The prototype read input through the legacy Input Manager:
 `Input.GetKey`, `Input.GetAxis("Mouse X")`, `Input.GetMouseButtonDown`,
 `Input.mousePosition`, and `Input.mouseScrollDelta`, across

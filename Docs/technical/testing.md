@@ -72,12 +72,13 @@ because Unity test assemblies cannot reference the predefined
 | `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, and the orbit-line width at close map zoom, locally, and with distance |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
 | `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying, Begin replans at the current date, the clock runs while idle so a preview can age, and discard leaves the ship alone |
-| `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-IMGUI pointer flip, and null devices returning neutral values |
-| `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly one runtime file, the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, and `activeInputHandler: 2` pinned so the IMGUI legacy backend is not dropped by accident |
+| `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), pause and every hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, and null devices returning neutral values |
+| `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
-| `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
+| `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
+| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, `ShowHud`/`ShowLabels`, the one-frame opening guard, and the route/begin/jump/close `onClick` handlers reaching the same owner methods |
 
-The suite currently has **320 tests**. It deliberately tests the shipped
+The suite currently has **329 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -222,6 +223,36 @@ device state and the fixture updates the Input System itself; it does not run
 the player loop, so it proves the device edges and not frame ordering. The
 fixture's own keyboard and mouse are isolated from the machine's devices.
 
+# uGUI HUD anchors
+
+The HUD migration is checked without a rendered frame:
+
+* `SolarSystemHud.Initialise` creates exactly one `Canvas` in Screen Space
+  Overlay mode, with `CanvasScaler.ScaleWithScreenSize`, a 1920×1080 reference
+  resolution, `matchWidthOrHeight = 0.5`, and a `GraphicRaycaster`.
+* Exactly one `EventSystem` exists, it carries an `InputSystemUIInputModule`, and
+  it is not the legacy `StandaloneInputModule`. Calling
+  `UiInput.EnsureEventSystem` again reports `created: false` and leaves the count
+  at one.
+* The status clock text is `JulianDate.Format(clock.JulianDate) + "     " +
+  clock.Label`; the distance line carries the same `FormatDistance` value and the
+  session's ship status; the nearest line names
+  `SolarSystemModel.FindNearest`.
+* The details panel for Mars shows every `BodyDetails.Build` row label and value,
+  the title `Mars`, and the kind `PLANET`, and `CloseDetails` hides it.
+* The flight panel is hidden while idle, shows the `PREVIEW` rows after
+  `PlotRoute`, and the `PLAN` + `NOW` rows after `BeginGoTo`; the title is
+  `FLIGHT  /  MARS`.
+* The panel's four buttons are non-interactable on the frame the details screen
+  opens and interactive on the next `Update` (except where their rule says
+  otherwise). `RouteButton` plots, then replans while flying; `BeginButton`
+  starts the plotted flight; `JumpButton` is refused during a flight and starts
+  free flight after a cancel; `CloseButton` closes the screen and discards a
+  preview.
+* `ShowHud` toggles the status panel and `ShowLabels` toggles the whole label
+  pool.
+* `InputSeamTests` proves the IMGUI path is gone and the backend is New only.
+
 # Precision notes
 
 Julian dates are large doubles. At 2.4 million, one unit in the last place is
@@ -263,16 +294,19 @@ non-empty `parent` for orbits) and keep a regression test for it.
   loop is covered in EditMode by `SceneFlightTests`, which reproduces the
   bootstrap's order of operations, and the wiring is covered by
   `BootstrapSmokeTests`, which invokes the real `Awake`/`Update`/`LateUpdate` in
-  edit mode; what remains is the actual `OnGUI` draw and the rendered frame.
-  The URP migration has the same gap: `RenderingPipelineTests` proves the
-  pipeline and shaders are configured, but not what a frame looks like.
-  Likewise the input mapping is tested, but the orbit rate, wheel rate, cursor
-  capture, and IMGUI button events need a Play mode frame.
+  edit mode. `SolarSystemHudTests` invokes the real HUD `Update` and each
+  button's `onClick` directly, but no test delivers a real pointer through the
+  EventSystem or renders a frame. What remains is the actual canvas render, the
+  button hit areas, pointer-over-panel on the first frame, cursor capture, and
+  canvas scaling away from 1080p. The URP migration has the same gap:
+  `RenderingPipelineTests` proves the pipeline and shaders are configured, but not
+  what a frame looks like.
 * Screen-space picking at the edges of the view and on a moving camera; the
-  pure picker is tested, but the projection step needs a PlayMode scene.
+  pure picker is tested, but the projection step and the pointer-over-panel
+  decision need a PlayMode scene.
 * The trajectory line's rendering and the dash texture; only its data sources
   (the plan's boundaries and flip) are tested.
-* Performance budgets for orbit-line updates and HUD allocation.
+* Performance budgets for orbit-line updates and per-frame HUD text updates.
 * Fuel accounting, attitude dynamics, and the transfer-conic capture.
 * Continuous integration. The repository is not under version control yet;
   when it is, `tools/check.sh` is the single CI entry point.

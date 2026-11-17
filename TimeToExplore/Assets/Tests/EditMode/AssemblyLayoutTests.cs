@@ -80,7 +80,9 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EquivalentTo(new[] { Core, Simulation }),
                 "Presentation depends on Core and Simulation and on no other project assembly");
             CollectionAssert.Contains(References(presentation.Json), "Unity.InputSystem",
-                "PlayerControls is the one seam and lives in Presentation");
+                "PlayerControls is the one gameplay seam and lives in Presentation");
+            CollectionAssert.Contains(References(presentation.Json), "UnityEngine.UI",
+                "the HUD is uGUI and needs the Unity UI assembly");
             CollectionAssert.DoesNotContain(References(presentation.Json), EditorAssembly);
             CollectionAssert.DoesNotContain(References(presentation.Json), Tests);
         }
@@ -112,6 +114,7 @@ namespace TimeToExplore.Tests.EditMode
                 ProjectReferences(tests.Json),
                 "the suite compiles against all three runtime assemblies");
             CollectionAssert.Contains(References(tests.Json), "Unity.InputSystem");
+            CollectionAssert.Contains(References(tests.Json), "UnityEngine.UI");
             CollectionAssert.Contains(References(tests.Json), "Unity.InputSystem.TestFramework");
             CollectionAssert.Contains(References(tests.Json), "UnityEngine.TestRunner");
             CollectionAssert.Contains(References(tests.Json), "UnityEditor.TestRunner");

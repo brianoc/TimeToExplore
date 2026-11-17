@@ -1,48 +1,85 @@
 ---
 type: Reference
 title: Input
-description: The input map, the Input System seam, why Active Input Handling stays on Both, and the mouse and wheel rules.
-tags: [technical, input, unity, controls]
+description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, and the mouse and wheel rules.
+tags: [technical, input, unity, controls, ui]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
 ---
 
-# One seam
+# Two readers, one contract
 
-All device reading lives in `Assets/Scripts/Player/PlayerControls.cs`
-(`TimeToExplore.Player`). It polls `Keyboard.current` and `Mouse.current`
-directly and exposes intents: a hotkey set, a pointer, a left click, a right-drag
-begin/end, a drag delta, wheel steps, movement axes, and a speed multiplier.
-No other runtime script mentions the Input System, and no runtime script calls
-the legacy `UnityEngine.Input` API. `InputSeamTests` enforces both rules by
-scanning the runtime sources, so a new call site fails the suite before it can
-add a second input dependency.
+The project reads the Input System in exactly two places, and neither reads the
+other's mapping:
 
-Direct polling is deliberate. The scenes and the HUD are built at runtime, and
-the HUD is IMGUI, which reads pointer events from the legacy backend rather than
-from `InputAction`s. There is no `InputActionAsset`: an action map would add an
-asset to load and a layer that nothing else needs. If rebinding or gamepad
+| File | Responsibility |
+|---|---|
+| `Assets/Scripts/Player/PlayerControls.cs` | the **gameplay seam**: keyboard and mouse intents for the camera, free flight, hotkeys, world picking, and the flight |
+| `Assets/Scripts/UI/UiInput.cs` | the **uGUI bridge**: creates the one `EventSystem` with an `InputSystemUIInputModule` and answers "is the pointer over a panel?" |
+
+`PlayerControls` polls `Keyboard.current` and `Mouse.current` directly and
+exposes intents: a hotkey set, a pointer, a left click, a right-drag begin/end,
+a drag delta, wheel steps, movement axes, and a speed multiplier. `UiInput` owns
+no gameplay mapping: it hands uGUI the Input System's default UI actions
+(`Point`, `Click`, `ScrollWheel`, `Navigate`, `Submit`, `Cancel`) so buttons
+receive pointer events. No runtime script calls the legacy `UnityEngine.Input`
+API.
+
+`InputSeamTests` enforces all of this by scanning the runtime sources: no legacy
+input outside `PlayerControls`, and `UnityEngine.InputSystem` named by exactly
+those two files. A third call site fails the suite before it can add a second
+input dependency.
+
+Direct polling is deliberate. The scenes and the HUD are built at runtime, and a
+hand-written `InputActionAsset` would add an asset to load and a layer nothing
+else needs. The Input System's own `DefaultInputActions` is a code-built asset
+owned by the UI module, so uGUI works without an import. If rebinding or gamepad
 support arrives, a generated asset can be loaded at runtime and kept behind the
 same seam.
 
-# Active Input Handling is Both
+# Active Input Handling is New only
 
-`ProjectSettings/ProjectSettings.asset` sets `activeInputHandler: 2`, which is
-Unity's **Both** option. This is not indecision; it is required by the HUD.
+`ProjectSettings/ProjectSettings.asset` sets `activeInputHandler: 1`, Unity's
+**Input System Package (New)** option. The IMGUI HUD that forced **Both**
+([ADR-011](/decisions/adr-011-input-system.md)) is gone: the HUD is uGUI, whose
+`InputSystemUIInputModule` consumes Input System actions directly. Nothing in
+the project reads the legacy Input Manager, so the legacy backend is no longer
+initialised at all.
 
-The status panel, the details screen, the flight panel, and every button are
-IMGUI (`SolarSystemHud.OnGUI`, `GUI.Button`, `GUI.DrawTexture`). Unity's
-documented behaviour is that under **Input System Package (New)** alone, runtime
-`OnGUI` methods receive no input events, so every button would stop responding.
-**Both** keeps the legacy backend alive to feed IMGUI while the Input System
-feeds the gameplay seam. `ProjectSettings/InputManager.asset` remains in place
-for that backend, but no project code reads its `Mouse X`, `Mouse Y`, or
-`Mouse ScrollWheel` axes.
+`ProjectSettings/InputManager.asset` is still present because Unity maintains it;
+it is inert. It is not read, and it is not deleted by hand. The setting and the
+two-file allowance are pinned by `InputSeamTests`, and the decision is recorded
+in [ADR-013](/decisions/adr-013-ugui-hud.md).
 
-The cost is that a second input backend is still initialised. That is the
-documented workaround for IMGUI, and it is recorded in
-[ADR-011](/decisions/adr-011-input-system.md). A future HUD migration to UI
-Toolkit or uGUI could drop the legacy backend and set **New** only.
+# The uGUI input path
+
+The HUD builds its Canvas and panels at runtime. The EventSystem is created on
+demand:
+
+1. `UiInput.EnsureEventSystem` looks for any `EventSystem` in the scene,
+   including inactive ones.
+2. If one exists it is reused, so an authored EventSystem is never
+   double-equipped, and `sendNavigationEvents` is turned off.
+3. Otherwise a GameObject named `EventSystem` is created with an `EventSystem`
+   and an `InputSystemUIInputModule`, `AssignDefaultActions()` gives it the
+   Input System's default UI actions, and navigation events are turned off.
+
+Navigation is off because the old IMGUI HUD was pointer-only. It keeps Space
+(pause), Enter, and the arrow keys from re-submitting whichever button was last
+clicked.
+
+The HUD calls `UiInput.PointerOverUi()` — `EventSystem.current` plus
+`IsPointerOverGameObject()` — before world picking and hover. Because that answer
+can lag the EventSystem by one frame, the HUD also tests the status, details, and
+flight panel rects immediately with `RectTransformUtility`. A panel background is
+a raycast target, so pointer-down on it is swallowed by uGUI and the world never
+sees the click. Labels, the hover prompt, and the crosshair have
+`raycastTarget = false`.
+
+World picking itself is unchanged and still goes through `PlayerControls`: the
+HUD reads the pointer and the left-click edge from the seam, projects the drawn
+markers, and calls `BodyPicker`. The EventSystem knows about panels; the seam
+knows about the world. No device is read twice for the same decision.
 
 # The input map
 
@@ -66,10 +103,12 @@ Toolkit or uGUI could drop the legacy backend and set **New** only.
 | Right mouse drag | orbit the camera; pan on the map side | `ShipCameraRig` |
 | Mouse wheel | zoom the camera | `ShipCameraRig` |
 | Left click | select the hovered body | `SolarSystemHud` |
+| Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 
 `Esc` keeps its old order: the bootstrap (execution order −100) cancels the
-focus transition first, then the HUD closes the details screen. Both actions
-still run in the same frame.
+focus transition first, then the HUD closes the details screen. Both actions run
+in the same frame. uGUI navigation events are off, so `Escape` reaches only the
+seam's edge and cannot also be consumed as a UI Cancel action.
 
 Digits are an **explicit table** in `PlayerControls`, not `Key.Digit1 + index`
 arithmetic: `1`–`9` and `0` map to indices 0–9. The clock currently has seven
@@ -110,12 +149,19 @@ blend weight.
 The wheel belongs to the camera. Free-flight speed uses `,` and `.`; the two
 controls cannot fight.
 
-# IMGUI pointer space
+# Screen spaces
 
-`Mouse.current.position` uses the screen's bottom-left origin, the same as the
-old `Input.mousePosition`. `PlayerControls.ToGuiPointer` converts it to IMGUI's
-top-left origin (`y = Screen.height − y`), and the HUD's hit tests and hover
-prompt use that.
+Two coordinate systems survive the migration, and they meet in the HUD:
+
+* **Picking** uses top-left screen space, because `BodyPicker` and the drawn
+  marker centres were written that way. `PlayerControls.ToGuiPointer` converts
+  the Input System's bottom-left pointer with `y = Screen.height − y`.
+* **uGUI labels** are placed from the bottom-left screen point directly, divided
+  by `Canvas.scaleFactor`, because the Canvas is a 1920×1080 reference scaled to
+  the window.
+
+The panels themselves are anchored to the canvas corners (status top-left,
+details top-right, flight bottom-left) and never read the pointer.
 
 # Test seam
 
@@ -131,7 +177,7 @@ Every mapping is a pure function that takes its device (or a
 | `ReadSpeedSteps` | period +1, comma −1 |
 | `ReadMouseAxis` | the 0.1 sensitivity |
 | `NormaliseScroll` | macOS ≈ 1 and Windows 120 → 1 |
-| `ToGuiPointer` | the screen-to-IMGUI flip |
+| `ToGuiPointer` | the screen-to-picking flip |
 
 Each read is null-guarded, so a headless batch run and a machine without a
 keyboard or mouse return neutral values instead of throwing. `InputMappingTests`
@@ -140,21 +186,26 @@ covers the pure helpers and the null case; `InputDeviceTests` feeds a virtual
 arrive as intents. The fixture is documented as a Play mode tool, but it works
 in EditMode for direct state reads because it queues device state and updates
 the Input System itself; it does not run the player loop, so frame order is
-covered by the source guard and the existing bootstrap tests, not by input
-simulation.
+covered by the source guard and the bootstrap tests, not by input simulation.
 
 The guard test scans `Assets/Scripts` for `UnityEngine.Input` and for legacy
 `Input.Get…`/`Input.mouse…` calls, excluding only `PlayerControls.cs`. A second
-check asserts that `UnityEngine.InputSystem` appears in exactly one runtime
-file. A third reads `ProjectSettings/ProjectSettings.asset` and fails if
-`activeInputHandler` is not `2`, so the IMGUI backend cannot be dropped by
-accident. See [Testing and verification](/technical/testing.md).
+check asserts that `UnityEngine.InputSystem` appears in exactly two runtime
+files, `PlayerControls.cs` and `UiInput.cs`. A third reads
+`ProjectSettings/ProjectSettings.asset` and pins `activeInputHandler: 1`. A
+fourth scans for an `OnGUI` method, `GUI.*` calls, `new GUIStyle`, and
+`Texture2D.whiteTexture`, so an IMGUI fallback cannot return. See
+[Testing and verification](/technical/testing.md).
 
 # What still needs a human
 
-The suite proves the mapping, not the feel. In Play mode, check the right-drag
-orbit rate and map pan at a few zoom levels, the cursor capture and release,
-one wheel notch on the target OS, and every IMGUI button — including that a
-click on the details screen still opens it and a drag does not. See
+The suite proves the mapping and the object graph, not the feel. In Play mode,
+check the right-drag orbit rate and map pan at a few zoom levels, the cursor
+capture and release, one wheel notch on the target OS, every panel button, that
+a click on a panel does not also select the body behind it, and that the click
+which opens the details screen cannot press a button underneath. The
+`EventSystem`'s pointer-over-panel answer depends on the previous frame's
+raycast; the immediate panel-rect test covers the first frame, but a real
+pointer is still the human check. See
 [Selection and camera focus](/technical/selection-and-camera.md) for the camera
 rules themselves.

@@ -208,10 +208,10 @@ bloom, and the far-field camera stack without changing the scale rules.
 * **Particles.** World-space particles at these distances are impractical.
   Engine plumes and dust should be local effects.
 * **UI.** Screen-space HUD works; world-space canvases at solar distances do
-  not. Body labels are projected manually in `OnGUI`. Body picking is also
-  screen-space, against the drawn marker rather than a collider, because the
-  minimum-size aid means the visible marker is often much larger than the
-  physical body. See [Selection and camera focus](/technical/selection-and-camera.md).
+  not. Body labels are projected manually onto a screen-space uGUI canvas. Body
+  picking is also screen-space, against the drawn marker rather than a collider,
+  because the minimum-size aid means the visible marker is often much larger than
+  the physical body. See [Selection and camera focus](/technical/selection-and-camera.md).
 * **Culling and LOD.** Most bodies are tiny markers. A later belt renderer should
   use GPU instancing or a point cloud, not 100 sphere meshes.
 

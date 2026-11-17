@@ -20,20 +20,25 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 * Universal Render Pipeline 17.3.0, with a project pipeline asset, a minimal
   forward renderer, and three small runtime shaders (lit bodies, unlit markers,
   vertex-coloured lines).
-* Input System 1.20.1 behind one `PlayerControls` seam, with Active Input
-  Handling **Both** because the HUD is IMGUI; no runtime code reads the legacy
-  axes.
+* Input System 1.20.1 behind one `PlayerControls` gameplay seam and one
+  `UiInput` uGUI module, with Active Input Handling **New** only; no runtime code
+  reads the legacy backend.
 * Minimum-apparent-size markers and a true-scale toggle.
 * Time warp from 1× to 1,000,000× and pause.
 * Planet and moon orbit lines.
-* Free-flight debug camera and an IMGUI HUD with labels.
+* Free-flight debug camera and a runtime-built uGUI HUD with labels, panels,
+  and the details screen.
+* HUD and input migration done: uGUI replaced IMGUI
+  ([ADR-013](../decisions/adr-013-ugui-hud.md)), Active Input Handling moved to
+  **New** only, and `InputSeamTests` allows the Input System in exactly the seam
+  and the UI module.
 * Left-click body selection with a live details screen (physical, orbital, and
   current data) and a three-second eased debug camera move to the selected body.
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte generator check, and the Unity EditMode suite.
-  The suite is 310 tests at milestone 2.5.
+  The suite is 329 tests at milestone 2.5.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug

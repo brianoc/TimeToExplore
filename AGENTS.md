@@ -9,8 +9,8 @@ new feature or piece of work.
 - `Docs/` is the design knowledge base. It is an **OKF v0.2 bundle**: Markdown
   files with YAML frontmatter, a root `index.md`, and a root `log.md`.
 - `TimeToExplore/` is the Unity 6000.3.28f1 project (Universal Render Pipeline
-  17.3.0, Input System 1.20.1 with Active Input Handling **Both** because the
-  HUD is IMGUI). Code is split into `TimeToExplore.Core`,
+  17.3.0, Input System 1.20.1 with Active Input Handling **New** only, and uGUI
+  2.0.0 for the runtime HUD). Code is split into `TimeToExplore.Core`,
   `TimeToExplore.Simulation`, `TimeToExplore.Presentation`, and
   `TimeToExplore.Editor` assemblies; the rule is Core ← Simulation ←
   Presentation ← Editor/Tests ([ADR-012](Docs/decisions/adr-012-assembly-layout.md)).
@@ -68,10 +68,12 @@ log.
 ## Verification expectations
 
 - Runtime and editor C# must compile against Unity 6.3.
-- Read input through `Assets/Scripts/Player/PlayerControls.cs`. No runtime script
-  outside that seam may call `UnityEngine.Input` or `UnityEngine.InputSystem`;
-  `InputSeamTests` scans the sources and fails the suite if one does. Do not set
-  Active Input Handling to "New" only while the HUD is IMGUI.
+- Read gameplay input through `Assets/Scripts/Player/PlayerControls.cs` and uGUI
+  input through `Assets/Scripts/UI/UiInput.cs`. No other runtime script may call
+  `UnityEngine.Input` or name `UnityEngine.InputSystem`; `InputSeamTests` scans
+  the sources and fails the suite if one does. Do not change Active Input
+  Handling away from "Input System Package (New)" (`activeInputHandler: 1`):
+  the HUD is uGUI, not IMGUI, and the legacy backend has no consumer.
 - A change to orbital maths or catalogue data should be checked numerically
   against known values at the epoch (2026-11-15, JD 2461359.5).
 - Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.
