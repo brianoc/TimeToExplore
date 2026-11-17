@@ -1,13 +1,13 @@
 ---
 type: Design Document
 title: The system map and route preview
-description: The next camera and navigation layer — one continuous zoom from the ship to a top-down map of the system, click-to-select and pan on the map, and a plotted route the player can inspect before pressing Begin.
+description: The camera and navigation layer — one continuous zoom from the ship to a top-down map of the system, click-to-select and pan on the map, and a plotted route the player can inspect before pressing Begin.
 tags: [technical, ui, camera, navigation, design]
 status: draft
 generated: { by: opencode/qwen4-max, at: 2026-11-16T00:00:00Z }
 ---
 
-# Why this is next
+# Why the map exists
 
 The orbit camera ([ADR-008](/decisions/adr-008-orbit-camera.md)) lets the player
 look at the ship and the plan, but the view is always centred on the ship and
@@ -23,13 +23,13 @@ always at the player's angle. Three things are missing:
    plotted route drawn as a smooth curve, a moment to look at it, and a
    **Begin** button.
 
-This document is the design for that work. It is the next milestone
-([roadmap](/production/roadmap.md), milestone 2.5). **Steps 1–6 are
-implemented: the plain-C# map state, the camera-rig integration, the map's
+This document is the design for that work. It was milestone 2.5
+([roadmap](/production/roadmap.md)). **Steps 1–7 are implemented and
+documented: the plain-C# map state, the camera-rig integration, the map's
 drawing and picking rules, the neighbourhood-aware marker aid, the Plot route →
 Begin preview, and the frame-loop acceptance through the real bootstrap.** The
-documentation pass (step 7) is next. The implementation steps at the end are the
-task list, and each step carries its tests.
+implementation steps at the end are the task list, and each step carries its
+tests.
 
 # One zoom, two readings of the same camera
 
@@ -150,9 +150,9 @@ seconds of decay is well under a metre. A reset also clears the pan outright.
 
 **Look-at.** The map looks at `ship + pan`, with the pan held in double
 precision ecliptic metres and converted once at the camera. This is the one
-bend of ADR-008's "always looks at the ship"; ADR-009 stays deferred to the
-documentation step, but the rig and the camera concept record it now. In the
-local band the pan has eased to zero, so the look-at is the ship again.
+bend of ADR-008's "always looks at the ship", recorded in
+[ADR-009](/decisions/adr-009-map-camera-pan.md). In the local band the pan has
+eased to zero, so the look-at is the ship again.
 
 **Near and far planes.** At `w = 0` the near plane is exactly today's rule
 (`clamp(0.02 × distance, 200 km, 50 km)`). On the map it follows the camera
@@ -327,11 +327,11 @@ footer becomes **Plot route** / **Replot route**, **Begin flight**, **Jump
 * **The debug jump** — stays for inspection.
 
 ADR-008's "the camera always looks at the ship" is the one settled rule this
-design bends: in the map the camera looks at `ship + pan`. The rig integration
-(step 2) records the bend in the rig and in
-[Selection and camera focus](/technical/selection-and-camera.md); ADR-009 is
-still deferred to the documentation step (7), which also updates
-[The flight session](/technical/flight-session.md).
+design bends: in the map the camera looks at `ship + pan`.
+[ADR-009](/decisions/adr-009-map-camera-pan.md) records the bend, its
+consequences, and its alternatives; [Selection and camera
+focus](/technical/selection-and-camera.md) and [The flight
+session](/technical/flight-session.md) describe how the scene uses it.
 
 # Implementation steps
 
@@ -403,8 +403,10 @@ Each step is one session-sized piece of work with its tests, in order:
    The acceptance reproduces the scene flight exactly — 3,939 frames, 65.7 real
    seconds, arrival 2026-11-19 10:29:02 UTC, 0.0 m and 0.0000 m/s, on the
    3,898 km parking orbit — so the map path and the direct scene path agree.
-7. **Docs.** ADR-009, the camera and flight-session concepts, the roadmap
-   acceptance numbers, and the log.
+7. **Docs — done.** [ADR-009](/decisions/adr-009-map-camera-pan.md) records the
+   blended map and the `ship + pan` look-at, and the camera and flight-session
+   concepts, the roadmap acceptance numbers, and the log carry the finished
+   layer.
 
 # Acceptance
 

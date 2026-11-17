@@ -150,8 +150,9 @@ distance. The pose becomes:
   and back returns the exact remembered angle without a saved pose.
 
 The one rule this bends is ADR-008's "the camera always looks at the ship". On
-the map it looks at `ship + pan`; ADR-009 is still deferred to the map's
-documentation step, and the rig records the bend locally.
+the map it looks at `ship + pan`; in the local band the pan has eased to zero,
+so ADR-008 holds exactly there. The bend is recorded in
+[ADR-009](/decisions/adr-009-map-camera-pan.md).
 
 **Map input.** Right-drag orbits while `w ≤ 0.5` and pans while `w > 0.5`. A
 pan moves the look-at by the distance-scaled pixel size
@@ -177,12 +178,13 @@ is serialized per scene and passed to the rig. `SolarSystem.unity` leaves it
 off; `SystemMap.unity` turns it on. It is a development comparison aid, not a
 gameplay mode, and a later step removes it or defaults it on.
 
-Map drawing, picking, the local marker-aid fade, and the route preview are built
-(steps 3–5): the 6 px map minimum, the zoom-aware labels, the "YOU ARE HERE"
-ship label, class-priority picking, the camera-distance orbit width, the
-neighbourhood falloff that stops the local view inflating distant bodies, and
-the **Plot route → Begin flight** preview with its target-arrival ghost. The
-remaining work for this layer is the frame-loop acceptance (step 6).
+Map drawing, picking, the local marker-aid fade, the route preview, and the
+frame-loop acceptance are built (steps 3–6): the 6 px map minimum, the
+zoom-aware labels, the "YOU ARE HERE" ship label, class-priority picking, the
+camera-distance orbit width, the neighbourhood falloff that stops the local view
+inflating distant bodies, the **Plot route → Begin flight** preview with its
+target-arrival ghost, and the map-to-arrival acceptance through the real
+bootstrap.
 
 # The focus transition (debug jump)
 
@@ -256,6 +258,9 @@ second mapping.
 * input routing at the 0.5 blend threshold, the multiplicative wheel on both
   sides, the extended map ceiling, the local clamp when the map is off, and the
   suspension of auto-framing on the map;
+* the bootstrap's map round trip from the neighbourhood to the 12-billion-km
+  ceiling and back to the exact remembered angle, and the full map-to-arrival
+  acceptance (select Mars, plot, Begin, 3,939 frames, 0.0 m, 0.0000 m/s);
 * the distance-scaled pan (content follows the cursor), the 60 AU cap through
   the rig, the exponential ease home, and the near plane at both ends of the
   blend;

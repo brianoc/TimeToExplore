@@ -26,8 +26,9 @@ registry download. The prototype's needs are small: 137 primitives, about 30
 orbit lines, one plan line, and a HUD. It does not need a heavy pipeline; it
 needs a supported one.
 
-**ADR-009 is reserved** for the deferred system-map camera decision (whether the
-map may look away from the ship). This record does not take that number.
+ADR-009 was taken by the system-map camera decision ([a blended map that looks
+at ship + pan](/decisions/adr-009-map-camera-pan.md)); this record does not
+depend on it.
 
 # Decision
 

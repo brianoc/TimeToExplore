@@ -355,11 +355,11 @@ The camera orbits the ship and, in the local band, looks at it, so a flight and
 a debug jump can frame their destination without moving the eye into the plan
 ([ADR-008](/decisions/adr-008-orbit-camera.md)). With the map switch on, the
 same rig blends the pose to a top-down system map as the zoom crosses the local
-sphere of influence: the map looks at `ship + pan` (the one bend of ADR-008),
-right-drag pans, the wheel reaches 12 billion km, and the player's remembered
-yaw and pitch are never overwritten. Auto-framing is suspended while the map is
-engaged. The full rules are in
-[The system map and route preview](/technical/system-map.md).
+sphere of influence: the map looks at `ship + pan` (the one bend of ADR-008,
+recorded in [ADR-009](/decisions/adr-009-map-camera-pan.md)), right-drag pans,
+the wheel reaches 12 billion km, and the player's remembered yaw and pitch are
+never overwritten. Auto-framing is suspended while the map is engaged. The full
+rules are in [The system map and route preview](/technical/system-map.md).
 
 Free flight is deliberately simple and deliberately separate from the flight
 session: it cancels any plan and clears the velocity, because a teleport is not a
@@ -455,8 +455,9 @@ deferred until the presentation code settles.
 * The scene is generated at runtime; there is no authored art scene.
 * The system map has its camera pose, markers, labels, picking, orbit-line
   width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), the
-  Plot route → Begin preview with its target-arrival ghost (step 5), and the
-  frame-loop acceptance through the real bootstrap (step 6). The `EnableMapView`
+  Plot route → Begin preview with its target-arrival ghost (step 5), the
+  frame-loop acceptance through the real bootstrap (step 6), and its decision
+  record ([ADR-009](/decisions/adr-009-map-camera-pan.md)). The `EnableMapView`
   comparison switch is temporary; it also gates the aid fade so the shipped
   scene keeps its old local look until the switch defaults on.
 * The rendering migration stops at the URP forward path: there is no

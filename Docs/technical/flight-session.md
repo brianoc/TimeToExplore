@@ -213,6 +213,14 @@ The view deliberately does **not** follow the thrust axis: a capture burns
 retrograde, and facing the burn would point the camera at empty space at the
 moment of arrival.
 
+With the map switch on, the same camera continues into the system map: the zoom
+blends the pose top-down, right-drag pans instead of orbiting, the look-at
+becomes `ship + pan`, and the wheel reaches 12 billion km
+([The system map](/technical/system-map.md),
+[ADR-009](/decisions/adr-009-map-camera-pan.md)). The flight is unaffected: the
+plan is still owned by the session, and a flight running while the player browses
+the map is the same flight with a different camera.
+
 # Acceptance, measured
 
 Run through the scene's frame loop at 60 fps, without a scene
@@ -232,6 +240,13 @@ Run through the scene's frame loop at 60 fps, without a scene
 The budget never bound, but a starved-budget test with two substeps per frame
 proves the clamp: 400 frames reach only 2026-11-15 05:53 and the clock is never
 ahead of the ship.
+
+The same flight also runs through the real composition root, starting from the
+system map (`BootstrapSmokeTests`): select Mars on the map, plot, Begin, and let
+the bootstrap's own `Update`/`LateUpdate` run. It arrives at the same
+2026-11-19 10:29:02 UTC after 3,939 frames and 65.7 real seconds, with 0.0 m and
+0.0000 m/s and the 3,898 km parking orbit at e = 4.3 × 10⁻⁹. The map changes the
+camera, not the trajectory.
 
 # Verification
 
