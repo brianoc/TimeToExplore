@@ -42,6 +42,9 @@ crashlytics-build.properties
 __pycache__/
 *.py[cod]
 
+# User material (not tracked)
+/Screenshots/
+
 # macOS
 .DS_Store
 .AppleDouble
