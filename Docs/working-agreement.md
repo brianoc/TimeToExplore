@@ -26,6 +26,10 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
    * When the plan is complete, clear it back to a short "no active handoff"
      stub in the same commit as the final step. History belongs in
      `Docs/log.md`; reasoning belongs in the concepts and ADRs.
+4. **Show the result before you call it done.** Finish a task with evidence in
+   the chat: screenshots of the visible change, or a short video when motion or
+   interaction is what changed. A visual result the person asking cannot see is
+   not finished.
 
 Details: [Testing and verification](/technical/testing.md). The full working
 rules are in `AGENTS.md`.

@@ -1,9 +1,11 @@
 # Agent Instructions — Time to Explore
 
 **Every session:** read [the working agreement](Docs/working-agreement.md)
-first. Three rules: update the docs as changes happen, add tests for every new
-feature or piece of work, and keep `HANDOFF.md` live only while a plan is in
-progress — clear it when the plan is done.
+first. Four rules: update the docs as changes happen, add tests for every new
+feature or piece of work, keep `HANDOFF.md` live only while a plan is in
+progress — clear it when the plan is done — and finish with screenshots of the
+result, or a short video when motion or interaction is what changed, in the
+chat.
 
 ## Project shape
 
