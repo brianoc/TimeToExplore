@@ -44,10 +44,22 @@ namespace TimeToExplore.Simulation
         public ThrustCommand Compute(ShipState state, double julianDate)
         {
             if (_plan.IsComplete(julianDate)) return ThrustCommand.None;
+            return ComputeForArc(state, _plan.ArcAt(julianDate), julianDate);
+        }
 
-            Vector3d referencePosition = _plan.ReferencePositionAt(julianDate);
-            Vector3d referenceVelocity = _plan.ReferenceVelocityAt(julianDate);
-            Vector3d referenceAcceleration = _plan.ReferenceAccelerationAt(julianDate);
+        /// <summary>
+        /// Track one specific arc. The flight session passes the arc it is
+        /// currently integrating so the reference stays on the pre-burn side of
+        /// a seam until the impulse has been applied.
+        /// </summary>
+        public ThrustCommand ComputeForArc(ShipState state, PlanArc arc, double julianDate)
+        {
+            if (arc == null) return ThrustCommand.None;
+
+            double u = arc.ParameterAt(julianDate);
+            Vector3d referencePosition = arc.Path.PositionAt(u);
+            Vector3d referenceVelocity = arc.Path.VelocityAt(u);
+            Vector3d referenceAcceleration = arc.Path.AccelerationAt(u);
             Vector3d localGravity = _gravity.AccelerationAt(state.PositionM, julianDate);
 
             Vector3d command = referenceAcceleration - localGravity
@@ -57,7 +69,8 @@ namespace TimeToExplore.Simulation
             return new ThrustCommand(command).ClampedTo(MaxAccelerationMps2);
         }
 
-        /// <summary>Fly the whole plan, arc by arc, with each arc's own step hint.</summary>
+        /// <summary>Fly the whole plan, arc by arc, with each arc's own step hint.
+        /// A conic plan's impulsive burns are applied when their arc begins.</summary>
         public IntegrationReport Fly(ref ShipState state, ShipIntegrator integrator)
         {
             if (integrator == null) throw new ArgumentNullException(nameof(integrator));
@@ -65,10 +78,15 @@ namespace TimeToExplore.Simulation
             var total = new IntegrationReport { MinStepSeconds = double.PositiveInfinity };
             foreach (PlanArc arc in _plan.Arcs)
             {
-                IntegrationReport leg = integrator.Advance(ref state, arc.EndJulianDate,
-                    Compute, arc.SuggestedMaxStepSeconds);
-                total.Add(leg);
-                if (leg.CollisionDetected || leg.StepLimitReached) break;
+                if (arc.EntryImpulseMps > 0.0)
+                    state.VelocityMps += arc.EntryImpulseVectorMps;
+
+                PlanArc leg = arc;
+                IntegrationReport report = integrator.Advance(ref state, arc.EndJulianDate,
+                    (probe, date) => ComputeForArc(probe, leg, date),
+                    arc.SuggestedMaxStepSeconds);
+                total.Add(report);
+                if (report.CollisionDetected || report.StepLimitReached) break;
             }
 
             if (double.IsPositiveInfinity(total.MinStepSeconds)) total.MinStepSeconds = 0.0;

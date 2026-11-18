@@ -1,21 +1,27 @@
 # Handoff
 
-**No active handoff (2026-11-17).** The route preview now carries a **trip-time
-slider**: the fastest feasible plan (Gateway→Mars is 4.44 d at 9.76 m/s² and
-2,345 km/s) out to three times that (8.87 d at 2.71 m/s² and 1,177 km/s). Each
-value re-solves the route and slides the arrival date and target position with
-it; Begin flies the chosen time.
+**No active handoff (2026-11-18).** The transfer-conic arrival is complete and
+committed: universal-variable propagation, the `IArcPath`/`ConicArc` coast, the
+impulsive Oberth capture, the lower conic parking orbit, coast and burn
+rendering, and the phase/burn HUD rows. `tools/check.sh`: 401 tests, 0 failed,
+0 skipped.
 
-Coasting in the middle is deliberately **not** offered: it depends on proper
-transfer conics, because a coast is a Keplerian arc with zero commanded thrust.
-The dependency is recorded in the roadmap, navigation, and flight-model docs.
+**Default versus opt-in.** Go To still flies the **quintic** capture. The conic
+arrival is implemented and verified but has no input surface yet: set
+`TripPlanner.ArrivalStyle = CaptureStyle.Conic` or
+`FlightSession.ArrivalStyle = CaptureStyle.Conic` to build it. The next UI step
+is an arrival-style choice beside the trip-time slider, so the player can see
+the conic coast, the periapsis burn, and the lower parking orbit in the scene.
 
-Last verified: `tools/check.sh` — 365 tests, 0 failed, 0 skipped. Screenshots:
-`Screenshots/12-trip-time-fast.png` and `13-trip-time-slow.png`.
+**Not implemented: the mid-cruise coast.** This work covers the *arrival* —
+inbound hyperbola, impulsive periapsis capture, transfer ellipse, and
+circularisation. A heliocentric Lambert coast through the middle of the trip is
+still deferred; the cruise is a powered quintic. Finite-burn arcs and
+ring/atmosphere arrival models are later fidelity work.
 
 Start from [the design bundle](Docs/index.md),
-[the glossary](Docs/glossary.md),
-[the roadmap](Docs/production/roadmap.md), and
+[the roadmap](Docs/production/roadmap.md),
+[ADR-014](Docs/decisions/adr-014-keplerian-coast.md), and
 [the working agreement](Docs/working-agreement.md). When a multi-step plan
 starts, replace this file with a live handoff; when that plan finishes, clear it
 back to this stub.

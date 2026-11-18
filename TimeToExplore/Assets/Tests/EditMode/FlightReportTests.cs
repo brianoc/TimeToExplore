@@ -132,6 +132,27 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void AConicArrivalShowsCoastParkingAndTheImpulsiveBurns()
+        {
+            var planner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.Conic
+            };
+            var session = new FlightSession(_model, _gravity, planner);
+            session.PlaceAt("gateway", _epoch);
+            session.Begin("mars", _epoch);
+
+            List<DetailRow> rows = FlightReport.Build(session, _model, "x10,000");
+
+            Assert.That(Find(rows, "Coast"), Is.Not.Null);
+            Assert.That(Find(rows, "Capture"), Is.Not.Null);
+            Assert.That(Find(rows, "Parking"), Is.Not.Null);
+            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("impulsive"));
+            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+        }
+
+        [Test]
         public void EveryStatusHasAReadableLabel()
         {
             Assert.That(FlightReport.StatusLabel(FlightStatus.Idle), Is.EqualTo("Idle"));

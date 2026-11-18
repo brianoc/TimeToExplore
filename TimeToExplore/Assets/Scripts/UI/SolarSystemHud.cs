@@ -60,6 +60,8 @@ namespace TimeToExplore.UI
         private static readonly Color SelectedLabelColour = new Color(1f, 0.85f, 0.4f);
         private static readonly Color ShipLabelColour = new Color(0.86f, 0.90f, 0.96f);
         private static readonly Color FlipLabelColour = new Color(1f, 0.55f, 0.35f);
+        private static readonly Color BurnLabelColour = new Color(1f, 0.96f, 0.85f);
+        private static readonly Color ParkBurnLabelColour = new Color(1f, 0.88f, 0.35f);
         private static readonly Color GhostLabelColour = new Color(0.62f, 0.78f, 1f);
         private static readonly Color ArrivalLabelColour = new Color(0.55f, 1f, 0.72f);
         private static readonly Color ButtonTextColour = new Color(0.92f, 0.95f, 1f);
@@ -727,6 +729,13 @@ namespace TimeToExplore.UI
             TrajectoryLine trajectory = _owner.Trajectory;
             Camera camera = _owner.ViewCamera;
             if (trajectory == null || camera == null || !trajectory.IsShowing) return;
+
+            if (trajectory.BurnMarkerCount > 0)
+                DrawWorldLabel(camera, trajectory.BurnMarkerPosition(0),
+                    "PERIAPSIS BURN", BurnLabelColour);
+            if (trajectory.BurnMarkerCount > 1)
+                DrawWorldLabel(camera, trajectory.BurnMarkerPosition(1),
+                    "CIRCULARISE", ParkBurnLabelColour);
 
             DrawWorldLabel(camera, trajectory.FlipMarkerPosition, "FLIP  thrust reversal",
                 FlipLabelColour);

@@ -14,6 +14,7 @@ namespace TimeToExplore.Tests.EditMode
         private SolarSystemModel _model;
         private GravityField _gravity;
         private TrajectoryPlan _plan;
+        private TrajectoryPlan _conicPlan;
 
         [SetUp]
         public void SetUp()
@@ -22,6 +23,12 @@ namespace TimeToExplore.Tests.EditMode
             _gravity = FlightFixture.FullField(_model);
             var planner = new TripPlanner(_model, _gravity);
             _plan = planner.Plan(FlightFixture.ShipAt(_model, "gateway"), "mars");
+
+            var conicPlanner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.Conic
+            };
+            _conicPlan = conicPlanner.Plan(FlightFixture.ShipAt(_model, "gateway"), "mars");
         }
 
         [Test]
@@ -110,6 +117,75 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        [Test]
+        public void ConicArcsMeetTheSameFlatnessTolerance()
+        {
+            foreach (PlanArc arc in _conicPlan.Arcs)
+            {
+                var points = new List<Vector3d>();
+                var parameters = new List<double>();
+                PathTessellation.Append(arc.Path, points, parameters);
+
+                TestContext.WriteLine(
+                    $"{arc.Phase}: {points.Count} points, worst sagitta " +
+                    $"{WorstSagittaRatio(arc.Path, points, parameters):E2}");
+
+                Assert.That(points.Count, Is.GreaterThanOrEqualTo(2));
+                Assert.That(points.Count,
+                    Is.LessThanOrEqualTo(PathTessellation.MaxSegmentsPerArc + 1));
+                Assert.That(WorstSagittaRatio(arc.Path, points, parameters),
+                    Is.LessThanOrEqualTo(PathTessellation.MaxSagittaRatio * (1.0 + 1e-9)));
+            }
+        }
+
+        [Test]
+        public void TheCoastSamplesPeriapsisMoreDenselyThanTheFarApproach()
+        {
+            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
+            Assert.That(coast, Is.Not.Null);
+
+            double far = Vector3d.Distance(coast.Path.PositionAt(0.0),
+                coast.Path.PositionAt(0.01));
+            double near = Vector3d.Distance(coast.Path.PositionAt(0.99),
+                coast.Path.PositionAt(1.0));
+
+            TestContext.WriteLine($"far chord {far / 1000.0:N0} km, " +
+                                  $"periapsis chord {near / 1000.0:N0} km");
+
+            Assert.That(near, Is.LessThan(far / 10.0),
+                "true-anomaly sampling must not cut the periapsis corner");
+        }
+
+        [Test]
+        public void TheConicFlipIsInThePoweredCruise()
+        {
+            double flip = _conicPlan.FindFlipJulianDate(_gravity);
+            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
+
+            TestContext.WriteLine($"flip at {JulianDate.Format(flip)}, " +
+                                  $"coast starts {JulianDate.Format(coast.StartJulianDate)}");
+
+            Assert.That(double.IsNaN(flip), Is.False);
+            Assert.That(flip, Is.LessThan(coast.StartJulianDate));
+            Assert.That(_conicPlan.PhaseAt(flip), Is.Not.EqualTo(FlightPhase.Coast),
+                "the flip is in a powered arc, not the coast");
+        }
+
+        [Test]
+        public void TheConicBoundariesAreThePeriapsisAndTheCircularisation()
+        {
+            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
+            PlanArc capture = _conicPlan.ArcForPhase(FlightPhase.Capture);
+            PlanArc parking = _conicPlan.ArcForPhase(FlightPhase.Parking);
+
+            Assert.That(_conicPlan.NextBoundaryJulianDate(coast.StartJulianDate),
+                Is.EqualTo(coast.EndJulianDate), "the periapsis is a boundary");
+            Assert.That(_conicPlan.NextBoundaryJulianDate(capture.StartJulianDate),
+                Is.EqualTo(capture.EndJulianDate), "the circularisation is a boundary");
+            Assert.That(_conicPlan.NextBoundaryJulianDate(parking.StartJulianDate),
+                Is.EqualTo(parking.EndJulianDate), "the arrival is a boundary");
+        }
+
         private double AlongTrackThrust(TrajectoryPlan plan, double julianDate)
         {
             Vector3d position = plan.ReferencePositionAt(julianDate);
@@ -126,7 +202,7 @@ namespace TimeToExplore.Tests.EditMode
         /// polyline. The parameters let the test evaluate the true curve at the
         /// same place the sampler tested it.
         /// </summary>
-        private static double WorstSagittaRatio(Quintic path, List<Vector3d> points,
+        private static double WorstSagittaRatio(IArcPath path, List<Vector3d> points,
             List<double> parameters)
         {
             double worst = 0.0;

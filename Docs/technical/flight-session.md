@@ -19,11 +19,13 @@ for tests. Now the scene has a ship:
   preview; a **trip-time slider** then re-solves that preview at a longer
   duration, and **Begin flight** replans from the current state and flies the
   chosen time;
-* the plan is drawn in the world, with the capture arc dashed, a flip marker,
-  an arrival marker, and a ghost at the target's arrival position;
-* the flight panel shows the phase table, the countdown, the throttle, and the
-  delta-v;
-* time warp drops by itself near a body and before each plan boundary;
+* the plan is drawn in the world, with coasts and the capture dashed, the
+  parking coast green, burn markers at the impulsive capture and circularisation,
+  a flip marker, an arrival marker, and a ghost at the target's arrival position;
+* the flight panel shows the phase table, the countdown, the throttle, the
+  delta-v, and the impulsive burn total;
+* time warp drops by itself near a body and before each plan boundary, including
+  the periapsis and circularisation boundaries of a conic arrival;
 * after arrival the ship coasts in the parking orbit with the drive off, and the
   player gets the camera back — an orbit camera, not the old fixed view.
 
@@ -136,9 +138,12 @@ subdivided by curvature until every chord's midpoint deviates by at most
 then re-projected into the ship-relative frame every frame. It draws
 
 * a **solid** line for the departure and cruise arcs;
-* a **dashed** line for the capture arc, using a repeating alpha texture tiled
-  along the line, with the dash length tied to the line width so it stays
-  readable at any zoom;
+* a **dashed** line for coast arcs and the capture, using a repeating alpha
+  texture tiled along the line, with the dash length tied to the line width so
+  it stays readable at any zoom;
+* a **green dashed** line for the short parking coast after circularisation;
+* **burn markers** at the start of each arc that carries an impulse: the
+  periapsis capture and the apoapsis circularisation on a conic arrival;
 * an **orange marker at the flip** — the point where the along-track thrust
   changes sign, which is the top of the arc rather than a bang-bang switch. On
   the Mars plan it is 3.3 hours after departure;
@@ -183,7 +188,9 @@ NOW
 The header shows the target and the status, and the line under it is the
 countdown to the next action (`Arrival  T− 12m 04s`). On arrival the status
 reads `Arrived, in orbit`, the countdown reads `Arrived`, and the flip reads
-`passed`.
+`passed`. A conic arrival adds `Coast`, `Capture`, and `Parking` rows and a
+`Burns` row with the impulsive total, and its next-event countdown lands on the
+periapsis and circularisation boundaries.
 
 A route preview uses the same plan rows with `PREVIEW` in place of `NOW`:
 

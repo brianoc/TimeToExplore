@@ -4,12 +4,27 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Simulation
 {
+    /// <summary>How the planner brings the ship into the parking orbit.</summary>
+    public enum CaptureStyle
+    {
+        /// <summary>The continuous-thrust quintic capture. The working default:
+        /// fast, and constrained by the parking orbit's gravity ceiling.</summary>
+        Quintic,
+        /// <summary>A Keplerian inbound hyperbola, an impulsive periapsis
+        /// capture, a transfer ellipse, and a circularisation burn. Slower in
+        /// flight time, much cheaper in delta-v, and free of the ceiling.</summary>
+        Conic
+    }
+
     /// <summary>
     /// Builds a Go To plan: an escape arc out of the departure body's sphere of
-    /// influence, a heliocentric cruise arc, and a capture arc that ends on the
-    /// target's parking orbit. Every arc is a quintic that matches its
-    /// neighbours in position, velocity, and acceleration, so the whole plan is
-    /// one smooth trajectory with zero commanded thrust at the seams.
+    /// influence, a heliocentric cruise arc, and a capture that ends on the
+    /// target's parking orbit. The default capture is a quintic that matches its
+    /// neighbours in position, velocity, and acceleration. The alternative
+    /// conic capture is a coasting hyperbola and transfer ellipse with
+    /// impulsive burns, which parks lower and spends less delta-v but takes
+    /// months from the outer spheres of influence
+    /// ([ADR-014](../decisions/adr-014-keplerian-coast.md)).
     ///
     /// The solver is a search, not an optimal-control solve. It allocates time
     /// between the arcs in proportion to each arc's kinematic minimum
@@ -19,11 +34,13 @@ namespace TimeToExplore.Simulation
     /// deterministic, always feasible for the inner system, and its endpoint is
     /// exact.
     ///
-    /// Known limit: one quintic cannot thread a gravity well whose parking-orbit
-    /// gravity approaches the drive's own acceleration. Jupiter's parking orbit
-    /// sits at 19 m/s², and the capture arc cannot be flown there. Capture arcs
-    /// must become transfer ellipses (or a shaped spiral of several arcs) before
-    /// the outer giants are reachable. See the navigation document.
+    /// The quintic capture has a known limit: it cannot thread a gravity well
+    /// whose parking-orbit gravity approaches the drive's own acceleration,
+    /// because the curve must arrive with that acceleration. Jupiter's
+    /// surface-radius orbit sits at 19 m/s², so the default path parks at the
+    /// gravity ceiling. The conic capture removes that limit by coasting; it
+    /// parks lower and spends less delta-v, at the cost of time. See the
+    /// navigation document.
     /// </summary>
     public sealed class TripPlanner
     {
@@ -55,8 +72,9 @@ namespace TimeToExplore.Simulation
         /// the executed trajectory keeps a little authority in reserve.</summary>
         public double ThrustMargin { get; set; } = 0.97;
 
-        /// <summary>Inbound speed at the target's sphere of influence. Shapes
-        /// how much of the deceleration happens in the capture arc.</summary>
+        /// <summary>Inbound speed at the target's sphere of influence. For the
+        /// quintic it shapes the deceleration; for the conic it is the
+        /// hyperbolic excess speed of the arrival hyperbola.</summary>
         public double EntrySpeedMps { get; set; } = 5_000.0;
 
         /// <summary>Outbound speed at the departure body's sphere of influence.</summary>
@@ -73,6 +91,11 @@ namespace TimeToExplore.Simulation
         /// <summary>Rotates the arrival point around the target's equator.</summary>
         public double ParkingPhaseOffsetRad { get; set; }
 
+        /// <summary>Which arrival model the planner builds. The quintic capture
+        /// is the working default; the conic capture is the cheap, slow
+        /// alternative and is verified end to end by the suite.</summary>
+        public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Quintic;
+
         /// <summary>Optional diagnostic sink for the planning loop.</summary>
         public Action<string> Trace { get; set; }
 
@@ -81,10 +104,15 @@ namespace TimeToExplore.Simulation
             BodyRuntime target = RequireTarget(targetId);
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
+            double parkingRadius = ArrivalStyle == CaptureStyle.Conic
+                ? ParkingOrbit.ConicRadiusM(target)
+                : ParkingOrbit.RadiusM(target, MaxAccelerationMps2);
             double distance = Math.Max(Vector3d.Distance(targetPosition, ship.PositionM),
-                ParkingOrbit.RadiusM(target, MaxAccelerationMps2));
+                parkingRadius);
 
             double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
+            if (ArrivalStyle == CaptureStyle.Conic)
+                total += EstimateConicCaptureSeconds(target);
             TrajectoryPlan plan = null;
             double required = total;
 
@@ -93,6 +121,9 @@ namespace TimeToExplore.Simulation
                 BuildResult result = Build(ship, target, total);
                 plan = result.Plan;
                 required = result.RequiredSeconds;
+
+                if (!string.IsNullOrEmpty(plan.InfeasibleReason))
+                    return plan;
 
                 Trace?.Invoke($"iter {iteration}: total {total / SecondsPerDay:F3} d, " +
                               $"required {required / SecondsPerDay:F3} d, " +
@@ -156,7 +187,12 @@ namespace TimeToExplore.Simulation
             return target;
         }
 
-        private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds)
+        private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds) =>
+            ArrivalStyle == CaptureStyle.Conic
+                ? BuildConic(ship, target, totalSeconds)
+                : BuildQuintic(ship, target, totalSeconds);
+
+        private BuildResult BuildQuintic(ShipState ship, BodyRuntime target, double totalSeconds)
         {
             double t0 = ship.JulianDate;
             double t1 = t0 + totalSeconds / SecondsPerDay;
@@ -312,6 +348,225 @@ namespace TimeToExplore.Simulation
             return new BuildResult(plan, requiredSeconds);
         }
 
+        /// <summary>
+        /// Build the cheap arrival: a powered departure and cruise, then a
+        /// planetocentric hyperbola, an impulsive periapsis capture, a transfer
+        /// ellipse, and a circularisation burn. The capture's duration is fixed
+        /// by the target's gravity and the chosen radii, so the cruise absorbs
+        /// the requested time; a request shorter than the capture plus the
+        /// kinematic floor comes out longer rather than inventing a faster
+        /// conic. A trip that starts inside the target's sphere of influence has
+        /// no entry hyperbola and keeps the quintic capture.
+        /// </summary>
+        private BuildResult BuildConic(ShipState ship, BodyRuntime target, double totalSeconds)
+        {
+            double t0 = ship.JulianDate;
+            double targetSoi = SphereOfInfluence.RadiusM(target);
+
+            _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
+            bool insideTarget = Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi;
+            if (insideTarget) return BuildQuintic(ship, target, totalSeconds);
+
+            BodyRuntime departureBody = null;
+            double departureSoi = 0.0;
+            foreach (BodyRuntime planet in _model.Sun.Children)
+            {
+                if (planet == target || planet == target.Parent) continue;
+
+                double soi = SphereOfInfluence.RadiusM(planet);
+                if (!double.IsFinite(soi)) continue;
+
+                _model.ComputeState(planet, t0, out Vector3d planetPosition, out _);
+                if (Vector3d.Distance(ship.PositionM, planetPosition) < soi)
+                {
+                    departureBody = planet;
+                    departureSoi = soi;
+                    break;
+                }
+            }
+
+            Vector3d escapeDirection = Vector3d.Zero;
+            Vector3d provisionalExit = ship.PositionM;
+            double escapeBase = 0.0;
+            if (departureBody != null)
+            {
+                _model.ComputeState(departureBody, t0,
+                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
+
+                escapeDirection = (ship.VelocityMps - anchorVelocity).Normalized;
+                if (escapeDirection.SqrMagnitude < 0.5)
+                    escapeDirection = (ship.PositionM - anchorPosition).Normalized;
+                if (escapeDirection.SqrMagnitude < 0.5)
+                    escapeDirection = new Vector3d(1.0, 0.0, 0.0);
+
+                provisionalExit = anchorPosition + escapeDirection * departureSoi;
+                escapeBase = BaseDuration(Vector3d.Distance(ship.PositionM, provisionalExit));
+            }
+
+            double arrivalJd = t0 + totalSeconds / SecondsPerDay;
+            double captureSeconds = 0.0;
+            double escapeSeconds = 0.0;
+            double cruiseSeconds = 0.0;
+            TransferConic chain = null;
+
+            for (int pass = 0; pass < 5; pass++)
+            {
+                chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
+                if (!chain.IsValid)
+                    return InfeasiblePlan(ship, target, totalSeconds,
+                        "conic capture: " + chain.InvalidReason);
+
+                captureSeconds = chain.TotalSeconds;
+                double entryJd = arrivalJd - captureSeconds / SecondsPerDay;
+                _model.ComputeState(target, entryJd,
+                    out Vector3d targetAtEntry, out Vector3d targetAtEntryVelocity);
+                Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
+
+                double available = totalSeconds - captureSeconds;
+                if (departureBody != null)
+                {
+                    double cruiseBase = BaseDuration(
+                        Vector3d.Distance(provisionalExit, entryPosition));
+                    double scale = Math.Max(1.0, available / (escapeBase + cruiseBase));
+                    escapeSeconds = escapeBase * scale;
+                    cruiseSeconds = cruiseBase * scale;
+                }
+                else
+                {
+                    double cruiseBase = BaseDuration(
+                        Vector3d.Distance(ship.PositionM, entryPosition));
+                    double scale = Math.Max(1.0, available / cruiseBase);
+                    escapeSeconds = 0.0;
+                    cruiseSeconds = cruiseBase * scale;
+                }
+
+                double nextArrival = t0 + (escapeSeconds + cruiseSeconds + captureSeconds)
+                                        / SecondsPerDay;
+                if (Math.Abs(nextArrival - arrivalJd) <= 1e-8) break;
+                arrivalJd = nextArrival;
+            }
+
+            // Rebuild the shape at the settled arrival, so the plane and the
+            // approach azimuth belong to the date the plan actually reaches.
+            chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
+            if (!chain.IsValid)
+                return InfeasiblePlan(ship, target, totalSeconds,
+                    "conic capture: " + chain.InvalidReason);
+
+            captureSeconds = chain.TotalSeconds;
+            double cruiseEndJd = arrivalJd - captureSeconds / SecondsPerDay;
+            double escapeEndJd = t0 + escapeSeconds / SecondsPerDay;
+            if (departureBody != null)
+                cruiseEndJd = Math.Max(cruiseEndJd, escapeEndJd + MinimumArcSeconds / SecondsPerDay);
+            cruiseSeconds = (cruiseEndJd - escapeEndJd) * SecondsPerDay;
+
+            Vector3d cruiseStartPosition = ship.PositionM;
+            Vector3d cruiseStartVelocity = ship.VelocityMps;
+            if (departureBody != null)
+            {
+                _model.ComputeState(departureBody, escapeEndJd,
+                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
+                cruiseStartPosition = anchorPosition + escapeDirection * departureSoi;
+                cruiseStartVelocity = anchorVelocity + escapeDirection * EscapeSpeedMps;
+            }
+
+            _model.ComputeState(target, cruiseEndJd,
+                out Vector3d targetAtEntryFinal, out Vector3d targetAtEntryVelocityFinal);
+            Vector3d entryPositionFinal = targetAtEntryFinal + chain.EntryLocalPositionM;
+            Vector3d entryVelocityFinal = targetAtEntryVelocityFinal + chain.EntryLocalVelocityMps;
+            Vector3d entryAcceleration = _model.ComputeAcceleration(target, cruiseEndJd)
+                                          + chain.EntryLocalAccelerationMps2;
+
+            var arcs = new List<PlanArc>(5);
+
+            if (departureBody != null && escapeSeconds > MinimumArcSeconds)
+            {
+                arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, escapeEndJd,
+                    ship.PositionM, ship.VelocityMps, cruiseStartPosition, cruiseStartVelocity));
+            }
+
+            if (cruiseSeconds > MinimumArcSeconds)
+            {
+                arcs.Add(MakeArc(FlightPhase.Cruise, target.Id, escapeEndJd, cruiseEndJd,
+                    cruiseStartPosition, cruiseStartVelocity,
+                    entryPositionFinal, entryVelocityFinal,
+                    endAcceleration: entryAcceleration));
+            }
+
+            double periapsisJd = cruiseEndJd + chain.InboundSeconds / SecondsPerDay;
+            double apoapsisJd = periapsisJd + chain.TransferSeconds / SecondsPerDay;
+            double parkingEndJd = apoapsisJd + chain.ParkingSeconds / SecondsPerDay;
+
+            ConicArc inbound = ConicArc.Create(_model, target, cruiseEndJd,
+                chain.InboundSeconds, chain.EntryLocalPositionM, chain.EntryLocalVelocityMps);
+            arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, cruiseEndJd, periapsisJd,
+                inbound, Vector3d.Zero));
+
+            ConicArc transfer = ConicArc.Create(_model, target, periapsisJd,
+                chain.TransferSeconds, chain.PeriapsisLocalPositionM,
+                chain.TransferPeriapsisVelocityMps);
+            arcs.Add(MakeConicArc(FlightPhase.Capture, target.Id, periapsisJd, apoapsisJd,
+                transfer, chain.CaptureBurnVectorMps));
+
+            ConicArc parking = ConicArc.Create(_model, target, apoapsisJd,
+                chain.ParkingSeconds, chain.ApoapsisLocalPositionM,
+                chain.CircularApoapsisVelocityMps);
+            arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, apoapsisJd, parkingEndJd,
+                parking, chain.CircularisationBurnVectorMps));
+
+            double limit = MaxAccelerationMps2 * ThrustMargin;
+            double worst = 1.0;
+            foreach (PlanArc arc in arcs)
+            {
+                if (arc.PeakThrustMps2 <= 0.0) continue;
+                worst = Math.Max(worst, arc.PeakThrustMps2 / limit);
+            }
+
+            double actualSeconds = (parkingEndJd - t0) * SecondsPerDay;
+            double requiredSeconds = Math.Max(totalSeconds, actualSeconds)
+                                     * Math.Clamp(Math.Sqrt(worst), 0.85, 3.0);
+
+            Vector3d parkingPosition = parking.PositionAt(1.0);
+            Vector3d parkingVelocity = parking.VelocityAt(1.0);
+            var arrivalState = new ShipState(parkingEndJd,
+                parkingPosition, parkingVelocity, ship.DryMassKg, ship.PropellantKg);
+            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
+
+            return new BuildResult(plan, requiredSeconds);
+        }
+
+        private double EstimateConicCaptureSeconds(BodyRuntime target)
+        {
+            TransferConic chain = TransferConic.Build(target, new Vector3d(1.0, 0.0, 0.0),
+                SphereOfInfluence.RadiusM(target), EntrySpeedMps,
+                ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
+            return chain.IsValid ? chain.TotalSeconds : 0.0;
+        }
+
+        private TransferConic BuildCaptureShape(ShipState ship, BodyRuntime target,
+            double targetSoi, double arrivalJd)
+        {            _model.ComputeState(target, arrivalJd, out Vector3d targetPosition, out _);
+            Vector3d approach = (ship.PositionM - targetPosition).Normalized;
+            if (approach.SqrMagnitude < 0.5) approach = new Vector3d(1.0, 0.0, 0.0);
+
+            return TransferConic.Build(target, approach, targetSoi, EntrySpeedMps,
+                ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
+        }
+
+        private BuildResult InfeasiblePlan(ShipState ship, BodyRuntime target,
+            double totalSeconds, string reason)
+        {
+            double end = ship.JulianDate + MinimumArcSeconds / SecondsPerDay;
+            PlanArc dummy = MakeArc(FlightPhase.Capture, target.Id, ship.JulianDate, end,
+                ship.PositionM, ship.VelocityMps, ship.PositionM, ship.VelocityMps);
+            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2,
+                new List<PlanArc> { dummy }, ship, ship)
+            {
+                InfeasibleReason = reason
+            };
+            return new BuildResult(plan, totalSeconds);
+        }
+
         /// <summary>Arrival geometry at one instant: the sphere-of-influence
         /// entry and the parking-orbit state the plan must finish in.</summary>
         private ArrivalGeometry ComputeArrival(BodyRuntime target, ShipState ship, double arrivalJd,
@@ -346,19 +601,47 @@ namespace TimeToExplore.Simulation
 
         private PlanArc MakeArc(FlightPhase phase, string bodyId, double startJd, double endJd,
             Vector3d startPosition, Vector3d startVelocity,
-            Vector3d endPosition, Vector3d endVelocity)
+            Vector3d endPosition, Vector3d endVelocity,
+            Vector3d? startAcceleration = null, Vector3d? endAcceleration = null)
         {
-            _gravity.Prepare(startPosition, startJd);
-            Vector3d startGravity = _gravity.AccelerationAt(startPosition, startJd);
+            Vector3d startGravity;
+            if (startAcceleration.HasValue)
+            {
+                startGravity = startAcceleration.Value;
+            }
+            else
+            {
+                _gravity.Prepare(startPosition, startJd);
+                startGravity = _gravity.AccelerationAt(startPosition, startJd);
+            }
 
-            _gravity.Prepare(endPosition, endJd);
-            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJd);
+            Vector3d endGravity;
+            if (endAcceleration.HasValue)
+            {
+                endGravity = endAcceleration.Value;
+            }
+            else
+            {
+                _gravity.Prepare(endPosition, endJd);
+                endGravity = _gravity.AccelerationAt(endPosition, endJd);
+            }
 
             double durationSeconds = (endJd - startJd) * SecondsPerDay;
             Quintic path = Quintic.Create(startPosition, startVelocity, startGravity,
                 endPosition, endVelocity, endGravity, durationSeconds);
 
             var arc = new PlanArc(phase, bodyId, startJd, endJd, path);
+            Measure(arc);
+            return arc;
+        }
+
+        private PlanArc MakeConicArc(FlightPhase phase, string bodyId, double startJd,
+            double endJd, ConicArc path, Vector3d entryImpulseMps)
+        {
+            var arc = new PlanArc(phase, bodyId, startJd, endJd, path)
+            {
+                EntryImpulseVectorMps = entryImpulseMps
+            };
             Measure(arc);
             return arc;
         }
@@ -371,14 +654,15 @@ namespace TimeToExplore.Simulation
             double clearance = double.PositiveInfinity;
             string nearest = null;
             double previousMagnitude = 0.0;
-            double stepSeconds = arc.DurationSeconds / samples;
+            double previousSeconds = 0.0;
 
             for (int i = 0; i <= samples; i++)
             {
                 double u = (double)i / samples;
                 Vector3d position = arc.Path.PositionAt(u);
                 Vector3d required = arc.Path.AccelerationAt(u);
-                double julianDate = arc.StartJulianDate + u * (arc.EndJulianDate - arc.StartJulianDate);
+                double seconds = arc.Path.SecondsAt(u);
+                double julianDate = arc.StartJulianDate + seconds / JulianDate.SecondsPerDay;
 
                 _gravity.Prepare(position, julianDate);
                 Vector3d localGravity = _gravity.AccelerationAt(position, julianDate);
@@ -391,8 +675,11 @@ namespace TimeToExplore.Simulation
                     nearest = _gravity.NearestBodyId;
                 }
 
-                if (i > 0) deltaV += 0.5 * (previousMagnitude + magnitude) * stepSeconds;
+                if (i > 0)
+                    deltaV += 0.5 * (previousMagnitude + magnitude)
+                              * (seconds - previousSeconds);
                 previousMagnitude = magnitude;
+                previousSeconds = seconds;
             }
 
             arc.PeakThrustMps2 = peak;

@@ -26,6 +26,32 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheDefaultArrivalStyleIsStillTheQuinticCapture()
+        {
+            Assert.That(_planner.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
+        }
+
+        [Test]
+        public void AConicPlanAtAPinnedDurationLandsExactlyOnIt()
+        {
+            _planner.ArrivalStyle = CaptureStyle.Conic;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.Plan(ship, "mars");
+            double requested = 1.5 * fastest.FlightTimeSeconds;
+
+            TrajectoryPlan slower = _planner.PlanAtDuration(ship, "mars", requested);
+
+            TestContext.WriteLine($"conic fastest {fastest.FlightTimeDays:F2} d at " +
+                                  $"{fastest.PeakThrustMps2:F2}; pinned " +
+                                  $"{slower.FlightTimeDays:F2} d at {slower.PeakThrustMps2:F2}");
+
+            Assert.That(slower.FlightTimeSeconds, Is.EqualTo(requested).Within(1e-3));
+            Assert.That(slower.IsFeasible, Is.True, slower.InfeasibleReason);
+            Assert.That(slower.PeakThrustMps2, Is.LessThan(fastest.PeakThrustMps2));
+            Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps));
+        }
+
+        [Test]
         public void PlanToMarsHasAFeasibleDepartureCruiseAndCapture()
         {
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");

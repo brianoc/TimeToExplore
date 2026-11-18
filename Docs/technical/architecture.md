@@ -139,14 +139,19 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `ZeroGravityField` | `Scripts/Simulation/ZeroGravityField.cs` | Absent gravity, for kinematic checks |
 | `ShipIntegrator` | `Scripts/Simulation/ShipIntegrator.cs` | Adaptive RK4 that advances to a Julian date |
 | `TwoBody` | `Scripts/Simulation/TwoBody.cs` | Circular and escape speeds, energy, osculating elements |
-| `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends |
-| `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive quintic polyline with a scale-free chord tolerance |
-| `PlanArc` | `Scripts/Simulation/PlanArc.cs` | One planned leg, its thrust profile, delta-v, clearance |
-| `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, and the sampled path |
-| `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The circular orbit a Go To finishes in, with its gravity ceiling |
+| `KeplerPropagator` | `Scripts/Core/KeplerPropagator.cs` | Universal-variable state-vector propagation for ellipses, parabolas, and hyperbolas |
+| `ConicElements` | `Scripts/Core/ConicElements.cs` | State → conic, the perifocal basis, and true anomaly ↔ time |
+| `IArcPath` | `Scripts/Simulation/IArcPath.cs` | The arc contract: position, velocity, acceleration, and the parameter/time mappings |
+| `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends; linear in time |
+| `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Planetocentric Keplerian coast, linear in true anomaly, re-added to the body's ephemeris |
+| `TransferConic` | `Scripts/Simulation/TransferConic.cs` | The arrival hyperbola, periapsis and apoapsis burns, transfer ellipse, and circular state |
+| `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive arc polyline with a scale-free chord tolerance |
+| `PlanArc` | `Scripts/Simulation/PlanArc.cs` | One planned leg, its path, thrust profile, delta-v, clearance, and entry impulse |
+| `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
+| `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three arcs, moving-target loop, thrust check) and `PlanAtDuration` for the trip-time control |
-| `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, and the flight loop |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (quintic or conic arrival, moving-target loop, thrust check) and `PlanAtDuration` for the trip-time control |
+| `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
@@ -158,7 +163,8 @@ arbitrary Julian date without mutating the model, so the field and the planner
 can evaluate the world inside an integration step.
 
 See [ADR-005](/decisions/adr-005-continuous-gravity.md) for the field,
-[ADR-006](/decisions/adr-006-quintic-plan.md) for the plan, and
+[ADR-006](/decisions/adr-006-quintic-plan.md) for the plan,
+[ADR-014](/decisions/adr-014-keplerian-coast.md) for the conic arrival, and
 [ADR-007](/decisions/adr-007-flight-director.md) for ship ownership and the warp
 cap. The scene flow is described in [The flight session](/technical/flight-session.md).
 
@@ -172,7 +178,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight |
 | `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
-| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed capture, flip, arrival, and target-arrival ghost markers |
+| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed coasts and capture, green parking coast, burn, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |

@@ -89,6 +89,58 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheSessionArrivalStyleReachesThePlanner()
+        {
+            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
+            _session.ArrivalStyle = CaptureStyle.Conic;
+
+            TrajectoryPlan plan = _session.Begin("mars", _epoch);
+
+            Assert.That(plan.Arcs.Count, Is.EqualTo(5));
+            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Coast));
+            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Parking));
+        }
+
+        [Test]
+        public void AdvancingAConicArrivalAppliesTheBurnsAndArrivesMatched()
+        {
+            var planner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.Conic
+            };
+            var session = new FlightSession(_model, _gravity, planner);
+            session.PlaceAt("gateway", _epoch);
+
+            TrajectoryPlan plan = session.Begin("mars", _epoch);
+            Assert.That(plan.Arcs.Count, Is.EqualTo(5));
+            Assert.That(plan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
+
+            FlightStep step = session.Advance(plan.ArrivalJulianDate, 200_000);
+            double positionError = Vector3d.Distance(session.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (session.State.VelocityMps - plan.ArrivalState.VelocityMps)
+                .Magnitude;
+            TestContext.WriteLine($"conic arrival error {positionError:F1} m, " +
+                                  $"{velocityError:F4} m/s, {step.Substeps} substeps");
+
+            Assert.That(step.CollisionDetected, Is.False);
+            Assert.That(step.BudgetExhausted, Is.False);
+            Assert.That(step.Arrived, Is.True);
+            Assert.That(session.Status, Is.EqualTo(FlightStatus.Arrived));
+            Assert.That(positionError, Is.LessThan(10_000.0));
+            Assert.That(velocityError, Is.LessThan(10.0));
+
+            BodyRuntime mars = _model.Get("mars");
+            double period = ParkingOrbit.PeriodSeconds(mars);
+            double requested = session.State.JulianDate + period / JulianDate.SecondsPerDay;
+            FlightStep coast = session.Advance(requested, 200_000);
+
+            Assert.That(coast.CollisionDetected, Is.False);
+            Assert.That(session.State.JulianDate, Is.EqualTo(requested).Within(1e-6));
+            Assert.That(session.Status, Is.EqualTo(FlightStatus.Arrived));
+        }
+
+        [Test]
         public void TheReachedDateIsClampedToWhatTheBudgetCouldIntegrate()
         {
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
@@ -118,10 +170,13 @@ namespace TimeToExplore.Tests.EditMode
             double radius = ParkingOrbit.RadiusM(mars, plan.MaxAccelerationMps2);
             double period = ParkingOrbit.PeriodSeconds(mars, plan.MaxAccelerationMps2);
 
-            FlightStep coast = _session.Advance(
-                _session.State.JulianDate + 3.0 * period / JulianDate.SecondsPerDay, 50_000);
+            double before = _session.State.JulianDate;
+            double requested = before + 3.0 * period / JulianDate.SecondsPerDay;
+            FlightStep coast = _session.Advance(requested, 50_000);
 
             Assert.That(coast.CollisionDetected, Is.False);
+            Assert.That(_session.State.JulianDate, Is.EqualTo(requested).Within(1e-6),
+                "an arrived ship keeps coasting with the clock");
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived));
             Assert.That(_session.CurrentThrust.MagnitudeMps2, Is.EqualTo(0.0),
                 "the drive is off once the plan completes");

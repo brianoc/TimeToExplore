@@ -16,7 +16,7 @@ namespace TimeToExplore.Simulation
     /// real time, so <see cref="VelocityAt"/> is m/s and
     /// <see cref="AccelerationAt"/> is m/s².
     /// </summary>
-    public struct Quintic
+    public struct Quintic : IArcPath
     {
         private readonly Vector3d _a0;
         private readonly Vector3d _a1;
@@ -24,8 +24,9 @@ namespace TimeToExplore.Simulation
         private readonly Vector3d _a3;
         private readonly Vector3d _a4;
         private readonly Vector3d _a5;
+        private readonly double _durationSeconds;
 
-        public readonly double DurationSeconds;
+        public double DurationSeconds => _durationSeconds;
 
         private Quintic(Vector3d a0, Vector3d a1, Vector3d a2, Vector3d a3, Vector3d a4,
             Vector3d a5, double durationSeconds)
@@ -36,7 +37,7 @@ namespace TimeToExplore.Simulation
             _a3 = a3;
             _a4 = a4;
             _a5 = a5;
-            DurationSeconds = durationSeconds;
+            _durationSeconds = durationSeconds;
         }
 
         /// <summary>
@@ -107,6 +108,8 @@ namespace TimeToExplore.Simulation
         /// <summary>Parameter u for a time offset in seconds.</summary>
         public double ParameterAt(double seconds) =>
             DurationSeconds > 0.0 ? seconds / DurationSeconds : 0.0;
+
+        public double ParameterAtSeconds(double seconds) => ParameterAt(seconds);
 
         /// <summary>Largest acceleration magnitude on the curve, ignoring
         /// gravity. Used by tests and by the planner's feasibility estimate.</summary>

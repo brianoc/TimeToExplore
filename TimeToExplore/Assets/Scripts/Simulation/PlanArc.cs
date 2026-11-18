@@ -9,21 +9,32 @@ namespace TimeToExplore.Simulation
         Departure,
         /// <summary>Heliocentric transfer between spheres of influence.</summary>
         Cruise,
+        /// <summary>A Keplerian coast, such as the inbound transfer hyperbola.</summary>
+        Coast,
         /// <summary>Dropping from the target's sphere of influence into the
-        /// parking orbit.</summary>
-        Capture
+        /// parking orbit. A conic capture uses this for the transfer ellipse;
+        /// the quintic fallback uses it for the whole powered capture.</summary>
+        Capture,
+        /// <summary>Coasting on the parking orbit after circularisation.</summary>
+        Parking
     }
 
     /// <summary>
-    /// One quintic leg of a planned trip, in heliocentric coordinates. The
-    /// planned thrust at a time is the curve's acceleration minus the gravity
-    /// at the curve's own position: a feed-forward command that reproduces the
-    /// curve exactly when the ship starts on it.
+    /// One leg of a planned trip, in heliocentric coordinates. The planned
+    /// thrust at a time is the path's acceleration minus the gravity at the
+    /// path's own position: a feed-forward command that reproduces the path
+    /// exactly when the ship starts on it.
+    ///
+    /// A path can be a powered quintic or a Keplerian <see cref="ConicArc"/>.
+    /// A conic has no thrust along its two-body reference; the full field adds
+    /// a small third-body correction. An arc may begin with an impulsive burn:
+    /// <see cref="EntryImpulseVectorMps"/> is the velocity change from the
+    /// previous arc's end, applied when the flight crosses the seam.
     /// </summary>
     public sealed class PlanArc
     {
         public PlanArc(FlightPhase phase, string referenceBodyId, double startJulianDate,
-            double endJulianDate, Quintic path)
+            double endJulianDate, IArcPath path)
         {
             if (!(endJulianDate > startJulianDate))
                 throw new ArgumentOutOfRangeException(nameof(endJulianDate));
@@ -32,14 +43,25 @@ namespace TimeToExplore.Simulation
             ReferenceBodyId = referenceBodyId;
             StartJulianDate = startJulianDate;
             EndJulianDate = endJulianDate;
-            Path = path;
+            Path = path ?? throw new ArgumentNullException(nameof(path));
         }
 
         public FlightPhase Phase { get; }
         public string ReferenceBodyId { get; }
         public double StartJulianDate { get; }
         public double EndJulianDate { get; }
-        public Quintic Path { get; }
+        public IArcPath Path { get; }
+
+        /// <summary>Velocity change at the arc's start, in the heliocentric
+        /// frame. Zero for a seam that is continuous in velocity.</summary>
+        public Vector3d EntryImpulseVectorMps { get; internal set; }
+
+        /// <summary>Magnitude of <see cref="EntryImpulseVectorMps"/>, in m/s.</summary>
+        public double EntryImpulseMps => EntryImpulseVectorMps.Magnitude;
+
+        /// <summary>True when the arc is a Keplerian coast rather than a powered
+        /// quintic.</summary>
+        public bool IsCoast => Path is ConicArc;
 
         /// <summary>Largest commanded thrust on the arc, including the gravity
         /// feed-forward. Set by the planner when it measures the arc.</summary>
@@ -67,9 +89,9 @@ namespace TimeToExplore.Simulation
 
         public double ParameterAt(double julianDate)
         {
-            double span = EndJulianDate - StartJulianDate;
-            if (span <= 0.0) return 0.0;
-            return Math.Clamp((julianDate - StartJulianDate) / span, 0.0, 1.0);
+            double seconds = (julianDate - StartJulianDate) * JulianDate.SecondsPerDay;
+            if (!(seconds > 0.0)) return 0.0;
+            return Math.Clamp(Path.ParameterAtSeconds(seconds), 0.0, 1.0);
         }
 
         public Vector3d ReferencePositionAt(double julianDate) =>

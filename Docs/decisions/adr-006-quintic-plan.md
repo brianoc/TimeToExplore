@@ -84,11 +84,16 @@ converge", and it cannot easily guarantee the exact arrival state the game needs
 * The ceiling buys flyability by **moving the arrival orbit out**, not by
   making the capture cheaper. Earth arrival is at 3,611 km altitude and Saturn's
   parking orbit is inside the ring system the catalogue does not model. A
-  transfer conic would fly the same arrival from a lower, more natural orbit for
-  less delta-v.
+  transfer conic now flies the same arrival from a lower, more natural orbit for
+  less delta-v, at the cost of months of coasting
+  ([ADR-014](adr-014-keplerian-coast.md)).
 * A capture arc cannot command less thrust than the parking orbit's own gravity,
-  so the ceiling is a hard policy constraint rather than a tuning value: any
-  future planner must satisfy it or report the arrival infeasible.
+  so the ceiling is a hard policy constraint for *this* arc rather than a tuning
+  value: any future planner must satisfy it or report the arrival infeasible.
+  The conic arrival removes the bound because its coast has `a_ref = g`
+  pointwise and its burns are impulses; it parks Earth at 7,327 km and Jupiter
+  at 80,398 km. The quintic capture remains the working default, so the ceiling
+  still applies to it.
 * The plan is a curve fixed in time. If the ship is knocked off it, the
   autopilot tracks back, but a large deviation needs a re-plan.
 
@@ -113,6 +118,7 @@ velocity still has to be matched separately.
 
 * fuel and delta-v become real, so time is no longer the only cost,
 * the outer giants need a lower and cheaper arrival than the ceiling allows,
-  which is the transfer-conic work,
+  which is the transfer-conic work now in
+  [ADR-014](adr-014-keplerian-coast.md),
 * the player needs to plan a mid-course correction rather than a fresh Go To,
 * the cruise needs to use a gravity assist, which no single arc can express.

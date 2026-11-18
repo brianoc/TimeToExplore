@@ -5,15 +5,26 @@ namespace TimeToExplore.Simulation
 {
     /// <summary>
     /// The parking orbit the Go To plan ends in: a circular orbit in the body's
-    /// equatorial plane, at a radius comfortably above the surface, comfortably
-    /// inside the Hill sphere, and high enough that its own gravity stays well
-    /// below the drive's acceleration. This is the "stable orbit" the arrival
-    /// leg targets, and the state the ship is left in when the plan completes.
+    /// equatorial plane, at a radius comfortably above the surface and inside
+    /// the Hill sphere. The quintic capture lifts the radius until its own
+    /// gravity stays well below the drive's acceleration; the conic capture
+    /// uses the natural radius and relies on an impulsive periapsis burn
+    /// instead. This is the "stable orbit" the arrival leg targets, and the
+    /// state the ship is left in when the plan completes.
     /// </summary>
     public static class ParkingOrbit
     {
         /// <summary>Minimum altitude above the body's surface.</summary>
         public const double DefaultAltitudeM = 300_000.0;
+
+        /// <summary>Altitude of the low periapsis a conic capture aims for. The
+        /// Oberth effect wants the burn as deep in the well as the body allows;
+        /// 100 km keeps the path outside the surface without modelling an
+        /// atmosphere.</summary>
+        public const double PeriapsisAltitudeM = 100_000.0;
+
+        /// <summary>Minimum periapsis radius as a multiple of the body's radius.</summary>
+        public const double PeriapsisRadiusFactor = 1.05;
 
         /// <summary>Minimum radius as a multiple of the body's radius.</summary>
         public const double RadiusFactor = 1.15;
@@ -48,23 +59,67 @@ namespace TimeToExplore.Simulation
             if (body.RadiusM <= 0.0)
                 throw new ArgumentException("Parking orbits need a body with a radius.", nameof(body));
 
-            double radius = Math.Max(body.RadiusM * RadiusFactor, body.RadiusM + DefaultAltitudeM);
+            double radius = BaseRadiusM(body);
 
             if (maxAccelerationMps2 > 0.0 && body.Gm > 0.0)
             {
                 double ceiling = GravityFractionOfMaxAcceleration * maxAccelerationMps2;
                 double gravityRadius = Math.Sqrt(body.Gm / ceiling);
                 if (gravityRadius > radius) radius = gravityRadius;
+                radius = ApplyHillCap(body, radius);
             }
 
-            double hill = body.HillRadiusM;
-            if (double.IsFinite(hill) && hill > 0.0)
-                radius = Math.Min(radius, hill * HillFraction);
+            return radius;
+        }
+
+        /// <summary>
+        /// The natural parking radius, with no gravity ceiling: the default
+        /// altitude, the 1.15-radius floor, and the Hill cap. A conic capture can
+        /// park here because its periapsis burn is impulsive, so the quintic
+        /// capture's reason for the ceiling does not apply
+        /// ([ADR-014](/decisions/adr-014-keplerian-coast.md)).
+        /// </summary>
+        public static double ConicRadiusM(BodyRuntime body)
+        {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            if (body.RadiusM <= 0.0)
+                throw new ArgumentException("Parking orbits need a body with a radius.", nameof(body));
+            return BaseRadiusM(body);
+        }
+
+        /// <summary>
+        /// The low periapsis the capture hyperbola aims for. It is below
+        /// <see cref="ConicRadiusM"/> on every body with room for a transfer
+        /// ellipse; the planner reports an infeasible arrival when it is not.
+        /// </summary>
+        public static double PeriapsisRadiusM(BodyRuntime body)
+        {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            if (body.RadiusM <= 0.0)
+                throw new ArgumentException("A capture periapsis needs a body with a radius.", nameof(body));
+
+            return Math.Max(body.RadiusM * PeriapsisRadiusFactor,
+                body.RadiusM + PeriapsisAltitudeM);
+        }
+
+        private static double BaseRadiusM(BodyRuntime body)
+        {
+            double radius = Math.Max(body.RadiusM * RadiusFactor,
+                body.RadiusM + DefaultAltitudeM);
+            radius = ApplyHillCap(body, radius);
 
             // A body whose Hill sphere barely clears its own surface (Phobos)
             // cannot host a useful parking orbit; keep the orbit outside the
             // body and let the plan report whatever thrust that demands.
             return Math.Max(radius, body.RadiusM * 1.05);
+        }
+
+        private static double ApplyHillCap(BodyRuntime body, double radius)
+        {
+            double hill = body.HillRadiusM;
+            if (double.IsFinite(hill) && hill > 0.0)
+                radius = Math.Min(radius, hill * HillFraction);
+            return radius;
         }
 
         /// <summary>Circular orbital speed at the parking radius.</summary>

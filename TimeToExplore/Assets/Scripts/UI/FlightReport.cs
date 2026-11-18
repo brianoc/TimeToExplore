@@ -44,6 +44,11 @@ namespace TimeToExplore.UI
             rows.Add(DetailRow.Of("Peak thrust",
                 $"{plan.PeakThrustMps2:0.00} m/s²  ({plan.PeakThrottle * 100.0:0}%)"));
             rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
+            if (plan.ImpulseDeltaVMps > 0.0)
+            {
+                rows.Add(DetailRow.Of("Burns",
+                    $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s  ·  impulsive"));
+            }
 
             if (session.Plan == null)
             {
@@ -98,7 +103,9 @@ namespace TimeToExplore.UI
             {
                 case FlightPhase.Departure: return "Departure";
                 case FlightPhase.Cruise: return "Cruise";
+                case FlightPhase.Coast: return "Coast";
                 case FlightPhase.Capture: return "Capture";
+                case FlightPhase.Parking: return "Parking";
                 default: return phase.ToString();
             }
         }

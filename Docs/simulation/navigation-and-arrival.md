@@ -38,7 +38,10 @@ arrives on the parking orbit and stays there. In the scene, `FlightSession` owns
 the plan and advances the ship each frame, so pressing **Go To** flies it for
 real ([The flight session](../technical/flight-session.md)). The porkchop search
 is not implemented: Go To plans "leave now" and takes the first feasible trip.
-Coasting (Lambert) transfers are not implemented either.
+A **transfer-conic arrival** is implemented as an opt-in planner style: it
+coasts the inbound leg and captures impulsively at periapsis
+([ADR-014](../decisions/adr-014-keplerian-coast.md)). The Lambert *cruise* — the
+free middle of a burn-and-coast trip — is still not implemented.
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
@@ -76,6 +79,17 @@ The decisions and their trade-offs are in
 [ADR-006](../decisions/adr-006-quintic-plan.md). The measured flight times are
 in the [flight model](flight-model.md#measured-plans).
 
+The planner also has a **conic arrival style** (`CaptureStyle.Conic`). The
+departure and cruise are still powered quintics; the target leg becomes a
+planetocentric hyperbola from the sphere of influence to a low periapsis, an
+impulsive retrograde capture burn, a transfer ellipse, and a prograde
+circularisation burn at apoapsis. On the two-body reference the coast's
+acceleration is the local gravity pointwise, so the commanded thrust is zero;
+the autopilot supplies only the small third-body correction. The style is
+opt-in — the quintic capture stays the default — because the coast is slow at
+the outer planets. [ADR-014](../decisions/adr-014-keplerian-coast.md) records
+the geometry and the impulse model.
+
 ## The trip-time control
 
 The preview carries a trip-time slider whose range is the fastest feasible plan
@@ -85,12 +99,14 @@ flight time, peak thrust, and delta-v. It is a **duration** control, not a
 throttle cap, because `MaxAccelerationMps2` also sets the parking-orbit radius;
 lowering it would silently move where the ship parks.
 
-The control only lengthens the torch plan. Every implemented plan already peaks
-at about 97% of the drive, so the left end is the floor and "burn harder" needs
-a stronger drive or the fuel model. Coasting is not offered: a coast is a
-Keplerian arc with the commanded thrust exactly zero, and a quintic cannot
-represent one in a gravity field. **Coast in the middle is therefore a
-dependency of the transfer-conic work below, not a slider value.**
+The control only lengthens the torch plan. Every implemented quintic plan
+already peaks at about 97% of the drive, so the left end is the floor and "burn
+harder" needs a stronger drive or the fuel model. A coast is now implemented as
+the conic **arrival**, but it is a planner style rather than a slider value: the
+capture is cheap and the coast from the sphere of influence is long, so the
+arrival is a time/delta-v choice the nav computer does not yet expose. The
+slider itself continues to stretch the torch plan and never pretends a quintic
+is a coast.
 
 ## The parking orbit
 
@@ -129,6 +145,13 @@ arrival out to the A-ring gap or beyond.
 
 The orbit is prograde about the body's IAU north pole, and the phase is chosen so
 the arrival point is on the side the ship approaches from.
+
+**The conic arrival uses a lower parking radius.** When `ArrivalStyle` is
+`Conic`, `ParkingOrbit.ConicRadiusM` is `max(1.15 R, R + 300 km)`, capped at half
+the Hill radius, with no gravity ceiling. The table above describes the quintic
+ceiling; the conic style returns Earth to 7,327 km, Venus to 6,960 km, Jupiter
+to 80,398 km, and Saturn to 66,967 km. The capture's periapsis is lower still,
+`max(1.05 R, R + 100 km)`, which is where the Oberth burn happens.
 
 "Stable" is measured in the real field, not a two-body ideal: the ship is left
 in free fall with the drive off, and the tests check that the eccentricity stays
@@ -190,12 +213,17 @@ radius is chosen that far out. The full plan is now feasible:
 
 Two refinements remain, and they are real ones rather than policy:
 
-* **Use a transfer conic for the final approach.** A coasting arc has
-  `a_ref = g` *pointwise*, so the commanded thrust is exactly zero and the
-  endpoint problem disappears entirely; a short post-quintic burn at periapsis
-  then does what the Oberth effect wants. This is the delta-v-optimal arrival and
-  the physically right answer. It needs a state-vector Kepler propagator and a
-  new arc type.
+* **Use a transfer conic for the final approach.** *Implemented as an opt-in
+  arrival style.* A coasting arc has `a_ref = g` *pointwise*, so the commanded
+  thrust is exactly zero and the endpoint problem disappears entirely; a short
+  post-quintic burn at periapsis then does what the Oberth effect wants. The
+  conic chain is a hyperbola from the sphere of influence, a capture burn at
+  `max(1.05 R, R + 100 km)`, a transfer ellipse, and a circularisation burn at
+  the parking radius. Measured captures are 3.5–17.4 km/s against the quintic's
+  84–1,159 km/s, and the parking orbit drops to 7,327 km at Earth, 80,398 km at
+  Jupiter, and 66,967 km at Saturn. The cost is time: the outer coasts are
+  months, so the quintic capture stays the default. See
+  [ADR-014](../decisions/adr-014-keplerian-coast.md).
 * **Split the capture into a shaped spiral** of progressively smaller circular
   orbits. Prototyped and rejected for now: radially aligned waypoints force the
   ship to cancel its tangential velocity at every waypoint, and the whole Mars
@@ -203,7 +231,7 @@ Two refinements remain, and they are real ones rather than policy:
 
 The ceiling is a policy, not a law of physics: it chooses where the ship parks so
 the planner's curve can describe the arrival. The transfer conic is how a real
-ship would arrive cheaply, and it stays on the list.
+ship would arrive cheaply, and it is now the planner's second arrival style.
 
 # Moving-target brachistochrone
 
@@ -265,10 +293,14 @@ A hybrid plan is common: a high-thrust departure burn, a Lambert coast, and a
 high-thrust capture burn. The ship spends most of its delta-v at the two ends,
 where the Oberth effect makes it most effective.
 
-**Not implemented.** The nav computer's trip-time slider is the first half of
-this choice (time against thrust and delta-v); the coast fraction is the second
-half and waits for a `ConicArc` and the Lambert solve. A shaped quintic with a
-flat middle would look like a coast but still command thrust, so it is not used.
+**Partly implemented.** A `ConicArc` and the state-vector propagator exist, and
+the conic arrival uses them for the planetocentric capture. The **Lambert
+cruise** — two positions and a time of flight for the heliocentric middle — is
+still missing, so a trip cannot yet coast across interplanetary space. The
+nav computer's trip-time slider is the first half of this choice (time against
+thrust and delta-v); the coast fraction is the second half. A shaped quintic
+with a flat middle would look like a coast but still command thrust, so it is
+not used.
 
 # Spheres of influence
 
@@ -324,26 +356,30 @@ A capture burn at low periapsis is cheapest because of the Oberth effect: the
 same delta-v buys more energy change deep in the gravity well. The planner should
 prefer a low periapsis, then raise the orbit at apoapsis.
 
-The prototype's capture is a continuous-thrust arc rather than a periapsis
-burn: it enters the sphere of influence at 5 km/s inbound and shapes a smooth
-deceleration into the parking orbit, so the drive is off at the moment the plan
-ends. The periapsis-burn arithmetic above is still the reference for how much
-delta-v a capture costs, and it is what a transfer-conic capture would
-optimise. Three arrival styles:
+The prototype's quintic capture is a continuous-thrust arc rather than a
+periapsis burn: it enters the sphere of influence at 5 km/s inbound and shapes a
+smooth deceleration into the parking orbit, so the drive is off at the moment
+the plan ends. The periapsis-burn arithmetic above is the reference for how much
+delta-v a capture costs, and it is what the conic style implements: the
+hyperbola, the periapsis burn, the transfer ellipse, and the circularisation are
+separate arcs and separate plan boundaries. Four arrival styles exist or are
+planned:
 
 * **Propulsive capture.** Burn at periapsis into an ellipse, then circularize.
-  Reliable, expensive.
+  Reliable, expensive. *Implemented as the conic style; the quintic arcs are the
+  continuous-thrust alternative.*
 * **Aerocapture / aerobraking.** Use the atmosphere to shed velocity. Cheap in
   delta-v, expensive in heat shield, timing, and risk. Available at Venus, Earth,
-  Mars, and Titan; not at airless bodies.
+  Mars, and Titan; not at airless bodies. *Not implemented.*
 * **Direct descent.** For a surface destination, skip orbit entirely and land.
   The most demanding option, and the one that makes a heat shield a gameplay
-  object.
+  object. *Not implemented.*
+* **Continuous-thrust capture.** The default quintic arc: smooth, fast, and
+  constrained by the gravity ceiling. *Implemented.*
 
-The prototype's term "capture" covers the whole sequence into the parking orbit:
-the arrival is not split into periapsis and circularisation burns, and the plane
-is the target's equator rather than a chosen approach plane. A future version
-should model the phases separately because each has a different failure mode.
+The conic style keeps the target's equatorial plane rather than choosing an
+approach plane, and the impulses are idealised as instantaneous; a finite-burn
+arc is the next fidelity step.
 
 # Docking
 
@@ -409,18 +445,22 @@ The player needs to see:
 Without these, true scale is just a black screen with dots. The HUD is part of
 the simulation, not decoration.
 
-**Implemented:** the sampled trajectory as a solid line for departure and cruise
-and a dashed line for the capture arc, an arrival marker at the parking-orbit
-point, a flip marker where the along-track thrust changes sign, a countdown to
-the next arc boundary, a phase table with each leg's start and duration, the
-arrival date, peak thrust, and planned delta-v, the live throttle, and the
-trip-time slider, which re-solves the route and its arrival date as it moves.
-The warp policy keeps the final approach visible.
+**Implemented:** the sampled trajectory as a solid line for departure and cruise,
+a dashed line for coast arcs and the capture, a green dashed line for the short
+parking coast, burn markers at each impulsive periapsis or circularisation, an
+arrival marker at the parking-orbit point, a flip marker where the along-track
+thrust changes sign, a countdown to the next arc boundary, a phase table with
+each leg's start and duration, the arrival date, peak thrust, planned delta-v
+and the impulsive burn total, the live throttle, and the trip-time slider, which
+re-solves the route and its arrival date as it moves. The warp policy keeps the
+final approach visible, and the periapsis and circularisation are plan
+boundaries.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
 against a budget (there is no budget yet), the coast fraction of a
-burn-and-coast plan (it needs the transfer conic), and the docking corridor.
+burn-and-coast *cruise* (it needs the Lambert solve, not just the conic arc),
+and the docking corridor.
 
 # Failure and rescue
 
@@ -441,6 +481,10 @@ The design wants failure to create stories, not reloads:
 * **Settled:** the torch plan is a chain of quintic reference arcs, flown by an
   autopilot with light feedback. Shooting methods are kept for the fuel-optimal
   planner.
+* **Settled:** a transfer-conic arrival is a second style: a coasted hyperbola,
+  an impulsive Oberth capture, a transfer ellipse, and a circularisation burn.
+  It is cheaper and slower, and the quintic capture stays the default until the
+  nav computer offers the time/delta-v choice.
 * How forgiving is the capture solver? The plan is exact, but a real missed burn
   is fatal; a game needs a margin and a clear warning. The planner currently
   reports infeasibility rather than flying a bad plan.

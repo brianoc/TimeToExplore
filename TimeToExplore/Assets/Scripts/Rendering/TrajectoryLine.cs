@@ -7,10 +7,11 @@ namespace TimeToExplore.Rendering
 {
     /// <summary>
     /// Draws a Go To plan in the ship-relative render frame: a solid line for
-    /// the departure and cruise arcs, a dashed line for the capture arc, and a
-    /// marker at the flip and at the arrival point. The path is sampled once
-    /// per plan and re-projected every frame, so it stays exact as the ship
-    /// travels ([ADR-002](/decisions/adr-002-double-precision.md)).
+    /// the powered departure and cruise, a dashed line for coast arcs and the
+    /// capture, a green dashed line for the parking coast, burn markers at each
+    /// impulse, and a marker at the flip and at the arrival point. The path is
+    /// sampled once per plan and re-projected every frame, so it stays exact as
+    /// the ship travels ([ADR-002](/decisions/adr-002-double-precision.md)).
     /// </summary>
     public class TrajectoryLine : MonoBehaviour
     {
@@ -18,14 +19,19 @@ namespace TimeToExplore.Rendering
 
         private readonly List<Vector3d> _solid = new List<Vector3d>();
         private readonly List<Vector3d> _dashed = new List<Vector3d>();
+        private readonly List<Vector3d> _parking = new List<Vector3d>();
+        private readonly List<Vector3d> _burnPositionsM = new List<Vector3d>(2);
 
         private float _unitsPerMeter = 1e-6f;
         private LineRenderer _solidLine;
         private LineRenderer _dashedLine;
+        private LineRenderer _parkingLine;
         private Material _dashedMaterial;
+        private Material _parkingMaterial;
         private Transform _flipMarker;
         private Transform _arrivalMarker;
         private Transform _ghostMarker;
+        private Transform[] _burnMarkers;
         private TrajectoryPlan _plan;
         private Vector3d _flipPositionM;
         private Vector3d _arrivalPositionM;
@@ -46,21 +52,44 @@ namespace TimeToExplore.Rendering
 
         public bool HasGhost => _hasGhost;
 
+        /// <summary>Number of impulsive burn markers on the current plan.</summary>
+        public int BurnMarkerCount =>
+            _burnPositionsM == null || _burnMarkers == null
+                ? 0
+                : System.Math.Min(_burnPositionsM.Count, _burnMarkers.Length);
+
+        /// <summary>Render-space position of a burn marker, for a screen label.</summary>
+        public Vector3 BurnMarkerPosition(int index) =>
+            _burnMarkers != null && index >= 0 && index < BurnMarkerCount
+                ? _burnMarkers[index].position
+                : Vector3.zero;
+
         public void Initialise(float unitsPerMeter)
         {
             _unitsPerMeter = unitsPerMeter;
 
-            _solidLine = CreateLine("Plan", new Color(0.95f, 0.78f, 0.35f, 0.85f), false);
-            _dashedLine = CreateLine("Capture", new Color(1f, 0.55f, 0.35f, 0.95f), true);
+            _solidLine = CreateLine("Plan", new Color(0.95f, 0.78f, 0.35f, 0.85f), false,
+                out _);
+            _dashedLine = CreateLine("Coast", new Color(1f, 0.62f, 0.35f, 0.95f), true,
+                out _dashedMaterial);
+            _parkingLine = CreateLine("Parking", new Color(0.55f, 0.95f, 0.72f, 0.9f), true,
+                out _parkingMaterial);
 
             _flipMarker = CreateMarker("Flip", new Color(1f, 0.42f, 0.25f));
             _arrivalMarker = CreateMarker("Arrival", new Color(0.55f, 1f, 0.72f));
             _ghostMarker = CreateMarker("Arrival Ghost", new Color(0.62f, 0.78f, 1f));
 
+            _burnMarkers = new[]
+            {
+                CreateMarker("Periapsis Burn", new Color(1f, 0.96f, 0.85f)),
+                CreateMarker("Circularise Burn", new Color(1f, 0.88f, 0.35f))
+            };
+
             Hide();
         }
 
-        private LineRenderer CreateLine(string name, Color colour, bool dashed)
+        private LineRenderer CreateLine(string name, Color colour, bool dashed,
+            out Material material)
         {
             GameObject lineObject = new GameObject(name + " Line");
             lineObject.transform.SetParent(transform, false);
@@ -76,13 +105,15 @@ namespace TimeToExplore.Rendering
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
 
-            var material = new Material(Shader.Find(RenderingShaders.Line)) { name = name + " Line Material" };
+            material = new Material(Shader.Find(RenderingShaders.Line))
+            {
+                name = name + " Line Material"
+            };
             if (dashed) material.mainTexture = CreateDashTexture();
             line.material = material;
             line.startColor = colour;
             line.endColor = colour;
 
-            if (dashed) _dashedMaterial = material;
             return line;
         }
 
@@ -148,6 +179,8 @@ namespace TimeToExplore.Rendering
             _plan = plan;
             _solid.Clear();
             _dashed.Clear();
+            _parking.Clear();
+            _burnPositionsM.Clear();
             _hasGhost = false;
 
             if (plan == null)
@@ -158,14 +191,20 @@ namespace TimeToExplore.Rendering
 
             foreach (PlanArc arc in plan.Arcs)
             {
-                List<Vector3d> target = arc.Phase == FlightPhase.Capture ? _dashed : _solid;
+                List<Vector3d> target = arc.Phase == FlightPhase.Parking
+                    ? _parking
+                    : arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture
+                        ? _dashed
+                        : _solid;
 
-                // Curvature-adaptive, not uniform in time. A quintic is nearly
-                // straight across the cruise and turns hard at the departure
-                // and capture ends, so uniform samples spend most of their
-                // budget on the easy part and leave visible chords in the
-                // turns. A shared seam keeps the solid and dashed runs joined.
+                // Curvature-adaptive, not uniform in time. A conic is
+                // anomaly-parameterised, so periapsis is sampled densely; a
+                // quintic's turns are found by the sagitta test. A shared seam
+                // keeps the runs joined.
                 PathTessellation.Append(arc.Path, target, includeStart: target.Count == 0);
+
+                if (arc.EntryImpulseMps > 0.0)
+                    _burnPositionsM.Add(arc.Path.PositionAt(0.0));
             }
 
             double flip = plan.FindFlipJulianDate(gravity);
@@ -181,11 +220,14 @@ namespace TimeToExplore.Rendering
             _flipMarker.gameObject.SetActive(hasFlip);
             _arrivalMarker.gameObject.SetActive(true);
             _ghostMarker.gameObject.SetActive(_hasGhost);
+            for (int i = 0; i < _burnMarkers.Length; i++)
+                _burnMarkers[i].gameObject.SetActive(i < _burnPositionsM.Count);
 
             // Refresh fills the buffers later in the same frame; hide the lines
             // until it does so a stale path is never drawn.
             _solidLine.enabled = false;
             _dashedLine.enabled = false;
+            _parkingLine.enabled = false;
         }
 
         public void Hide()
@@ -193,13 +235,19 @@ namespace TimeToExplore.Rendering
             _plan = null;
             _solid.Clear();
             _dashed.Clear();
+            _parking.Clear();
+            _burnPositionsM.Clear();
             _hasGhost = false;
 
             if (_solidLine != null) _solidLine.enabled = false;
             if (_dashedLine != null) _dashedLine.enabled = false;
+            if (_parkingLine != null) _parkingLine.enabled = false;
             if (_flipMarker != null) _flipMarker.gameObject.SetActive(false);
             if (_arrivalMarker != null) _arrivalMarker.gameObject.SetActive(false);
             if (_ghostMarker != null) _ghostMarker.gameObject.SetActive(false);
+            if (_burnMarkers != null)
+                foreach (Transform marker in _burnMarkers)
+                    if (marker != null) marker.gameObject.SetActive(false);
         }
 
         public void Refresh(Vector3d shipPositionM, Camera camera)
@@ -217,18 +265,25 @@ namespace TimeToExplore.Rendering
 
             SetPositions(_solidLine, _solid, shipPositionM, width);
             SetPositions(_dashedLine, _dashed, shipPositionM, width);
+            SetPositions(_parkingLine, _parking, shipPositionM, width);
 
-            UpdateDashScale(DashLengthUnits(_dashed, shipPositionM), Mathf.Max(width * 8f, 1e-6f));
+            UpdateDashScale(_dashedMaterial, DashLengthUnits(_dashed, shipPositionM),
+                Mathf.Max(width * 8f, 1e-6f));
+            UpdateDashScale(_parkingMaterial, DashLengthUnits(_parking, shipPositionM),
+                Mathf.Max(width * 8f, 1e-6f));
             UpdateMarker(_flipMarker, _flipPositionM, shipPositionM, camera);
             UpdateMarker(_arrivalMarker, _arrivalPositionM, shipPositionM, camera);
             UpdateMarker(_ghostMarker, _ghostPositionM, shipPositionM, camera, 0.65f);
+
+            for (int i = 0; i < BurnMarkerCount; i++)
+                UpdateMarker(_burnMarkers[i], _burnPositionsM[i], shipPositionM, camera, 1.6f);
         }
 
-        private void UpdateDashScale(float lengthUnits, float periodUnits)
+        private void UpdateDashScale(Material material, float lengthUnits, float periodUnits)
         {
-            if (_dashedMaterial == null) return;
+            if (material == null) return;
             float scale = Mathf.Max(1f, lengthUnits / periodUnits);
-            _dashedMaterial.mainTextureScale = new Vector2(scale, 1f);
+            material.mainTextureScale = new Vector2(scale, 1f);
         }
 
         private float DashLengthUnits(List<Vector3d> points, Vector3d shipPositionM)

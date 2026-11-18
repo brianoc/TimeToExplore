@@ -70,6 +70,14 @@ The Kepler solver is Newton–Raphson with a bisection fallback. The fallback
 matters for high-eccentricity objects such as Nereid (`e = 0.75`), where a bad
 initial guess can send Newton's method outside the valid interval.
 
+The bodies only need elements → state. A ship's coast needs **state → state**,
+including hyperbolic arrival legs, so `KeplerPropagator` uses the universal
+variable formulation with the Stumpff functions `C(z)` and `S(z)`. One solver
+covers the ellipse, the parabola, and the hyperbola, and `ConicElements` derives
+the conic's shape and true anomaly from the same state. The two paths are
+checked against each other in `KeplerPropagatorTests`, and the transfer-conic
+capture uses the result ([ADR-014](/decisions/adr-014-keplerian-coast.md)).
+
 # Frames and hierarchy
 
 Bodies are updated parent-first:

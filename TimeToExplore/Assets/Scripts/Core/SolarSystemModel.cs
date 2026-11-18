@@ -197,6 +197,31 @@ namespace TimeToExplore.Core
             velocityMps = parentVelocity + localVelocity;
         }
 
+        /// <summary>
+        /// Heliocentric acceleration of a body on its Keplerian rail, without
+        /// mutating the model. Each body accelerates under its parent's gravity,
+        /// and the parent's own acceleration is added recursively; this is the
+        /// second derivative of the same ephemeris <see cref="ComputeState"/>
+        /// returns. A conic coast uses it to make the reference acceleration
+        /// continuous across the sphere-of-influence seam.
+        /// </summary>
+        public Vector3d ComputeAcceleration(BodyRuntime body, double julianDate)
+        {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            if (!body.HasOrbit || body.Parent == null) return Vector3d.Zero;
+
+            body.Elements.GetState(julianDate, out Vector3d localPosition, out _);
+            if (body.Elements.parentEquatorFrame)
+                localPosition = body.Parent.FromEquator(localPosition);
+
+            double radius = localPosition.Magnitude;
+            Vector3d localAcceleration = radius > 0.0
+                ? localPosition * (-body.Parent.Gm / (radius * radius * radius))
+                : Vector3d.Zero;
+
+            return ComputeAcceleration(body.Parent, julianDate) + localAcceleration;
+        }
+
         private Vector3d LagrangePosition(BodyRuntime primary, BodyRuntime secondary,
             LagrangePoint point, double julianDate)
         {

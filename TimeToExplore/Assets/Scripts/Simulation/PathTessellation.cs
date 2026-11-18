@@ -5,7 +5,7 @@ using TimeToExplore.Core;
 namespace TimeToExplore.Simulation
 {
     /// <summary>
-    /// Turns a quintic arc into a polyline whose chords follow the curve to a
+    /// Turns an arc path into a polyline whose chords follow the curve to a
     /// fixed <em>relative</em> tolerance. Uniform sampling in the arc parameter
     /// spends the same number of points on the nearly straight cruise as on the
     /// tight departure and capture turns, which is why a long plan used to show
@@ -32,14 +32,14 @@ namespace TimeToExplore.Simulation
         /// </summary>
         public const int MaxSegmentsPerArc = 4096;
 
-        private const int MaxDepth = 14;
+        private const int MaxDepth = 18;
 
         /// <summary>
         /// Append the arc's polyline to <paramref name="output"/>. The start
         /// point is written when <paramref name="includeStart"/> is true; pass
         /// false for a seam whose previous arc already wrote it.
         /// </summary>
-        public static void Append(Quintic path, List<Vector3d> output, bool includeStart = true)
+        public static void Append(IArcPath path, List<Vector3d> output, bool includeStart = true)
         {
             Append(path, output, null, includeStart);
         }
@@ -50,7 +50,7 @@ namespace TimeToExplore.Simulation
         /// guarantee directly testable: every chord's midpoint can be compared
         /// with the true curve at the same parameter.
         /// </summary>
-        public static void Append(Quintic path, List<Vector3d> output,
+        public static void Append(IArcPath path, List<Vector3d> output,
             List<double> parameters, bool includeStart = true)
         {
             if (output == null) throw new ArgumentNullException(nameof(output));
@@ -68,7 +68,7 @@ namespace TimeToExplore.Simulation
                 ref segments, 0);
         }
 
-        private static void Subdivide(Quintic path, double u0, double u1,
+        private static void Subdivide(IArcPath path, double u0, double u1,
             Vector3d p0, Vector3d p1, List<Vector3d> output, List<double> parameters,
             ref int segments, int depth)
         {

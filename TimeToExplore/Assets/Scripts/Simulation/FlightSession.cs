@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TimeToExplore.Core;
 
 namespace TimeToExplore.Simulation
@@ -68,6 +69,7 @@ namespace TimeToExplore.Simulation
 
         private ShipState _state;
         private Autopilot _autopilot;
+        private readonly HashSet<PlanArc> _appliedImpulses = new HashSet<PlanArc>();
 
         /// <summary>Departure state the preview was solved from. Retiming
         /// rebuilds from this rather than the current (possibly coasted) state,
@@ -143,6 +145,15 @@ namespace TimeToExplore.Simulation
         public string TargetId => Plan?.TargetId;
 
         public ShipIntegrator Integrator => _integrator;
+
+        /// <summary>Arrival style used for the next plan. The planner's quintic
+        /// capture is the default; a conic arrival is the cheap, slow
+        /// alternative.</summary>
+        public CaptureStyle ArrivalStyle
+        {
+            get => _planner.ArrivalStyle;
+            set => _planner.ArrivalStyle = value;
+        }
 
         /// <summary>Current phase of the plan, or null when there is none.</summary>
         public FlightPhase? Phase =>
@@ -297,6 +308,7 @@ namespace TimeToExplore.Simulation
 
             DiscardPreview();
             _state.JulianDate = julianDate;
+            _appliedImpulses.Clear();
             Plan = _planner.Plan(_state, targetId);
             if (!double.IsNaN(requestedSeconds) && requestedSeconds > Plan.FlightTimeSeconds)
                 Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
@@ -306,8 +318,10 @@ namespace TimeToExplore.Simulation
             {
                 _autopilot = null;
                 Status = FlightStatus.Rejected;
-                Failure = $"the plan peaks at {Plan.PeakThrustMps2:F1} m/s², above the " +
-                          $"{Plan.MaxAccelerationMps2:F1} m/s² drive";
+                Failure = !string.IsNullOrEmpty(Plan.InfeasibleReason)
+                    ? Plan.InfeasibleReason
+                    : $"the plan peaks at {Plan.PeakThrustMps2:F1} m/s², above the " +
+                      $"{Plan.MaxAccelerationMps2:F1} m/s² drive";
                 RefreshTelemetry();
                 return Plan;
             }
@@ -332,6 +346,7 @@ namespace TimeToExplore.Simulation
             Plan = null;
             DiscardPreview();
             _autopilot = null;
+            _appliedImpulses.Clear();
             FlipJulianDate = double.NaN;
             ArrivedJulianDate = double.NaN;
             Status = FlightStatus.Idle;
@@ -426,24 +441,63 @@ namespace TimeToExplore.Simulation
 
             try
             {
-                // Guard against a leg that makes no progress: 3 arcs mean at most
-                // a handful of legs per call, so a small cap is enough.
-                for (int leg = 0; leg < 8 && remainingBudget > 0; leg++)
+                // Guard against a leg that makes no progress: a handful of arcs
+                // means at most a handful of legs per call, so a small cap is enough.
+                for (int leg = 0; leg < 10 && remainingBudget > 0; leg++)
                 {
                     if (!(_state.JulianDate < target)) break;
 
-                    double boundary = Plan.NextBoundaryJulianDate(_state.JulianDate);
-                    double legTarget = Math.Min(target, boundary);
-                    if (!(legTarget > _state.JulianDate)) legTarget = target;
+                    // Once the arrival is reached the drive is off; keep
+                    // coasting so the ship and the clock stay together.
+                    if (Plan.IsComplete(_state.JulianDate))
+                    {
+                        double beforeCoast = _state.JulianDate;
+                        _integrator.MaxSubsteps = remainingBudget;
+                        IntegrationReport coast = _integrator.Advance(
+                            ref _state, target,
+                            (probe, date) => ThrustCommand.None, 0.0);
 
-                    double hint = Plan.IsComplete(_state.JulianDate)
-                        ? 0.0
-                        : Plan.ArcAt(_state.JulianDate).SuggestedMaxStepSeconds;
+                        step.Substeps += coast.Substeps;
+                        remainingBudget -= Math.Max(1, coast.Substeps);
 
+                        if (coast.CollisionDetected)
+                        {
+                            step.CollisionDetected = true;
+                            step.CollisionBodyId = coast.CollisionBodyId;
+                            Status = FlightStatus.Aborted;
+                            Failure = $"collision with {coast.CollisionBodyId ?? "a body"}";
+                            break;
+                        }
+
+                        if (coast.StepLimitReached)
+                        {
+                            step.BudgetExhausted = true;
+                            break;
+                        }
+
+                        if (!(_state.JulianDate > beforeCoast)) break;
+                        break;
+                    }
+
+                    PlanArc arc = Plan.ArcAt(_state.JulianDate);
+                    ApplyImpulse(arc);
+
+                    double legTarget = Math.Min(target, arc.EndJulianDate);
+                    if (!(legTarget > _state.JulianDate))
+                    {
+                        // The seam is exactly on the state; the next iteration
+                        // picks up the following arc and applies its impulse.
+                        if (!(_state.JulianDate < target)) break;
+                        continue;
+                    }
+
+                    double hint = arc.SuggestedMaxStepSeconds;
+                    PlanArc legArc = arc;
                     double before = _state.JulianDate;
                     _integrator.MaxSubsteps = remainingBudget;
                     IntegrationReport report = _integrator.Advance(
-                        ref _state, legTarget, ThrustAt, hint);
+                        ref _state, legTarget,
+                        (probe, date) => ThrustForArc(legArc, probe, date), hint);
 
                     step.Substeps += report.Substeps;
                     remainingBudget -= Math.Max(1, report.Substeps);
@@ -489,12 +543,24 @@ namespace TimeToExplore.Simulation
             return step;
         }
 
-        private ThrustCommand ThrustAt(ShipState state, double julianDate)
+        private ThrustCommand ThrustForArc(PlanArc arc, ShipState state, double julianDate)
         {
             if (Status != FlightStatus.Flying) return ThrustCommand.None;
             if (_autopilot == null || Plan == null || Plan.IsComplete(julianDate))
                 return ThrustCommand.None;
-            return _autopilot.Compute(state, julianDate);
+            return _autopilot.ComputeForArc(state, arc, julianDate);
+        }
+
+        /// <summary>
+        /// Apply an arc's impulsive burn once, when the ship reaches its start.
+        /// The plan's conic arcs are exact in position; the burn is the velocity
+        /// step between the previous arc's end and this arc's start.
+        /// </summary>
+        private void ApplyImpulse(PlanArc arc)
+        {
+            if (arc == null || arc.EntryImpulseMps <= 0.0) return;
+            if (_appliedImpulses.Add(arc))
+                _state.VelocityMps += arc.EntryImpulseVectorMps;
         }
 
         /// <summary>Recompute the displayed thrust with the field pointed at the

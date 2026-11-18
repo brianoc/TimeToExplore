@@ -116,6 +116,16 @@ and at the end of the plan. See
 [ADR-006](../decisions/adr-006-quintic-plan.md) and
 [navigation and arrival](navigation-and-arrival.md).
 
+A **conic arrival** is the second style (`CaptureStyle.Conic`). The departure and
+cruise are still powered quintics; the target leg is a planetocentric hyperbola
+with `a_ref = g` pointwise, an impulsive periapsis capture, a transfer ellipse,
+and a circularisation burn. The coast's commanded thrust is zero on the two-body
+reference, and the autopilot supplies only the third-body tide. The burns are
+impulses, so the plan's delta-v is the powered arcs' integrated thrust plus the
+burn magnitudes. The style is opt-in because the coast from the sphere of
+influence is long. [ADR-014](../decisions/adr-014-keplerian-coast.md) has the
+geometry.
+
 Because the throttle is the curve's magnitude, the accelerate and decelerate
 phases are smooth ramps rather than a step at the flip. That is the price of the
 time penalty against the ideal table above.
@@ -156,6 +166,30 @@ smooth capture arc cannot be flown there however long it is given. Lifting the
 arrival to 177,965 km (2.5 radii) puts the local gravity at 4 m/s² and the whole
 trip at 10.3 days with a 9.8 m/s² peak.
 
+### The conic arrival in numbers
+
+The same epoch and ship, with `ArrivalStyle = CaptureStyle.Conic`. The flight
+time is dominated by the coast from the sphere of influence, so the outer
+arrivals are months; the capture burn is the periapsis and circularisation
+total, compared with the quintic capture arc's integrated thrust:
+
+| Target | Conic plan | Conic capture | Quintic capture | Conic parking radius |
+|---|---:|---:|---:|---:|
+| Venus | 3.69 d | 4.13 km/s | 86.0 km/s | 6,960 km |
+| Mars | 5.59 d | 3.53 km/s | 84.8 km/s | 3,898 km |
+| Jupiter | 99.47 d | 17.40 km/s | 1,088.6 km/s | 80,398 km |
+| Saturn | 131.46 d | 10.66 km/s | 1,159.5 km/s | 66,967 km |
+| Earth (from Mars orbit) | 6.18 d | 4.28 km/s | 218.3 km/s | 7,327 km |
+
+The conic flights arrive 0.1–1.1 m and 0.0001–0.003 m/s from the reference
+state, and hold the lower parking orbit with eccentricities of 10⁻⁴ or less
+after three orbits. The coast's measured peak thrust is below 0.01 m/s²: the
+two-body reference is a true coast, and the drive only trims the third-body
+tide. The total plan delta-v is usually lower (Jupiter 2,783 km/s against
+5,189), but not always: a compressed cruise over a short conic capture can spend
+slightly more than the quintic plan even while the capture itself is 20–100×
+cheaper. That trade is why the style is a choice, not a replacement.
+
 ## Tuning the trip in the nav computer
 
 The route preview has one **trip-time slider**. Its range is the fastest
@@ -175,8 +209,9 @@ The current plans already sit at the left end, so there is no "burn harder"
 above them. A faster trip needs a stronger drive (a data value) or the
 burn-and-coast regime below. The slider therefore only stretches the existing
 torch plan: the drive stays on, just more gently. It is **not** a coast. A coast
-is a Keplerian conic, not a quintic with a flat middle, which is why it is
-deferred behind the transfer-conic work
+is a Keplerian conic, not a quintic with a flat middle; the conic arrival exists
+as an opt-in planner style, but the slider does not offer it because the coast's
+time cost is a second axis
 ([navigation and arrival](navigation-and-arrival.md#burn-and-coast-lambert)).
 
 ## What the throttle is
@@ -276,10 +311,12 @@ The navigation computer should present all three with time, delta-v, and arrival
 date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
-**Implemented so far:** the torch plan and its trip-time control. Burn-and-coast
-is not implemented, because the coast has to be a Keplerian conic with the drive
-genuinely off; it depends on the transfer-conic arc, not on flattening a
-quintic. The slider deliberately stops at the torch plan until that exists.
+**Implemented so far:** the torch plan and its trip-time control, plus the conic
+**arrival** (a coasting hyperbola and an impulsive Oberth capture). Burn-and-coast
+across the cruise is not implemented, because the middle of the trip still has to
+be solved: a Keplerian coast is a Lambert problem, and the conic arc alone does
+not choose the heliocentric connecting orbit. The slider deliberately stops at
+the torch plan until that exists.
 
 # Gravity assists and Oberth
 
@@ -346,5 +383,5 @@ These are more interesting than a hull-integrity bar.
   have.
 * How much of the 35–75% gap to the ideal profile should be closed? A
   bang-bang planner with smoothed corners, or a fuel-optimal solve, would buy
-  time at the cost of solver complexity. A transfer-conic capture would close
-  part of it in delta-v rather than time.
+  time at the cost of solver complexity. The conic arrival closes part of the
+  gap in delta-v rather than time, and it is now implemented.

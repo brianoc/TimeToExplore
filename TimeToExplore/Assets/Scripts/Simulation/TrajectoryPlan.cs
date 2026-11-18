@@ -5,10 +5,11 @@ using TimeToExplore.Core;
 namespace TimeToExplore.Simulation
 {
     /// <summary>
-    /// A complete Go To plan: an ordered chain of quintic arcs from the ship's
-    /// current state to a stable parking orbit around the target. The arcs are
-    /// continuous in position, velocity and acceleration at their seams, so the
-    /// whole plan is one smooth trajectory.
+    /// A complete Go To plan: an ordered chain of arcs from the ship's current
+    /// state to a stable parking orbit around the target. A quintic chain is
+    /// continuous in position, velocity and acceleration; a conic chain is
+    /// continuous in position and acceleration and steps in velocity by its
+    /// impulsive burns.
     /// </summary>
     public sealed class TrajectoryPlan
     {
@@ -58,14 +59,33 @@ namespace TimeToExplore.Simulation
             ? Math.Clamp(PeakThrustMps2 / MaxAccelerationMps2, 0.0, double.PositiveInfinity)
             : 0.0;
 
-        public bool IsFeasible => PeakThrustMps2 <= MaxAccelerationMps2 * (1.0 + 1e-6);
+        public bool IsFeasible => string.IsNullOrEmpty(InfeasibleReason)
+                                  && PeakThrustMps2 <= MaxAccelerationMps2 * (1.0 + 1e-6);
+
+        /// <summary>Why the plan is not flyable, or null. A conic arrival that
+        /// cannot be built reports the reason rather than a fake thrust.</summary>
+        public string InfeasibleReason { get; internal set; }
 
         public double DeltaVMps
         {
             get
             {
                 double total = 0.0;
-                foreach (PlanArc arc in _arcs) total += arc.DeltaVMps;
+                foreach (PlanArc arc in _arcs)
+                    total += arc.DeltaVMps + arc.EntryImpulseMps;
+                return total;
+            }
+        }
+
+        /// <summary>Delta-v carried by impulsive burns at arc seams. For a conic
+        /// capture these are the periapsis capture and the circularisation; the
+        /// rest of the plan is the powered quintic's integrated thrust.</summary>
+        public double ImpulseDeltaVMps
+        {
+            get
+            {
+                double total = 0.0;
+                foreach (PlanArc arc in _arcs) total += arc.EntryImpulseMps;
                 return total;
             }
         }
@@ -133,7 +153,7 @@ namespace TimeToExplore.Simulation
                 {
                     double u = (double)i / samplesPerArc;
                     double julianDate = arc.StartJulianDate
-                                        + u * (arc.EndJulianDate - arc.StartJulianDate);
+                                        + arc.Path.SecondsAt(u) / JulianDate.SecondsPerDay;
 
                     Vector3d position = arc.Path.PositionAt(u);
                     Vector3d velocity = arc.Path.VelocityAt(u);

@@ -38,11 +38,16 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   and the UI module.
 * Left-click body selection with a live details screen (physical, orbital, and
   current data) and a three-second eased debug camera move to the selected body.
+* A **transfer-conic arrival** as an opt-in planner style: a universal-variable
+  state-vector propagator, an `IArcPath` contract, a coasted hyperbola, an
+  impulsive Oberth capture, a transfer ellipse, and a circularisation burn
+  ([ADR-014](../decisions/adr-014-keplerian-coast.md)). The quintic capture stays
+  the default.
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
-  the Unity EditMode suite. The suite is 365 tests.
+  the Unity EditMode suite. The suite is 401 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -164,8 +169,9 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    flight-session, testing, and index concepts carry the finished layer.
    **Post-2.5:** the preview carries a **trip-time slider**, so the player can
    trade a longer trip for a gentler burn and less delta-v before pressing
-   Begin. It is a duration control over the existing torch plan; the coast
-   fraction is deferred behind the transfer conic below.
+   Begin. It is a duration control over the existing torch plan. The conic
+   arrival is implemented as a separate planner style; the coast in the middle
+   of the cruise is still deferred.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
 the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
@@ -197,33 +203,44 @@ versus constant acceleration with throttling (easier to fly). The current
 preference is constant acceleration with throttle, showing the mass flow and
 heat cost in the HUD.
 
-# Deferred: transfer-conic capture
+# Done: transfer-conic capture (2026-11-18)
 
-Recorded deliberately, not next. The gravity ceiling makes every body reachable
-by moving the arrival orbit out; a transfer conic would fly the same arrival
-*lower and cheaper*, and it is the physically honest capture. Kept out of
-milestone 2 so the scene work is not blocked on a new propagator.
+The transfer-conic arrival is implemented as a second planner style. It was
+recorded as deferred because the gravity ceiling already made every body
+reachable; it is now the cheap, slow alternative that parks lower.
 
-* Add a `ConicArc` that propagates a state vector with Kepler's equation.
-  `OrbitalElements.GetState` already goes elements → state; the inverse
-  (state → elements, or a universal-variable propagator) does not exist yet.
-* Let the capture chain coast. On a conic `a_ref = g` pointwise, so the commanded
-  thrust is exactly zero and the quintic endpoint problem disappears entirely.
-* Burn at periapsis, then circularise, ending on the parking orbit. That is the
-  Oberth-optimal arrival the current spiral only approximates.
-* Expected payoffs: Earth arrivals back below the Van Allen belts, Saturn's
-  parking orbit out of the ring system, a lower Jupiter orbit, and less capture
-  delta-v.
-* The gravity ceiling stays in place until this lands; it is what makes the
-  current capture flyable, and any future planner must satisfy it or report the
-  arrival infeasible.
+* `KeplerPropagator` is a universal-variable state-vector propagator, and
+  `ConicElements` derives the conic and converts between true anomaly and time.
+  `IArcPath` generalised the arc contract; `Quintic` and `ConicArc` implement it.
+* The conic capture chain is a planetocentric hyperbola from the sphere of
+  influence to `max(1.05 R, R + 100 km)`, an impulsive capture burn, a transfer
+  ellipse to `max(1.15 R, R + 300 km)`, and a circularisation burn. The arrival
+  is exact and the final orbit is a real free-fall orbit.
+* The burns are impulses at plan boundaries. `PlanArc` carries an entry impulse
+  vector, the flight session applies it at the seam, and the plan's delta-v is
+  the powered arcs' thrust plus the burn magnitudes.
+* Measured at the epoch: captures of 3.53 km/s at Mars against 84.8, 17.40 at
+  Jupiter against 1,088.6, and 10.66 at Saturn against 1,159.5. Parking radii
+  fall from 9,983 to 7,327 km at Earth, from 177,965 to 80,398 at Jupiter, and
+  from 97,380 to 66,967 at Saturn. The outer arrivals take months (99.5 days to
+  Jupiter, 131.5 to Saturn), which is the burn-and-coast time cost.
+* The quintic capture stays the default. `TripPlanner.ArrivalStyle` is the
+  opt-in switch, and the trip-time slider still re-solves the torch plan.
+  [ADR-014](../decisions/adr-014-keplerian-coast.md) records the decision.
+
+**Remaining follow-up:** expose the arrival style in the nav computer, next to
+the trip-time slider, so the player can choose fast-and-expensive or
+slow-and-cheap before pressing Begin. The finite-burn arc and the rings/atmosphere
+arrival model are later fidelity work.
 
 # Deferred: burn-and-coast trip planning
 
 The trip-time slider is the first half of the time/fuel choice: it re-solves the
 torch plan from the fastest feasible time out to three times that, with the
 arrival date and target position moving with it. The second half — **coast in
-the middle** — is deferred and depends on the transfer-conic work above.
+the middle** — is still deferred. The conic arrival now supplies the coast *arc*
+and the impulsive burns, but the heliocentric middle of the trip is still a
+powered quintic.
 
 * A coast is a Keplerian conic with the commanded thrust exactly zero. A quintic
   with a flat middle still commands thrust in a gravity field, so it would be a
@@ -233,8 +250,9 @@ the middle** — is deferred and depends on the transfer-conic work above.
   velocities. That brings a discontinuous feasible set — no solution below a
   minimum energy for some geometries, and multiple-revolution branches — which
   the UI has never had to express.
-* The first version is a `ConicArc` for the cruise plus the existing quintics at
-  the ends. The full Lambert porkchop search comes later.
+* The first version can reuse `ConicArc` for the heliocentric cruise; the
+  missing piece is the Lambert solve that chooses its two end velocities. The
+  full porkchop search comes later.
 * Until then the slider is honest about its limits: it lengthens the torch plan
   but never offers a coast, and its left end is the drive's own ceiling.
 
@@ -243,17 +261,20 @@ the middle** — is deferred and depends on the transfer-conic work above.
 1. Default `EnableMapView` on (or remove the switch) now that the comparison is
    done, so the shipped scene gets the map and the neighbourhood aid fade. This
    is the first small follow-up to milestone 2.5.
-2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
-   time and delta-v compete. A transfer conic (above) closes part of it in
-   delta-v rather than time.
-3. Add a mid-course correction that keeps the current plan instead of replanning
+2. Expose the conic arrival in the nav computer, next to the trip-time slider,
+   so the player can choose the fast torch plan or the cheap coasting arrival.
+   The planner switch and the render are already there.
+3. Close the gap to the ideal profile with a bang-bang planner once fuel makes
+   time and delta-v compete. The conic arrival already closes part of it in
+   delta-v.
+4. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.
-4. Give warp a continuous scale so the drop near a body is smooth rather than a
+5. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-5. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
+6. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
-6. Add a fourth sky layer from a small catalogue of real bright stars
+7. Add a fourth sky layer from a small catalogue of real bright stars
    (RA/Dec/magnitude for the brightest few hundred), so the procedural field
    gains the navigable constellations it is missing
    ([The sky](/technical/sky.md)).
@@ -268,6 +289,6 @@ the middle** — is deferred and depends on the transfer-conic work above.
 | Float/depth artefacts on a target platform | Medium | Medium | Ship-relative rendering; reversed-Z; two-camera fallback |
 | Autopilot removes the gameplay | Medium | High | Autopilot handles long burns; the current build is plan-and-watch, and manual override and fuel are the milestone-3 answer |
 | The smooth plan is 35–75% slower than the design's tables | Certain | Medium | Show the plan's real time, not the ideal, in the HUD; close the gap with a bang-bang planner once fuel makes time and delta-v compete |
-| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted: the alternative is an unreachable destination. A transfer-conic capture would restore lower, cheaper arrivals |
+| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted for the default quintic capture: the alternative is an unreachable destination. The conic arrival style now restores lower, cheaper orbits at the cost of months of coasting, and the nav computer still needs to expose the choice |
 | Data accuracy drifts with epoch | Low | Low | Regenerate from JPL; document epoch and accuracy |
 | Scope grows beyond a solo project | High | High | Milestone gates; one ship, one system, no combat |
