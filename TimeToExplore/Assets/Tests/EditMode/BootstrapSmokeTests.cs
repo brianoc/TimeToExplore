@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Player;
+using TimeToExplore.Rendering;
 using TimeToExplore.Simulation;
 using TimeToExplore.UI;
 using UnityEngine;
@@ -64,6 +66,32 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.EnableMapView, Is.False,
                 "the shipped path keeps the old camera by default");
             Assert.That(_bootstrap.Rig.MapEnabled, Is.False);
+        }
+
+        [Test]
+        public void TheFrameLoopDropsAFrameUntilTheWorldIsBuilt()
+        {
+            _root = new GameObject("Half-built Bootstrap");
+            _bootstrap = _root.AddComponent<SolarSystemBootstrap>();
+
+            // A frame can be dispatched to a component whose Awake has not run
+            // (a script reload leaves exactly this state). It must do nothing.
+            Assert.DoesNotThrow(() => Invoke("Update"));
+            Assert.DoesNotThrow(() => Invoke("LateUpdate"));
+        }
+
+        [Test]
+        public void TheFrameLoopSkipsAViewDestroyedByATeardown()
+        {
+            Build();
+            BodyView victim = _bootstrap.Renderer.Views.First();
+            Object.DestroyImmediate(victim.gameObject);
+
+            // The dictionary still holds the destroyed view; a teardown stops
+            // play mode before the bootstrap's own objects go. Drawing the frame
+            // must skip it rather than throw once per frame.
+            Assert.DoesNotThrow(() => Invoke("LateUpdate"));
+            Assert.DoesNotThrow(() => Invoke("LateUpdate"));
         }
 
         [Test]

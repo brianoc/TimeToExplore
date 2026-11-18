@@ -33,7 +33,7 @@ namespace TimeToExplore.UI
 
         private const float DetailsHeaderHeight = 95f;
         private const float DetailsFooterHeight = 122f;
-        private const float DetailsSliderHeight = 52f;
+        private const float DetailsSliderHeight = 76f;
         private const float DetailsHeadingHeight = 22f;
         private const float DetailsRowHeight = 17f;
         private const float FlightHeaderHeight = 58f;
@@ -108,10 +108,15 @@ namespace TimeToExplore.UI
         private Button _jumpButton;
         private BodyRuntime _detailsBody;
 
-        // Trip-time control, shown only while a preview for the selected body
-        // exists. The slider's value is flight time in seconds, so its range is
-        // the preview's own feasible window.
+        // Trip-time and arrival-style controls, shown only while a preview for
+        // the selected body exists. The slider's value is flight time in
+        // seconds, so its range is the preview's own feasible window; the two
+        // buttons choose the capture model the preview was built with.
         private RectTransform _timeSliderGroup;
+        private Button _quinticButton;
+        private Button _conicButton;
+        private Text _quinticLabel;
+        private Text _conicLabel;
         private Slider _timeSlider;
         private Text _timeLabel;
         private Text _timeValue;
@@ -279,6 +284,9 @@ namespace TimeToExplore.UI
             _targets.Clear();
             foreach (BodyView view in _owner.Renderer.Views)
             {
+                // A view destroyed by a scene teardown is fake-null; skip it.
+                if (view == null) continue;
+
                 Vector3 world = view.transform.position;
                 Vector3 screen = camera.WorldToScreenPoint(world);
                 if (screen.z <= 0f) continue;
@@ -544,7 +552,18 @@ namespace TimeToExplore.UI
             float top = height - DetailsFooterHeight - DetailsSliderHeight + 4f;
             _timeSliderGroup.anchoredPosition = new Vector2(18f, -top);
             _timeSliderGroup.sizeDelta = new Vector2(contentWidth, DetailsSliderHeight);
-            _timeSlider.interactable = !_detailsOpenedThisFrame;
+
+            // The click that opened the screen cannot also choose a style.
+            bool interactive = !_detailsOpenedThisFrame;
+            _quinticButton.interactable = interactive;
+            _conicButton.interactable = interactive;
+            CaptureStyle style = _owner.ArrivalStyle;
+            ShowArrivalChoice(_quinticButton, _quinticLabel,
+                style == CaptureStyle.Quintic);
+            ShowArrivalChoice(_conicButton, _conicLabel,
+                style == CaptureStyle.Conic);
+
+            _timeSlider.interactable = interactive;
 
             double minimum = flight.PreviewMinimumSeconds;
             double maximum = flight.PreviewMaximumSeconds;
@@ -584,6 +603,38 @@ namespace TimeToExplore.UI
         {
             if (_syncingSlider || _owner == null) return;
             _owner.RetimePreview(seconds);
+        }
+
+        private void OnQuinticCaptureClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetArrivalStyle(CaptureStyle.Quintic);
+        }
+
+        private void OnConicCaptureClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetArrivalStyle(CaptureStyle.Conic);
+        }
+
+        /// <summary>Mark the active arrival style: its label takes the selected
+        /// gold and its fill is brighter, so the pair reads as one choice.</summary>
+        private static void ShowArrivalChoice(Button button, Text label, bool active)
+        {
+            label.color = active ? SelectedLabelColour : DimColour;
+
+            ColorBlock colours = button.colors;
+            Color normal = active
+                ? new Color(0.22f, 0.35f, 0.50f, 0.98f)
+                : new Color(0.11f, 0.15f, 0.22f, 0.95f);
+            if (colours.normalColor == normal) return;
+
+            colours.normalColor = normal;
+            colours.selectedColor = normal;
+            colours.highlightedColor = active
+                ? new Color(0.28f, 0.43f, 0.60f, 1f)
+                : new Color(0.19f, 0.27f, 0.37f, 0.98f);
+            button.colors = colours;
         }
 
         // --- Flight panel -------------------------------------------------------
@@ -984,7 +1035,11 @@ namespace TimeToExplore.UI
         /// A uGUI slider in the details footer. The fill and handle geometry
         /// follows Unity's stock Slider layout, because <see cref="Slider"/>
         /// drives those anchors itself; the background is the raycast target so
-        /// a click anywhere on the track starts a drag.
+        /// a click anywhere on the track starts a drag. The row above the
+        /// slider is the arrival-style choice: the two capture models are a
+        /// mode, not a slider value, because one parks lower and spends less
+        /// delta-v while the other is fast
+        /// ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md)).
         /// </summary>
         private void BuildTimeSlider(Transform parent)
         {
@@ -992,17 +1047,33 @@ namespace TimeToExplore.UI
                 new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero,
                 new Vector2(DetailsWidth - 36f, DetailsSliderHeight));
 
+            Text arrivalLabel = CreateText(_timeSliderGroup, "ArrivalStyleLabel", "ARRIVAL", 10,
+                SectionColour, FontStyle.Bold);
+            PlaceTopLeft(arrivalLabel, 0f, 0f, 76f, 20f);
+
+            _quinticButton = CreateButton(_timeSliderGroup, "QuinticCaptureButton",
+                "Quintic capture");
+            PlaceTopLeft(_quinticButton.image, 76f, 0f, 134f, 22f);
+            _quinticLabel = _quinticButton.GetComponentInChildren<Text>(true);
+            _quinticButton.onClick.AddListener(OnQuinticCaptureClicked);
+
+            _conicButton = CreateButton(_timeSliderGroup, "ConicCaptureButton",
+                "Conic coast");
+            PlaceTopLeft(_conicButton.image, 216f, 0f, 140f, 22f);
+            _conicLabel = _conicButton.GetComponentInChildren<Text>(true);
+            _conicButton.onClick.AddListener(OnConicCaptureClicked);
+
             _timeLabel = CreateText(_timeSliderGroup, "TimeSliderLabel", "TRIP TIME", 10,
                 SectionColour, FontStyle.Bold);
-            PlaceTopLeft(_timeLabel, 0f, 0f, 190f, 16f);
+            PlaceTopLeft(_timeLabel, 0f, 30f, 190f, 16f);
 
             _timeValue = CreateText(_timeSliderGroup, "TimeSliderValue", "", 11, TextColour,
                 FontStyle.Normal, TextAnchor.MiddleRight);
-            PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 0f, 210f, 16f);
+            PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 30f, 210f, 16f);
 
             var go = new GameObject("TimeSlider", typeof(RectTransform), typeof(Slider));
             go.transform.SetParent(_timeSliderGroup, false);
-            PlaceTopLeft((RectTransform)go.transform, 0f, 22f, DetailsWidth - 36f, 18f);
+            PlaceTopLeft((RectTransform)go.transform, 0f, 52f, DetailsWidth - 36f, 18f);
 
             Image background = CreateImage(go.transform, "Background",
                 new Color(0.10f, 0.15f, 0.22f, 0.95f), Vector2.zero);

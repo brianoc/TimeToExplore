@@ -121,6 +121,12 @@ namespace TimeToExplore.Rendering
 
             foreach (BodyView view in _views.Values)
             {
+                // A scene teardown or load can destroy the view objects while
+                // the bootstrap that owns them is still being ticked. A destroyed
+                // Unity object compares equal to null; skip it rather than
+                // throwing out of the frame loop.
+                if (view == null) continue;
+
                 double bodyDistanceM = Vector3d.Distance(view.Body.PositionM, shipPositionM);
                 float aidStrength = MarkerSizing.AidStrength(cameraDistanceM, bodyDistanceM,
                     localRadiusM, mapBlendWeight);
@@ -145,11 +151,17 @@ namespace TimeToExplore.Rendering
                 orbitPixels);
 
             foreach (OrbitLine orbit in _planetOrbits)
+            {
+                if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits, lineWidth);
+            }
 
             foreach (OrbitLine orbit in _moonOrbits)
+            {
+                if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits && ShowMoonOrbits,
                     lineWidth);
+            }
         }
     }
 }

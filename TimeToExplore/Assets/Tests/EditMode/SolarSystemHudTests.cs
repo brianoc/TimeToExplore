@@ -305,6 +305,60 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheArrivalStyleButtonsRebuildThePreviewAgainstTheChosenCapture()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            _hud.OpenDetails();
+
+            // Opening frame: the click that opened the screen cannot also choose.
+            Update();
+            Button quintic = ButtonNamed("QuinticCaptureButton");
+            Button conic = ButtonNamed("ConicCaptureButton");
+            Assert.That(Child("TimeSliderGroup").activeSelf, Is.True);
+            Assert.That(TextNamed("ArrivalStyleLabel").text, Is.EqualTo("ARRIVAL"));
+            Assert.That(quintic.interactable, Is.False, "one frame of click protection");
+            Assert.That(conic.interactable, Is.False);
+
+            Update();
+            Assert.That(quintic.interactable, Is.True);
+            Assert.That(conic.interactable, Is.True);
+            Assert.That(ButtonLabel("QuinticCaptureButton").color,
+                Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color),
+                "the active style is marked");
+            Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
+
+            double quinticMinimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            conic.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(
+                arc => arc.Phase == FlightPhase.Coast), Is.True);
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(
+                arc => arc.Phase == FlightPhase.Parking), Is.True);
+            Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
+                Is.Not.EqualTo(quinticMinimum),
+                "the conic capture has its own fastest plan");
+            Assert.That(SliderNamed("TimeSlider").minValue,
+                Is.EqualTo((float)_bootstrap.Flight.PreviewMinimumSeconds).Within(1.0),
+                "the trip-time window follows the new style");
+            Assert.That(ButtonLabel("ConicCaptureButton").color,
+                Is.Not.EqualTo(ButtonLabel("QuinticCaptureButton").color));
+
+            quintic.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(3),
+                "switching back restores the quintic capture");
+            Assert.That(ButtonLabel("QuinticCaptureButton").color,
+                Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color));
+        }
+
+        [Test]
         public void ClosingTheDetailsScreenDiscardsAPlottedPreview()
         {
             Build();
@@ -320,6 +374,21 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.DetailsOpen, Is.False);
             Assert.That(_bootstrap.Flight.HasPreview, Is.False,
                 "Close discards the preview, as the IMGUI screen did");
+        }
+
+        [Test]
+        public void ThePointerPickSkipsAViewDestroyedByATeardown()
+        {
+            Build();
+            BodyView victim = _bootstrap.Renderer.Views.First();
+            Object.DestroyImmediate(victim.gameObject);
+
+            // The renderer still lists the destroyed view. Picking at the centre
+            // of the screen must skip it instead of throwing from every frame.
+            MethodInfo pick = typeof(SolarSystemHud).GetMethod("PickAt",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(pick, Is.Not.Null, "SolarSystemHud.PickAt is missing");
+            Assert.DoesNotThrow(() => pick.Invoke(_hud, new object[] { new Vector2(960f, 540f) }));
         }
 
         // --- Fixture ------------------------------------------------------------

@@ -255,6 +255,34 @@ namespace TimeToExplore.Simulation
             return Preview;
         }
 
+        /// <summary>
+        /// Choose the arrival style and rebuild the preview against it, from the
+        /// same pinned departure state. The fastest feasible plan of the new
+        /// style sets the trip-time window; the previous flight time is kept
+        /// when it falls inside that window, so the choice changes the arrival
+        /// shape rather than silently throwing away the player's trip time. A
+        /// live flight is never touched: it keeps the plan it was begun with.
+        /// Returns the rebuilt preview, or null when there was none.
+        /// </summary>
+        public TrajectoryPlan SetArrivalStyle(CaptureStyle style)
+        {
+            if (style == ArrivalStyle) return Preview;
+            ArrivalStyle = style;
+            if (Preview == null) return null;
+
+            double requested = Preview.FlightTimeSeconds;
+            string targetId = Preview.TargetId;
+
+            Preview = _planner.Plan(_previewDeparture, targetId);
+            PreviewMinimumSeconds = Preview.FlightTimeSeconds;
+
+            if (Preview.IsFeasible && requested > PreviewMinimumSeconds)
+                Preview = _planner.PlanAtDuration(_previewDeparture, targetId,
+                    Math.Min(requested, PreviewMaximumSeconds));
+
+            return Preview;
+        }
+
         /// <summary>Forget the preview, if there is one.</summary>
         public void DiscardPreview()
         {

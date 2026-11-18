@@ -237,6 +237,15 @@ bloom, and the far-field camera stack without changing the scale rules.
   collision and docking should run in a local, ship-relative physics bubble.
 * **Particles.** World-space particles at these distances are impractical.
   Engine plumes and dust should be local effects.
+* **Teardown.** The renderer owns one `BodyView` and one `OrbitLine` per body as
+  child objects. A scene unload, or a script reload that stops play mode, can
+  destroy those children while the bootstrap's `LateUpdate` is still being
+  dispatched. A destroyed Unity object compares equal to null, so the render
+  frame checks each view and orbit and skips the destroyed ones, and
+  `SolarSystemBootstrap.LateUpdate` does nothing until the model, clock, and
+  renderer exist. Without those checks a teardown window produces one
+  `NullReferenceException` or `MissingReferenceException` per frame, which is
+  exactly the flood the editor console showed on 2026-11-18.
 * **UI.** Screen-space HUD works; world-space canvases at solar distances do
   not. Body labels are projected manually onto a screen-space uGUI canvas. Body
   picking is also screen-space, against the drawn marker rather than a collider,

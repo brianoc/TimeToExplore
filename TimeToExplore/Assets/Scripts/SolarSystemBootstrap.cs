@@ -230,7 +230,11 @@ namespace TimeToExplore
 
         private void LateUpdate()
         {
-            if (Renderer == null) return;
+            // A frame can arrive before Awake has built the world, or while a
+            // scene teardown is destroying it (a script reload stops play mode
+            // between frames). Drawing nothing for that frame is correct and
+            // keeps the console free of one exception per frame.
+            if (Model == null || Clock == null || Renderer == null) return;
 
             if (Flight != null)
             {
@@ -387,6 +391,27 @@ namespace TimeToExplore
             if (Flight == null || !Flight.HasPreview) return;
 
             TrajectoryPlan preview = Flight.SetPreviewDuration(flightTimeSeconds);
+            if (preview == null) return;
+
+            ShowPlan(preview, Model?.Get(preview.TargetId));
+        }
+
+        /// <summary>How the nav computer brings the ship into orbit: the fast
+        /// quintic capture, or the cheap coasted conic one.</summary>
+        public CaptureStyle ArrivalStyle =>
+            Flight != null ? Flight.ArrivalStyle : CaptureStyle.Quintic;
+
+        /// <summary>
+        /// Switch the arrival style. A plotted preview is rebuilt against the
+        /// new style and redrawn; a live flight is left alone, because it keeps
+        /// the plan it was begun with. The camera is not re-framed: the choice
+        /// changes the arrival, not the viewer's aim.
+        /// </summary>
+        public void SetArrivalStyle(CaptureStyle style)
+        {
+            if (Flight == null || Flight.ArrivalStyle == style) return;
+
+            TrajectoryPlan preview = Flight.SetArrivalStyle(style);
             if (preview == null) return;
 
             ShowPlan(preview, Model?.Get(preview.TargetId));

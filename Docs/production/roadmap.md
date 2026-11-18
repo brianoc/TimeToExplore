@@ -47,7 +47,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
-  the Unity EditMode suite. The suite is 401 tests.
+  the Unity EditMode suite. The suite is 407 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -169,9 +169,10 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    flight-session, testing, and index concepts carry the finished layer.
    **Post-2.5:** the preview carries a **trip-time slider**, so the player can
    trade a longer trip for a gentler burn and less delta-v before pressing
-   Begin. It is a duration control over the existing torch plan. The conic
-   arrival is implemented as a separate planner style; the coast in the middle
-   of the cruise is still deferred.
+   Begin. It is a duration control over the existing torch plan. Beside it, the
+   **arrival-style** buttons switch between the fast quintic capture and the
+   cheap conic coast, so the time/delta-v choice is now in the nav computer. The
+   coast in the middle of the cruise is still deferred.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
 the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
@@ -228,10 +229,12 @@ reachable; it is now the cheap, slow alternative that parks lower.
   opt-in switch, and the trip-time slider still re-solves the torch plan.
   [ADR-014](../decisions/adr-014-keplerian-coast.md) records the decision.
 
-**Remaining follow-up:** expose the arrival style in the nav computer, next to
-the trip-time slider, so the player can choose fast-and-expensive or
-slow-and-cheap before pressing Begin. The finite-burn arc and the rings/atmosphere
-arrival model are later fidelity work.
+**Follow-up done:** the nav computer exposes the style as **Quintic capture** /
+**Conic coast** buttons beside the trip-time slider. Switching rebuilds the
+preview against the chosen style from the pinned departure state, keeps the
+chosen flight time when it fits the new window, and redraws the coast, burns,
+and lower parking orbit. A live flight keeps the plan it was begun with. The
+finite-burn arc and the rings/atmosphere arrival model are later fidelity work.
 
 # Deferred: burn-and-coast trip planning
 
@@ -261,16 +264,13 @@ powered quintic.
 1. Default `EnableMapView` on (or remove the switch) now that the comparison is
    done, so the shipped scene gets the map and the neighbourhood aid fade. This
    is the first small follow-up to milestone 2.5.
-2. Expose the conic arrival in the nav computer, next to the trip-time slider,
-   so the player can choose the fast torch plan or the cheap coasting arrival.
-   The planner switch and the render are already there.
-3. Close the gap to the ideal profile with a bang-bang planner once fuel makes
+2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
    time and delta-v compete. The conic arrival already closes part of it in
    delta-v.
-4. Add a mid-course correction that keeps the current plan instead of replanning
+3. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.
-5. Give warp a continuous scale so the drop near a body is smooth rather than a
+4. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
 6. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
@@ -289,6 +289,6 @@ powered quintic.
 | Float/depth artefacts on a target platform | Medium | Medium | Ship-relative rendering; reversed-Z; two-camera fallback |
 | Autopilot removes the gameplay | Medium | High | Autopilot handles long burns; the current build is plan-and-watch, and manual override and fuel are the milestone-3 answer |
 | The smooth plan is 35–75% slower than the design's tables | Certain | Medium | Show the plan's real time, not the ideal, in the HUD; close the gap with a bang-bang planner once fuel makes time and delta-v compete |
-| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted for the default quintic capture: the alternative is an unreachable destination. The conic arrival style now restores lower, cheaper orbits at the cost of months of coasting, and the nav computer still needs to expose the choice |
+| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted for the default quintic capture: the alternative is an unreachable destination. The conic arrival style restores lower, cheaper orbits at the cost of months of coasting, and the nav computer's arrival-style buttons expose the choice |
 | Data accuracy drifts with epoch | Low | Low | Regenerate from JPL; document epoch and accuracy |
 | Scope grows beyond a solo project | High | High | Milestone gates; one ship, one system, no combat |

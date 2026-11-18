@@ -125,6 +125,20 @@ since the plot, the status reads `Preview, stale` and a note says **replot or
 begin anyway**. **Replot route** refreshes it on demand. There is no automatic
 per-frame replanning.
 
+The same footer also exposes the **arrival style**, as a two-button choice
+between **Quintic capture** and **Conic coast**. It appears with the preview
+because the style is a property of the plan, not a global setting the player has
+to imagine: pressing one calls `FlightSession.SetArrivalStyle`, which sets the
+planner mode, rebuilds the preview from the pinned departure state, and resets
+the trip-time window to the new style's fastest plan. The previous flight time
+is kept when it still falls inside that window, so switching to a coast shows
+the same trip stretched by the capture rather than silently resetting a slider
+the player had moved. The active style's label is gold and its fill brighter;
+the route redraws with the coast, burns, and lower parking orbit, and the flight
+panel gains the `Coast`, `Capture`, `Parking`, and `Burns` rows. A live flight is
+never restyled: it keeps the plan it was begun with, and a later replan uses the
+style currently selected.
+
 Only one preview exists. A second plot replaces it; selecting another body,
 `Esc`, **Close**, Cancel, teleport, and reset all discard it. `Begin` consumes
 it. While a flight is running the live panel takes over and the route stays
@@ -210,6 +224,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
 | **Trip-time slider** on a preview | Re-solve the preview at a longer duration; updates the route, arrival, thrust, and delta-v without moving the ship |
+| **Quintic capture / Conic coast** on a preview | Switch the arrival style, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burns, and lower parking orbit |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |

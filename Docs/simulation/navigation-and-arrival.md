@@ -85,10 +85,17 @@ planetocentric hyperbola from the sphere of influence to a low periapsis, an
 impulsive retrograde capture burn, a transfer ellipse, and a prograde
 circularisation burn at apoapsis. On the two-body reference the coast's
 acceleration is the local gravity pointwise, so the commanded thrust is zero;
-the autopilot supplies only the small third-body correction. The style is
-opt-in — the quintic capture stays the default — because the coast is slow at
-the outer planets. [ADR-014](../decisions/adr-014-keplerian-coast.md) records
-the geometry and the impulse model.
+the autopilot supplies only the small third-body correction. The conic style is
+opt-in because the coast is slow at the outer planets. In the nav computer it is
+a two-button choice beside the trip-time slider: **Quintic capture** or
+**Conic coast**. Pressing one rebuilds the plotted preview against that style
+and resets the slider to the new style's fastest plan, so the player sees the
+coast, the periapsis and circularisation burns, the lower parking orbit, and the
+flight time and delta-v that come with them. A chosen flight time survives the
+switch when it fits the new window. The quintic capture remains the default, and
+a live flight keeps the plan it was begun with.
+[ADR-014](../decisions/adr-014-keplerian-coast.md) records the geometry and the
+impulse model.
 
 ## The trip-time control
 
@@ -101,12 +108,12 @@ lowering it would silently move where the ship parks.
 
 The control only lengthens the torch plan. Every implemented quintic plan
 already peaks at about 97% of the drive, so the left end is the floor and "burn
-harder" needs a stronger drive or the fuel model. A coast is now implemented as
-the conic **arrival**, but it is a planner style rather than a slider value: the
+harder" needs a stronger drive or the fuel model. The cheap alternative is the
+conic **arrival**, chosen by the two-button style control beside the slider: the
 capture is cheap and the coast from the sphere of influence is long, so the
-arrival is a time/delta-v choice the nav computer does not yet expose. The
-slider itself continues to stretch the torch plan and never pretends a quintic
-is a coast.
+arrival is a time/delta-v choice the nav computer now exposes as fast-and-
+expensive against slow-and-cheap. The slider itself continues to stretch the
+torch plan and never pretends a quintic is a coast.
 
 ## The parking orbit
 
@@ -451,10 +458,11 @@ parking coast, burn markers at each impulsive periapsis or circularisation, an
 arrival marker at the parking-orbit point, a flip marker where the along-track
 thrust changes sign, a countdown to the next arc boundary, a phase table with
 each leg's start and duration, the arrival date, peak thrust, planned delta-v
-and the impulsive burn total, the live throttle, and the trip-time slider, which
-re-solves the route and its arrival date as it moves. The warp policy keeps the
-final approach visible, and the periapsis and circularisation are plan
-boundaries.
+and the impulsive burn total, the live throttle, the trip-time slider, which
+re-solves the route and its arrival date as it moves, and the arrival-style
+buttons, which rebuild the preview as a fast quintic capture or a cheap conic
+coast. The warp policy keeps the final approach visible, and the periapsis and
+circularisation are plan boundaries.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
@@ -483,8 +491,8 @@ The design wants failure to create stories, not reloads:
   planner.
 * **Settled:** a transfer-conic arrival is a second style: a coasted hyperbola,
   an impulsive Oberth capture, a transfer ellipse, and a circularisation burn.
-  It is cheaper and slower, and the quintic capture stays the default until the
-  nav computer offers the time/delta-v choice.
+  It is cheaper and slower. The nav computer exposes the choice beside the
+  trip-time slider, while the quintic capture stays the default.
 * How forgiving is the capture solver? The plan is exact, but a real missed burn
   is fatal; a game needs a margin and a clear warning. The planner currently
   reports infeasibility rather than flying a bad plan.
