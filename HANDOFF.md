@@ -1,7 +1,7 @@
 # Handoff
 
 **Active handoff (2026-11-18): burn–coast–burn trips.** The design is settled;
-step 1 is implemented. The source of truth for the design is
+steps 1 and 2 are implemented. The source of truth for the design is
 [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md). Do not redesign it
 in a step; if a step cannot proceed without changing it, stop and ask.
 
@@ -43,7 +43,7 @@ a time. The caretaker is deliberately light so its context stays clean.
 |---|---|---|
 | 0 | Design note, navigation link, index link, log, this handoff | `python3 tools/validate_okf.py` clean (done) |
 | 1 | `LambertSolver` in Core + `LambertSolverTests` | `tools/check.sh --tests core` green (done) |
-| 2 | Lambert coast in the planner: `CruiseStyle.Coast` builds quintic departure → Lambert `ConicArc` → existing conic/hybrid capture | `--tests flight` green; a plan closes and arrives |
+| 2 | Lambert coast in the planner: `CruiseStyle.Coast` builds quintic departure → Lambert `ConicArc` → existing conic/hybrid capture | `--tests flight` green; a plan closes and arrives (done) |
 | 3 | Prograde departure fixed burn + `CruiseStyle.BurnCoastBurn` stitching the five arcs | `--tests flight` green; burn level respected; arrival exact |
 | 4 | Nav-computer profile control, speed/time control, panel rows, colours/legend | `--tests presentation smoke` green; bootstrap smoke covers the new profile |
 | 5 | Docs pass, log, clear this handoff | `tools/check.sh --fast` and the validator clean; no screenshot this task |
@@ -69,15 +69,23 @@ Landed as `LambertSolver.SolveShortWay`, returning a `LambertSolution`
 `TransferAngleRad`) and rejecting the 180° geometry without throwing.
 `tools/check.sh --tests core`: passed, 0 failed.
 
-### Step 2 — the Lambert coast
+### Step 2 — the Lambert coast (done)
 
-Add `TripPlanner.CruiseStyle { Powered, Coast }` (default `Powered`), separate
-from `CaptureStyle`. `Coast` builds a quintic departure whose endpoint velocity
-is the Lambert `v₁` at the departure SOI, a heliocentric `ConicArc` coast (centre
-the Sun), and the existing capture chain. Do not add the fixed burns yet.
-Tests: the arc chain and types; the coast's measured peak thrust near zero; the
-arrival closes; the delta-v falls by orders of magnitude against the powered
-plan; the style switch does not move the ship.
+`TripPlanner.CruiseStyle { Powered, Coast }`, default `Powered`, separate from
+`CaptureStyle`. `Coast` retargets the quintic departure to the Lambert `v₁` at
+the departure SOI, coasts on a heliocentric `ConicArc` about the Sun, then runs
+the existing conic or hybrid capture. The five-pass arrival loop splits what is
+left between departure and coast in proportion to their kinematic floors (the
+departure needs its share: a fixed few-hour escape cannot supply a real break
+velocity), and the coast's arrival velocity is trimmed onto the chain's entry
+state by an impulse at the target SOI. That impulse is the brake's placeholder
+for step 3. `LambertSolver` rejections (`HasSolution == false`) become an
+infeasible plan with the transfer angle in the reason; there is no long-way
+fallback. `CoastTripPlannerTests` covers the chain and types, the unpowered
+coast, the `v₁` retarget, the flown arrival and three-orbit hold, the
+orders-of-magnitude delta-v drop, the t₀-invariance of the style switch, the
+rejected long transfer, and the hybrid handover.
+`tools/check.sh --tests flight`: passed, 0 failed.
 
 ### Step 3 — the burns
 
@@ -122,8 +130,9 @@ the exact command and its result. Do not record a test count in the bundle.
   run in `.cache/test-project`.
 - **One revolution only.** `OrbitMath.SolveKepler` wraps the mean anomaly and
   `ConicArc` assumes a single pass. Multi-rev Lambert is out of scope.
-- **`EscapeSpeedMps = 1_000` is a placeholder.** The Lambert departure should
-  replace it with the real `v∞`; do not build the new path on top of it.
+- **`EscapeSpeedMps = 1_000` is a placeholder.** The powered departure still uses
+  it. The coast path takes its break velocity from the Lambert `v₁` and must
+  never fall back to the placeholder.
 - **The quintic capture has a gravity ceiling.** Prefer the conic/hybrid capture
   for the new profile; do not park the giants high to make a quintic fit.
 - **The trip-time slider is `[minimum, 3 × minimum]`.** That range is too small
@@ -154,9 +163,18 @@ needs.
 
 ## Next action
 
-Start **step 2** with a fresh sub-agent: add `CruiseStyle.Coast` and build the
-quintic departure → Lambert `ConicArc` → conic/hybrid capture chain. The solver
-is prograde short-way only, so a trip time whose transfer angle exceeds 180°
-(exactly 180° included) returns `HasSolution == false`; treat that as an
-infeasible trip time and choose or clamp the time window, not as a solver bug.
+Start **step 3** with a fresh sub-agent: add the prograde departure fixed burn
+and `CruiseStyle.BurnCoastBurn`, stitching quintic break → finite burn →
+Lambert coast → finite brake → conic/hybrid capture. Step 2's coast ends with an
+impulse at the target SOI (`EntryImpulseVectorMps` on the inbound coast arc)
+because the Lambert `v₂` need not equal the capture chain's entry velocity; the
+brake can absorb that trim instead of modelling it as a separate impulse. The
+departure fix in step 2 is an *allocation* fix, not a burn: the quintic break
+gets a share of the trip proportional to its kinematic floor, and that share
+must not be mistaken for the burn duration in step 3. The solver is prograde
+short-way only, so a trip time sweeping 180° or more (exactly 180° included)
+returns `HasSolution == false`; treat that as an infeasible trip time and clamp
+the time window, not as a solver bug. `Plan()` alone finds the fastest feasible
+coast (about 14 days to Mars at the epoch, with a huge arrival handover); the
+trip-time control in step 4 is what picks a cheaper one.
 Verify with `tools/check.sh --tests flight`.

@@ -99,11 +99,13 @@ markers, and the route legend.
 **Missing:**
 
 1. **The Lambert solver.** The coast must be chosen, not guessed. This is the
-   universal-variable sibling of `KeplerPropagator`.
+   universal-variable sibling of `KeplerPropagator`. It has landed in Core as
+   `LambertSolver.SolveShortWay` (zero-rev, prograde, short-way).
 2. **The planner that stitches the arcs.** It chooses when to stop burning,
    where the coast goes, and when to brake, so the chain closes on the moving
    target. This is a small targeting/fixed-point solve, the same pattern as the
-   conic planner's five-pass arrival loop.
+   conic planner's five-pass arrival loop. Stage A now does it for the coast
+   cruise; the burn timing is still missing.
 3. **The departure fixed burn.** The hybrid capture is the arrival version; a
    prograde finite burn out of the parking orbit is its mirror and does not
    exist.
@@ -118,7 +120,8 @@ Two stages, both part of the same implementation:
 **Stage A — the coast skeleton.** Add the Lambert solver (zero-rev, prograde,
 short-way) and build a trip as a quintic departure retargeted to the Lambert's
 `v₁`, a heliocentric `ConicArc` coast, and the existing conic/hybrid capture.
-This proves the coast arrives and the capture still works.
+This proves the coast arrives and the capture still works. It has landed as
+`TripPlanner.CruiseStyle.Coast`, with the powered cruise still the default.
 
 **Stage B — the burns.** Add the prograde departure fixed burn and the
 retrograde brake, stitch the five arcs, and expose the burn level and the trip

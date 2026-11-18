@@ -40,8 +40,11 @@ real ([The flight session](../technical/flight-session.md)). The porkchop search
 is not implemented: Go To plans "leave now" and takes the first feasible trip.
 A **transfer-conic arrival** is implemented as an opt-in planner style: it
 coasts the inbound leg and captures impulsively at periapsis
-([ADR-014](../decisions/adr-014-keplerian-coast.md)). The Lambert *cruise* — the
-free middle of a burn-and-coast trip — is still not implemented.
+([ADR-014](../decisions/adr-014-keplerian-coast.md)). A **Lambert coast cruise**
+(`CruiseStyle.Coast`) is the first stage of the burn–coast–burn profile: the
+powered middle is replaced by the zero-revolution prograde conic that reaches
+the target's sphere of influence on time. The fixed burns that bookend it are
+the next stage.
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
@@ -110,9 +113,29 @@ conic `max(1.15 R, R + 300 km)`, so the level no longer forces the higher
 `1.4 R` orbit. Measured captures are 4.57 km/s at Mars, 4.92 at Earth, 18.44 at
 Jupiter, and 12.06 at Saturn; the flights arrive 0.0–0.8 m and
 0.0000–0.0031 m/s from the reference state. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
-records the geometry and the split. The departure and cruise are still powered
-quintics: a fixed-thrust *cruise* needs the Lambert solve, which is the deferred
-burn-and-coast item.
+records the geometry and the split. In the `Powered` cruise style the departure
+and cruise are still powered quintics: the fixed-thrust *brake* is stage B of the
+burn–coast–burn plan, and the Lambert cruise is reachable through
+`CruiseStyle.Coast`.
+
+A **coast cruise style** (`CruiseStyle.Coast`, default `CruiseStyle.Powered`)
+changes the middle of the trip, not the arrival. The quintic departure is
+retargeted so its endpoint velocity at the departure sphere of influence is the
+Lambert `v₁`; a heliocentric `ConicArc` then coasts about the Sun to the capture
+chain's entry point with the drive off; and the arrival is always the conic or
+hybrid capture, because a quintic capture cannot be fed by a coast. The coast is
+zero-revolution, prograde, short-way only: a trip time whose transfer sweeps
+180° or more, or whose plane contains the ecliptic pole, has no coast, and the
+planner rejects it with the geometry that failed rather than coasting the long
+way. The departure takes a share of the trip proportional to its kinematic
+floor, because the Lambert break velocity is a real velocity change; the rest is
+coast. The coast's arrival velocity need not equal the chain's entry velocity,
+so the handover at the sphere of influence is an impulse — the placeholder for
+the brake burn. Measured at the epoch from Gateway to Mars at 200 days: 14 km/s
+in total (6.0 km/s break, 3.9 km/s handover, 3.5 km/s capture), peak coast thrust
+0.0005 m/s², against the torch plan's 2,345 km/s over 4.4 days. The flight
+arrives 0.1 m and 0.0000 m/s from the reference state and holds the conic
+parking orbit.
 
 The target profile is a **burn–coast–burn** trip that mixes all four ingredients:
 a quintic departure, a fixed burn, a Lambert coast, a brake, and the conic or
