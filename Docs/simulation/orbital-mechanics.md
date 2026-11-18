@@ -78,6 +78,26 @@ the conic's shape and true anomaly from the same state. The two paths are
 checked against each other in `KeplerPropagatorTests`, and the transfer-conic
 capture uses the result ([ADR-014](/decisions/adr-014-keplerian-coast.md)).
 
+## The Lambert branch
+
+A coast between two moving bodies needs the inverse question: two positions and
+a time of flight → the connecting conic. `LambertSolver.SolveShortWay(r₁, r₂,
+Δt, μ)` returns `v₁` and `v₂` for that arc, using the same universal variables
+and `KeplerPropagator.Stumpff`. The unknown `z = αχ²` is solved by a bracket and
+bisection, so elliptic, parabolic, and hyperbolic coasts share one deterministic
+path.
+
+The solver implements one branch: **prograde short-way**. The arc sweeps less
+than 180° counter-clockwise about the ecliptic pole, matching the planets. The
+long way, the retrograde branch, and multi-revolution coasts are deliberately
+absent, so there is no sign or revolution-count argument to misuse. At 180° the
+classic `A = √(r₁r₂(1 + cos Δν))` term vanishes, the transfer plane is
+undefined, and the velocities have no unique limit; that geometry returns an
+explicit no-solution result rather than a NaN. Propagating the returned `v₁`
+with `KeplerPropagator` for `Δt` reaches `r₂`, which is how the tests check every
+case. The burn–coast–burn trip uses it for the coast
+([burn–coast–burn trips](/simulation/burn-coast-burn.md)).
+
 # Frames and hierarchy
 
 Bodies are updated parent-first:

@@ -1,7 +1,7 @@
 # Handoff
 
 **Active handoff (2026-11-18): burn–coast–burn trips.** The design is settled;
-implementation has not started. The source of truth for the design is
+step 1 is implemented. The source of truth for the design is
 [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md). Do not redesign it
 in a step; if a step cannot proceed without changing it, stop and ask.
 
@@ -42,7 +42,7 @@ a time. The caretaker is deliberately light so its context stays clean.
 | Step | Deliverable | Done when |
 |---|---|---|
 | 0 | Design note, navigation link, index link, log, this handoff | `python3 tools/validate_okf.py` clean (done) |
-| 1 | `LambertSolver` in Core + `LambertSolverTests` | `tools/check.sh --tests core` green |
+| 1 | `LambertSolver` in Core + `LambertSolverTests` | `tools/check.sh --tests core` green (done) |
 | 2 | Lambert coast in the planner: `CruiseStyle.Coast` builds quintic departure → Lambert `ConicArc` → existing conic/hybrid capture | `--tests flight` green; a plan closes and arrives |
 | 3 | Prograde departure fixed burn + `CruiseStyle.BurnCoastBurn` stitching the five arcs | `--tests flight` green; burn level respected; arrival exact |
 | 4 | Nav-computer profile control, speed/time control, panel rows, colours/legend | `--tests presentation smoke` green; bootstrap smoke covers the new profile |
@@ -53,7 +53,7 @@ a time. The caretaker is deliberately light so its context stays clean.
 The design note, the link from navigation, the index entry, the log entries,
 and this plan. No code.
 
-### Step 1 — Lambert solver
+### Step 1 — Lambert solver (done)
 
 Create `TimeToExplore/Assets/Scripts/Core/LambertSolver.cs` and
 `TimeToExplore/Assets/Tests/EditMode/LambertSolverTests.cs` (category `core`).
@@ -63,6 +63,11 @@ Guard the 180° transfer where the classic `A` term vanishes. Tests: propagate
 `v₁` for `Δt` and land on `r₂`; a 90° case; a Hohmann-like case against known
 values; a high-energy hyperbolic case; short-way versus long-way; the 180°
 guard. No planner or UI change.
+
+Landed as `LambertSolver.SolveShortWay`, returning a `LambertSolution`
+(`HasSolution`, `DepartureVelocityMps`, `ArrivalVelocityMps`,
+`TransferAngleRad`) and rejecting the 180° geometry without throwing.
+`tools/check.sh --tests core`: passed, 0 failed.
 
 ### Step 2 — the Lambert coast
 
@@ -149,5 +154,9 @@ needs.
 
 ## Next action
 
-Start **step 1** with a fresh sub-agent. It has no dependency on the planner and
-can be verified in isolation.
+Start **step 2** with a fresh sub-agent: add `CruiseStyle.Coast` and build the
+quintic departure → Lambert `ConicArc` → conic/hybrid capture chain. The solver
+is prograde short-way only, so a trip time whose transfer angle exceeds 180°
+(exactly 180° included) returns `HasSolution == false`; treat that as an
+infeasible trip time and choose or clamp the time window, not as a solver bug.
+Verify with `tools/check.sh --tests flight`.
