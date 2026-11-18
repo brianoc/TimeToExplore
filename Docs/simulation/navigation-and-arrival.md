@@ -114,6 +114,12 @@ records the geometry and the split. The departure and cruise are still powered
 quintics: a fixed-thrust *cruise* needs the Lambert solve, which is the deferred
 burn-and-coast item.
 
+The target profile is a **burn–coast–burn** trip that mixes all four ingredients:
+a quintic departure, a fixed burn, a Lambert coast, a brake, and the conic or
+hybrid capture. [Burn–coast–burn trips](burn-coast-burn.md) sets out the profile,
+the speed/delta-v trade, and the first cut. The existing three arrival styles are
+fixed recipes; this is a fourth recipe built from the same arcs.
+
 ## The trip-time control
 
 The preview carries a trip-time slider whose range is the fastest feasible plan

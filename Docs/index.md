@@ -33,6 +33,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Time and scale](/simulation/time-and-scale.md) — units, epoch, time acceleration, and the precision budget.
 * [Flight model](/simulation/flight-model.md) — the 10 m/s² torch drive, travel times, and the two travel regimes.
 * [Navigation and arrival](/simulation/navigation-and-arrival.md) — how the player plans an intercept, inserts into orbit, and docks.
+* [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the burn-hard, coast-fast, brake-into-orbit profile, and the four arc ingredients it mixes.
 
 # World
 
