@@ -12,6 +12,7 @@ namespace TimeToExplore.Tests.EditMode
     /// proves the line renderer applies it and <c>SolarSystemHudTests</c>
     /// proves the legend lists the same types.
     /// </summary>
+    [Category("presentation")]
     public class RouteColourTests
     {
         [Test]

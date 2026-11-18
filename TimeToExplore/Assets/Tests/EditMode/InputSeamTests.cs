@@ -13,6 +13,7 @@ namespace TimeToExplore.Tests.EditMode
     /// runtime script draws immediate-mode GUI, and Active Input Handling is
     /// pinned to the new backend.
     /// </summary>
+    [Category("core")]
     public class InputSeamTests
     {
         private const string SeamFileName = "PlayerControls.cs";

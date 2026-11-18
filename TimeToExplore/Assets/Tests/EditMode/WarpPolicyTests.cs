@@ -6,6 +6,7 @@ using TimeToExplore.Simulation;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>The automatic time-warp cap that keeps the scene honest.</summary>
+    [Category("flight")]
     public class WarpPolicyTests
     {
         private const double Frame = 1.0 / 60.0;

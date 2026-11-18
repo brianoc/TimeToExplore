@@ -6,6 +6,7 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class CatalogueTests
     {
         private static SolarSystemFile Data => CatalogueFixture.Data;

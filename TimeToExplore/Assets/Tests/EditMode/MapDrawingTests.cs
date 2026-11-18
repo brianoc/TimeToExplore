@@ -9,6 +9,7 @@ using UnityEngine;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>The map's reading rules: marker size, label density, ship label, line width.</summary>
+    [Category("presentation")]
     public class MapDrawingTests
     {
         private const float UnitsPerMeter = 1e-6f;

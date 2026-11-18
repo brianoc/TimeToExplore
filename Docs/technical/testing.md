@@ -10,12 +10,14 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 # One command
 
 ```bash
-tools/check.sh          # everything, including Unity EditMode tests
-tools/check.sh --fast   # docs, catalogue, generator only (a few seconds)
-tools/check.sh --keep   # keep the throwaway Unity project and logs
+tools/check.sh                    # everything, including the Unity suite
+tools/check.sh --fast             # docs, generators, and tooling (a few seconds)
+tools/check.sh --tests flight     # the fast gates plus one test category
+tools/check.sh --tests core,smoke # any comma-separated categories
+tools/check.sh --reset            # drop the warm test project first
 ```
 
-`check.sh` runs five gates in order:
+`check.sh` runs six gates in order:
 
 | Gate | Tool | What it proves |
 |---|---|---|
@@ -23,15 +25,39 @@ tools/check.sh --keep   # keep the throwaway Unity project and logs
 | Catalogue schema | `tools/validate_catalogue.py` | Field types, ids, parents, counts, orbit ranges, epoch maths |
 | Catalogue generator | `tools/generate_solar_system.py --offline --output …` | The committed JSON is byte-identical to a fresh generation |
 | Sky generator | `tools/generate_skybox.py --out …` | The committed `milky_way.png` is pixel-identical to a fresh generation |
+| Tooling | `tools/test_unity_guard.py` | The guard stops a stuck run and passes through a real exit code |
 | Runtime | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock |
 
-The Unity run uses a throwaway copy of `Assets/`, `Packages/`, and
-`ProjectSettings/`, so it never locks or disturbs an editor that has the real
-project open. It picks the editor named in `ProjectVersion.txt`; override with
-`UNITY_BIN=/path/to/Unity`. Python defaults to `.venv/bin/python`, then
-`python3`; override with `PYTHON`.
+The Unity tests carry one category each: `core`, `flight`, `presentation`, or
+`smoke`. `--tests` narrows the Unity gate to the categories named; the fast
+gates still run. A `core` or `presentation` run is a few seconds, the full
+flight matrix is about a minute, and the whole suite is under a minute and a
+half.
 
-A full run takes roughly a minute after the first import. `--fast` is the loop
+It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
+Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
+
+The Unity suite runs in `.cache/test-project`, not in a throwaway copy. `Assets`
+is a symlink to the real folder, `Packages` and `ProjectSettings` are refreshed
+copies, and the project keeps its own `Library`. The package import is paid once
+instead of on every run; `--reset` drops the cache and rebuilds it, which costs
+about half a minute on the first run. The cache is gitignored and never contains
+edited sources.
+
+Unity runs under `tools/unity_guard.py`, which stops it when it writes nothing
+to the log for two minutes, exceeds a twenty-minute budget, repeats a Unity
+cloud-endpoint lookup, or starts shutting down and does not finish. Shutdown
+hangs are the known failure: batch Unity can finish the tests, write
+`results.xml`, and then retry DNS lookups forever. `check.sh` still reads the
+results that were written, so a hang at the end does not throw away a completed
+run. The log is `.cache/test-project/unity.log`. For any other batch run, such
+as a capture helper or a scene builder, use the same wrapper:
+
+```bash
+python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
+```
+
+A full run takes about 80 seconds with the warm project. `--fast` is the loop
 to use while editing docs, Python tools, or catalogue data. The Unity suite is
 the gate for any C# change.
 
@@ -86,9 +112,12 @@ because Unity test assemblies cannot reference the predefined
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 | `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the quintic preview as one *Quintic arc* row, stacking above the flight panel, listing *Conic arc* and *Fixed burn* with the hybrid, collapsing its three conic arcs into one row, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and retiming through its `onValueChanged`, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider from 0 to 1 g rebuilding the preview at 0.5 g and degenerating to the conic plan at 0 g, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
-The suite currently has **461 tests**. It deliberately tests the shipped
-catalogue as well as the maths, so a bad regeneration fails before Unity opens
-a scene.
+The suite deliberately tests the shipped catalogue as well as the maths, so a
+bad regeneration fails before Unity opens a scene. Each class carries a
+`[Category]` for its area, which is what `--tests` filters on.
+
+Do not record a test count in the design bundle. It drifts with every commit and
+is busywork to maintain; report the command and its result instead.
 
 EditMode does not advance `Time.deltaTime`, so `SolarSystemBootstrap` exposes a
 `DeltaTimeSeconds` seam: the scene leaves its default (`() => Time.deltaTime`)
@@ -342,7 +371,10 @@ non-empty `parent` for orbits) and keep a regression test for it.
    the JSON or building states by hand.
 4. Assert physical relationships (vis-viva, energy, geometry) rather than
    re-running the implementation's own formula.
-5. Run `tools/check.sh` and report the test count.
+5. Give the class a `[Category]` from the list above, so focused runs include it.
+6. Do not write files under `Assets` from a test: the test project's `Assets` is
+   a symlink to the real folder.
+7. Run `tools/check.sh` and report the command and result.
 
 # Not covered yet
 

@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class Vector3dTests
     {
         [Test]

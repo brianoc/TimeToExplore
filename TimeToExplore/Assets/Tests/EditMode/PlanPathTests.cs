@@ -9,6 +9,7 @@ namespace TimeToExplore.Tests.EditMode
     /// The two things the trajectory line and the warp policy need from a plan:
     /// where the arc boundaries are, and where the ship turns over.
     /// </summary>
+    [Category("flight")]
     public class PlanPathTests
     {
         private SolarSystemModel _model;

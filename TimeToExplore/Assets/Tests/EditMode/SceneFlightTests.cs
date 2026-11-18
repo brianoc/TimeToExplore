@@ -12,6 +12,7 @@ namespace TimeToExplore.Tests.EditMode
     /// operations SolarSystemBootstrap.Update uses, so it proves the Go To
     /// button's flight, not just the planner.
     /// </summary>
+    [Category("smoke")]
     public class SceneFlightTests
     {
         private const double FrameSeconds = 1.0 / 60.0;

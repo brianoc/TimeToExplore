@@ -11,6 +11,7 @@ namespace TimeToExplore.Tests.EditMode
     /// The map blend, the dominant-body choice, the extended zoom range, and
     /// the capped pan offset. Plain C#, so no scene is needed.
     /// </summary>
+    [Category("presentation")]
     public class MapViewTests
     {
         private SolarSystemModel _model;

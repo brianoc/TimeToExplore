@@ -4,6 +4,7 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class OrbitMathTests
     {
         [TestCase(0.0, 0.0)]

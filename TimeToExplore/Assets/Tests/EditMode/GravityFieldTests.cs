@@ -5,6 +5,7 @@ using TimeToExplore.Simulation;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("flight")]
     public class GravityFieldTests
     {
         private const double Au = 1.495978707e11;

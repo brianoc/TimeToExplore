@@ -6,6 +6,7 @@ using UnityEngine;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>The orbit camera's limits, zoom curve, and auto-framing slew.</summary>
+    [Category("presentation")]
     public class OrbitCameraTests
     {
         [Test]

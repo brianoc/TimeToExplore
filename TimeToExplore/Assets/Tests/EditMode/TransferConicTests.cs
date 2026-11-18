@@ -10,6 +10,7 @@ namespace TimeToExplore.Tests.EditMode
     /// tests pin the Oberth arithmetic, the plane, and the lower parking
     /// radius before the end-to-end flight suite exercises the whole chain.
     /// </summary>
+    [Category("flight")]
     public class TransferConicTests
     {
         private SolarSystemModel _model;

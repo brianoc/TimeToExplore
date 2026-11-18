@@ -4,6 +4,7 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class JulianDateTests
     {
         [Test]

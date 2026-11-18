@@ -59,6 +59,10 @@ is built, run, or verified. Implementation details that a reader of the design
 bundle does not need may stay out of the concept docs, but they belong in the
 log.
 
+Do not record a test count in a concept, the roadmap, or a log entry. It drifts
+with every commit and is busywork to maintain; report the command and its result
+instead.
+
 ## Handoff
 
 The repository-root `HANDOFF.md` is a live session handoff, not a historic log
@@ -97,12 +101,14 @@ stays in the concepts and ADRs.
 - A change to orbital maths or catalogue data should be checked numerically
   against known values at the epoch (2026-11-15, JD 2461359.5).
 - Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.
-  It validates the OKF bundle, the catalogue schema, and both generators'
-  reproducibility in a few seconds.
-- Run `tools/check.sh` before finishing any C# change. It runs the Unity
-  EditMode suite on a throwaway copy of the project, so it is safe with the
-  editor open. `--keep` retains the temporary project and logs.
+  It validates the OKF bundle, the catalogue schema, both generators'
+  reproducibility, and the guard's unit tests in a few seconds.
+- Run `tools/check.sh` before finishing any C# change. Its Unity suite runs in
+  `.cache/test-project` with `Assets` symlinked to the real folder and its own
+  warm `Library`, so the open editor is untouched and the import is paid once.
+  `--tests core|flight|presentation|smoke` narrows a run; `--reset` rebuilds the
+  cache.
 - Do not force-close a Unity editor that has the project open. Use a temporary
-  copy of the project for batch-mode verification when necessary; `check.sh`
-  already does this.
+  copy of the project for other batch-mode work; `check.sh` already isolates its
+  own runs.
 - Report the exact command and result used to verify a change.

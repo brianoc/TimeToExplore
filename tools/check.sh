@@ -2,16 +2,26 @@
 #
 # One-command verification for Time to Explore.
 #
-#   tools/check.sh          # docs, catalogue and sky determinism, Unity EditMode tests
-#   tools/check.sh --fast   # everything except Unity (a few seconds)
-#   tools/check.sh --keep   # keep the temporary Unity project and its log
+#   tools/check.sh                       # docs, data, and the full Unity suite
+#   tools/check.sh --fast                # everything except Unity (a few seconds)
+#   tools/check.sh --tests flight        # the fast gates plus one test category
+#   tools/check.sh --tests core,smoke    # any comma-separated categories
+#   tools/check.sh --reset               # drop the warm test project first
+#   tools/check.sh --keep                # keep the generator temp directory
 #
-# The Unity run happens on a throwaway copy of the project, so it is safe to
-# leave the editor open on the real one.
+# Test categories: core, flight, presentation, smoke. The Unity suite runs in a
+# persistent project under .cache/test-project with a symlinked Assets folder and
+# its own Library, so the package import is paid once instead of every run. The
+# first run after --reset rebuilds it (adds roughly half a minute).
+#
+# Unity runs under tools/unity_guard.py, which stops it if it stalls, exceeds its
+# time budget, or enters the known cloud-endpoint retry loop at shutdown. Results
+# it has already written are still used.
 #
 # Environment overrides:
-#   PYTHON     Python interpreter (default: .venv/bin/python, then python3)
-#   UNITY_BIN  Unity executable (default: the editor named in ProjectVersion.txt)
+#   PYTHON          Python interpreter (default: .venv/bin/python, then python3)
+#   UNITY_BIN       Unity executable (default: the editor in ProjectVersion.txt)
+#   TTE_TEST_CACHE  warm test project (default: .cache/test-project)
 
 set -euo pipefail
 
@@ -20,20 +30,30 @@ cd "$ROOT"
 
 FAST=0
 KEEP=0
+RESET=0
+TESTS=""
 for arg in "$@"; do
     case "$arg" in
         --fast) FAST=1 ;;
         --keep) KEEP=1 ;;
+        --reset) RESET=1 ;;
+        --tests=*) TESTS="${arg#*=}" ;;
+        --tests) TESTS="__NEXT__" ;;
         -h|--help)
-            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
-            echo "unknown option: $arg (try --help)" >&2
-            exit 2
+            if [[ "$TESTS" == "__NEXT__" ]]; then
+                TESTS="$arg"
+            else
+                echo "unknown option: $arg (try --help)" >&2
+                exit 2
+            fi
             ;;
     esac
 done
+[[ "$TESTS" == "__NEXT__" ]] && { echo "--tests needs a value" >&2; exit 2; }
 
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 if [[ ! -x "$PYTHON" ]]; then
@@ -41,10 +61,14 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 WORK=""
+LOCK=""
 cleanup() {
+    if [[ -n "$LOCK" && -d "$LOCK" ]]; then
+        rm -rf "$LOCK"
+    fi
     if [[ -n "$WORK" && -d "$WORK" ]]; then
         if (( KEEP )); then
-            echo "Kept temporary project: $WORK"
+            echo "Kept temporary directory: $WORK"
         else
             rm -rf "$WORK"
         fi
@@ -60,6 +84,8 @@ fail() {
     printf '\nFAILED: %s\n' "$*" >&2
     exit 1
 }
+
+SECONDS=0
 
 # 1. Design bundle ----------------------------------------------------------
 step "Design bundle (OKF v0.2)"
@@ -115,13 +141,32 @@ then
 fi
 echo "Sky output matches the committed texture (2048x1024)."
 
+# 5. Tooling tests ----------------------------------------------------------
+step "Tooling tests"
+"$PYTHON" -m unittest discover -s tools -p 'test_*.py' -q || fail "tooling tests"
+
 if (( FAST )); then
-    step "Fast checks passed; skipping Unity"
+    printf '\nFast checks passed in %d s; skipping Unity.\n' "$SECONDS"
     exit 0
 fi
 
-# 5. Unity EditMode tests ---------------------------------------------------
-step "Unity EditMode tests"
+# 6. Unity EditMode tests ---------------------------------------------------
+CATEGORIES=""
+if [[ -n "$TESTS" ]]; then
+    IFS=',;' read -r -a requested <<< "$TESTS"
+    for category in "${requested[@]}"; do
+        category="${category//[[:space:]]/}"
+        [[ -z "$category" ]] && continue
+        case "$category" in
+            core|flight|presentation|smoke) ;;
+            *) fail "unknown test category: $category (choose core, flight, presentation, smoke)" ;;
+        esac
+        CATEGORIES="${CATEGORIES:+$CATEGORIES;}$category"
+    done
+    [[ -z "$CATEGORIES" ]] && fail "--tests needs at least one category"
+fi
+
+step "Unity EditMode tests${CATEGORIES:+ ($CATEGORIES)}"
 
 UNITY_BIN="${UNITY_BIN:-}"
 if [[ -z "$UNITY_BIN" ]]; then
@@ -130,26 +175,66 @@ if [[ -z "$UNITY_BIN" ]]; then
 fi
 [[ -x "$UNITY_BIN" ]] || fail "Unity not found at $UNITY_BIN (set UNITY_BIN)"
 
-PROJECT="$WORK/TimeToExplore"
+CACHE="${TTE_TEST_CACHE:-$ROOT/.cache/test-project}"
+PROJECT="$CACHE/TimeToExplore"
+UNITY_LOG="$CACHE/unity.log"
+RESULTS="$CACHE/results.xml"
+ASSETS="$ROOT/TimeToExplore/Assets"
+
+if (( RESET )); then
+    echo "Resetting the warm test project at $CACHE"
+    rm -rf "$CACHE"
+fi
+
+mkdir -p "$CACHE"
+LOCK="$CACHE/.run-lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    if [[ -f "$LOCK/pid" ]] && kill -0 "$(cat "$LOCK/pid")" 2>/dev/null; then
+        echo "Another check is using $CACHE (pid $(cat "$LOCK/pid"))." >&2
+        exit 2
+    fi
+    rm -rf "$LOCK"
+    mkdir "$LOCK"
+fi
+echo $$ > "$LOCK/pid"
+
 mkdir -p "$PROJECT"
-cp -R TimeToExplore/Assets TimeToExplore/Packages TimeToExplore/ProjectSettings "$PROJECT/"
-RESULTS="$WORK/results.xml"
-UNITY_LOG="$WORK/unity.log"
+if [[ ! -L "$PROJECT/Assets" || "$(readlink "$PROJECT/Assets")" != "$ASSETS" ]]; then
+    rm -rf "$PROJECT/Assets"
+    ln -s "$ASSETS" "$PROJECT/Assets"
+fi
+rm -rf "$PROJECT/Packages" "$PROJECT/ProjectSettings"
+cp -R TimeToExplore/Packages "$PROJECT/Packages"
+cp -R TimeToExplore/ProjectSettings "$PROJECT/ProjectSettings"
+rm -f "$RESULTS" "$UNITY_LOG"
 
 echo "Unity: $UNITY_BIN"
-echo "Test project: $PROJECT"
+echo "Test project: $PROJECT$([[ -d "$PROJECT/Library" ]] || echo ' (first run: building the asset cache)')"
+
+UNITY_ARGS=(
+    -batchmode
+    -nographics
+    -projectPath "$PROJECT"
+    -runTests
+    -testPlatform EditMode
+    -testResults "$RESULTS"
+    -logFile "$UNITY_LOG"
+)
+[[ -n "$CATEGORIES" ]] && UNITY_ARGS+=(-testCategory "$CATEGORIES")
 
 set +e
-"$UNITY_BIN" \
-    -batchmode \
-    -nographics \
-    -projectPath "$PROJECT" \
-    -runTests \
-    -testPlatform EditMode \
-    -testResults "$RESULTS" \
-    -logFile "$UNITY_LOG"
+"$PYTHON" tools/unity_guard.py \
+    --log "$UNITY_LOG" \
+    --stall-seconds 120 \
+    --timeout-seconds 1200 \
+    --shutdown-grace 20 \
+    -- "$UNITY_BIN" "${UNITY_ARGS[@]}"
 UNITY_STATUS=$?
 set -e
+
+if (( UNITY_STATUS == 124 )); then
+    echo "The guard stopped Unity; reading whatever results it had already written." >&2
+fi
 
 if [[ ! -f "$RESULTS" ]]; then
     echo "--- Unity log tail ---" >&2
@@ -183,4 +268,4 @@ then
     fail "Unity EditMode tests failed (exit $UNITY_STATUS)"
 fi
 
-printf '\nAll checks passed.\n'
+printf '\nAll checks passed in %d s.\n' "$SECONDS"

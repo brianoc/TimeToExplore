@@ -12,6 +12,7 @@ namespace TimeToExplore.Tests.EditMode
     /// at a safe injection radius, trim the end state onto the exact transfer
     /// ellipse, and keep the parking radius at the conic value.
     /// </summary>
+    [Category("flight")]
     public class FiniteBurnArcTests
     {
         private SolarSystemModel _model;
@@ -149,6 +150,7 @@ namespace TimeToExplore.Tests.EditMode
     /// burn clears the body, the trim reaches the exact transfer, and the
     /// parking radius is the conic one at every level.
     /// </summary>
+    [Category("flight")]
     public class HybridCaptureTests
     {
         private SolarSystemModel _model;

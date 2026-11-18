@@ -20,6 +20,7 @@ namespace TimeToExplore.Tests.EditMode
     /// fails here instead of quietly re-coupling the layers. See
     /// <c>Docs/decisions/adr-012-assembly-layout.md</c>.
     /// </summary>
+    [Category("core")]
     public class AssemblyLayoutTests
     {
         private const string Core = "TimeToExplore.Core";

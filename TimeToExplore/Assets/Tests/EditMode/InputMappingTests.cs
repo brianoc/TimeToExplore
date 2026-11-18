@@ -10,6 +10,7 @@ namespace TimeToExplore.Tests.EditMode
     /// The input seam's mapping. Every case feeds a key predicate or a raw device
     /// value, so the mapping is tested without a keyboard, a mouse, or a scene.
     /// </summary>
+    [Category("core")]
     public class InputMappingTests
     {
         private static Func<Key, bool> Held(params Key[] keys) =>

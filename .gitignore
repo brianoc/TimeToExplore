@@ -37,6 +37,9 @@
 sysinfo.txt
 crashlytics-build.properties
 
+# Warm test project used by tools/check.sh
+.cache/
+
 # Python
 .venv/
 __pycache__/

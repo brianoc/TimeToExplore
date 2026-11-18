@@ -14,6 +14,7 @@ namespace TimeToExplore.Tests.EditMode
     /// default, the pipeline asset's cheap settings, the runtime shaders, and
     /// the material property the renderer code writes.
     /// </summary>
+    [Category("presentation")]
     public class RenderingPipelineTests
     {
         private const string PipelineAssetPath =

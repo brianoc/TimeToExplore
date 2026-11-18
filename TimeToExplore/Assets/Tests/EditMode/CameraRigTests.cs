@@ -9,6 +9,7 @@ using Object = UnityEngine.Object;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>How far the camera sits back, and how the map blend changes the rig.</summary>
+    [Category("presentation")]
     public class CameraRigTests
     {
         private SolarSystemModel _model;

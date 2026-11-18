@@ -25,6 +25,7 @@ namespace TimeToExplore.Tests.EditMode
     /// player loop. What a pointer click actually does on screen still needs a
     /// Play mode frame.
     /// </summary>
+    [Category("presentation")]
     public class SolarSystemHudTests
     {
         private GameObject _root;

@@ -5,6 +5,7 @@ using TimeToExplore.Simulation;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("flight")]
     public class ShipDynamicsTests
     {
         private const double Au = 1.495978707e11;

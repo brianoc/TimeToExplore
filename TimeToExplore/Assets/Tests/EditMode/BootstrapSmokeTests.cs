@@ -20,6 +20,7 @@ namespace TimeToExplore.Tests.EditMode
     /// wiring mistakes that the pure-C# suites cannot see — a missing camera, a
     /// null field, or a renderer created without the ship.
     /// </summary>
+    [Category("smoke")]
     public class BootstrapSmokeTests
     {
         private GameObject _root;

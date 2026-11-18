@@ -7,6 +7,7 @@ using UnityEngine;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class SelectionAndFocusTests
     {
         private SolarSystemModel _model;

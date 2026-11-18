@@ -10,7 +10,8 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 # Working agreement
 
 1. **Update the docs as changes happen.** Keep the affected concepts and
-   `Docs/log.md` current.
+   `Docs/log.md` current. Do not record a test count in the bundle: it drifts,
+   so report the command and its result instead.
 2. **Add tests for every new feature or piece of work.** Extend the Unity
    EditMode suite or `tools/validate_catalogue.py`, then run `tools/check.sh`.
 3. **Keep the handoff live while a plan is in progress, and clear it when the

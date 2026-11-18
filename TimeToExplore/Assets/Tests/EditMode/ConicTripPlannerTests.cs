@@ -11,6 +11,7 @@ namespace TimeToExplore.Tests.EditMode
     /// transfer ellipse, and circularisation. The quintic capture stays the
     /// default; this suite proves the alternative end to end.
     /// </summary>
+    [Category("flight")]
     public class ConicTripPlannerTests
     {
         private SolarSystemModel _model;

@@ -13,6 +13,7 @@ namespace TimeToExplore.Tests.EditMode
     /// circularisation. The fixed burn's acceleration is the player's level; at
     /// zero the style is the pure conic plan.
     /// </summary>
+    [Category("flight")]
     public class FiniteBurnTripPlannerTests
     {
         private SolarSystemModel _model;

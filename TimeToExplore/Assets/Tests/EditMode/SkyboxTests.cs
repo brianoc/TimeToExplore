@@ -13,6 +13,7 @@ namespace TimeToExplore.Tests.EditMode
     /// the shader compiles; and the view puts the camera on it and restores the
     /// previous state when it goes away.
     /// </summary>
+    [Category("presentation")]
     public class SkyboxTests
     {
         private GameObject _cameraObject;

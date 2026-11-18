@@ -446,12 +446,16 @@ moved. A dirty-flag or lower update rate (5–10 Hz) is an easy win.
 Automated verification is one command:
 
 ```bash
-tools/check.sh          # docs, catalogue, both generators, Unity EditMode tests
-tools/check.sh --fast   # skip Unity for a few-second loop
+tools/check.sh              # docs, catalogue, both generators, Unity EditMode tests
+tools/check.sh --tests core # one test category
+tools/check.sh --fast       # skip Unity for a few-second loop
 ```
 
-The Unity suite lives in `Assets/Tests/EditMode/` and runs on a throwaway copy
-of the project, so it is safe with the editor open. It covers the Kepler
+The Unity suite lives in `Assets/Tests/EditMode/` and runs in `.cache/test-project`,
+a persistent project with `Assets` symlinked to the real folder and its own warm
+`Library`, so it is safe with the editor open and the package import is paid
+once. Each test class carries a `core`, `flight`, `presentation`, or `smoke`
+category; `--tests` filters on it. It covers the Kepler
 solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body

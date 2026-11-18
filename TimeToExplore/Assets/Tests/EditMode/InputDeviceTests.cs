@@ -9,6 +9,7 @@ namespace TimeToExplore.Tests.EditMode
     /// The seam against real (virtual) devices. The fixture keeps device state
     /// isolated, so these tests do not depend on the machine's keyboard or mouse.
     /// </summary>
+    [Category("core")]
     public class InputDeviceTests : InputTestFixture
     {
         [Test]

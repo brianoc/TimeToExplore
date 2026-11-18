@@ -5,6 +5,7 @@ using TimeToExplore.Simulation;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("flight")]
     public class TripPlannerTests
     {
         private SolarSystemModel _model;

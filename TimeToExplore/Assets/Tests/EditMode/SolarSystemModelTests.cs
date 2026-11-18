@@ -5,6 +5,7 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class SolarSystemModelTests
     {
         private const double Au = 1.495978707e11;

@@ -4,6 +4,7 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("core")]
     public class OrbitalElementsTests
     {
         private const double Mu = 1.32712440018e20;

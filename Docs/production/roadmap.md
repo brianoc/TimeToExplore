@@ -266,9 +266,9 @@ player-set level, with an impulse trim for exactness. The third arrival style is
 * The old single-level style is replaced. It flew both impulses at 0.3 g and
   parked at `1.4 R`; the hybrid parks at the conic radius and, at Jupiter,
   spends 18.44 km/s instead of 19.68 while parking 17,477 km lower.
-* The suite is 461 tests. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
-  records the decision. The departure and cruise remain powered quintics; a
-  fixed-thrust cruise is the deferred Lambert work below.
+* [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records the decision.
+  The departure and cruise remain powered quintics; a fixed-thrust cruise is
+  the deferred Lambert work below.
 
 # Deferred: burn-and-coast trip planning
 

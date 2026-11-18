@@ -11,6 +11,7 @@ namespace TimeToExplore.Tests.EditMode
     /// advance by dates, arrive, and hold the orbit. These are the milestone-2
     /// acceptance tests behind the Go To button.
     /// </summary>
+    [Category("flight")]
     public class FlightSessionTests
     {
         private SolarSystemModel _model;

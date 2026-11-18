@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace TimeToExplore.Tests.EditMode
 {
+    [Category("presentation")]
     public class SceneSmokeTests
     {
         private const string ScenePath = "Assets/Scenes/SolarSystem.unity";

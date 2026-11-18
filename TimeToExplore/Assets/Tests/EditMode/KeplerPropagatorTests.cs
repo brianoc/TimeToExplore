@@ -11,6 +11,7 @@ namespace TimeToExplore.Tests.EditMode
     /// capture stands on, checked against the existing elements-to-state path
     /// and against the textbook apsidal values.
     /// </summary>
+    [Category("flight")]
     public class KeplerPropagatorTests
     {
         private const double SunMu = 1.32712440018e20;
