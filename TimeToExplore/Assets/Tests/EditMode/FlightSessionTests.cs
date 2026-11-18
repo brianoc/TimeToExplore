@@ -296,6 +296,65 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void RetimingThePreviewChangesItsTimeButNotTheShip()
+        {
+            TrajectoryPlan fastest = _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            ShipState before = _session.State;
+
+            TrajectoryPlan slower = _session.SetPreviewDuration(2.0 * minimum);
+
+            Assert.That(_session.Preview, Is.SameAs(slower));
+            Assert.That(slower, Is.Not.SameAs(fastest));
+            Assert.That(slower.FlightTimeSeconds, Is.EqualTo(2.0 * minimum).Within(1e-3));
+            Assert.That(_session.PreviewDurationSeconds,
+                Is.EqualTo(2.0 * minimum).Within(1e-3));
+            Assert.That(_session.PreviewMinimumSeconds, Is.EqualTo(minimum));
+            Assert.That(_session.PreviewMaximumSeconds,
+                Is.EqualTo(minimum * TripPlanner.MaxDurationScale).Within(1e-3));
+            Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch),
+                "the draft stays pinned to the date it was plotted at");
+            Assert.That(slower.ArrivalJulianDate,
+                Is.GreaterThan(fastest.ArrivalJulianDate),
+                "a longer trip arrives later, at a different target position");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_session.State.JulianDate, Is.EqualTo(before.JulianDate));
+            Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM),
+                Is.EqualTo(0.0), "retiming never moves the ship");
+        }
+
+        [Test]
+        public void ThePreviewDurationIsClampedToItsWindow()
+        {
+            _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+
+            TrajectoryPlan below = _session.SetPreviewDuration(0.25 * minimum);
+            Assert.That(below.FlightTimeSeconds, Is.EqualTo(minimum).Within(1e-3),
+                "the handle cannot ask for an infeasible plan");
+
+            TrajectoryPlan above = _session.SetPreviewDuration(10.0 * minimum);
+            Assert.That(above.FlightTimeSeconds,
+                Is.EqualTo(minimum * TripPlanner.MaxDurationScale).Within(1e-3));
+        }
+
+        [Test]
+        public void BeginFlightsTheRetimedPreviewAtTheChosenTime()
+        {
+            _session.Plot("mars", _epoch);
+            double chosen = 2.0 * _session.PreviewMinimumSeconds;
+            _session.SetPreviewDuration(chosen);
+
+            TrajectoryPlan plan = _session.Begin("mars", _epoch);
+
+            Assert.That(_session.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(plan.FlightTimeSeconds, Is.EqualTo(chosen).Within(1e-3),
+                "the flight keeps the time the player chose");
+            Assert.That(plan.IsFeasible, Is.True);
+        }
+
+        [Test]
         public void AnUnknownPreviewTargetIsRejectedAndLeavesTheOldPreviewAlone()
         {
             TrajectoryPlan preview = _session.Plot("mars", _epoch);

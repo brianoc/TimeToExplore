@@ -69,6 +69,11 @@ namespace TimeToExplore.Simulation
         private ShipState _state;
         private Autopilot _autopilot;
 
+        /// <summary>Departure state the preview was solved from. Retiming
+        /// rebuilds from this rather than the current (possibly coasted) state,
+        /// so the preview stays one coherent draft.</summary>
+        private ShipState _previewDeparture;
+
         public FlightSession(SolarSystemModel model, GravityField gravity, TripPlanner planner,
             ShipIntegrator integrator = null)
         {
@@ -95,6 +100,20 @@ namespace TimeToExplore.Simulation
 
         /// <summary>The date the preview was plotted at, or NaN.</summary>
         public double PreviewJulianDate { get; private set; } = double.NaN;
+
+        /// <summary>The fastest feasible flight time for the current preview,
+        /// or NaN. The trip-time control's lower bound.</summary>
+        public double PreviewMinimumSeconds { get; private set; } = double.NaN;
+
+        /// <summary>The slowest trip the trip-time control offers, or NaN. A
+        /// fixed multiple of <see cref="PreviewMinimumSeconds"/>.</summary>
+        public double PreviewMaximumSeconds =>
+            double.IsNaN(PreviewMinimumSeconds)
+                ? double.NaN
+                : PreviewMinimumSeconds * TripPlanner.MaxDurationScale;
+
+        /// <summary>The preview's current flight time, or NaN.</summary>
+        public double PreviewDurationSeconds => Preview?.FlightTimeSeconds ?? double.NaN;
 
         public bool HasPreview => Preview != null;
 
@@ -200,8 +219,28 @@ namespace TimeToExplore.Simulation
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
-            Preview = _planner.Plan(_state.WithJulianDate(julianDate), targetId);
+            _previewDeparture = _state.WithJulianDate(julianDate);
+            Preview = _planner.Plan(_previewDeparture, targetId);
             PreviewJulianDate = julianDate;
+            PreviewMinimumSeconds = Preview.FlightTimeSeconds;
+            return Preview;
+        }
+
+        /// <summary>
+        /// Re-time the current preview without re-solving the minimum or moving
+        /// the ship. One planner build at the requested duration, so the route,
+        /// its flip, and its delta-v all change while the arrival date slides.
+        /// The value is clamped to the preview's feasible window; the departure
+        /// state and displayed date stay pinned, which keeps a drag stable while
+        /// the clock runs.
+        /// </summary>
+        public TrajectoryPlan SetPreviewDuration(double seconds)
+        {
+            if (Preview == null) return null;
+
+            double minimum = PreviewMinimumSeconds;
+            double duration = Math.Clamp(seconds, minimum, PreviewMaximumSeconds);
+            Preview = _planner.PlanAtDuration(_previewDeparture, Preview.TargetId, duration);
             return Preview;
         }
 
@@ -210,6 +249,7 @@ namespace TimeToExplore.Simulation
         {
             Preview = null;
             PreviewJulianDate = double.NaN;
+            PreviewMinimumSeconds = double.NaN;
         }
 
         /// <summary>
@@ -248,9 +288,18 @@ namespace TimeToExplore.Simulation
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
+            // A retimed preview carries the player's chosen flight time into
+            // the flight. Read it before the preview is discarded, solve the
+            // fastest plan at the current date, and re-time to the choice.
+            double requestedSeconds = double.NaN;
+            if (Preview != null && Preview.TargetId == targetId)
+                requestedSeconds = Preview.FlightTimeSeconds;
+
             DiscardPreview();
             _state.JulianDate = julianDate;
             Plan = _planner.Plan(_state, targetId);
+            if (!double.IsNaN(requestedSeconds) && requestedSeconds > Plan.FlightTimeSeconds)
+                Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
             FlipJulianDate = Plan.FindFlipJulianDate(_gravity);
 
             if (!Plan.IsFeasible)

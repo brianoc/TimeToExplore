@@ -368,11 +368,28 @@ namespace TimeToExplore
         }
 
         /// <summary>Begin the plotted route. Replans from the current state and
-        /// date, so the flown curve is close to the preview but never stale.</summary>
+        /// date, so the flown curve is close to the preview but never stale, and
+        /// keeps the flight time the player chose on the slider.</summary>
         public void BeginPlottedFlight()
         {
             if (Flight == null || !Flight.HasPreview) return;
             BeginGoTo(Model?.Get(Flight.Preview.TargetId));
+        }
+
+        /// <summary>
+        /// Re-time the plotted route to a requested flight time. One planner
+        /// build and one redraw, no new minimum solve, so a slider drag can call
+        /// it every frame. The camera is deliberately not re-framed: a drag must
+        /// not yank the view.
+        /// </summary>
+        public void RetimePreview(double flightTimeSeconds)
+        {
+            if (Flight == null || !Flight.HasPreview) return;
+
+            TrajectoryPlan preview = Flight.SetPreviewDuration(flightTimeSeconds);
+            if (preview == null) return;
+
+            ShowPlan(preview, Model?.Get(preview.TargetId));
         }
 
         /// <summary>Throw away a preview, leaving a live flight alone.</summary>

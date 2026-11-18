@@ -42,7 +42,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
-  the Unity EditMode suite. The suite is 356 tests.
+  the Unity EditMode suite. The suite is 365 tests.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -162,6 +162,10 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    10⁻⁹). **Step 7 is done:** [ADR-009](../decisions/adr-009-map-camera-pan.md)
    records the blended map and the `ship + pan` look-at, and the camera,
    flight-session, testing, and index concepts carry the finished layer.
+   **Post-2.5:** the preview carries a **trip-time slider**, so the player can
+   trade a longer trip for a gentler burn and less delta-v before pressing
+   Begin. It is a duration control over the existing torch plan; the coast
+   fraction is deferred behind the transfer conic below.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
 the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
@@ -213,6 +217,26 @@ milestone 2 so the scene work is not blocked on a new propagator.
 * The gravity ceiling stays in place until this lands; it is what makes the
   current capture flyable, and any future planner must satisfy it or report the
   arrival infeasible.
+
+# Deferred: burn-and-coast trip planning
+
+The trip-time slider is the first half of the time/fuel choice: it re-solves the
+torch plan from the fastest feasible time out to three times that, with the
+arrival date and target position moving with it. The second half — **coast in
+the middle** — is deferred and depends on the transfer-conic work above.
+
+* A coast is a Keplerian conic with the commanded thrust exactly zero. A quintic
+  with a flat middle still commands thrust in a gravity field, so it would be a
+  shaped burn pretending to be a coast.
+* The plan becomes departure burn → coast → capture burn, and arrival targeting
+  becomes a Lambert problem: two positions and a time of flight give the coast's
+  velocities. That brings a discontinuous feasible set — no solution below a
+  minimum energy for some geometries, and multiple-revolution branches — which
+  the UI has never had to express.
+* The first version is a `ConicArc` for the cruise plus the existing quintics at
+  the ends. The full Lambert porkchop search comes later.
+* Until then the slider is honest about its limits: it lengthens the torch plan
+  but never offers a coast, and its left end is the drive's own ceiling.
 
 # Immediate next tasks
 

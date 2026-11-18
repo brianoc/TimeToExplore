@@ -99,6 +99,23 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void ARetimedPreviewReportsTheLongerFlightTime()
+        {
+            TrajectoryPlan fastest = _session.Plot("mars", _epoch);
+            double chosen = 2.0 * _session.PreviewMinimumSeconds;
+            _session.SetPreviewDuration(chosen);
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x1,000", _epoch);
+
+            Assert.That(Find(rows, "Flight time")?.Value,
+                Is.EqualTo(SolarSystemHud.FormatDuration(chosen)));
+            Assert.That(Find(rows, "Arrival")?.Value,
+                Is.Not.EqualTo(JulianDate.FormatShort(fastest.ArrivalJulianDate)),
+                "the arrival date slides with the chosen time");
+            Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("m/s²"));
+        }
+
+        [Test]
         public void AStalePreviewIsFlaggedButStillReportsItsPlan()
         {
             TrajectoryPlan preview = _session.Plot("mars", _epoch);

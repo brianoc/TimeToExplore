@@ -156,6 +156,29 @@ smooth capture arc cannot be flown there however long it is given. Lifting the
 arrival to 177,965 km (2.5 radii) puts the local gravity at 4 m/s² and the whole
 trip at 10.3 days with a 9.8 m/s² peak.
 
+## Tuning the trip in the nav computer
+
+The route preview has one **trip-time slider**. Its range is the fastest
+feasible plan — the drive at its 97% margin — to three times that, and every
+position is a fresh solve at that duration: the arcs are rebuilt, the arrival
+date moves, and the target is met where the ephemeris puts it on that date.
+
+The slider is one honest axis with two costs on it:
+
+| Towards the left (fast) | Towards the right (slow) |
+|---|---|
+| Peak thrust rises towards 10 m/s² | Peak thrust falls roughly as `1/T²` |
+| Delta-v rises roughly as `1/T` | Delta-v falls |
+| Arrives sooner | Arrives later |
+
+The current plans already sit at the left end, so there is no "burn harder"
+above them. A faster trip needs a stronger drive (a data value) or the
+burn-and-coast regime below. The slider therefore only stretches the existing
+torch plan: the drive stays on, just more gently. It is **not** a coast. A coast
+is a Keplerian conic, not a quintic with a flat middle, which is why it is
+deferred behind the transfer-conic work
+([navigation and arrival](navigation-and-arrival.md#burn-and-coast-lambert)).
+
 ## What the throttle is
 
 The drive is **throttleable from zero to 10 m/s²**. The plan's acceleration
@@ -252,6 +275,11 @@ world a background traffic pattern that is not player-controlled.
 The navigation computer should present all three with time, delta-v, and arrival
 date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
+
+**Implemented so far:** the torch plan and its trip-time control. Burn-and-coast
+is not implemented, because the coast has to be a Keplerian conic with the drive
+genuinely off; it depends on the transfer-conic arc, not on flattening a
+quintic. The slider deliberately stops at the torch plan until that exists.
 
 # Gravity assists and Oberth
 

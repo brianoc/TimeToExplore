@@ -16,7 +16,9 @@ for tests. Now the scene has a ship:
 * it starts at Gateway Station, so the default trip is the one the suite
   measures;
 * **Plot route** on the details screen plans the trip and draws it as a
-  preview; **Begin flight** replans from the current state and flies it;
+  preview; a **trip-time slider** then re-solves that preview at a longer
+  duration, and **Begin flight** replans from the current state and flies the
+  chosen time;
 * the plan is drawn in the world, with the capture arc dashed, a flip marker,
   an arrival marker, and a ghost at the target's arrival position;
 * the flight panel shows the phase table, the countdown, the throttle, and the
@@ -98,6 +100,21 @@ The details footer splits the old one-press **Go To** into two actions:
 2. **Begin flight** calls `BeginGoTo`, which always replans from the current
    state and date. `FlightSession.Begin` discards the preview, so the flown
    curve is close to the preview but never stale.
+
+Once a preview exists, the details footer grows a **trip-time slider**. Its
+range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds` (three times the
+minimum), and its value is the flight time in seconds. A change calls
+`FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
+departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
+solve, no ship movement, and no camera move. The preview stays pinned to
+`PreviewJulianDate`, so dragging is stable even while the clock runs. The path,
+flip, arrival marker and ghost, and the panel's flight time, peak thrust, and
+delta-v all update; the arrival date slides and the target moves to meet it.
+
+Begin carries the chosen duration into the flight: it solves the fastest plan at
+the current date, then re-times it to the preview's flight time, clamped up to
+the new minimum. That keeps Begin's "always replan" rule while honouring the
+player's choice.
 
 The preview is a promise of shape, not a contract. The clock keeps running,
 warp may be raised, and the ship keeps moving, so the panel ages the preview:
@@ -185,7 +202,8 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | Input | Action |
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
-| **Begin flight** | Replan from the current state and date, then fly; enabled once a preview exists |
+| **Trip-time slider** on a preview | Re-solve the preview at a longer duration; updates the route, arrival, thrust, and delta-v without moving the ship |
+| **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |
 | `X` | Cancel the flight and discard any preview; the ship keeps its state |
@@ -258,7 +276,11 @@ camera, not the trajectory.
 clamping, cancel, teleport, a flight through a body, that planning leaves the
 orrery untouched, and the preview: it never moves the ship, one replaces
 another, Begin consumes it and replans at the current date, Cancel clears it,
-and the staleness window is one percent of the flight. `WarpPolicyTests` covers
+the staleness window is one percent of the flight, the trip-time window is
+`[minimum, 3 × minimum]`, retiming changes the flight time and arrival without
+moving the ship, and Begin keeps the chosen time. `TripPlannerTests` covers the
+pinned duration: exact flight time, a gentler burn and lower delta-v at twice
+the minimum, and an infeasible report below it. `WarpPolicyTests` covers
 the three caps and the scale rounding. `PlanPathTests` covers the arc boundaries
 and the flip. `FlightReportTests` covers the panel rows, the preview and stale
 rows, and the countdown format. `OrbitCameraTests` covers the pitch clamp, yaw

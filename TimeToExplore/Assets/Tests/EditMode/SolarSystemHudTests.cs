@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Rendering;
+using TimeToExplore.Simulation;
 using TimeToExplore.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -267,6 +268,43 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheTripTimeSliderAppearsForAPreviewAndRetimesIt()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _hud.OpenDetails();
+
+            Update();
+            GameObject group = Child("TimeSliderGroup");
+            Assert.That(group.activeSelf, Is.False,
+                "there is nothing to time before a route is plotted");
+
+            _bootstrap.PlotRoute(mars);
+            Update();
+
+            Assert.That(group.activeSelf, Is.True, "a preview offers the trip-time control");
+            Slider slider = SliderNamed("TimeSlider");
+            double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            Assert.That(slider.minValue, Is.EqualTo((float)minimum).Within(1.0),
+                "the left end is the fastest feasible plan");
+            Assert.That(slider.maxValue,
+                Is.EqualTo((float)(minimum * TripPlanner.MaxDurationScale)).Within(10.0));
+            Assert.That(TextNamed("TimeSliderLabel").text, Does.StartWith("TRIP TIME"));
+            Assert.That(TextNamed("TimeSliderValue").text,
+                Is.EqualTo(SolarSystemHud.FormatDuration(minimum) + "  ·  " +
+                           $"{_bootstrap.Flight.Preview.PeakThrottle * 100.0:0}% burn"));
+
+            slider.value = (float)(2.0 * minimum);
+            Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
+                Is.EqualTo(2.0 * minimum).Within(1.0),
+                "moving the handle re-times the preview");
+
+            Update();
+            Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"));
+        }
+
+        [Test]
         public void ClosingTheDetailsScreenDiscardsAPlottedPreview()
         {
             Build();
@@ -350,6 +388,17 @@ namespace TimeToExplore.Tests.EditMode
 
         private Text ButtonLabel(string buttonName) =>
             ButtonNamed(buttonName).GetComponentInChildren<Text>(true);
+
+        private Slider SliderNamed(string name)
+        {
+            foreach (Slider slider in _hud.GetComponentsInChildren<Slider>(true))
+            {
+                if (slider.gameObject.name == name) return slider;
+            }
+
+            Assert.Fail("no HUD Slider named " + name);
+            return null;
+        }
 
         private List<string> ActiveTexts() =>
             _hud.GetComponentsInChildren<Text>(true)

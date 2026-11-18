@@ -76,6 +76,22 @@ The decisions and their trade-offs are in
 [ADR-006](../decisions/adr-006-quintic-plan.md). The measured flight times are
 in the [flight model](flight-model.md#measured-plans).
 
+## The trip-time control
+
+The preview carries a trip-time slider whose range is the fastest feasible plan
+to three times that. Each value is a build at an explicit duration: the arcs,
+the arrival date, and the intercept all move, and the panel reports the new
+flight time, peak thrust, and delta-v. It is a **duration** control, not a
+throttle cap, because `MaxAccelerationMps2` also sets the parking-orbit radius;
+lowering it would silently move where the ship parks.
+
+The control only lengthens the torch plan. Every implemented plan already peaks
+at about 97% of the drive, so the left end is the floor and "burn harder" needs
+a stronger drive or the fuel model. Coasting is not offered: a coast is a
+Keplerian arc with the commanded thrust exactly zero, and a quintic cannot
+represent one in a gravity field. **Coast in the middle is therefore a
+dependency of the transfer-conic work below, not a slider value.**
+
 ## The parking orbit
 
 The arrival state is a **circular orbit in the target's equatorial plane** at
@@ -249,6 +265,11 @@ A hybrid plan is common: a high-thrust departure burn, a Lambert coast, and a
 high-thrust capture burn. The ship spends most of its delta-v at the two ends,
 where the Oberth effect makes it most effective.
 
+**Not implemented.** The nav computer's trip-time slider is the first half of
+this choice (time against thrust and delta-v); the coast fraction is the second
+half and waits for a `ConicArc` and the Lambert solve. A shaped quintic with a
+flat middle would look like a coast but still command thrust, so it is not used.
+
 # Spheres of influence
 
 Outside a planet's sphere of influence (SOI), the Sun dominates. Inside, the
@@ -392,12 +413,14 @@ the simulation, not decoration.
 and a dashed line for the capture arc, an arrival marker at the parking-orbit
 point, a flip marker where the along-track thrust changes sign, a countdown to
 the next arc boundary, a phase table with each leg's start and duration, the
-arrival date, peak thrust, and planned delta-v, and the live throttle. The warp
-policy keeps the final approach visible.
+arrival date, peak thrust, and planned delta-v, the live throttle, and the
+trip-time slider, which re-solves the route and its arrival date as it moves.
+The warp policy keeps the final approach visible.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
-against a budget (there is no budget yet), and the docking corridor.
+against a budget (there is no budget yet), the coast fraction of a
+burn-and-coast plan (it needs the transfer conic), and the docking corridor.
 
 # Failure and rescue
 

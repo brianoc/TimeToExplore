@@ -204,6 +204,62 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void APinnedDurationIsExactAndGentlerThanTheFastestPlan()
+        {
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.Plan(ship, "mars");
+            double requested = 2.0 * fastest.FlightTimeSeconds;
+
+            TrajectoryPlan slower = _planner.PlanAtDuration(ship, "mars", requested);
+
+            TestContext.WriteLine($"fastest {fastest.FlightTimeDays:F2} d at " +
+                                  $"{fastest.PeakThrustMps2:F2} m/s², " +
+                                  $"{fastest.DeltaVMps / 1000.0:N0} km/s; " +
+                                  $"pinned {slower.FlightTimeDays:F2} d at " +
+                                  $"{slower.PeakThrustMps2:F2} m/s², " +
+                                  $"{slower.DeltaVMps / 1000.0:N0} km/s");
+
+            Assert.That(slower.FlightTimeSeconds, Is.EqualTo(requested).Within(1e-3),
+                "the pinned duration is the plan's own flight time");
+            Assert.That(slower.DepartureJulianDate, Is.EqualTo(ship.JulianDate).Within(1e-12));
+            Assert.That(slower.IsFeasible, Is.True);
+            Assert.That(slower.PeakThrustMps2, Is.LessThan(fastest.PeakThrustMps2),
+                "more time means a gentler burn");
+            Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps),
+                "more time also means less delta-v");
+            Assert.That(slower.Arcs.Count, Is.EqualTo(fastest.Arcs.Count));
+        }
+
+        [Test]
+        public void APinnedDurationBelowTheMinimumIsReportedInfeasible()
+        {
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.Plan(ship, "mars");
+
+            // 95% is below the feasible minimum but still above the arcs'
+            // kinematic floor, so the pinned duration is exact and the peak
+            // thrust, which rises as 1/T², is over the drive.
+            TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
+                0.95 * fastest.FlightTimeSeconds);
+
+            Assert.That(tooFast.FlightTimeSeconds,
+                Is.EqualTo(0.95 * fastest.FlightTimeSeconds).Within(1e-3));
+            Assert.That(tooFast.IsFeasible, Is.False,
+                "the drive cannot fly the fastest plan at 95% of its time");
+        }
+
+        [Test]
+        public void APinnedDurationMustBeAPositiveFiniteTime()
+        {
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _planner.PlanAtDuration(ship, "mars", 0.0));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _planner.PlanAtDuration(ship, "mars", double.NaN));
+        }
+
+        [Test]
         public void PlanningIsDeterministic()
         {
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");

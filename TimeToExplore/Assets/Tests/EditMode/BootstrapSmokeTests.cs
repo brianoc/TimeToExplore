@@ -4,7 +4,9 @@ using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Player;
 using TimeToExplore.Simulation;
+using TimeToExplore.UI;
 using UnityEngine;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace TimeToExplore.Tests.EditMode
@@ -197,6 +199,44 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
             Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void TheTripTimeSliderRetimesThePreviewThroughTheRealHud()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            SolarSystemHud hud = _root.GetComponent<SolarSystemHud>();
+            Assert.That(hud, Is.Not.Null);
+            hud.OpenDetails();
+            _bootstrap.PlotRoute(mars);
+
+            // The HUD builds its rows and the slider's range in its own Update,
+            // which edit mode does not call for us.
+            InvokeHud("Update");
+
+            Slider slider = _root.GetComponentInChildren<Slider>(true);
+            Assert.That(slider, Is.Not.Null, "the preview footer carries a trip-time slider");
+            Assert.That(slider.gameObject.activeInHierarchy, Is.True);
+
+            double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            Assert.That(slider.minValue, Is.EqualTo((float)minimum).Within(1.0));
+            Assert.That(slider.maxValue,
+                Is.EqualTo((float)(minimum * TripPlanner.MaxDurationScale)).Within(10.0));
+
+            Vector3d before = _bootstrap.ShipPositionM;
+            float chosen = (float)(2.0 * minimum);
+            slider.value = chosen;
+
+            Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
+                Is.EqualTo(chosen).Within(1.0),
+                "moving the handle re-times the preview");
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.Zero,
+                "the slider never moves the ship");
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True,
+                "the re-timed route is redrawn");
         }
 
         [Test]
@@ -446,6 +486,16 @@ namespace TimeToExplore.Tests.EditMode
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(info, Is.Not.Null, $"SolarSystemBootstrap.{method} is missing");
             info.Invoke(_bootstrap, null);
+        }
+
+        private void InvokeHud(string method)
+        {
+            SolarSystemHud hud = _root.GetComponent<SolarSystemHud>();
+            Assert.That(hud, Is.Not.Null, "the HUD is part of the bootstrap");
+            MethodInfo info = typeof(SolarSystemHud).GetMethod(method,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(info, Is.Not.Null, $"SolarSystemHud.{method} is missing");
+            info.Invoke(hud, null);
         }
     }
 }

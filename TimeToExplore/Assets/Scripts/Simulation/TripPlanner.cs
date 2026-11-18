@@ -33,6 +33,12 @@ namespace TimeToExplore.Simulation
         /// arc is treated as a seam rather than a flight phase.</summary>
         public const double MinimumArcSeconds = 1.0;
 
+        /// <summary>How far the nav computer lets a player stretch a trip beyond
+        /// the fastest feasible plan. Three times the minimum roughly divides
+        /// the geometric peak thrust by nine, which is enough to see the
+        /// time/thrust trade without turning the plan into a drift.</summary>
+        public const double MaxDurationScale = 3.0;
+
         private readonly SolarSystemModel _model;
         private readonly GravityField _gravity;
 
@@ -72,14 +78,7 @@ namespace TimeToExplore.Simulation
 
         public TrajectoryPlan Plan(ShipState ship, string targetId)
         {
-            BodyRuntime target = _model.Get(targetId);
-            if (target == null)
-                throw new ArgumentException($"No body '{targetId}' in the catalogue.", nameof(targetId));
-            if (target.Gm <= 0.0)
-                throw new ArgumentException(
-                    $"'{targetId}' has no gravitational parameter to orbit.", nameof(targetId));
-            if (!(MaxAccelerationMps2 > 0.0))
-                throw new InvalidOperationException("MaxAccelerationMps2 must be positive.");
+            BodyRuntime target = RequireTarget(targetId);
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
             double distance = Math.Max(Vector3d.Distance(targetPosition, ship.PositionM),
@@ -112,6 +111,49 @@ namespace TimeToExplore.Simulation
                 plan = Build(ship, target, Math.Max(required, total)).Plan;
 
             return plan;
+        }
+
+        /// <summary>
+        /// Build a plan at an explicit flight time instead of solving for the
+        /// shortest feasible one. The arcs are allocated so the last one ends at
+        /// <paramref name="durationSeconds"/> after departure; the target is
+        /// still where the ephemeris puts it on that date, so the path is
+        /// re-solved rather than rescaled.
+        ///
+        /// The one exception is the arcs' own kinematic floor: a request shorter
+        /// than the combined 2√(d/a) of the legs cannot shrink them further, and
+        /// the plan comes out longer than asked. The nav computer's minimum
+        /// feasible time is above that floor, so a slider value is exact.
+        ///
+        /// A duration at or above the plan's minimum is normally feasible, but
+        /// the arrival geometry moves with the date, so the caller must still
+        /// read <see cref="TrajectoryPlan.IsFeasible"/>. Durations below the
+        /// minimum are accepted and reported as infeasible rather than silently
+        /// stretched: the panel can then explain why the drive cannot fly them.
+        /// </summary>
+        public TrajectoryPlan PlanAtDuration(ShipState ship, string targetId,
+            double durationSeconds)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds),
+                    "A pinned flight time must be finite and positive.");
+
+            return Build(ship, target, durationSeconds).Plan;
+        }
+
+        private BodyRuntime RequireTarget(string targetId)
+        {
+            BodyRuntime target = _model.Get(targetId);
+            if (target == null)
+                throw new ArgumentException($"No body '{targetId}' in the catalogue.", nameof(targetId));
+            if (target.Gm <= 0.0)
+                throw new ArgumentException(
+                    $"'{targetId}' has no gravitational parameter to orbit.", nameof(targetId));
+            if (!(MaxAccelerationMps2 > 0.0))
+                throw new InvalidOperationException("MaxAccelerationMps2 must be positive.");
+
+            return target;
         }
 
         private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds)

@@ -33,6 +33,7 @@ namespace TimeToExplore.UI
 
         private const float DetailsHeaderHeight = 95f;
         private const float DetailsFooterHeight = 122f;
+        private const float DetailsSliderHeight = 52f;
         private const float DetailsHeadingHeight = 22f;
         private const float DetailsRowHeight = 17f;
         private const float FlightHeaderHeight = 58f;
@@ -104,6 +105,17 @@ namespace TimeToExplore.UI
         private Button _closeButton;
         private Button _jumpButton;
         private BodyRuntime _detailsBody;
+
+        // Trip-time control, shown only while a preview for the selected body
+        // exists. The slider's value is flight time in seconds, so its range is
+        // the preview's own feasible window.
+        private RectTransform _timeSliderGroup;
+        private Slider _timeSlider;
+        private Text _timeLabel;
+        private Text _timeValue;
+        private bool _syncingSlider;
+        private string _sliderBodyId;
+        private double _sliderMinimumSeconds = double.NaN;
 
         private GameObject _flightPanel;
         private RectTransform _flightRect;
@@ -396,11 +408,24 @@ namespace TimeToExplore.UI
 
             List<DetailRow> rows = BodyDetails.Build(body, _owner.Model, _owner.ShipPositionM);
 
+            // The click that opened this panel must not also press a control.
+            bool interactive = !_detailsOpenedThisFrame;
+            FlightSession flight = _owner.Flight;
+            bool flying = flight != null && flight.IsFlying;
+            bool rejected = flight != null &&
+                            flight.Status == FlightStatus.Rejected &&
+                            flight.TargetId == body.Id;
+            bool hasPreview = flight != null && flight.HasPreview &&
+                              flight.Preview.TargetId == body.Id;
+            bool plottable = body.Gm > 0.0 && !rejected;
+            bool showSlider = hasPreview;
+
             float rowsHeight = 0f;
             foreach (DetailRow row in rows)
                 rowsHeight += row.IsHeading ? DetailsHeadingHeight : DetailsRowHeight;
 
-            float height = DetailsHeaderHeight + rowsHeight + DetailsFooterHeight;
+            float height = DetailsHeaderHeight + rowsHeight + DetailsFooterHeight +
+                           (showSlider ? DetailsSliderHeight : 0f);
             _detailsRect.sizeDelta = new Vector2(DetailsWidth, height);
 
             _detailsTitle.text = body.Name;
@@ -458,16 +483,7 @@ namespace TimeToExplore.UI
             PlaceTopLeft(_closeButton.image, 18f + contentWidth - 98f, buttonY + 36f, 98f, 28f);
             PlaceTopLeft(_jumpButton.image, 18f, buttonY + 70f, contentWidth - 106f, 28f);
 
-            // The click that opened this panel must not also press a button.
-            bool interactive = !_detailsOpenedThisFrame;
-            FlightSession flight = _owner.Flight;
-            bool flying = flight != null && flight.IsFlying;
-            bool rejected = flight != null &&
-                            flight.Status == FlightStatus.Rejected &&
-                            flight.TargetId == body.Id;
-            bool hasPreview = flight != null && flight.HasPreview &&
-                              flight.Preview.TargetId == body.Id;
-            bool plottable = body.Gm > 0.0 && !rejected;
+            PlaceTimeSlider(showSlider, flight, height, contentWidth);
 
             _routeLabel.text = rejected
                 ? "Plan infeasible"
@@ -506,6 +522,66 @@ namespace TimeToExplore.UI
         private void OnJumpClicked()
         {
             _owner?.FocusSelected();
+        }
+
+        /// <summary>
+        /// Position and fill the trip-time control. It appears only while the
+        /// preview belongs to the selected body, and its range is that
+        /// preview's feasible window, so the handle cannot ask for a plan the
+        /// drive cannot fly. The slider's value is flight time in seconds.
+        /// </summary>
+        private void PlaceTimeSlider(bool show, FlightSession flight, float height,
+            float contentWidth)
+        {
+            if (_timeSliderGroup == null) return;
+
+            if (_timeSliderGroup.gameObject.activeSelf != show)
+                _timeSliderGroup.gameObject.SetActive(show);
+            if (!show || flight?.Preview == null) return;
+
+            float top = height - DetailsFooterHeight - DetailsSliderHeight + 4f;
+            _timeSliderGroup.anchoredPosition = new Vector2(18f, -top);
+            _timeSliderGroup.sizeDelta = new Vector2(contentWidth, DetailsSliderHeight);
+            _timeSlider.interactable = !_detailsOpenedThisFrame;
+
+            double minimum = flight.PreviewMinimumSeconds;
+            double maximum = flight.PreviewMaximumSeconds;
+            double duration = flight.PreviewDurationSeconds;
+
+            bool rangeChanged = _sliderBodyId != flight.Preview.TargetId ||
+                                _sliderMinimumSeconds != minimum;
+            if (rangeChanged)
+            {
+                _sliderBodyId = flight.Preview.TargetId;
+                _sliderMinimumSeconds = minimum;
+                _syncingSlider = true;
+                _timeSlider.minValue = (float)minimum;
+                _timeSlider.maxValue = (float)maximum;
+                _timeSlider.value = (float)duration;
+                _syncingSlider = false;
+            }
+            else if (Mathf.Abs(_timeSlider.value - (float)duration) >
+                     Mathf.Max(0.5f, 1e-4f * (float)(maximum - minimum)))
+            {
+                // The plan and the handle disagree (a fresh plot or a replan).
+                // Do not fight a drag: the retimed plan's flight time is exactly
+                // the value the handle already holds, so this only runs on a
+                // deliberate reset.
+                _syncingSlider = true;
+                _timeSlider.value = (float)duration;
+                _syncingSlider = false;
+            }
+
+            double scale = minimum > 0.0 ? duration / minimum : 1.0;
+            _timeLabel.text = $"TRIP TIME   ×{scale:0.00}";
+            _timeValue.text = FormatDuration(duration) + "  ·  " +
+                              $"{flight.Preview.PeakThrottle * 100.0:0}% burn";
+        }
+
+        private void OnTimeSliderChanged(float seconds)
+        {
+            if (_syncingSlider || _owner == null) return;
+            _owner.RetimePreview(seconds);
         }
 
         // --- Flight panel -------------------------------------------------------
@@ -858,6 +934,8 @@ namespace TimeToExplore.UI
             _jumpButton = CreateButton(parent, "JumpButton", "Jump (debug)");
             _jumpButton.onClick.AddListener(OnJumpClicked);
 
+            BuildTimeSlider(parent);
+
             _detailsPanel.SetActive(false);
         }
 
@@ -891,6 +969,85 @@ namespace TimeToExplore.UI
                 _flightRows.Add(CreateRow(parent, "FlightRow" + i));
 
             _flightPanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// A uGUI slider in the details footer. The fill and handle geometry
+        /// follows Unity's stock Slider layout, because <see cref="Slider"/>
+        /// drives those anchors itself; the background is the raycast target so
+        /// a click anywhere on the track starts a drag.
+        /// </summary>
+        private void BuildTimeSlider(Transform parent)
+        {
+            _timeSliderGroup = CreateRect("TimeSliderGroup", parent, new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero,
+                new Vector2(DetailsWidth - 36f, DetailsSliderHeight));
+
+            _timeLabel = CreateText(_timeSliderGroup, "TimeSliderLabel", "TRIP TIME", 10,
+                SectionColour, FontStyle.Bold);
+            PlaceTopLeft(_timeLabel, 0f, 0f, 190f, 16f);
+
+            _timeValue = CreateText(_timeSliderGroup, "TimeSliderValue", "", 11, TextColour,
+                FontStyle.Normal, TextAnchor.MiddleRight);
+            PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 0f, 210f, 16f);
+
+            var go = new GameObject("TimeSlider", typeof(RectTransform), typeof(Slider));
+            go.transform.SetParent(_timeSliderGroup, false);
+            PlaceTopLeft((RectTransform)go.transform, 0f, 22f, DetailsWidth - 36f, 18f);
+
+            Image background = CreateImage(go.transform, "Background",
+                new Color(0.10f, 0.15f, 0.22f, 0.95f), Vector2.zero);
+            RectTransform backgroundRect = background.rectTransform;
+            backgroundRect.anchorMin = new Vector2(0f, 0.5f);
+            backgroundRect.anchorMax = new Vector2(1f, 0.5f);
+            backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+            backgroundRect.anchoredPosition = Vector2.zero;
+            backgroundRect.sizeDelta = new Vector2(-16f, 4f);
+            background.raycastTarget = true;
+
+            RectTransform fillArea = CreateRect("Fill Area", go.transform,
+                new Vector2(0f, 0.25f), new Vector2(1f, 0.75f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, Vector2.zero);
+            fillArea.offsetMin = new Vector2(8f, 0f);
+            fillArea.offsetMax = new Vector2(-8f, 0f);
+
+            Image fill = CreateImage(fillArea, "Fill",
+                new Color(0.34f, 0.61f, 0.92f, 1f), Vector2.zero);
+            RectTransform fillRect = fill.rectTransform;
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+
+            RectTransform handleArea = CreateRect("Handle Slide Area", go.transform,
+                Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero,
+                Vector2.zero);
+            handleArea.offsetMin = new Vector2(8f, 0f);
+            handleArea.offsetMax = new Vector2(-8f, 0f);
+
+            Image handle = CreateImage(handleArea, "Handle",
+                new Color(0.86f, 0.93f, 1f, 1f), Vector2.zero);
+            RectTransform handleRect = handle.rectTransform;
+            handleRect.anchorMin = new Vector2(0f, 0f);
+            handleRect.anchorMax = new Vector2(0f, 1f);
+            handleRect.pivot = new Vector2(0.5f, 0.5f);
+            handleRect.anchoredPosition = Vector2.zero;
+            handleRect.sizeDelta = new Vector2(12f, 0f);
+            handle.raycastTarget = true;
+
+            _timeSlider = go.GetComponent<Slider>();
+            _timeSlider.fillRect = fillRect;
+            _timeSlider.handleRect = handleRect;
+            _timeSlider.targetGraphic = handle;
+            _timeSlider.direction = Slider.Direction.LeftToRight;
+            _timeSlider.transition = Selectable.Transition.None;
+            _timeSlider.wholeNumbers = false;
+            _timeSlider.minValue = 0f;
+            _timeSlider.maxValue = 1f;
+            _timeSlider.value = 0f;
+            _timeSlider.onValueChanged.AddListener(OnTimeSliderChanged);
+
+            _timeSliderGroup.gameObject.SetActive(false);
         }
 
         // --- Widget helpers -----------------------------------------------------
@@ -1070,7 +1227,12 @@ namespace TimeToExplore.UI
         private static void PlaceTopLeft(Graphic graphic, float x, float y, float width,
             float height)
         {
-            RectTransform rect = graphic.rectTransform;
+            PlaceTopLeft(graphic.rectTransform, x, y, width, height);
+        }
+
+        private static void PlaceTopLeft(RectTransform rect, float x, float y, float width,
+            float height)
+        {
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);

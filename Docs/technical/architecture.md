@@ -108,9 +108,10 @@ graph and reads the `.asmdef` files as the source of truth. See
      markers and picks a body; the details screen updates from the same model
      state. uGUI owns the pointer over a panel, so a button press never also
      selects the body behind it.
-6. **Go To** calls `TripPlanner.Plan`, raises the warp, draws the plan, and hands
-   the ship to the session. On arrival the plan completes, the drive goes off,
-   and the ship coasts in the parking orbit.
+6. **Plot route** calls `TripPlanner.Plan` and draws the preview; its
+   **trip-time slider** re-solves the preview with `TripPlanner.PlanAtDuration`;
+   **Begin flight** replans and hands the ship to the session. On arrival the
+   plan completes, the drive goes off, and the ship coasts in the parking orbit.
 
 # Core types
 
@@ -144,9 +145,9 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The circular orbit a Go To finishes in, with its gravity ceiling |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve: three arcs, moving-target loop, thrust check |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three arcs, moving-target loop, thrust check) and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, and the flight loop |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; coasts an idle ship; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
 Gateway→Mars and Mars→Earth are both exercised end to end by the suite, and the
