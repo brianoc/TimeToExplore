@@ -101,8 +101,9 @@ Done in `Assets/Scripts/` and verified through the scene's frame loop:
 * The ship starts at Gateway Station, so the default trip is the tested one.
 * **Go To** on the details screen calls `TripPlanner.Plan`, raises the warp to a
   ~30-second trip, and flies it.
-* `TrajectoryLine` draws the sampled path: solid departure and cruise, dashed
-  capture, a flip marker at the thrust reversal, and an arrival marker.
+* `TrajectoryLine` draws the sampled path as one coloured line per arc by path
+  type — gold quintic, blue dashed conic, red fixed burn, shaded within a run of
+  one type — with a flip marker at the thrust reversal and an arrival marker.
 * The flight panel is a phase table — departure, cruise, capture with dates and
   durations, arrival date, flight time, peak thrust and throttle, delta-v — plus
   the live phase, next-event countdown, throttle, and warp.

@@ -430,6 +430,62 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheRouteLegendListsTheVisibleArcTypesAboveTheFlightPanel()
+        {
+            Build();
+            Assert.That(_hud.RouteLegendVisible, Is.False, "no route, no legend");
+            Assert.That(Child("RouteLegend").GetComponent<Image>().raycastTarget, Is.False,
+                "the legend is informational and must not swallow a click");
+
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            Update();
+
+            Assert.That(_hud.RouteLegendVisible, Is.True);
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(1),
+                "the quintic plan is three arcs of one type");
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+            Assert.That(_hud.RouteLegendColour(0), Is.EqualTo(RouteColours.Quintic));
+            Assert.That(_hud.RouteLegendIsDashed(0), Is.False);
+
+            var flightRect = (RectTransform)Child("FlightPanel").transform;
+            var legendRect = (RectTransform)Child("RouteLegend").transform;
+            Assert.That(legendRect.anchoredPosition.y,
+                Is.EqualTo(12f + flightRect.sizeDelta.y + 8f).Within(0.5f),
+                "the legend stacks above the flight panel in the bottom-left corner");
+
+            _bootstrap.SetArrivalStyle(CaptureStyle.FiniteBurn);
+            Update();
+
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(3),
+                "quintic departure/cruise, conic coasts, and the fixed burn");
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
+            Assert.That(_hud.RouteLegendColour(1), Is.EqualTo(RouteColours.Conic));
+            Assert.That(_hud.RouteLegendIsDashed(1), Is.True);
+            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Fixed burn"));
+            Assert.That(_hud.RouteLegendColour(2), Is.EqualTo(RouteColours.FixedBurn));
+            Assert.That(_hud.RouteLegendIsDashed(2), Is.False);
+
+            int conicRows = 0;
+            for (int i = 0; i < _hud.RouteLegendCount; i++)
+                if (_hud.RouteLegendLabel(i) == "Conic arc") conicRows++;
+            Assert.That(conicRows, Is.EqualTo(1),
+                "the three conic arcs share one legend row");
+
+            _bootstrap.ShowHud = false;
+            Update();
+            Assert.That(_hud.RouteLegendVisible, Is.False,
+                "H hides the legend with the rest of the status overlay");
+
+            _bootstrap.ShowHud = true;
+            _bootstrap.DiscardPreview();
+            Update();
+            Assert.That(_hud.RouteLegendVisible, Is.False, "discarding the route hides it");
+        }
+
+        [Test]
         public void ClosingTheDetailsScreenDiscardsAPlottedPreview()
         {
             Build();

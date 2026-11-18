@@ -19,9 +19,11 @@ for tests. Now the scene has a ship:
   preview; a **trip-time slider** then re-solves that preview at a longer
   duration, and **Begin flight** replans from the current state and flies the
   chosen time;
-* the plan is drawn in the world, with coasts dashed, the parking coast green,
-  the fixed burn solid, burn markers at each impulse or burn start, a flip
-  marker, an arrival marker, and a ghost at the target's arrival position;
+* the plan is drawn in the world as one coloured line per arc — gold for a
+  quintic, blue dashed for a conic, red for a fixed burn, with same-type runs
+  shaded — plus burn markers at each impulse or burn start, a flip marker, an
+  arrival marker, a ghost at the target's arrival position, and a bottom-left
+  route legend;
 * the flight panel shows the phase table, the countdown, the throttle, the
   delta-v, and either the impulsive burn total or the hybrid's fixed-and-trim
   split;
@@ -154,14 +156,34 @@ usable.
 `TrajectoryLine` samples the plan once with `PathTessellation`: each arc is
 subdivided by curvature until every chord's midpoint deviates by at most
 5 × 10⁻⁴ of the chord length, capped at 4,096 segments per arc. The polyline is
-then re-projected into the ship-relative frame every frame. It draws
+then re-projected into the ship-relative frame every frame. **Each arc is its
+own line**, coloured by `RouteColours` from the **type of path** it carries, so
+the player reads the physics rather than the flight phase:
 
-* a **solid** line for the departure and cruise arcs, and for the hybrid fixed
-  burn;
-* a **dashed** line for coast arcs and the quintic capture, using a repeating
-  alpha texture tiled along the line, with the dash length tied to the line
-  width so it stays readable at any zoom;
-* a **green dashed** line for the short parking coast after circularisation;
+| Arc type | Used for | Colour | Style |
+|---|---|---|---|
+| Quintic (`Quintic`) | departure, cruise, and the continuous quintic capture | warm gold | solid — the drive is on |
+| Conic (`ConicArc`) | the conic coast, the transfer ellipse, and the parking orbit | sky blue | dashed — no thrust on the reference path |
+| Fixed burn (`FiniteBurnArc`) | the hybrid's one long capture burn | red | solid — the drive is on |
+
+There are no other path types in the project; those three are every
+implementation of `IArcPath`. Line style therefore also says *whether the drive
+is on*, and colour says *what kind of path flies*.
+
+**A run of the same type takes different shades.** The planner often emits two
+or three same-type arcs back to back: the quintic arrival is three quintics, the
+conic arrival is three conics (coast, transfer ellipse, parking), and the hybrid
+ends with a transfer conic followed by a parking conic. `RouteColours.RunIndex`
+counts the preceding arcs of the same type, and the run takes the base colour,
+then a darker shade, then a paler shade; the hue never changes, so the arcs
+still read as one family. A fixed burn between two conic runs starts the second
+run again at the base shade.
+
+Each line is a pooled `LineRenderer` with its own material, so a dashed arc
+tiles its repeating alpha texture along its own length, with the dash length
+tied to the line width so it stays readable at any zoom. Beyond the lines it
+draws
+
 * **burn markers** at the start of each impulsive arc (the conic periapsis
   capture and apoapsis circularisation) and at the hybrid's finite burn;
 * an **orange marker at the flip** — the point where the along-track thrust
@@ -171,6 +193,16 @@ then re-projected into the ship-relative frame every frame. It draws
 * a smaller pale-blue **ghost at the target's arrival position**, so the player
   sees where the planet will be when the route meets it. `TARGET AT ARRIVAL`
   labels it, and the ghost is drawn for a preview and a live flight alike.
+
+A **route legend** sits in the bottom-left corner while a route is on screen: one
+row per arc type present, with a swatch that carries both the colour and the
+solid/dashed style, and the type label — *Quintic arc*, *Conic arc*, *Fixed
+burn*. It is built from the trajectory line, so it always matches what is drawn:
+the default plan is a single *Quintic arc* row, the conic arrival adds *Conic
+arc*, and the hybrid adds *Fixed burn*. Consecutive same-type arcs share their
+row; the shade change is a within-family cue, not a separate legend entry. The
+legend stacks above the flight panel, which owns the corner during a route, and
+it hides with the HUD on `H`.
 
 Line width follows the **camera distance**, not the path: `LineWidth` converts
 3 screen pixels to render units at the camera's depth, so the route stays a

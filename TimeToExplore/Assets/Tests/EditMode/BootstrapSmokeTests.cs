@@ -210,6 +210,63 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(1e-3f), "the ghost marks where Mars will be on arrival");
         }
 
+        /// <summary>
+        /// Each arc is its own line, coloured by the type of path it carries.
+        /// Consecutive arcs of one type take different shades, so the three
+        /// quintics of the default plan and the three conics of the coasted
+        /// plan stay individually readable, and the hybrid's fixed burn sits in
+        /// red between two conic runs.
+        /// </summary>
+        [Test]
+        public void TheRouteDrawsOneColouredLinePerArc()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.PlotRoute(mars);
+
+            Assert.That(_bootstrap.Trajectory.ArcCount,
+                Is.EqualTo(_bootstrap.Flight.Preview.Arcs.Count));
+            Assert.That(_bootstrap.Trajectory.ArcColour(0),
+                Is.EqualTo(RouteColours.Quintic));
+            Assert.That(_bootstrap.Trajectory.ArcColour(1),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(0)),
+                "the cruise is the second quintic in a row");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(0), Is.EqualTo("Quintic arc"));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(0), Is.False);
+
+            _bootstrap.SetArrivalStyle(CaptureStyle.Conic);
+
+            Assert.That(_bootstrap.Trajectory.ArcCount, Is.EqualTo(5),
+                "departure, cruise, inbound coast, capture ellipse, parking");
+            Assert.That(_bootstrap.Trajectory.ArcColour(2),
+                Is.EqualTo(RouteColours.Conic));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(2), Is.True);
+            Assert.That(_bootstrap.Trajectory.ArcLabel(2), Is.EqualTo("Conic arc"));
+            Assert.That(_bootstrap.Trajectory.ArcColour(3),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(2)),
+                "the transfer ellipse is the second conic in a row");
+            Assert.That(_bootstrap.Trajectory.ArcColour(4),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(2)));
+            Assert.That(_bootstrap.Trajectory.ArcColour(4),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(3)));
+
+            _bootstrap.SetArrivalStyle(CaptureStyle.FiniteBurn);
+
+            Assert.That(_bootstrap.Trajectory.ArcCount, Is.EqualTo(6),
+                "the fixed burn splits the arrival into two conic runs");
+            Assert.That(_bootstrap.Trajectory.ArcColour(3),
+                Is.EqualTo(RouteColours.FixedBurn));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.False,
+                "a fixed-thrust burn is solid");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Fixed burn"));
+            Assert.That(_bootstrap.Trajectory.ArcColour(4),
+                Is.EqualTo(_bootstrap.Trajectory.ArcColour(2)),
+                "the transfer coast restarts the conic run at the base shade");
+            Assert.That(_bootstrap.Trajectory.ArcColour(5),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(4)),
+                "the parking coast is the second conic in its run");
+        }
+
         [Test]
         public void BeginningAPlottedRouteReplansAtTheCurrentDateAndFlies()
         {

@@ -482,16 +482,17 @@ The player needs to see:
 Without these, true scale is just a black screen with dots. The HUD is part of
 the simulation, not decoration.
 
-**Implemented:** the sampled trajectory as a solid line for departure and cruise,
-a dashed line for coast arcs and the capture, a green dashed line for the short
-parking coast, burn markers at each impulsive periapsis or circularisation, an
+**Implemented:** one coloured route line per arc by path type — gold solid for
+a quintic, blue dashed for a conic, red solid for a fixed burn, with consecutive
+same-type arcs taking darker or paler shades of the same hue — burn markers at
+each impulsive periapsis or circularisation, an
 arrival marker at the parking-orbit point, a flip marker where the along-track
 thrust changes sign, a countdown to the next arc boundary, a phase table with
 each leg's start and duration, the arrival date, peak thrust, planned delta-v
 and the burn total, the live throttle, the trip-time slider, which re-solves the
 route and its arrival date as it moves, and the arrival-style buttons, which
 rebuild the preview as a fast quintic capture, a cheap conic coast, or the
-hybrid fixed-thrust arrival. The hybrid's long burn is a solid line with a
+hybrid fixed-thrust arrival. The hybrid's long burn is a solid red line with a
 marker at its start, the terminal trim marks the injection point, and the
 `Burns` row reads the fixed and trim delta-v separately. The warp policy keeps
 the final approach visible, and the periapsis and circularisation are plan

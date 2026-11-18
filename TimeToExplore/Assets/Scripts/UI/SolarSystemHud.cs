@@ -40,8 +40,15 @@ namespace TimeToExplore.UI
         private const float FlightHeadingHeight = 20f;
         private const float FlightRowHeight = 17f;
 
+        private const float LegendWidth = 178f;
+        private const float LegendHeaderHeight = 22f;
+        private const float LegendRowHeight = 18f;
+        private const float LegendSwatchWidth = 26f;
+        private const float LegendSwatchHeight = 3f;
+
         private const int MaxDetailsRows = 20;
         private const int MaxFlightRows = 22;
+        private const int MaxLegendRows = 6;
         private const int InitialLabelPool = 24;
 
         private static readonly Color StatusBackground = new Color(0.01f, 0.02f, 0.04f, 0.82f);
@@ -138,6 +145,18 @@ namespace TimeToExplore.UI
         private Text _flightNext;
         private readonly List<RowView> _flightRows = new List<RowView>();
 
+        // The route legend: one swatch and label per distinct arc kind on the
+        // visible plan, stacked above the flight panel in the bottom-left
+        // corner. Informational only, so it never swallows a click.
+        private GameObject _legendPanel;
+        private RectTransform _legendRect;
+        private Text _legendTitle;
+        private readonly List<LegendRow> _legendRows = new List<LegendRow>();
+        private readonly string[] _legendLabels = new string[MaxLegendRows];
+        private readonly Color[] _legendColours = new Color[MaxLegendRows];
+        private readonly bool[] _legendDashed = new bool[MaxLegendRows];
+        private int _legendCount;
+
         private readonly List<LabelView> _labels = new List<LabelView>();
         private int _labelCursor;
         private GameObject _crosshair;
@@ -160,6 +179,21 @@ namespace TimeToExplore.UI
 
         /// <summary>The details screen is open. Clicking a body opens it.</summary>
         public bool DetailsOpen => _detailsOpen;
+
+        /// <summary>True while the route colour legend is on screen.</summary>
+        public bool RouteLegendVisible => _legendPanel != null && _legendPanel.activeSelf;
+
+        /// <summary>Number of distinct arc kinds listed in the route legend.</summary>
+        public int RouteLegendCount => _legendCount;
+
+        public string RouteLegendLabel(int index) =>
+            index >= 0 && index < _legendCount ? _legendLabels[index] : null;
+
+        public Color RouteLegendColour(int index) =>
+            index >= 0 && index < _legendCount ? _legendColours[index] : Color.clear;
+
+        public bool RouteLegendIsDashed(int index) =>
+            index >= 0 && index < _legendCount && _legendDashed[index];
 
         /// <summary>Open the details screen for the current selection.</summary>
         public void OpenDetails()
@@ -323,6 +357,7 @@ namespace TimeToExplore.UI
             RefreshStatus();
             RefreshDetails();
             RefreshFlight();
+            RefreshLegend();
             RefreshOverlay();
         }
 
@@ -759,6 +794,81 @@ namespace TimeToExplore.UI
             }
         }
 
+        // --- Route legend -------------------------------------------------------
+
+        /// <summary>
+        /// The colour key for the plotted or flying route: one row per distinct
+        /// arc kind, in the order the arcs appear on the plan. It is rebuilt from
+        /// the trajectory line, so it always matches what is drawn — a conic
+        /// route lists its blue coast and pink capture, while the hybrid lists a
+        /// red burn between the coasts. The panel sits above the flight panel,
+        /// which owns the bottom-left corner whenever a route is on screen.
+        /// </summary>
+        private void RefreshLegend()
+        {
+            TrajectoryLine trajectory = _owner.Trajectory;
+            _legendCount = 0;
+
+            if (_owner.ShowHud && trajectory != null && trajectory.IsShowing)
+            {
+                for (int i = 0; i < trajectory.ArcCount && _legendCount < MaxLegendRows; i++)
+                {
+                    string label = trajectory.ArcLabel(i);
+                    if (string.IsNullOrEmpty(label) || HasLegendLabel(label)) continue;
+
+                    _legendLabels[_legendCount] = label;
+                    _legendColours[_legendCount] = trajectory.ArcColour(i);
+                    _legendDashed[_legendCount] = trajectory.ArcIsDashed(i);
+                    _legendCount++;
+                }
+            }
+
+            bool show = _legendCount > 0;
+            if (_legendPanel.activeSelf != show) _legendPanel.SetActive(show);
+            if (!show) return;
+
+            float height = LegendHeaderHeight + _legendCount * LegendRowHeight + 6f;
+            _legendRect.sizeDelta = new Vector2(LegendWidth, height);
+
+            float flightHeight = HasFlightPanel && _flightPanel.activeSelf
+                ? _flightRect.sizeDelta.y
+                : 0f;
+            _legendRect.anchoredPosition = new Vector2(12f,
+                12f + flightHeight + (flightHeight > 0f ? 8f : 0f));
+
+            for (int i = 0; i < _legendRows.Count; i++)
+            {
+                LegendRow row = _legendRows[i];
+                bool used = i < _legendCount;
+                bool dashed = used && _legendDashed[i];
+
+                if (row.Label.gameObject.activeSelf != used)
+                    row.Label.gameObject.SetActive(used);
+                if (row.Solid.gameObject.activeSelf != (used && !dashed))
+                    row.Solid.gameObject.SetActive(used && !dashed);
+                for (int d = 0; d < row.Dashes.Length; d++)
+                {
+                    if (row.Dashes[d].gameObject.activeSelf != dashed)
+                        row.Dashes[d].gameObject.SetActive(dashed);
+                }
+
+                if (!used) continue;
+
+                Color colour = _legendColours[i];
+                row.Label.text = _legendLabels[i];
+                row.Solid.color = colour;
+                for (int d = 0; d < row.Dashes.Length; d++)
+                    row.Dashes[d].color = colour;
+            }
+        }
+
+        private bool HasLegendLabel(string label)
+        {
+            for (int i = 0; i < _legendCount; i++)
+                if (_legendLabels[i] == label) return true;
+            return false;
+        }
+
         private static Color FlightAccent(FlightStatus status)
         {
             switch (status)
@@ -931,6 +1041,7 @@ namespace TimeToExplore.UI
             BuildStatusPanel();
             BuildDetailsPanel();
             BuildFlightPanel();
+            BuildLegendPanel();
 
             for (int i = 0; i < InitialLabelPool; i++)
                 _labels.Add(CreateLabel(_overlay, "Label" + i));
@@ -1081,6 +1192,56 @@ namespace TimeToExplore.UI
                 _flightRows.Add(CreateRow(parent, "FlightRow" + i));
 
             _flightPanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// The route legend: a small bottom-left panel of colour swatches and
+        /// arc labels. Built once with a fixed row pool; <see cref="RefreshLegend"/>
+        /// fills only the rows the visible plan needs. A solid arc is one bar, a
+        /// coast is three short dashes, so the swatch carries the line style as
+        /// well as the colour.
+        /// </summary>
+        private void BuildLegendPanel()
+        {
+            _legendPanel = CreatePanel("RouteLegend", new Vector2(0f, 0f), new Vector2(0f, 0f),
+                new Vector2(12f, 12f), new Vector2(LegendWidth, LegendHeaderHeight + 6f),
+                FlightBackground);
+            _legendPanel.GetComponent<Image>().raycastTarget = false;
+            _legendRect = (RectTransform)_legendPanel.transform;
+
+            Transform parent = _legendPanel.transform;
+            _legendTitle = CreateText(parent, "RouteLegendTitle", "ROUTE", 10, SectionColour,
+                FontStyle.Bold);
+            PlaceTopLeft(_legendTitle, 12f, 7f, LegendWidth - 24f, 16f);
+
+            for (int i = 0; i < MaxLegendRows; i++)
+            {
+                float y = LegendHeaderHeight + i * LegendRowHeight;
+
+                Image solid = CreateImage(parent, "RouteLegendSolid" + i, Color.white,
+                    new Vector2(LegendSwatchWidth, LegendSwatchHeight));
+                PlaceTopLeft(solid, 12f, y + 6f, LegendSwatchWidth, LegendSwatchHeight);
+
+                var dashes = new Image[3];
+                for (int d = 0; d < dashes.Length; d++)
+                {
+                    dashes[d] = CreateImage(parent, "RouteLegendDash" + i + "_" + d,
+                        Color.white, new Vector2(5f, LegendSwatchHeight));
+                    PlaceTopLeft(dashes[d], 12f + d * 9f, y + 6f, 5f, LegendSwatchHeight);
+                }
+
+                Text label = CreateText(parent, "RouteLegendLabel" + i, "", 11, RowValueColour,
+                    FontStyle.Normal, TextAnchor.MiddleLeft);
+                PlaceTopLeft(label, 12f + LegendSwatchWidth + 10f, y,
+                    LegendWidth - 24f - LegendSwatchWidth - 10f, 16f);
+
+                _legendRows.Add(new LegendRow { Solid = solid, Dashes = dashes, Label = label });
+                solid.gameObject.SetActive(false);
+                foreach (Image dash in dashes) dash.gameObject.SetActive(false);
+                label.gameObject.SetActive(false);
+            }
+
+            _legendPanel.SetActive(false);
         }
 
         /// <summary>
@@ -1441,6 +1602,13 @@ namespace TimeToExplore.UI
         {
             public Text Text;
             public RectTransform Rect;
+        }
+
+        private sealed class LegendRow
+        {
+            public Image Solid;
+            public Image[] Dashes;
+            public Text Label;
         }
     }
 }

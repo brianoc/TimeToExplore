@@ -276,8 +276,11 @@ The details screen footer splits **Go To** into two steps:
    state at the current date and hands the new plan to the session: the same
    warp raise, warp policy, and flight path as today's Go To.
 
-The preview draws through the existing `TrajectoryLine`: solid departure and
-cruise, dashed capture, the orange flip marker, the green arrival marker. The
+The preview draws through the existing `TrajectoryLine`: one coloured line per
+arc by path type — gold quintic, blue dashed conic, red fixed burn, with
+same-type runs shaded — the orange flip marker and the green arrival marker, and
+a bottom-left **route legend** that lists the arc types while the route is on
+screen. The
 quintic arcs are already smooth curves; at map zoom they read as the route the
 design wants. Add one navigation aid already on the list in
 [Navigation and arrival](/simulation/navigation-and-arrival.md): a **ghost

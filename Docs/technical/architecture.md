@@ -30,7 +30,7 @@ SolarSystemModel ──► BodyRuntime (positions in metres, doubles)
         ▼
 SolarSystemRenderer ──► BodyView (spheres / cubes)
         │              ├── OrbitLine (planet and moon ellipses)
-        │              └── TrajectoryLine (route path, dashed capture, arrival ghost)
+        │              └── TrajectoryLine (one coloured line per arc, arrival ghost)
         ▼
 Camera at render origin ◄── ShipController (input only; debug free flight)
         │                        ▲
@@ -180,7 +180,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight |
 | `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
-| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | Adaptive route path, dashed coasts and capture, green parking coast, burn, flip, arrival, and target-arrival ghost markers |
+| `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
+| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |
@@ -195,7 +196,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |
-| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, and details screen |
+| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, details screen, and the route colour legend |
 | `UiInput` | `Scripts/UI/UiInput.cs` | The one EventSystem and the Input System UI module; the pointer-over-panel query |
 | `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, hotkeys, and the `EnableMapView` comparison switch |
 | `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu (shipped scene and system-map scene) |
@@ -243,7 +244,7 @@ why the content is tested without a rendered frame.
 | `CanvasScaler` | Scale With Screen Size, 1920×1080 reference, match 0.5; the IMGUI pixel sizes hold at 1080p and scale with the window |
 | `GraphicRaycaster` | turns the pointer into uGUI hits, so panels swallow clicks |
 | `EventSystem` + `InputSystemUIInputModule` | created by `UiInput` only when the scene has none; carries the Input System's default UI actions |
-| Panel `Image`s | status, details, and flight backgrounds; `raycastTarget = true` |
+| Panel `Image`s | status, details, flight, and route-legend backgrounds; `raycastTarget = true` except the informational legend, which is `false` |
 | `Text` widgets | legacy `Text` with `LegacyRuntime.ttf` (no TextMeshPro assets); role-separated colours and sizes match the IMGUI styles |
 | Button widgets | `Button.onClick`, with the same labels and the same `interactive` rules as before |
 | Label pool | one `Text` + `Shadow` per world label, `raycastTarget = false`, placed from projected screen points |
@@ -251,7 +252,13 @@ why the content is tested without a rendered frame.
 
 The detail and flight rows are pooled: the builders return at most 19 and 17
 rows, so the panel creates 20 and 18 row entries and toggles them. Selecting a
-new body rewrites the same entries instead of rebuilding the panel.
+new body rewrites the same entries instead of rebuilding the panel. The route
+legend is pooled the same way: a fixed row of swatch and label widgets is filled
+from the visible plan's arc types (quintic, conic, fixed burn), one row per
+type, so the three conic arcs of a coasted arrival share a row while their
+shades differ on the map. It is rebuilt from `TrajectoryLine`, not from a
+hard-coded list, so the key always matches the drawn colours, and it stacks
+above the flight panel in the bottom-left corner.
 
 Panel input is a uGUI question (`EventSystem.current.IsPointerOverGameObject()`)
 rather than a rectangle test. That covers the whole panel including its buttons,
@@ -260,9 +267,10 @@ details screen is guarded by one frame (`_detailsOpenedThisFrame`): the buttons
 are non-interactable during the frame the panel appears, in whichever order the
 EventSystem and the HUD update. World picking stays on `PlayerControls`.
 
-`ShowHud` hides the status panel; `ShowLabels` hides body, ship, and trajectory
-labels. The details screen, flight panel, hover prompt, and crosshair keep their
-old visibility rules. See [ADR-013](/decisions/adr-013-ugui-hud.md).
+`ShowHud` hides the status panel and the route legend; `ShowLabels` hides body,
+ship, and trajectory labels. The details screen, flight panel, hover prompt, and
+crosshair keep their old visibility rules. See
+[ADR-013](/decisions/adr-013-ugui-hud.md).
 
 # Double precision boundary
 
@@ -306,7 +314,7 @@ they survive `Shader.Find` in a player build:
 |---|---|---|
 | `TimeToExplore/BodyLit` | planets, moons, asteroids, stations | Lambert from the global `_SunPosition`, with `_Ambient` and per-body `_Color` |
 | `TimeToExplore/Unlit` | the Sun, the ship marker, plan markers | flat `_Color`, no lighting |
-| `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for the dashed capture, and `fwidth` edge coverage for antialiasing without MSAA |
+| `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for dashed arcs, and `fwidth` edge coverage for antialiasing without MSAA |
 | `TimeToExplore/Skybox` | the camera's skybox | the baked Milky Way band from `_MainTex` plus three procedural star layers, with per-material band and star gain |
 
 `SkyView` builds the skybox material at runtime and points the camera at it: the
@@ -337,14 +345,20 @@ thin naturally with perspective. Its colour comes from `OrbitColours`, one
 fixed warm-to-cool ramp sample per planet, so the local and solar system views
 draw the same hue.
 
-`TrajectoryLine` is the same idea for a plan, with two differences. It samples
-each arc once when the plan is made with `PathTessellation`, which subdivides by
-curvature until every chord's midpoint is within 5 × 10⁻⁴ of its own length;
-uniform sampling in time spent the budget on the straight cruise and left
-visible chords in the tight departure and capture turns. The capture arc uses a
-repeating alpha texture in `LineTextureMode.Tile`, with the texture scale tied
-to the line width, so the dashes stay the same apparent length at any zoom.
-`TimeToExplore/Line` feathers both strip edges over one screen pixel with
+`TrajectoryLine` is the same idea for a plan, with three differences. Each arc
+is its own line, and `RouteColours` gives it a colour and dash style from the
+**path type** it carries: gold for a quintic, sky blue dashed for a conic, red
+for a fixed burn. Consecutive arcs of one type — the three quintics of the
+default plan, the three conics of the coasted arrival, the transfer and parking
+conics after the hybrid burn — take the base colour, a darker shade, and a paler
+shade in turn, with the hue held, so one run still reads as one family. It
+samples each arc once when the plan is made with `PathTessellation`, which
+subdivides by curvature until every chord's midpoint is within 5 × 10⁻⁴ of its
+own length; uniform sampling in time spent the budget on the straight cruise and
+left visible chords in the tight departure and capture turns. Each dashed arc
+uses a repeating alpha texture in `LineTextureMode.Tile`, with its own texture
+scale tied to the line width, so the dashes stay the same apparent length at any
+zoom. `TimeToExplore/Line` feathers both strip edges over one screen pixel with
 `fwidth`, so geometric edges are antialiased even though the pipeline runs with
 MSAA off.
 
