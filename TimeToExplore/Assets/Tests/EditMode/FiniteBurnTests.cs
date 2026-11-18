@@ -7,9 +7,10 @@ using TimeToExplore.Simulation;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
-    /// The fixed-thrust arc and the finite capture geometry it feeds. The arc
-    /// must be an honest constant-magnitude burn; the capture must clear the
-    /// body and reach the higher parking radius the finite burn needs.
+    /// The fixed-thrust arc and the hybrid capture geometry it feeds. The arc
+    /// must be an honest constant-magnitude burn; the capture must end the burn
+    /// at a safe injection radius, trim the end state onto the exact transfer
+    /// ellipse, and keep the parking radius at the conic value.
     /// </summary>
     public class FiniteBurnArcTests
     {
@@ -90,6 +91,27 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheRadiusCrossingMatchesAPostHocSimulation()
+        {
+            var startPosition = new Vector3d(4_000_000.0, 0.0, 0.0);
+            var startVelocity = new Vector3d(0.0, 3_200.0, 0.0);
+            const double targetRadius = 3_700_000.0;
+            const double acceleration = 2.0;
+
+            Assert.That(FiniteBurnArc.SimulateUntilRadius(_mars, startPosition,
+                startVelocity, acceleration, true, targetRadius, 2_000.0,
+                out double crossing, out Vector3d endPosition,
+                out Vector3d endVelocity), Is.True);
+
+            Assert.That(crossing, Is.GreaterThan(0.0));
+            Assert.That(endPosition.Magnitude,
+                Is.EqualTo(targetRadius).Within(100.0));
+            FiniteBurnArc.Simulate(_mars, startPosition, startVelocity,
+                acceleration, true, crossing, 4096, out _, out _, out double minimum);
+            Assert.That(minimum, Is.LessThanOrEqualTo(targetRadius + 1.0));
+        }
+
+        [Test]
         public void AFiniteBurnTessellatesWithinThePlanTolerance()
         {
             FiniteBurnArc arc = FiniteBurnArc.Create(_model, _mars,
@@ -121,12 +143,13 @@ namespace TimeToExplore.Tests.EditMode
     }
 
     /// <summary>
-    /// The fixed-thrust capture: the inbound coast, the finite periapsis burn,
-    /// the transfer coast, the finite circularisation, and the parking orbit.
-    /// The important property is that the finite burn does not put the ship
-    /// into the body on the way around.
+    /// The hybrid capture: the inbound coast, one finite capture burn to the
+    /// injection radius, the trim onto the transfer ellipse, the transfer coast,
+    /// and the conic circularisation. The important properties are that the
+    /// burn clears the body, the trim reaches the exact transfer, and the
+    /// parking radius is the conic one at every level.
     /// </summary>
-    public class FiniteBurnCaptureTests
+    public class HybridCaptureTests
     {
         private SolarSystemModel _model;
 
@@ -136,12 +159,12 @@ namespace TimeToExplore.Tests.EditMode
             _model = CatalogueFixture.LoadModel();
         }
 
-        private FiniteBurnCapture Build(string bodyId)
+        private HybridCapture Build(string bodyId, double levelG)
         {
             BodyRuntime target = _model.Get(bodyId);
             double soi = SphereOfInfluence.RadiusM(target);
-            double parkingRadius = ParkingOrbit.FiniteBurnRadiusM(target);
-            double periapsisRadius = ParkingOrbit.FiniteBurnPeriapsisRadiusM(target);
+            double parkingRadius = ParkingOrbit.ConicRadiusM(target);
+            double periapsisRadius = ParkingOrbit.PeriapsisRadiusM(target);
 
             TransferConic chain = TransferConic.Build(target,
                 new Vector3d(1.0, 0.0, 0.0), soi, 5_000.0,
@@ -152,8 +175,9 @@ namespace TimeToExplore.Tests.EditMode
                 _model.CurrentJulianDate, chain.InboundSeconds,
                 chain.EntryLocalPositionM, chain.EntryLocalVelocityMps);
 
-            return FiniteBurnCapture.Build(target, inbound, parkingRadius,
-                periapsisRadius, TripPlanner.DefaultFixedBurnAccelerationMps2);
+            return HybridCapture.Build(target, inbound, parkingRadius,
+                periapsisRadius,
+                Math.Min(levelG * TripPlanner.StandardGravityMps2, 9.7));
         }
 
         [TestCase("venus")]
@@ -162,32 +186,31 @@ namespace TimeToExplore.Tests.EditMode
         [TestCase("jupiter")]
         [TestCase("saturn")]
         [TestCase("moon")]
-        public void EveryMajorTargetHasASafeFixedBurnCapture(string bodyId)
+        public void EveryMajorTargetHasASafeHybridCapture(string bodyId)
         {
             BodyRuntime target = _model.Get(bodyId);
-            FiniteBurnCapture capture = Build(bodyId);
+            HybridCapture capture = Build(bodyId, TripPlanner.DefaultBurnLevelG);
 
             TestContext.WriteLine($"{bodyId}: burn {capture.BurnSeconds / 60.0:F1} min, " +
-                                  $"post periapsis " +
-                                  $"{capture.PostBurnPeriapsisRadiusM / 1000.0:N0} km " +
-                                  $"(body {target.RadiusM / 1000.0:N0}), " +
-                                  $"post apoapsis " +
-                                  $"{capture.PostBurnApoapsisRadiusM / 1000.0:N0} km, " +
+                                  $"injection {capture.InjectionRadiusM / 1000.0:N0} km, " +
                                   $"parking {capture.ParkingRadiusM / 1000.0:N0} km, " +
-                                  $"circ {capture.CircularisationSeconds:F0} s");
+                                  $"fixed {capture.FiniteDeltaVMps / 1000.0:F2} km/s, " +
+                                  $"trim {capture.TrimDeltaVMps / 1000.0:F2} km/s, " +
+                                  $"circ {capture.CircularisationDeltaVMps / 1000.0:F2} km/s");
 
             Assert.That(capture.IsValid, Is.True, capture.InvalidReason);
             Assert.That(capture.BurnSeconds, Is.GreaterThan(0.0));
             Assert.That(capture.TransferSeconds, Is.GreaterThan(0.0));
-            Assert.That(capture.CircularisationSeconds, Is.GreaterThan(0.0));
             Assert.That(capture.ParkingSeconds, Is.GreaterThan(0.0));
 
-            Assert.That(capture.PostBurnPeriapsisRadiusM,
-                Is.GreaterThan(target.RadiusM + FiniteBurnCapture.MinimumClearanceAltitudeM));
+            Assert.That(capture.InjectionRadiusM, Is.LessThan(capture.ParkingRadiusM),
+                "the injection point is below the parking radius");
             Assert.That(capture.MinimumRadiusM,
-                Is.GreaterThan(target.RadiusM + FiniteBurnCapture.MinimumClearanceAltitudeM));
-            Assert.That(capture.PostBurnApoapsisRadiusM,
-                Is.EqualTo(capture.ParkingRadiusM).Within(1_000.0));
+                Is.GreaterThan(target.RadiusM + HybridCapture.MinimumClearanceAltitudeM),
+                "the whole burn clears the body");
+            Assert.That(capture.ApoapsisLocalPositionM.Magnitude,
+                Is.EqualTo(capture.ParkingRadiusM).Within(1_000.0),
+                "the transfer ellipse reaches the parking radius");
         }
 
         [TestCase("venus")]
@@ -196,29 +219,94 @@ namespace TimeToExplore.Tests.EditMode
         [TestCase("jupiter")]
         [TestCase("saturn")]
         [TestCase("moon")]
-        public void TheCircularisationLeavesANearlyCircularOrbit(string bodyId)
+        public void TheTrimLandsOnTheExactTransferEllipse(string bodyId)
         {
-            BodyRuntime target = _model.Get(bodyId);
-            FiniteBurnCapture capture = Build(bodyId);
+            HybridCapture capture = Build(bodyId, TripPlanner.DefaultBurnLevelG);
             Assert.That(capture.IsValid, Is.True, capture.InvalidReason);
 
-            FiniteBurnArc.Simulate(target, capture.CircularisationStartLocalPositionM,
-                capture.CircularisationStartLocalVelocityMps,
-                TripPlanner.DefaultFixedBurnAccelerationMps2, false,
-                capture.CircularisationSeconds, 512,
-                out Vector3d endPosition, out Vector3d endVelocity, out _);
+            ConicElements transfer = ConicElements.FromState(
+                capture.BurnEndLocalPositionM, capture.TransferStartLocalVelocityMps,
+                _model.Get(bodyId).Gm);
 
-            double eccentricity = TwoBody.Eccentricity(endPosition, endVelocity, target.Gm);
-            double radius = endPosition.Magnitude;
-            TestContext.WriteLine($"{bodyId}: circularised e={eccentricity:E3}, " +
-                                  $"r={radius / 1000.0:N0} km, " +
-                                  $"burn {capture.CircularisationSeconds:F0} s");
+            TestContext.WriteLine($"{bodyId}: transfer e={transfer.Eccentricity:F4}, " +
+                                  $"peri {transfer.PeriapsisRadiusM / 1000.0:N0} km, " +
+                                  $"apo {transfer.ApoapsisRadiusM / 1000.0:N0} km");
 
-            Assert.That(eccentricity, Is.LessThan(0.01),
-                $"{bodyId}: e={eccentricity:E3}, r={radius / 1000.0:N0} km");
-            Assert.That(radius,
-                Is.EqualTo(ParkingOrbit.FiniteBurnRadiusM(target)).Within(
-                    0.05 * ParkingOrbit.FiniteBurnRadiusM(target)));
+            Assert.That(transfer.IsElliptic, Is.True);
+            Assert.That(transfer.PeriapsisRadiusM,
+                Is.EqualTo(capture.InjectionRadiusM).Within(1.0));
+            Assert.That(transfer.ApoapsisRadiusM,
+                Is.EqualTo(capture.ParkingRadiusM).Within(1_000.0));
+
+            double expected = (capture.TransferStartLocalVelocityMps
+                               - capture.BurnEndLocalVelocityMps).Magnitude;
+            Assert.That(capture.TrimDeltaVMps, Is.EqualTo(expected).Within(1e-6));
+        }
+
+        [TestCase(0.3)]
+        [TestCase(0.5)]
+        [TestCase(1.0)]
+        public void TheBurnClearsTheBodyAndTheParkingRadiusStaysConic(double levelG)
+        {
+            BodyRuntime mars = _model.Get("mars");
+            HybridCapture capture = Build("mars", levelG);
+            Assert.That(capture.IsValid, Is.True, capture.InvalidReason);
+
+            TestContext.WriteLine($"{levelG:F1} g: fixed {capture.FiniteDeltaVMps / 1000.0:F2} km/s, " +
+                                  $"trim {capture.TrimDeltaVMps / 1000.0:F2} km/s, " +
+                                  $"burn {capture.BurnSeconds:F0} s, " +
+                                  $"injection {capture.InjectionRadiusM / 1000.0:N0} km");
+
+            Assert.That(capture.AccelerationMps2,
+                Is.EqualTo(Math.Min(levelG * TripPlanner.StandardGravityMps2, 9.7))
+                    .Within(1e-9));
+            Assert.That(capture.MinimumRadiusM,
+                Is.GreaterThan(mars.RadiusM + HybridCapture.MinimumClearanceAltitudeM));
+            Assert.That(capture.ParkingRadiusM,
+                Is.EqualTo(ParkingOrbit.ConicRadiusM(mars)).Within(1e-9));
+            Assert.That(capture.TrimDeltaVMps, Is.GreaterThan(0.0));
+            Assert.That(capture.CircularisationDeltaVMps, Is.GreaterThan(0.0));
+        }
+
+        [Test]
+        public void AStrongerBurnLeavesASmallerTrimOnMars()
+        {
+            HybridCapture gentle = Build("mars", 0.3);
+            HybridCapture strong = Build("mars", 1.0);
+
+            TestContext.WriteLine($"0.3 g trim {gentle.TrimDeltaVMps / 1000.0:F2}, " +
+                                  $"1.0 g trim {strong.TrimDeltaVMps / 1000.0:F2}");
+
+            Assert.That(gentle.IsValid, Is.True, gentle.InvalidReason);
+            Assert.That(strong.IsValid, Is.True, strong.InvalidReason);
+            Assert.That(strong.TrimDeltaVMps, Is.LessThan(gentle.TrimDeltaVMps),
+                "a stronger fixed burn does more of the capture");
+            Assert.That(strong.BurnSeconds, Is.LessThan(gentle.BurnSeconds));
+        }
+
+        [TestCase("venus")]
+        [TestCase("earth")]
+        [TestCase("mars")]
+        [TestCase("jupiter")]
+        [TestCase("saturn")]
+        [TestCase("moon")]
+        public void TheCircularisationLeavesACircularParkingOrbit(string bodyId)
+        {
+            BodyRuntime target = _model.Get(bodyId);
+            HybridCapture capture = Build(bodyId, TripPlanner.DefaultBurnLevelG);
+            Assert.That(capture.IsValid, Is.True, capture.InvalidReason);
+
+            ConicElements parked = ConicElements.FromState(
+                capture.ApoapsisLocalPositionM, capture.ParkingLocalVelocityMps,
+                target.Gm);
+
+            TestContext.WriteLine($"{bodyId}: parked e={parked.Eccentricity:E3}, " +
+                                  $"r={parked.PeriapsisRadiusM / 1000.0:N0} km");
+
+            Assert.That(parked.IsElliptic, Is.True);
+            Assert.That(parked.Eccentricity, Is.LessThan(1e-3));
+            Assert.That(parked.PeriapsisRadiusM,
+                Is.EqualTo(ParkingOrbit.ConicRadiusM(target)).Within(1_000.0));
         }
     }
 }

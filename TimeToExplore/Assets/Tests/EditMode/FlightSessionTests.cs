@@ -193,7 +193,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void AdvancingAFixedBurnArrivalStepsThroughTheBurnsAndArrivesMatched()
+        public void AdvancingAFixedBurnArrivalStepsThroughTheBurnAndArrivesMatched()
         {
             var planner = new TripPlanner(_model, _gravity)
             {
@@ -203,9 +203,9 @@ namespace TimeToExplore.Tests.EditMode
             session.PlaceAt("gateway", _epoch);
 
             TrajectoryPlan plan = session.Begin("mars", _epoch);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
             Assert.That(plan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
-            Assert.That(plan.ImpulseDeltaVMps, Is.EqualTo(0.0).Within(1e-9));
+            Assert.That(plan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
 
             FlightStep step = session.Advance(plan.ArrivalJulianDate, 200_000);
             double positionError = Vector3d.Distance(session.State.PositionM,

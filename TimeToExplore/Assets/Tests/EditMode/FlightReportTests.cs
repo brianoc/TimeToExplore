@@ -153,7 +153,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void AFixedBurnArrivalShowsTheFixedLevelAndNotAnImpulse()
+        public void AHybridArrivalShowsTheFixedBurnAndTheTrimSplit()
         {
             var planner = new TripPlanner(_model, _gravity)
             {
@@ -169,6 +169,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Capture"), Is.Not.Null);
             Assert.That(Find(rows, "Parking"), Is.Not.Null);
             Assert.That(Find(rows, "Burns")?.Value, Does.Contain("fixed"));
+            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("trim"));
             Assert.That(Find(rows, "Burns")?.Value, Does.Contain("0.3 g"));
             Assert.That(Find(rows, "Burns")?.Value, Does.Not.Contain("impulsive"));
         }

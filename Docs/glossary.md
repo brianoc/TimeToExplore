@@ -82,8 +82,8 @@ Four different questions hide under the word "thrust". Keep them apart:
 
 An **impulse** is a manoeuvre model, not a thrust profile. It is a Δv applied
 at an instant; the ship cannot fly it. The conic style's burns are *modelled*
-as impulses; the finite-burn style integrates real burns. The terms below are
-the agreed vocabulary for the hybrid capture; the linked concepts own the
+as impulses; the hybrid style integrates one real capture burn. The terms below
+are the agreed vocabulary for the hybrid capture; the linked concepts own the
 mechanics and the measured numbers.
 
 ### Drive and command
@@ -117,14 +117,15 @@ time. It has no duration and no thrust level, and it is not a burn. The plan
 carries it as `PlanArc.EntryImpulseVectorMps`; the conic style's capture and
 circularisation are impulses
 ([ADR-014](/decisions/adr-014-keplerian-coast.md)). The ship cannot fly one,
-which is why the finite-burn style exists.
+which is why the hybrid style flies the long capture as a real burn and keeps
+only the trim and circularisation impulsive.
 
 **Impulsive burn** — a burn *modelled* as an impulse. Say "modelled as an
 impulse", not "the impulse", when the burn is the subject.
 
 **Finite burn** — a burn with a real duration and a commanded level.
-`FiniteBurnArc` integrates it through the two-body field. The fixed-thrust
-style's two burns are finite.
+`FiniteBurnArc` integrates it through the two-body field. The hybrid style flies
+its capture as one finite burn; the trim and circularisation stay impulses.
 
 **Continuous burn** — a burn whose level varies smoothly; the quintic's thrust
 profile. It is still a burn when the level is low.
@@ -157,62 +158,72 @@ subtotal, by whichever model the style uses.
 
 **Arrival style** — the player's choice for how the target leg ends:
 `CaptureStyle.Quintic` ("Quintic capture"), `CaptureStyle.Conic` ("Conic
-coast"), and `CaptureStyle.FiniteBurn` ("0.3 g burn"). The code type says
-capture; prose says arrival. Use "arrival style" in prose.
+coast"), and `CaptureStyle.FiniteBurn` ("X g burn", the hybrid). The code type
+says capture; prose says arrival. Use "arrival style" in prose.
 
 **Capture** — the target-leg phase from sphere-of-influence entry to the parking
-orbit. It is not one burn: the conic and finite styles contain an inbound
-coast, a capture burn, a transfer coast, a circularisation burn, and a parking
-coast.
+orbit. It is not one burn: the conic and hybrid styles contain an inbound coast,
+a capture burn or burn-plus-trim, a transfer coast, a circularisation burn, and a
+parking coast.
 
-**Capture periapsis** — the low periapsis the capture aims for, where the
-capture burn happens or straddles. Not the parking radius, and not the planned
-injection point.
+**Capture periapsis** — the low periapsis the capture aims for, where the conic
+capture burn happens. The hybrid's burn ends at an **injection radius** near
+this periapsis; it is not the parking radius, and the injection radius may be
+raised.
 
-**Transfer ellipse** — the coast from the capture periapsis to the parking
-radius; its apoapsis is the parking radius.
+**Transfer ellipse** — the coast from the capture periapsis (or the hybrid's
+injection point) to the parking radius; its apoapsis is the parking radius.
 
 **Circularisation** — the prograde burn at the transfer apoapsis that turns the
 ellipse into the circular parking orbit.
 
 **Parking orbit / parking radius** — the final circular orbit and its radius.
-The quintic variant is lifted by the gravity ceiling, the conic variant is
-natural, and the finite-burn variant is higher to pay for the periapsis loss
+The quintic variant is lifted by the gravity ceiling; the conic and hybrid
+variants use the natural radius. The hybrid does not raise it to pay for the
+finite-burn loss; the terminal trim does that
 ([navigation and arrival](/simulation/navigation-and-arrival.md#the-parking-orbit)).
 
 **Sphere of influence (SOI)** — the planning boundary where a cruise arc hands
 over to a capture arc. It is not a dynamics boundary: the ship feels every
 body's gravity at once.
 
-### The hybrid capture (planned)
+### The hybrid capture
 
-These terms belong to the next arrival style; they are agreed here so the
-implementation does not invent a second vocabulary.
+**Hybrid capture** — one fixed burn for the long part of the capture, then an
+impulse trim for exactness. At zero burn level it degenerates to the conic
+arrival.
 
-**Hybrid capture** — a fixed burn for the long part of the capture, then an
-impulse for exactness. At zero burn level it degenerates to the conic arrival.
+**Burn level** — the player's fixed-thrust acceleration, from 0 g to 1 g,
+clamped to the drive's thrust margin. It is a property of the `FiniteBurn`
+arrival style, not a fourth style.
 
 **Injection point** — the radius `r_i` where the fixed burn ends and the trim is
-applied. It must be reachable, below the parking radius, and clear of the body.
+applied. It starts at the conic periapsis, must be below the parking radius and
+clear of the body, and the solver may raise it when no safe burn reaches the
+nominal one.
 
 **Trim (terminal impulse)** — the impulse that corrects the fixed burn's end
 state to the exact transfer ellipse. It is an impulse, so it is not itself
 flyable; if every burn must be finite, it becomes a short finite trim and
 accepts a residual or a targeting iteration.
 
-**Burn split** — the finite Δv against the impulse Δv in a hybrid.
+**Burn split** — the finite Δv against the impulse Δv (trim plus
+circularisation) in a hybrid. The flight panel's `Burns` row reports it.
 
 **Finite-burn loss** — the umbrella for two distinct costs: the **Δv penalty**
 of a finite burn against the same manoeuvre as an impulse, and the **periapsis
 loss** during the burn. It is a like-for-like penalty, not a claim that the
-finite style always costs more: the finite style parks higher and flies a
-different geometry, and Saturn's measured finite capture (10.40 km/s) is below
-the conic one (10.66).
+finite style always costs more: the hybrid parks lower than the old `1.4 R`
+finite style and spends less there (Jupiter 18.44 against 19.68), but it still
+spends more than the pure impulse capture (Jupiter 17.40). The loss is the price
+of flying the burn.
 
-**Straddling periapsis** — centring the finite burn on periapsis so it starts
-before and ends after. The **impulse-at-midpoint approximation** treats the
-finite burn as an impulse at its midpoint for a first estimate; it is an
-approximation, not the solver's model.
+**Straddling periapsis** — centring a finite burn on periapsis so it starts
+before and ends after. The first fixed style did this; the hybrid ends the burn
+at the injection radius instead, and the trim cancels the radial velocity that
+the early end leaves. The **impulse-at-midpoint approximation** treats a finite
+burn as an impulse at its midpoint for a first estimate; it is an approximation,
+not the solver's model.
 
 **"Equivalent to the impulse"** — the same final orbit, not the same path,
 timing, or Δv. Say "reaches the same final orbit" when that is what is meant.

@@ -397,10 +397,15 @@ namespace TimeToExplore
         }
 
         /// <summary>How the nav computer brings the ship into orbit: the fast
-        /// quintic capture, the cheap coasted conic one, or the same conic with
-        /// finite 0.3 g burns instead of impulses.</summary>
+        /// quintic capture, the cheap coasted conic one, or the conic coasts
+        /// with one fixed-thrust capture burn and an impulse trim.</summary>
         public CaptureStyle ArrivalStyle =>
             Flight != null ? Flight.ArrivalStyle : CaptureStyle.Quintic;
+
+        /// <summary>The chosen fixed-burn level in g, or the planner's default
+        /// when there is no flight session yet.</summary>
+        public double BurnLevelG =>
+            Flight != null ? Flight.BurnLevelG : TripPlanner.DefaultBurnLevelG;
 
         /// <summary>
         /// Switch the arrival style. A plotted preview is rebuilt against the
@@ -413,6 +418,21 @@ namespace TimeToExplore
             if (Flight == null || Flight.ArrivalStyle == style) return;
 
             TrajectoryPlan preview = Flight.SetArrivalStyle(style);
+            if (preview == null) return;
+
+            ShowPlan(preview, Model?.Get(preview.TargetId));
+        }
+
+        /// <summary>
+        /// Set the fixed-burn level. A fixed-thrust preview is rebuilt from the
+        /// pinned departure state and redrawn; any other style just remembers
+        /// the level for the next switch. A live flight is left alone.
+        /// </summary>
+        public void SetBurnLevel(double levelG)
+        {
+            if (Flight == null) return;
+
+            TrajectoryPlan preview = Flight.SetBurnLevel(levelG);
             if (preview == null) return;
 
             ShowPlan(preview, Model?.Get(preview.TargetId));

@@ -167,14 +167,19 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheFixedBurnBoundariesAreTheTwoBurns()
+        public void TheFixedBurnBoundariesAreOneBurnAndTheTwoImpulses()
         {
             int finite = 0;
+            int impulses = 0;
             foreach (PlanArc arc in _fixedBurnPlan.Arcs)
+            {
                 if (arc.IsFiniteBurn) finite++;
+                if (arc.EntryImpulseMps > 0.0) impulses++;
+            }
 
-            Assert.That(finite, Is.EqualTo(2));
-            Assert.That(_fixedBurnPlan.ImpulseDeltaVMps, Is.EqualTo(0.0).Within(1e-9));
+            Assert.That(finite, Is.EqualTo(1));
+            Assert.That(impulses, Is.EqualTo(2), "the trim and the circularisation");
+            Assert.That(_fixedBurnPlan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
             Assert.That(_fixedBurnPlan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
         }
 

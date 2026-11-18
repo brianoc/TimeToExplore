@@ -33,7 +33,7 @@ namespace TimeToExplore.UI
 
         private const float DetailsHeaderHeight = 95f;
         private const float DetailsFooterHeight = 122f;
-        private const float DetailsSliderHeight = 76f;
+        private const float DetailsSliderHeight = 118f;
         private const float DetailsHeadingHeight = 22f;
         private const float DetailsRowHeight = 17f;
         private const float FlightHeaderHeight = 58f;
@@ -41,7 +41,7 @@ namespace TimeToExplore.UI
         private const float FlightRowHeight = 17f;
 
         private const int MaxDetailsRows = 20;
-        private const int MaxFlightRows = 18;
+        private const int MaxFlightRows = 22;
         private const int InitialLabelPool = 24;
 
         private static readonly Color StatusBackground = new Color(0.01f, 0.02f, 0.04f, 0.82f);
@@ -122,7 +122,11 @@ namespace TimeToExplore.UI
         private Slider _timeSlider;
         private Text _timeLabel;
         private Text _timeValue;
+        private Text _burnLevelLabel;
+        private Text _burnLevelValue;
+        private Slider _burnLevelSlider;
         private bool _syncingSlider;
+        private bool _syncingBurnLevel;
         private string _sliderBodyId;
         private double _sliderMinimumSeconds = double.NaN;
 
@@ -570,8 +574,33 @@ namespace TimeToExplore.UI
 
             if (flight != null)
             {
-                double g = flight.FixedBurnAccelerationMps2 / 9.80665;
+                double g = flight.FixedBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
                 _fixedBurnLabel.text = $"{g:0.0} g burn";
+            }
+
+            bool showLevel = style == CaptureStyle.FiniteBurn;
+            if (_burnLevelLabel.gameObject.activeSelf != showLevel)
+            {
+                _burnLevelLabel.gameObject.SetActive(showLevel);
+                _burnLevelValue.gameObject.SetActive(showLevel);
+                _burnLevelSlider.gameObject.SetActive(showLevel);
+            }
+
+            if (showLevel && flight != null)
+            {
+                double level = flight.BurnLevelG;
+                _burnLevelSlider.interactable = interactive;
+                if (Mathf.Abs(_burnLevelSlider.value - (float)level) > 1e-4f)
+                {
+                    _syncingBurnLevel = true;
+                    _burnLevelSlider.value = (float)level;
+                    _syncingBurnLevel = false;
+                }
+
+                double acceleration = flight.FixedBurnAccelerationMps2;
+                _burnLevelValue.text = level < 0.005
+                    ? "0.0 g · conic"
+                    : $"{level:0.00} g  ·  {acceleration:0.00} m/s²";
             }
 
             _timeSlider.interactable = interactive;
@@ -632,6 +661,12 @@ namespace TimeToExplore.UI
         {
             if (_detailsOpenedThisFrame || _owner == null) return;
             _owner.SetArrivalStyle(CaptureStyle.FiniteBurn);
+        }
+
+        private void OnBurnLevelChanged(float levelG)
+        {
+            if (_syncingBurnLevel || _detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetBurnLevel(levelG);
         }
 
         /// <summary>Mark the active arrival style: its label takes the selected
@@ -1049,14 +1084,11 @@ namespace TimeToExplore.UI
         }
 
         /// <summary>
-        /// A uGUI slider in the details footer. The fill and handle geometry
-        /// follows Unity's stock Slider layout, because <see cref="Slider"/>
-        /// drives those anchors itself; the background is the raycast target so
-        /// a click anywhere on the track starts a drag. The row above the
-        /// slider is the arrival-style choice: the three capture models are a
-        /// mode, not a slider value, because each trades time, delta-v, and
-        /// park radius differently
-        /// ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md),
+        /// The footer controls: the trip-time slider, the three arrival-style
+        /// buttons, and the fixed-burn level slider. The style is a mode, not a
+        /// slider value, because each model trades time, delta-v, and park radius
+        /// differently; the level is a continuous property of the fixed-thrust
+        /// style ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md),
         /// [ADR-015](../../../Docs/decisions/adr-015-fixed-thrust-burns.md)).
         /// </summary>
         private void BuildTimeSlider(Transform parent)
@@ -1095,9 +1127,36 @@ namespace TimeToExplore.UI
                 FontStyle.Normal, TextAnchor.MiddleRight);
             PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 30f, 210f, 16f);
 
-            var go = new GameObject("TimeSlider", typeof(RectTransform), typeof(Slider));
-            go.transform.SetParent(_timeSliderGroup, false);
-            PlaceTopLeft((RectTransform)go.transform, 0f, 52f, DetailsWidth - 36f, 18f);
+            _timeSlider = BuildSlider(_timeSliderGroup, "TimeSlider", 52f,
+                OnTimeSliderChanged);
+
+            _burnLevelLabel = CreateText(_timeSliderGroup, "BurnLevelLabel",
+                "BURN LEVEL", 10, SectionColour, FontStyle.Bold);
+            PlaceTopLeft(_burnLevelLabel, 0f, 78f, 160f, 16f);
+
+            _burnLevelValue = CreateText(_timeSliderGroup, "BurnLevelValue", "", 11,
+                TextColour, FontStyle.Normal, TextAnchor.MiddleRight);
+            PlaceTopLeft(_burnLevelValue, DetailsWidth - 36f - 230f, 78f, 230f, 16f);
+
+            _burnLevelSlider = BuildSlider(_timeSliderGroup, "BurnLevelSlider", 100f,
+                OnBurnLevelChanged);
+            _burnLevelSlider.minValue = 0f;
+            _burnLevelSlider.maxValue = (float)TripPlanner.MaxBurnLevelG;
+            _burnLevelSlider.value = (float)TripPlanner.DefaultBurnLevelG;
+
+            _timeSliderGroup.gameObject.SetActive(false);
+        }
+
+        /// <summary>A stock uGUI slider in the details footer. The fill and
+        /// handle geometry follows Unity's own Slider layout, because
+        /// <see cref="Slider"/> drives those anchors itself; the background is
+        /// the raycast target so a click anywhere on the track starts a drag.</summary>
+        private Slider BuildSlider(Transform parent, string name, float y,
+            UnityEngine.Events.UnityAction<float> onChanged)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Slider));
+            go.transform.SetParent(parent, false);
+            PlaceTopLeft((RectTransform)go.transform, 0f, y, DetailsWidth - 36f, 18f);
 
             Image background = CreateImage(go.transform, "Background",
                 new Color(0.10f, 0.15f, 0.22f, 0.95f), Vector2.zero);
@@ -1139,19 +1198,18 @@ namespace TimeToExplore.UI
             handleRect.sizeDelta = new Vector2(12f, 0f);
             handle.raycastTarget = true;
 
-            _timeSlider = go.GetComponent<Slider>();
-            _timeSlider.fillRect = fillRect;
-            _timeSlider.handleRect = handleRect;
-            _timeSlider.targetGraphic = handle;
-            _timeSlider.direction = Slider.Direction.LeftToRight;
-            _timeSlider.transition = Selectable.Transition.None;
-            _timeSlider.wholeNumbers = false;
-            _timeSlider.minValue = 0f;
-            _timeSlider.maxValue = 1f;
-            _timeSlider.value = 0f;
-            _timeSlider.onValueChanged.AddListener(OnTimeSliderChanged);
-
-            _timeSliderGroup.gameObject.SetActive(false);
+            Slider slider = go.GetComponent<Slider>();
+            slider.fillRect = fillRect;
+            slider.handleRect = handleRect;
+            slider.targetGraphic = handle;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.transition = Selectable.Transition.None;
+            slider.wholeNumbers = false;
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            slider.value = 0f;
+            slider.onValueChanged.AddListener(onChanged);
+            return slider;
         }
 
         // --- Widget helpers -----------------------------------------------------

@@ -126,22 +126,23 @@ burn magnitudes. The style is opt-in because the coast from the sphere of
 influence is long. [ADR-014](../decisions/adr-014-keplerian-coast.md) has the
 geometry.
 
-A **fixed-thrust arrival** is the third style (`CaptureStyle.FiniteBurn`). It
-uses the same inbound hyperbola, transfer ellipse, and parking coast, but the
-two impulses are flown as finite burns at a constant 0.3 g (2.94 m/s²). The
-throttle is exactly zero on a coast and exactly that level on a burn; the
-acceleration steps at the seam rather than blending. `FiniteBurnArc` integrates
-the constant thrust through the two-body field and tabulates the local state.
-The capture burn straddles periapsis, because a finite burn cannot sit there; its
-start offset and duration are solved so the post-burn apoapsis is the parking
-radius. The finite burn loses periapsis altitude, so this style parks at
-`max(1.4 R, R + 300 km)` with a `max(1.2 R, R + 300 km)` periapsis, and the
-circularisation is centred on the transfer apoapsis. Measured captures are
-3.65 km/s at Mars, 4.38 at Earth, 19.68 at Jupiter, and 10.40 at Saturn; the
-impulse model's 3.53, 4.28, 17.40, and 10.66 show the finite-burn loss. The
-departure and cruise are still powered quintics: a fixed-thrust *cruise* needs
-the Lambert solve. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records
-the decision.
+A **hybrid fixed-thrust arrival** is the third style (`CaptureStyle.FiniteBurn`).
+It uses the same inbound hyperbola, transfer ellipse, and parking coast, but the
+long capture is one fixed burn at a player-set level from 0 to 1 g (clamped to
+the drive's thrust margin), followed by an impulse trim that puts the burn's end
+state exactly on the transfer ellipse. The throttle is exactly zero on a coast
+and exactly that level on the burn; the acceleration steps at the seam rather
+than blending. `FiniteBurnArc` integrates the constant thrust through the
+two-body field and tabulates the local state; `HybridCapture` solves the burn's
+start offset, duration, and injection radius, and the trim. The parking radius
+is the conic `max(1.15 R, R + 300 km)` at every level, so the level no longer
+forces a higher orbit; the trim rather than a higher periapsis pays the
+finite-burn loss. At 0 g the style is exactly the conic plan. Measured captures
+are 4.57 km/s at Mars, 4.92 at Earth, 18.44 at Jupiter, and 12.06 at Saturn, and
+the flights arrive 0.0–0.8 m and 0.0000–0.0031 m/s from the reference state.
+The departure and cruise are still powered quintics: a fixed-thrust *cruise*
+needs the Lambert solve. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
+records the decision and the split.
 
 Because the throttle is the curve's magnitude, the accelerate and decelerate
 phases are smooth ramps rather than a step at the flip. That is the price of the
@@ -238,9 +239,10 @@ curve is the throttle setting, so the HUD can draw it and the future fuel model
 can charge for its integral. Thrust direction is instantaneous: there is no
 attitude dynamics or slew limit yet.
 
-The quintic plan uses a smooth ramp. The fixed-thrust arrival is the deliberate
-opposite: a burn is a constant 0.3 g and a coast is zero, with a step at each
-seam. The nav computer's third arrival style is where that texture is exposed.
+The quintic plan uses a smooth ramp. The hybrid fixed-thrust arrival is the
+deliberate opposite: a burn is a constant level the player chooses and a coast is
+zero, with a step at each seam. The nav computer's third arrival style is where
+that texture is exposed.
 
 # Delta-v is the real currency
 
@@ -333,12 +335,13 @@ date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
 **Implemented so far:** the torch plan and its trip-time control, plus the conic
-**arrival** (a coasting hyperbola and an impulsive Oberth capture) and its
-fixed-thrust variant (the same coasts with finite 0.3 g burns). Burn-and-coast
-across the cruise is not implemented, because the middle of the trip still has to
-be solved: a Keplerian coast is a Lambert problem, and the conic arc alone does
-not choose the heliocentric connecting orbit. The slider deliberately stops at
-the torch plan until that exists.
+**arrival** (a coasting hyperbola and an impulsive Oberth capture) and the
+hybrid fixed-thrust variant (one finite burn at a player-set level, an impulse
+trim, and the conic circularisation). Burn-and-coast across the cruise is not
+implemented, because the middle of the trip still has to be solved: a Keplerian
+coast is a Lambert problem, and the conic arc alone does not choose the
+heliocentric connecting orbit. The slider deliberately stops at the torch plan
+until that exists.
 
 # Gravity assists and Oberth
 

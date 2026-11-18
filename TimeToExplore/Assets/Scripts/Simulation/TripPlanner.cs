@@ -15,11 +15,11 @@ namespace TimeToExplore.Simulation
         /// flight time, much cheaper in delta-v, and free of the ceiling.</summary>
         Conic,
         /// <summary>The same coasted hyperbola and transfer ellipse, but the
-        /// two impulses are flown as finite burns at a fixed acceleration
-        /// (<see cref="TripPlanner.FixedBurnAccelerationMps2"/>). The throttle
-        /// steps between zero and that level with no blending. The finite burn
-        /// loses periapsis altitude, so this style parks higher than the
-        /// impulsive conic.</summary>
+        /// long capture is a single finite burn at the player's chosen
+        /// acceleration (<see cref="BurnLevelG"/>). A terminal impulse trims the
+        /// burn's end state onto the exact transfer ellipse, and the
+        /// circularisation is the conic style's impulse. At zero level it
+        /// degenerates to <see cref="Conic"/>.</summary>
         FiniteBurn
     }
 
@@ -105,14 +105,34 @@ namespace TimeToExplore.Simulation
 
         /// <summary>Design acceleration of a fixed-thrust burn. 0.3 g is the
         /// working level: low enough to be a real burn rather than an impulse,
-        /// high enough that the capture still fits inside a low orbit. It is
-        /// clamped to the drive's own limit when the plan is built.</summary>
-        public const double DefaultFixedBurnAccelerationMps2 = 0.3 * 9.80665;
+        /// high enough that the capture still fits inside a low orbit. The
+        /// player-facing level is <see cref="BurnLevelG"/>; this is the default
+        /// before the drive's own limit is applied.</summary>
+        public const double DefaultBurnLevelG = 0.3;
 
-        /// <summary>Acceleration the <see cref="CaptureStyle.FiniteBurn"/> burns
-        /// command. The throttle is either zero or exactly this value.</summary>
-        public double FixedBurnAccelerationMps2 { get; set; } =
-            DefaultFixedBurnAccelerationMps2;
+        /// <summary>Standard gravity, the scale of the player's burn-level
+        /// control. 1 g is 9.80665 m/s².</summary>
+        public const double StandardGravityMps2 = 9.80665;
+
+        /// <summary>Highest burn level the player can choose.</summary>
+        public const double MaxBurnLevelG = 1.0;
+
+        private double _burnLevelG = DefaultBurnLevelG;
+
+        /// <summary>Player-facing fixed-burn level in g, from 0 to
+        /// <see cref="MaxBurnLevelG"/>. Zero selects the pure conic arrival, so
+        /// the style has no finite-burn arc.</summary>
+        public double BurnLevelG
+        {
+            get => _burnLevelG;
+            set => _burnLevelG = Math.Clamp(value, 0.0, MaxBurnLevelG);
+        }
+
+        /// <summary>Acceleration the <see cref="CaptureStyle.FiniteBurn"/> burn
+        /// commands: the chosen level, clamped to the drive's own thrust
+        /// margin. Zero when the level is zero.</summary>
+        public double FixedBurnAccelerationMps2 =>
+            Math.Min(BurnLevelG * StandardGravityMps2, MaxAccelerationMps2 * ThrustMargin);
 
         /// <summary>Optional diagnostic sink for the planning loop.</summary>
         public Action<string> Trace { get; set; }
@@ -122,19 +142,16 @@ namespace TimeToExplore.Simulation
             BodyRuntime target = RequireTarget(targetId);
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
-            double parkingRadius = ArrivalStyle == CaptureStyle.Conic
-                ? ParkingOrbit.ConicRadiusM(target)
-                : ArrivalStyle == CaptureStyle.FiniteBurn
-                    ? ParkingOrbit.FiniteBurnRadiusM(target)
-                    : ParkingOrbit.RadiusM(target, MaxAccelerationMps2);
+            double parkingRadius = ArrivalStyle == CaptureStyle.Quintic
+                ? ParkingOrbit.RadiusM(target, MaxAccelerationMps2)
+                : ParkingOrbit.ConicRadiusM(target);
             double distance = Math.Max(Vector3d.Distance(targetPosition, ship.PositionM),
                 parkingRadius);
 
             double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
-            if (ArrivalStyle == CaptureStyle.Conic)
+            if (ArrivalStyle == CaptureStyle.Conic
+                || ArrivalStyle == CaptureStyle.FiniteBurn)
                 total += EstimateConicCaptureSeconds(target);
-            else if (ArrivalStyle == CaptureStyle.FiniteBurn)
-                total += EstimateConicCaptureSeconds(target) + 3_600.0;
             TrajectoryPlan plan = null;
             double required = total;
 
@@ -499,7 +516,7 @@ namespace TimeToExplore.Simulation
             Vector3d entryAcceleration = _model.ComputeAcceleration(target, cruiseEndJd)
                                           + chain.EntryLocalAccelerationMps2;
 
-            var arcs = new List<PlanArc>(5);
+            var arcs = new List<PlanArc>(6);
 
             if (departureBody != null && escapeSeconds > MinimumArcSeconds)
             {
@@ -519,14 +536,15 @@ namespace TimeToExplore.Simulation
             ConicArc parking;
             double finiteBurnAcceleration = 0.0;
 
-            if (ArrivalStyle == CaptureStyle.FiniteBurn)
+            if (ArrivalStyle == CaptureStyle.FiniteBurn
+                && FixedBurnAccelerationMps2 > 0.0)
             {
-                if (!AppendFiniteBurnCapture(arcs, target, cruiseEndJd, chain,
+                if (!AppendHybridCapture(arcs, target, cruiseEndJd, chain,
                         out parkingEndJd, out parking, out string reason,
                         out finiteBurnAcceleration))
                 {
                     return InfeasiblePlan(ship, target, totalSeconds,
-                        "fixed burn capture: " + reason);
+                        "hybrid capture: " + reason);
                 }
             }
             else
@@ -576,13 +594,14 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Build the fixed-thrust arrival from the nominal transfer conic: a
-        /// coast to the burn start, a retrograde finite burn across periapsis, a
-        /// transfer coast, a prograde finite burn at apoapsis, and the parking
-        /// coast. The burn durations come from <see cref="FiniteBurnCapture"/>
-        /// and are then re-measured from the final arcs, so the seams are exact.
+        /// Build the hybrid arrival: a coast to the burn start, one retrograde
+        /// finite burn to the injection radius, the terminal impulse that puts
+        /// the ship on the exact transfer ellipse, the transfer coast, and the
+        /// conic circularisation and parking coast. The start offset and burn
+        /// duration come from <see cref="HybridCapture"/>; the transfer is then
+        /// rebuilt from the plan's own burn end, so the seams are exact.
         /// </summary>
-        private bool AppendFiniteBurnCapture(List<PlanArc> arcs, BodyRuntime target,
+        private bool AppendHybridCapture(List<PlanArc> arcs, BodyRuntime target,
             double cruiseEndJd, TransferConic chain, out double parkingEndJd,
             out ConicArc parking, out string reason, out double accelerationMps2)
         {
@@ -590,19 +609,18 @@ namespace TimeToExplore.Simulation
             parking = null;
             reason = null;
 
-            accelerationMps2 = Math.Min(FixedBurnAccelerationMps2,
-                MaxAccelerationMps2 * ThrustMargin);
+            accelerationMps2 = FixedBurnAccelerationMps2;
             if (!(accelerationMps2 > 0.0))
             {
                 reason = "the drive has no thrust margin for a fixed burn";
                 return false;
             }
 
-            double parkingRadius = ParkingOrbit.FiniteBurnRadiusM(target);
-            double periapsisRadius = ParkingOrbit.FiniteBurnPeriapsisRadiusM(target);
+            double parkingRadius = ParkingOrbit.ConicRadiusM(target);
+            double periapsisRadius = ParkingOrbit.PeriapsisRadiusM(target);
             if (!(parkingRadius > periapsisRadius))
             {
-                reason = "the fixed-burn parking radius is below the capture periapsis";
+                reason = "the parking radius is below the capture periapsis";
                 return false;
             }
 
@@ -610,7 +628,7 @@ namespace TimeToExplore.Simulation
                 chain.InboundSeconds, chain.EntryLocalPositionM,
                 chain.EntryLocalVelocityMps);
 
-            FiniteBurnCapture capture = FiniteBurnCapture.Build(target, fullInbound,
+            HybridCapture capture = HybridCapture.Build(target, fullInbound,
                 parkingRadius, periapsisRadius, accelerationMps2);
             if (!capture.IsValid)
             {
@@ -640,7 +658,17 @@ namespace TimeToExplore.Simulation
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, target.Id, burnStartJd,
                 burnEndJd, captureBurn));
 
-            double transferSeconds = capture.TransferSeconds;
+            // Recompute the trim from the plan's own burn end, not the solver's
+            // sample, so the transfer actually starts where the flown arc ends.
+            if (!HybridCapture.TryTrim(target, captureBurn.EndLocalPositionM,
+                    captureBurn.EndLocalVelocityMps, parkingRadius,
+                    out Vector3d trim, out Vector3d transferVelocity,
+                    out double transferSeconds))
+            {
+                reason = "the fixed burn's end state has no transfer ellipse";
+                return false;
+            }
+
             if (!(transferSeconds > MinimumArcSeconds))
             {
                 reason = "the fixed burn leaves no transfer coast to apoapsis";
@@ -648,52 +676,36 @@ namespace TimeToExplore.Simulation
             }
 
             ConicArc transfer = ConicArc.Create(_model, target, burnEndJd,
-                transferSeconds, captureBurn.EndLocalPositionM,
-                captureBurn.EndLocalVelocityMps);
+                transferSeconds, captureBurn.EndLocalPositionM, transferVelocity);
             double transferEndJd = burnEndJd + transferSeconds / SecondsPerDay;
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, burnEndJd,
-                transferEndJd, transfer, Vector3d.Zero));
+                transferEndJd, transfer, trim));
 
-            transfer.LocalStateAt(1.0, out Vector3d circularisationStartPosition,
-                out Vector3d circularisationStartVelocity);
-            double circularisationSeconds = capture.CircularisationSeconds;
-            if (!(circularisationSeconds > 0.0))
-            {
-                reason = "the fixed-thrust circularisation has no solution";
-                return false;
-            }
+            // The transfer ends at its apoapsis; use the arc's own end state so
+            // the circularisation impulse matches the drawn coast.
+            transfer.LocalStateAt(1.0, out Vector3d apoapsisPositionFlown,
+                out Vector3d apoapsisVelocityFlown);
+            double apoapsisRadius = apoapsisPositionFlown.Magnitude;
+            Vector3d circularVelocity = apoapsisVelocityFlown.Normalized
+                                        * Math.Sqrt(target.Gm / apoapsisRadius);
+            Vector3d circularisationFlown = circularVelocity - apoapsisVelocityFlown;
 
-            FiniteBurnArc circularisation = FiniteBurnArc.Create(_model, target,
-                transferEndJd, circularisationSeconds, circularisationStartPosition,
-                circularisationStartVelocity, accelerationMps2, retrograde: false);
-            double circularisationEndJd = transferEndJd
-                                          + circularisationSeconds / SecondsPerDay;
-            arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, target.Id, transferEndJd,
-                circularisationEndJd, circularisation));
-
-            ConicElements parked = ConicElements.FromState(
-                circularisation.EndLocalPositionM,
-                circularisation.EndLocalVelocityMps, target.Gm);
-            double parkingSeconds = Math.Clamp(parked.PeriodSeconds / 360.0, 1.0, 60.0);
-            parking = ConicArc.Create(_model, target, circularisationEndJd,
-                parkingSeconds, circularisation.EndLocalPositionM,
-                circularisation.EndLocalVelocityMps);
-            parkingEndJd = circularisationEndJd + parkingSeconds / SecondsPerDay;
-            arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, circularisationEndJd,
-                parkingEndJd, parking, Vector3d.Zero));
+            double parkingSeconds = Math.Clamp(
+                TwoBody.PeriodSeconds(target.Gm, apoapsisRadius) / 360.0, 1.0, 60.0);
+            parking = ConicArc.Create(_model, target, transferEndJd,
+                parkingSeconds, apoapsisPositionFlown, circularVelocity);
+            parkingEndJd = transferEndJd + parkingSeconds / SecondsPerDay;
+            arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, transferEndJd,
+                parkingEndJd, parking, circularisationFlown));
 
             return true;
         }
 
         private double EstimateConicCaptureSeconds(BodyRuntime target)
         {
-            bool finite = ArrivalStyle == CaptureStyle.FiniteBurn;
             TransferConic chain = TransferConic.Build(target, new Vector3d(1.0, 0.0, 0.0),
                 SphereOfInfluence.RadiusM(target), EntrySpeedMps,
-                finite ? ParkingOrbit.FiniteBurnRadiusM(target) : ParkingOrbit.ConicRadiusM(target),
-                finite
-                    ? ParkingOrbit.FiniteBurnPeriapsisRadiusM(target)
-                    : ParkingOrbit.PeriapsisRadiusM(target));
+                ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
             return chain.IsValid ? chain.TotalSeconds : 0.0;
         }
 
@@ -704,12 +716,8 @@ namespace TimeToExplore.Simulation
             Vector3d approach = (ship.PositionM - targetPosition).Normalized;
             if (approach.SqrMagnitude < 0.5) approach = new Vector3d(1.0, 0.0, 0.0);
 
-            bool finite = ArrivalStyle == CaptureStyle.FiniteBurn;
             return TransferConic.Build(target, approach, targetSoi, EntrySpeedMps,
-                finite ? ParkingOrbit.FiniteBurnRadiusM(target) : ParkingOrbit.ConicRadiusM(target),
-                finite
-                    ? ParkingOrbit.FiniteBurnPeriapsisRadiusM(target)
-                    : ParkingOrbit.PeriapsisRadiusM(target));
+                ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
         }
 
         private BuildResult InfeasiblePlan(ShipState ship, BodyRuntime target,

@@ -156,12 +156,17 @@ namespace TimeToExplore.Simulation
             set => _planner.ArrivalStyle = value;
         }
 
-        /// <summary>Acceleration the fixed-thrust arrival's burns command.</summary>
-        public double FixedBurnAccelerationMps2
+        /// <summary>Player-facing fixed-burn level in g. Zero selects the pure
+        /// conic arrival.</summary>
+        public double BurnLevelG
         {
-            get => _planner.FixedBurnAccelerationMps2;
-            set => _planner.FixedBurnAccelerationMps2 = value;
+            get => _planner.BurnLevelG;
+            set => _planner.BurnLevelG = value;
         }
+
+        /// <summary>Acceleration the fixed-thrust arrival's burn commands after
+        /// the drive's own thrust margin is applied.</summary>
+        public double FixedBurnAccelerationMps2 => _planner.FixedBurnAccelerationMps2;
 
         /// <summary>Current phase of the plan, or null when there is none.</summary>
         public FlightPhase? Phase =>
@@ -276,6 +281,33 @@ namespace TimeToExplore.Simulation
         {
             if (style == ArrivalStyle) return Preview;
             ArrivalStyle = style;
+            return RebuildPreview();
+        }
+
+        /// <summary>
+        /// Choose the fixed-burn level and rebuild a fixed-thrust preview from
+        /// the pinned departure state. The level is rounded to 0.05 g so a
+        /// slider drag does not re-solve the whole route at every pixel. A live
+        /// flight keeps the plan it was begun with.
+        /// </summary>
+        public TrajectoryPlan SetBurnLevel(double levelG)
+        {
+            levelG = Math.Clamp(levelG, 0.0, TripPlanner.MaxBurnLevelG);
+            levelG = Math.Round(levelG * 20.0) / 20.0;
+            if (Math.Abs(levelG - BurnLevelG) < 1e-9) return Preview;
+
+            BurnLevelG = levelG;
+            if (Preview == null || ArrivalStyle != CaptureStyle.FiniteBurn)
+                return Preview;
+
+            return RebuildPreview();
+        }
+
+        /// <summary>Rebuild the preview from the pinned departure state and the
+        /// current style and burn level, keeping the previous flight time when
+        /// the new style's window contains it.</summary>
+        private TrajectoryPlan RebuildPreview()
+        {
             if (Preview == null) return null;
 
             double requested = Preview.FlightTimeSeconds;

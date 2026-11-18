@@ -138,6 +138,67 @@ namespace TimeToExplore.Simulation
             endVelocityMps = velocity;
         }
 
+        /// <summary>
+        /// Integrate a burn until its radius first falls to
+        /// <paramref name="targetRadiusM"/> and return the linearly interpolated
+        /// crossing state. The hybrid capture's injection point is a radius, not
+        /// a time, so this is the solver's position-conditioned step.
+        /// </summary>
+        public static bool SimulateUntilRadius(BodyRuntime centre,
+            Vector3d localStartPositionM, Vector3d localStartVelocityMps,
+            double accelerationMps2, bool retrograde, double targetRadiusM,
+            double maximumSeconds, out double crossingSeconds,
+            out Vector3d endPositionM, out Vector3d endVelocityMps)
+        {
+            if (centre == null) throw new ArgumentNullException(nameof(centre));
+            if (!(maximumSeconds > 0.0))
+                throw new ArgumentOutOfRangeException(nameof(maximumSeconds));
+
+            crossingSeconds = 0.0;
+            endPositionM = localStartPositionM;
+            endVelocityMps = localStartVelocityMps;
+
+            Vector3d position = localStartPositionM;
+            Vector3d velocity = localStartVelocityMps;
+            Vector3d fallback = FallbackDirection(position, velocity);
+
+            double previousRadius = position.Magnitude;
+            if (previousRadius <= targetRadiusM) return true;
+
+            int count = Math.Clamp((int)Math.Ceiling(maximumSeconds / 2.0), 256, 4096);
+            double step = maximumSeconds / count;
+
+            for (int i = 0; i < count; i++)
+            {
+                Vector3d previousPosition = position;
+                Vector3d previousVelocity = velocity;
+
+                Step(centre.Gm, accelerationMps2, retrograde, fallback,
+                    ref position, ref velocity, step);
+
+                double radius = position.Magnitude;
+                if (radius > targetRadiusM)
+                {
+                    previousRadius = radius;
+                    continue;
+                }
+
+                double drop = previousRadius - radius;
+                double fraction = drop > 0.0
+                    ? Math.Clamp((previousRadius - targetRadiusM) / drop, 0.0, 1.0)
+                    : 0.0;
+
+                crossingSeconds = (i + fraction) * step;
+                endPositionM = previousPosition
+                               + (position - previousPosition) * fraction;
+                endVelocityMps = previousVelocity
+                                 + (velocity - previousVelocity) * fraction;
+                return true;
+            }
+
+            return false;
+        }
+
         public Vector3d PositionAt(double u)
         {
             LocalStateAt(u, out Vector3d localPosition, out _);

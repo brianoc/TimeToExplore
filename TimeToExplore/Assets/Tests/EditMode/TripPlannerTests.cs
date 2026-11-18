@@ -32,24 +32,41 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheFixedBurnStyleUsesTheDefaultLevelAndItsOwnParkingRadius()
+        public void TheFixedBurnStyleUsesTheDefaultLevelAndTheConicParkingRadius()
         {
             _planner.ArrivalStyle = CaptureStyle.FiniteBurn;
             TrajectoryPlan plan = PlanToMars();
 
             BodyRuntime mars = _model.Get("mars");
             Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(_planner.BurnLevelG, Is.EqualTo(TripPlanner.DefaultBurnLevelG));
             Assert.That(_planner.FixedBurnAccelerationMps2,
-                Is.EqualTo(TripPlanner.DefaultFixedBurnAccelerationMps2).Within(1e-12));
+                Is.EqualTo(TripPlanner.DefaultBurnLevelG
+                           * TripPlanner.StandardGravityMps2).Within(1e-12));
             Assert.That(plan.FiniteBurnAccelerationMps2,
-                Is.EqualTo(TripPlanner.DefaultFixedBurnAccelerationMps2).Within(1e-6));
-            Assert.That(ParkingOrbit.FiniteBurnRadiusM(mars),
-                Is.GreaterThan(ParkingOrbit.ConicRadiusM(mars)));
+                Is.EqualTo(_planner.FixedBurnAccelerationMps2).Within(1e-6));
+            Assert.That(ParkingOrbit.ConicRadiusM(mars),
+                Is.LessThanOrEqualTo(ParkingOrbit.RadiusM(mars, 10.0)),
+                "the hybrid never parks above the quintic ceiling");
 
             BodyRuntime jupiter = _model.Get("jupiter");
-            Assert.That(ParkingOrbit.FiniteBurnRadiusM(jupiter),
+            Assert.That(ParkingOrbit.ConicRadiusM(jupiter),
                 Is.LessThan(ParkingOrbit.RadiusM(jupiter, 10.0)),
-                "the fixed burn still parks far below the quintic gravity ceiling");
+                "the hybrid parks far below the quintic gravity ceiling");
+        }
+
+        [Test]
+        public void TheBurnLevelIsClampedToTheControlRangeAndTheDrive()
+        {
+            _planner.BurnLevelG = 2.0;
+            Assert.That(_planner.BurnLevelG, Is.EqualTo(1.0));
+            Assert.That(_planner.FixedBurnAccelerationMps2,
+                Is.EqualTo(9.7).Within(1e-9),
+                "1 g is clamped to the drive's thrust margin");
+
+            _planner.BurnLevelG = -1.0;
+            Assert.That(_planner.BurnLevelG, Is.EqualTo(0.0));
+            Assert.That(_planner.FixedBurnAccelerationMps2, Is.EqualTo(0.0));
         }
 
         [Test]

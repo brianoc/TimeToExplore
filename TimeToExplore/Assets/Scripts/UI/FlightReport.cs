@@ -44,15 +44,22 @@ namespace TimeToExplore.UI
             rows.Add(DetailRow.Of("Peak thrust",
                 $"{plan.PeakThrustMps2:0.00} m/s²  ({plan.PeakThrottle * 100.0:0}%)"));
             rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
-            if (plan.ImpulseDeltaVMps > 0.0)
+            if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps > 0.0)
+            {
+                double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
+                rows.Add(DetailRow.Of("Burns",
+                    $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s fixed  ·  " +
+                    $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s trim  ·  {g:0.0} g"));
+            }
+            else if (plan.ImpulseDeltaVMps > 0.0)
             {
                 rows.Add(DetailRow.Of("Burns",
                     $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s  ·  impulsive"));
             }
 
-            if (plan.FiniteBurnDeltaVMps > 0.0)
+            if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps <= 0.0)
             {
-                double g = plan.FiniteBurnAccelerationMps2 / 9.80665;
+                double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
                 rows.Add(DetailRow.Of("Burns",
                     $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s  ·  {g:0.0} g fixed"));
             }

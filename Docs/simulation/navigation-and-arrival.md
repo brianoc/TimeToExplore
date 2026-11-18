@@ -97,19 +97,20 @@ a live flight keeps the plan it was begun with.
 [ADR-014](../decisions/adr-014-keplerian-coast.md) records the geometry and the
 impulse model.
 
-A **fixed-thrust arrival style** (`CaptureStyle.FiniteBurn`) is the third button:
-the same inbound hyperbola, transfer ellipse, and parking coast, but the two
-impulses are flown as finite burns at a constant 0.3 g. The throttle is exactly
-zero on a coast and exactly 2.94 m/s² on a burn; there is no blend. A finite burn
-cannot sit at periapsis, so the capture burn straddles it, and its offset and
-duration are solved so the post-burn apoapsis is the parking radius. The burn
-loses periapsis altitude, so this style parks at `max(1.4 R, R + 300 km)` with a
-`max(1.2 R, R + 300 km)` capture periapsis, both Hill-capped. The
-circularisation is a second finite burn centred on the transfer apoapsis.
-Measured captures are 3.65 km/s at Mars, 4.38 at Earth, 19.68 at Jupiter, and
-10.40 at Saturn; the flights arrive 0.1–0.5 m and 0.0006 m/s from the reference
-state. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records the
-geometry and the finite-burn loss. The departure and cruise are still powered
+A **hybrid fixed-thrust arrival style** (`CaptureStyle.FiniteBurn`) is the third
+button: the same inbound hyperbola, transfer ellipse, and parking coast, but the
+capture is one long finite burn at the player's chosen level, followed by an
+impulse trim that puts the burn's end state exactly on the transfer ellipse. The
+throttle is exactly zero on a coast and exactly the level on the burn; there is
+no blend. The level runs from `0 g` to `1 g`, clamped to the drive's thrust
+margin; at `0 g` the style is the pure conic arrival. The burn ends at an
+**injection radius** near the conic periapsis, where the trim cancels the burn's
+radial velocity and sets the tangential speed. The parking radius stays the
+conic `max(1.15 R, R + 300 km)`, so the level no longer forces the higher
+`1.4 R` orbit. Measured captures are 4.57 km/s at Mars, 4.92 at Earth, 18.44 at
+Jupiter, and 12.06 at Saturn; the flights arrive 0.0–0.8 m and
+0.0000–0.0031 m/s from the reference state. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
+records the geometry and the split. The departure and cruise are still powered
 quintics: a fixed-thrust *cruise* needs the Lambert solve, which is the deferred
 burn-and-coast item.
 
@@ -176,15 +177,15 @@ ceiling; the conic style returns Earth to 7,327 km, Venus to 6,960 km, Jupiter
 to 80,398 km, and Saturn to 66,967 km. The capture's periapsis is lower still,
 `max(1.05 R, R + 100 km)`, which is where the Oberth burn happens.
 
-**The fixed-thrust arrival uses a higher radius again.**
-`ParkingOrbit.FiniteBurnRadiusM` is `max(1.4 R, R + 300 km)`, Hill-capped, and
-its capture periapsis is `max(1.2 R, R + 300 km)`. The reason is the finite burn:
-a 0.3 g capture takes 20 minutes at Mars and 94 minutes at Jupiter, and it cannot
-hold the impulsive style's 100 km periapsis. The higher start keeps the
-post-burn orbit clear of the body. Measured: Earth 8,919 km, Venus 8,473, Mars
-4,745, Jupiter 97,875, Saturn 81,525, Moon 2,432. Jupiter's post-burn periapsis is
-70,577 km — about 670 km above the cloud tops — so the style is safe in the
-catalogue but would need a ring/atmosphere model to be comfortable.
+**The hybrid fixed-thrust arrival uses the conic radius.** When
+`ArrivalStyle` is `FiniteBurn`, the parking radius is
+`ParkingOrbit.ConicRadiusM`, the same `max(1.15 R, R + 300 km)` as the conic
+style, and its injection radius starts at the conic periapsis
+`max(1.05 R, R + 100 km)`. The fixed burn's periapsis loss is paid by the
+terminal impulse, not by a higher orbit. Measured: Earth 7,327 km, Venus 6,960,
+Mars 3,898, Jupiter 80,398, Saturn 66,967, Moon 2,037. Jupiter's burn ends at
+73,407 km and the trim puts the transfer on an 80,398 km apoapsis; the whole
+capture was 18.44 km/s at 0.3 g against the old 1.4 R style's 19.68.
 
 "Stable" is measured in the real field, not a two-body ideal: the ship is left
 in free fall with the drive off, and the tests check that the eccentricity stays
@@ -400,7 +401,7 @@ planned:
 
 * **Propulsive capture.** Burn at periapsis into an ellipse, then circularize.
   Reliable, expensive. *Implemented as the conic style's impulses and as the
-  fixed-thrust style's finite 0.3 g burns; the quintic arcs are the
+  hybrid style's one finite burn plus trim; the quintic arcs are the
   continuous-thrust alternative.*
 * **Aerocapture / aerobraking.** Use the atmosphere to shed velocity. Cheap in
   delta-v, expensive in heat shield, timing, and risk. Available at Venus, Earth,
@@ -412,8 +413,9 @@ planned:
   constrained by the gravity ceiling. *Implemented.*
 
 The conic style keeps the target's equatorial plane rather than choosing an
-approach plane. Its impulses are idealised as instantaneous; the fixed-thrust
-style flies them as finite 0.3 g burns, and the remaining fidelity step is a
+approach plane. Its impulses are idealised as instantaneous; the hybrid style
+flies the long capture as a finite burn at the player's level and keeps only the
+terminal trim and circularisation impulsive, so the remaining fidelity step is a
 fixed-thrust *departure* and *cruise*, which needs the Lambert solve.
 
 # Docking
@@ -488,10 +490,12 @@ thrust changes sign, a countdown to the next arc boundary, a phase table with
 each leg's start and duration, the arrival date, peak thrust, planned delta-v
 and the burn total, the live throttle, the trip-time slider, which re-solves the
 route and its arrival date as it moves, and the arrival-style buttons, which
-rebuild the preview as a fast quintic capture, a cheap conic coast, or the conic
-coasts with fixed 0.3 g burns. The warp policy keeps the final approach visible,
-and the periapsis and circularisation are plan boundaries in every style; the
-fixed style's two burn windows are boundaries too.
+rebuild the preview as a fast quintic capture, a cheap conic coast, or the
+hybrid fixed-thrust arrival. The hybrid's long burn is a solid line with a
+marker at its start, the terminal trim marks the injection point, and the
+`Burns` row reads the fixed and trim delta-v separately. The warp policy keeps
+the final approach visible, and the periapsis and circularisation are plan
+boundaries in every style; the hybrid's burn window is a boundary too.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
@@ -520,10 +524,11 @@ The design wants failure to create stories, not reloads:
   planner.
 * **Settled:** a transfer-conic arrival is a second style: a coasted hyperbola,
   an impulsive Oberth capture, a transfer ellipse, and a circularisation burn.
-  It is cheaper and slower. A third style flies the same coasts with finite
-  0.3 g burns, so the throttle steps between zero and the burn level instead of
-  blending. The nav computer exposes all three beside the trip-time slider,
-  while the quintic capture stays the default.
+  It is cheaper and slower. A third style is the **hybrid**: one long fixed burn
+  at a player-set level from 0 to 1 g, an impulse trim onto the exact transfer
+  ellipse, and the conic circularisation. At 0 g it is the conic plan. The nav
+  computer exposes all three beside the trip-time slider, the level slider, and
+  the fixed-burn label, while the quintic capture stays the default.
 * How forgiving is the capture solver? The plan is exact, but a real missed burn
   is fatal; a game needs a margin and a clear warning. The planner currently
   reports infeasibility rather than flying a bad plan.

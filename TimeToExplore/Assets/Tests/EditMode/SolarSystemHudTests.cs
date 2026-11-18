@@ -359,7 +359,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheThirdArrivalStyleButtonChoosesFixedThrustBurns()
+        public void TheThirdArrivalStyleButtonChoosesTheHybridFixedBurn()
         {
             Build();
             BodyRuntime mars = _bootstrap.Model.Get("mars");
@@ -379,11 +379,54 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
             Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
-                "the fixed style previews finite burn arcs");
+                "the fixed style previews a finite burn arc");
+            Assert.That(_bootstrap.Flight.Preview.ArcForPhase(FlightPhase.Parking)
+                .EntryImpulseMps, Is.GreaterThan(0.0),
+                "the hybrid circularises impulsively");
+            Assert.That(Child("BurnLevelSlider").activeSelf, Is.True);
             Assert.That(ButtonLabel("FixedBurnButton").color,
                 Is.Not.EqualTo(ButtonLabel("QuinticCaptureButton").color));
             Assert.That(ButtonLabel("FixedBurnButton").color,
                 Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color));
+        }
+
+        [Test]
+        public void TheBurnLevelSliderRebuildsTheFixedThrustPreview()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            _hud.OpenDetails();
+
+            Update();
+            Update();
+            ButtonNamed("FixedBurnButton").onClick.Invoke();
+            Update();
+
+            Slider level = SliderNamed("BurnLevelSlider");
+            Assert.That(level.minValue, Is.EqualTo(0f).Within(1e-6));
+            Assert.That(level.maxValue, Is.EqualTo(1f).Within(1e-6));
+            Assert.That(level.value, Is.EqualTo(0.3f).Within(1e-4));
+            Assert.That(TextNamed("BurnLevelValue").text, Does.Contain("0.30 g"));
+
+            level.value = 0.5f;
+            Update();
+
+            Assert.That(_bootstrap.Flight.BurnLevelG, Is.EqualTo(0.5).Within(1e-9));
+            Assert.That(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2,
+                Is.EqualTo(0.5 * TripPlanner.StandardGravityMps2).Within(1e-6));
+            Assert.That(ButtonLabel("FixedBurnButton").text, Is.EqualTo("0.5 g burn"));
+            Assert.That(TextNamed("BurnLevelValue").text, Does.Contain("0.50 g"));
+
+            level.value = 0f;
+            Update();
+
+            Assert.That(_bootstrap.Flight.BurnLevelG, Is.EqualTo(0.0));
+            Assert.That(_bootstrap.Flight.Preview.FiniteBurnDeltaVMps, Is.EqualTo(0.0));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.False,
+                "zero level is the pure conic arrival");
+            Assert.That(ButtonLabel("FixedBurnButton").text, Is.EqualTo("0.0 g burn"));
         }
 
         [Test]

@@ -43,10 +43,11 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   impulsive Oberth capture, a transfer ellipse, and a circularisation burn
   ([ADR-014](../decisions/adr-014-keplerian-coast.md)). The quintic capture stays
   the default.
-* A **fixed-thrust arrival** as the third style: the same coasts with the two
-  burns flown as constant 0.3 g finite burns, a step in throttle and no blend,
-  and a higher parking radius that pays for the finite-burn loss
-  ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)).
+* A **hybrid fixed-thrust arrival** as the third style: one long capture burn at
+  a player-set level from 0 to 1 g, an impulse trim onto the exact transfer
+  ellipse, and the conic parking radius, with the throttle stepping instead of
+  blending ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)). At 0 g it is
+  the conic plan.
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
@@ -240,26 +241,33 @@ chosen flight time when it fits the new window, and redraws the coast, burns,
 and lower parking orbit. A live flight keeps the plan it was begun with. The
 finite-burn arc and the rings/atmosphere arrival model are later fidelity work.
 
-# Done: fixed-thrust burns (2026-11-18)
+# Done: hybrid fixed-thrust capture (2026-11-18)
 
-The conic arrival's impulses are now flyable as finite burns. The third arrival
-style is **Quintic / Conic / 0.3 g burn** in the nav computer.
+The conic arrival's capture is now flyable as one long finite burn at a
+player-set level, with an impulse trim for exactness. The third arrival style is
+**Quintic / Conic / X g burn** in the nav computer, with a burn-level slider from
+0 g to 1 g.
 
 * `FiniteBurnArc` integrates constant thrust along the instantaneous velocity
   through the two-body field and tabulates the local state; position and velocity
   are continuous at a seam and acceleration steps by the burn level.
-* `FiniteBurnCapture` solves the capture burn's start offset and duration so the
-  post-burn apoapsis is the parking radius, and centres the circularisation on
-  the transfer apoapsis. The finite style parks at `max(1.4 R, R + 300 km)` with
-  a `max(1.2 R, R + 300 km)` periapsis.
-* Measured captures: Mars 3.65 km/s, Venus 4.21, Earth 4.38, Jupiter 19.68,
-  Saturn 10.40, against the impulse model's 3.53, 4.13, 4.28, 17.40, and 10.66.
-  The difference is the finite-burn loss.
-* The flights arrive 0.1–0.5 m and 0.0001–0.0006 m/s from the reference state
-  and hold eccentricities of 10⁻⁵ to 5 × 10⁻⁴. The suite is 443 tests.
-* [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records the decision.
-  The departure and cruise remain powered quintics; a fixed-thrust cruise is the
-  deferred Lambert work below.
+  `SimulateUntilRadius` finds the injection crossing.
+* `HybridCapture` ends the burn at an injection radius near the conic periapsis,
+  applies the terminal impulse that lands on the exact transfer ellipse, and
+  keeps the conic circularisation. The solver searches the start offset and
+  keeps the smallest trim; the parking radius is the conic
+  `max(1.15 R, R + 300 km)` at every level.
+* At 0 g the style is exactly the conic plan. The default is 0.3 g.
+* Measured captures at 0.3 g: Mars 4.57 km/s (2.70 fixed + 1.79 trim + 0.08
+  circularisation), Venus 4.80, Earth 4.92, Jupiter 18.44, Saturn 12.06, the
+  Moon 5.07. The flights arrive 0.0–0.8 m and 0.0000–0.0031 m/s from the
+  reference state.
+* The old single-level style is replaced. It flew both impulses at 0.3 g and
+  parked at `1.4 R`; the hybrid parks at the conic radius and, at Jupiter,
+  spends 18.44 km/s instead of 19.68 while parking 17,477 km lower.
+* The suite is 461 tests. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
+  records the decision. The departure and cruise remain powered quintics; a
+  fixed-thrust cruise is the deferred Lambert work below.
 
 # Deferred: burn-and-coast trip planning
 
@@ -267,7 +275,7 @@ The trip-time slider is the first half of the time/fuel choice: it re-solves the
 torch plan from the fastest feasible time out to three times that, with the
 arrival date and target position moving with it. The second half — **coast in
 the middle** — is still deferred. The conic arrival now supplies the coast *arc*,
-the impulsive burns, and their finite fixed-thrust variant, but the heliocentric
+the impulsive burns, and the hybrid fixed-thrust variant, but the heliocentric
 middle of the trip is still a powered quintic.
 
 * A coast is a Keplerian conic with the commanded thrust exactly zero. A quintic

@@ -144,13 +144,15 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `IArcPath` | `Scripts/Simulation/IArcPath.cs` | The arc contract: position, velocity, acceleration, and the parameter/time mappings |
 | `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends; linear in time |
 | `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Planetocentric Keplerian coast, linear in true anomaly, re-added to the body's ephemeris |
+| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, and the radius-crossing solver step |
 | `TransferConic` | `Scripts/Simulation/TransferConic.cs` | The arrival hyperbola, periapsis and apoapsis burns, transfer ellipse, and circular state |
+| `HybridCapture` | `Scripts/Simulation/HybridCapture.cs` | The fixed capture burn, its injection radius and trim, the transfer ellipse, and the split |
 | `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive arc polyline with a scale-free chord tolerance |
 | `PlanArc` | `Scripts/Simulation/PlanArc.cs` | One planned leg, its path, thrust profile, delta-v, clearance, and entry impulse |
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
-| `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic orbit |
+| `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (quintic or conic arrival, moving-target loop, thrust check) and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (quintic, conic, or hybrid arrival; moving-target loop, thrust check), the burn level, and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
