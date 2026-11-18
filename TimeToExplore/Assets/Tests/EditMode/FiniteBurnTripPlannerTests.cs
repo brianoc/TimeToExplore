@@ -187,6 +187,14 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(positionError, Is.LessThan(50_000.0));
             Assert.That(velocityError, Is.LessThan(20.0));
             AssertOrbitAround(target, ship, radius, 0.02, 0.02);
+
+            double period = TwoBody.PeriodSeconds(target.Gm, radius);
+            IntegrationReport coast = _integrator.Advance(ref ship,
+                ship.JulianDate + 3.0 * period / JulianDate.SecondsPerDay,
+                (state, date) => ThrustCommand.None);
+
+            Assert.That(coast.CollisionDetected, Is.False);
+            AssertOrbitAround(target, ship, radius, 0.03, 0.03);
         }
 
         [TestCase(0.3)]
