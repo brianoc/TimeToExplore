@@ -15,6 +15,7 @@ namespace TimeToExplore.Tests.EditMode
         private GravityField _gravity;
         private TrajectoryPlan _plan;
         private TrajectoryPlan _conicPlan;
+        private TrajectoryPlan _fixedBurnPlan;
 
         [SetUp]
         public void SetUp()
@@ -29,6 +30,12 @@ namespace TimeToExplore.Tests.EditMode
                 ArrivalStyle = CaptureStyle.Conic
             };
             _conicPlan = conicPlanner.Plan(FlightFixture.ShipAt(_model, "gateway"), "mars");
+
+            var fixedPlanner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.FiniteBurn
+            };
+            _fixedBurnPlan = fixedPlanner.Plan(FlightFixture.ShipAt(_model, "gateway"), "mars");
         }
 
         [Test]
@@ -136,6 +143,39 @@ namespace TimeToExplore.Tests.EditMode
                 Assert.That(WorstSagittaRatio(arc.Path, points, parameters),
                     Is.LessThanOrEqualTo(PathTessellation.MaxSagittaRatio * (1.0 + 1e-9)));
             }
+        }
+
+        [Test]
+        public void FixedBurnArcsMeetTheSameFlatnessTolerance()
+        {
+            foreach (PlanArc arc in _fixedBurnPlan.Arcs)
+            {
+                var points = new List<Vector3d>();
+                var parameters = new List<double>();
+                PathTessellation.Append(arc.Path, points, parameters);
+
+                TestContext.WriteLine(
+                    $"{arc.Phase}: {points.Count} points, worst sagitta " +
+                    $"{WorstSagittaRatio(arc.Path, points, parameters):E2}");
+
+                Assert.That(points.Count, Is.GreaterThanOrEqualTo(2));
+                Assert.That(points.Count,
+                    Is.LessThanOrEqualTo(PathTessellation.MaxSegmentsPerArc + 1));
+                Assert.That(WorstSagittaRatio(arc.Path, points, parameters),
+                    Is.LessThanOrEqualTo(PathTessellation.MaxSagittaRatio * (1.0 + 1e-9)));
+            }
+        }
+
+        [Test]
+        public void TheFixedBurnBoundariesAreTheTwoBurns()
+        {
+            int finite = 0;
+            foreach (PlanArc arc in _fixedBurnPlan.Arcs)
+                if (arc.IsFiniteBurn) finite++;
+
+            Assert.That(finite, Is.EqualTo(2));
+            Assert.That(_fixedBurnPlan.ImpulseDeltaVMps, Is.EqualTo(0.0).Within(1e-9));
+            Assert.That(_fixedBurnPlan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
         }
 
         [Test]

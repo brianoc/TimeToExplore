@@ -50,6 +50,13 @@ namespace TimeToExplore.UI
                     $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s  ·  impulsive"));
             }
 
+            if (plan.FiniteBurnDeltaVMps > 0.0)
+            {
+                double g = plan.FiniteBurnAccelerationMps2 / 9.80665;
+                rows.Add(DetailRow.Of("Burns",
+                    $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s  ·  {g:0.0} g fixed"));
+            }
+
             if (session.Plan == null)
             {
                 rows.Add(DetailRow.Heading("PREVIEW"));

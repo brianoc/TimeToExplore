@@ -153,6 +153,27 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void AFixedBurnArrivalShowsTheFixedLevelAndNotAnImpulse()
+        {
+            var planner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.FiniteBurn
+            };
+            var session = new FlightSession(_model, _gravity, planner);
+            session.PlaceAt("gateway", _epoch);
+            session.Begin("mars", _epoch);
+
+            List<DetailRow> rows = FlightReport.Build(session, _model, "x10,000");
+
+            Assert.That(Find(rows, "Coast"), Is.Not.Null);
+            Assert.That(Find(rows, "Capture"), Is.Not.Null);
+            Assert.That(Find(rows, "Parking"), Is.Not.Null);
+            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("fixed"));
+            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("0.3 g"));
+            Assert.That(Find(rows, "Burns")?.Value, Does.Not.Contain("impulsive"));
+        }
+
+        [Test]
         public void EveryStatusHasAReadableLabel()
         {
             Assert.That(FlightReport.StatusLabel(FlightStatus.Idle), Is.EqualTo("Idle"));

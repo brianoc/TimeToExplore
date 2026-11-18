@@ -115,8 +115,10 @@ namespace TimeToExplore.UI
         private RectTransform _timeSliderGroup;
         private Button _quinticButton;
         private Button _conicButton;
+        private Button _fixedBurnButton;
         private Text _quinticLabel;
         private Text _conicLabel;
+        private Text _fixedBurnLabel;
         private Slider _timeSlider;
         private Text _timeLabel;
         private Text _timeValue;
@@ -557,11 +559,20 @@ namespace TimeToExplore.UI
             bool interactive = !_detailsOpenedThisFrame;
             _quinticButton.interactable = interactive;
             _conicButton.interactable = interactive;
+            _fixedBurnButton.interactable = interactive;
             CaptureStyle style = _owner.ArrivalStyle;
             ShowArrivalChoice(_quinticButton, _quinticLabel,
                 style == CaptureStyle.Quintic);
             ShowArrivalChoice(_conicButton, _conicLabel,
                 style == CaptureStyle.Conic);
+            ShowArrivalChoice(_fixedBurnButton, _fixedBurnLabel,
+                style == CaptureStyle.FiniteBurn);
+
+            if (flight != null)
+            {
+                double g = flight.FixedBurnAccelerationMps2 / 9.80665;
+                _fixedBurnLabel.text = $"{g:0.0} g burn";
+            }
 
             _timeSlider.interactable = interactive;
 
@@ -615,6 +626,12 @@ namespace TimeToExplore.UI
         {
             if (_detailsOpenedThisFrame || _owner == null) return;
             _owner.SetArrivalStyle(CaptureStyle.Conic);
+        }
+
+        private void OnFixedBurnClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetArrivalStyle(CaptureStyle.FiniteBurn);
         }
 
         /// <summary>Mark the active arrival style: its label takes the selected
@@ -1036,10 +1053,11 @@ namespace TimeToExplore.UI
         /// follows Unity's stock Slider layout, because <see cref="Slider"/>
         /// drives those anchors itself; the background is the raycast target so
         /// a click anywhere on the track starts a drag. The row above the
-        /// slider is the arrival-style choice: the two capture models are a
-        /// mode, not a slider value, because one parks lower and spends less
-        /// delta-v while the other is fast
-        /// ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md)).
+        /// slider is the arrival-style choice: the three capture models are a
+        /// mode, not a slider value, because each trades time, delta-v, and
+        /// park radius differently
+        /// ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md),
+        /// [ADR-015](../../../Docs/decisions/adr-015-fixed-thrust-burns.md)).
         /// </summary>
         private void BuildTimeSlider(Transform parent)
         {
@@ -1052,16 +1070,22 @@ namespace TimeToExplore.UI
             PlaceTopLeft(arrivalLabel, 0f, 0f, 76f, 20f);
 
             _quinticButton = CreateButton(_timeSliderGroup, "QuinticCaptureButton",
-                "Quintic capture");
-            PlaceTopLeft(_quinticButton.image, 76f, 0f, 134f, 22f);
+                "Quintic");
+            PlaceTopLeft(_quinticButton.image, 76f, 0f, 80f, 22f);
             _quinticLabel = _quinticButton.GetComponentInChildren<Text>(true);
             _quinticButton.onClick.AddListener(OnQuinticCaptureClicked);
 
             _conicButton = CreateButton(_timeSliderGroup, "ConicCaptureButton",
-                "Conic coast");
-            PlaceTopLeft(_conicButton.image, 216f, 0f, 140f, 22f);
+                "Conic");
+            PlaceTopLeft(_conicButton.image, 158f, 0f, 66f, 22f);
             _conicLabel = _conicButton.GetComponentInChildren<Text>(true);
             _conicButton.onClick.AddListener(OnConicCaptureClicked);
+
+            _fixedBurnButton = CreateButton(_timeSliderGroup, "FixedBurnButton",
+                "0.3 g burn");
+            PlaceTopLeft(_fixedBurnButton.image, 226f, 0f, 130f, 22f);
+            _fixedBurnLabel = _fixedBurnButton.GetComponentInChildren<Text>(true);
+            _fixedBurnButton.onClick.AddListener(OnFixedBurnClicked);
 
             _timeLabel = CreateText(_timeSliderGroup, "TimeSliderLabel", "TRIP TIME", 10,
                 SectionColour, FontStyle.Bold);

@@ -43,6 +43,10 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   impulsive Oberth capture, a transfer ellipse, and a circularisation burn
   ([ADR-014](../decisions/adr-014-keplerian-coast.md)). The quintic capture stays
   the default.
+* A **fixed-thrust arrival** as the third style: the same coasts with the two
+  burns flown as constant 0.3 g finite burns, a step in throttle and no blend,
+  and a higher parking radius that pays for the finite-burn loss
+  ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)).
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
@@ -236,14 +240,35 @@ chosen flight time when it fits the new window, and redraws the coast, burns,
 and lower parking orbit. A live flight keeps the plan it was begun with. The
 finite-burn arc and the rings/atmosphere arrival model are later fidelity work.
 
+# Done: fixed-thrust burns (2026-11-18)
+
+The conic arrival's impulses are now flyable as finite burns. The third arrival
+style is **Quintic / Conic / 0.3 g burn** in the nav computer.
+
+* `FiniteBurnArc` integrates constant thrust along the instantaneous velocity
+  through the two-body field and tabulates the local state; position and velocity
+  are continuous at a seam and acceleration steps by the burn level.
+* `FiniteBurnCapture` solves the capture burn's start offset and duration so the
+  post-burn apoapsis is the parking radius, and centres the circularisation on
+  the transfer apoapsis. The finite style parks at `max(1.4 R, R + 300 km)` with
+  a `max(1.2 R, R + 300 km)` periapsis.
+* Measured captures: Mars 3.65 km/s, Venus 4.21, Earth 4.38, Jupiter 19.68,
+  Saturn 10.40, against the impulse model's 3.53, 4.13, 4.28, 17.40, and 10.66.
+  The difference is the finite-burn loss.
+* The flights arrive 0.1–0.5 m and 0.0001–0.0006 m/s from the reference state
+  and hold eccentricities of 10⁻⁵ to 5 × 10⁻⁴. The suite is 443 tests.
+* [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records the decision.
+  The departure and cruise remain powered quintics; a fixed-thrust cruise is the
+  deferred Lambert work below.
+
 # Deferred: burn-and-coast trip planning
 
 The trip-time slider is the first half of the time/fuel choice: it re-solves the
 torch plan from the fastest feasible time out to three times that, with the
 arrival date and target position moving with it. The second half — **coast in
-the middle** — is still deferred. The conic arrival now supplies the coast *arc*
-and the impulsive burns, but the heliocentric middle of the trip is still a
-powered quintic.
+the middle** — is still deferred. The conic arrival now supplies the coast *arc*,
+the impulsive burns, and their finite fixed-thrust variant, but the heliocentric
+middle of the trip is still a powered quintic.
 
 * A coast is a Keplerian conic with the commanded thrust exactly zero. A quintic
   with a flat middle still commands thrust in a gravity field, so it would be a
@@ -265,8 +290,11 @@ powered quintic.
    done, so the shipped scene gets the map and the neighbourhood aid fade. This
    is the first small follow-up to milestone 2.5.
 2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
-   time and delta-v compete. The conic arrival already closes part of it in
-   delta-v.
+   time and delta-v compete. The conic arrival and the fixed-thrust arrival
+   already close part of it in delta-v. The next fidelity step is the same
+   fixed-thrust texture on the departure and cruise: a finite departure burn, a
+   Lambert coast, and the finite capture, which needs the Lambert and shooting
+   solve the conic arc does not provide.
 3. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.

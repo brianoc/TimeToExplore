@@ -19,11 +19,11 @@ for tests. Now the scene has a ship:
   preview; a **trip-time slider** then re-solves that preview at a longer
   duration, and **Begin flight** replans from the current state and flies the
   chosen time;
-* the plan is drawn in the world, with coasts and the capture dashed, the
-  parking coast green, burn markers at the impulsive capture and circularisation,
-  a flip marker, an arrival marker, and a ghost at the target's arrival position;
+* the plan is drawn in the world, with coasts dashed, the parking coast green,
+  finite burns solid, burn markers at each impulse or fixed-thrust start, a flip
+  marker, an arrival marker, and a ghost at the target's arrival position;
 * the flight panel shows the phase table, the countdown, the throttle, the
-  delta-v, and the impulsive burn total;
+  delta-v, and either the impulsive burn total or the fixed-thrust burn total;
 * time warp drops by itself near a body and before each plan boundary, including
   the periapsis and circularisation boundaries of a conic arrival;
 * after arrival the ship coasts in the parking orbit with the drive off, and the
@@ -125,8 +125,8 @@ since the plot, the status reads `Preview, stale` and a note says **replot or
 begin anyway**. **Replot route** refreshes it on demand. There is no automatic
 per-frame replanning.
 
-The same footer also exposes the **arrival style**, as a two-button choice
-between **Quintic capture** and **Conic coast**. It appears with the preview
+The same footer also exposes the **arrival style**, as a three-button choice
+between **Quintic**, **Conic**, and **0.3 g burn**. It appears with the preview
 because the style is a property of the plan, not a global setting the player has
 to imagine: pressing one calls `FlightSession.SetArrivalStyle`, which sets the
 planner mode, rebuilds the preview from the pinned departure state, and resets
@@ -134,10 +134,11 @@ the trip-time window to the new style's fastest plan. The previous flight time
 is kept when it still falls inside that window, so switching to a coast shows
 the same trip stretched by the capture rather than silently resetting a slider
 the player had moved. The active style's label is gold and its fill brighter;
-the route redraws with the coast, burns, and lower parking orbit, and the flight
-panel gains the `Coast`, `Capture`, `Parking`, and `Burns` rows. A live flight is
-never restyled: it keeps the plan it was begun with, and a later replan uses the
-style currently selected.
+the route redraws with the coast, burns, and parking orbit, and the flight panel
+gains the `Coast`, `Capture`, `Parking`, and `Burns` rows. The fixed style's
+`Burns` row reads `km/s · 0.3 g fixed`; the conic style's reads `impulsive`. A
+live flight is never restyled: it keeps the plan it was begun with, and a later
+replan uses the style currently selected.
 
 Only one preview exists. A second plot replaces it; selecting another body,
 `Esc`, **Close**, Cancel, teleport, and reset all discard it. `Begin` consumes
@@ -151,13 +152,15 @@ subdivided by curvature until every chord's midpoint deviates by at most
 5 × 10⁻⁴ of the chord length, capped at 4,096 segments per arc. The polyline is
 then re-projected into the ship-relative frame every frame. It draws
 
-* a **solid** line for the departure and cruise arcs;
-* a **dashed** line for coast arcs and the capture, using a repeating alpha
-  texture tiled along the line, with the dash length tied to the line width so
-  it stays readable at any zoom;
+* a **solid** line for the departure and cruise arcs, and for the fixed-thrust
+  burns;
+* a **dashed** line for coast arcs and the quintic capture, using a repeating
+  alpha texture tiled along the line, with the dash length tied to the line
+  width so it stays readable at any zoom;
 * a **green dashed** line for the short parking coast after circularisation;
-* **burn markers** at the start of each arc that carries an impulse: the
-  periapsis capture and the apoapsis circularisation on a conic arrival;
+* **burn markers** at the start of each impulsive arc (the conic periapsis
+  capture and apoapsis circularisation) and of each fixed-thrust burn (the
+  finite capture and circularisation);
 * an **orange marker at the flip** — the point where the along-track thrust
   changes sign, which is the top of the arc rather than a bang-bang switch. On
   the Mars plan it is 3.3 hours after departure;
@@ -224,7 +227,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
 | **Trip-time slider** on a preview | Re-solve the preview at a longer duration; updates the route, arrival, thrust, and delta-v without moving the ship |
-| **Quintic capture / Conic coast** on a preview | Switch the arrival style, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burns, and lower parking orbit |
+| **Quintic / Conic / 0.3 g burn** on a preview | Switch the arrival style, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burns, and parking orbit, and the fixed style steps the throttle instead of blending |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |

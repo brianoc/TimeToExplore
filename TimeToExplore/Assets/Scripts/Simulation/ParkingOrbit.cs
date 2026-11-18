@@ -29,6 +29,16 @@ namespace TimeToExplore.Simulation
         /// <summary>Minimum radius as a multiple of the body's radius.</summary>
         public const double RadiusFactor = 1.15;
 
+        /// <summary>Parking-radius floor for a fixed-thrust capture. A finite
+        /// burn cannot sit at periapsis, so the transfer ellipse needs more room
+        /// to shed the velocity the impulse model sheds instantly.</summary>
+        public const double FiniteBurnRadiusFactor = 1.4;
+
+        /// <summary>Capture-periapsis floor for a fixed-thrust capture. Higher
+        /// than the impulsive periapsis because the burn loses altitude around
+        /// periapsis.</summary>
+        public const double FiniteBurnPeriapsisFactor = 1.2;
+
         /// <summary>Fraction of the Hill radius that a parking orbit may not exceed.</summary>
         public const double HillFraction = 0.5;
 
@@ -100,6 +110,35 @@ namespace TimeToExplore.Simulation
 
             return Math.Max(body.RadiusM * PeriapsisRadiusFactor,
                 body.RadiusM + PeriapsisAltitudeM);
+        }
+
+        /// <summary>
+        /// Parking radius for a fixed-thrust capture: a 1.4-radius floor with the
+        /// usual altitude floor and Hill cap. Higher than the impulsive conic
+        /// radius because a finite burn loses periapsis altitude and needs the
+        /// transfer ellipse to start lower and climb.
+        /// </summary>
+        public static double FiniteBurnRadiusM(BodyRuntime body)
+        {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            if (body.RadiusM <= 0.0)
+                throw new ArgumentException("A parking orbit needs a body with a radius.", nameof(body));
+
+            double radius = Math.Max(body.RadiusM * FiniteBurnRadiusFactor,
+                body.RadiusM + DefaultAltitudeM);
+            return Math.Max(ApplyHillCap(body, radius), body.RadiusM * 1.05);
+        }
+
+        /// <summary>Capture periapsis for a fixed-thrust arrival: a 1.2-radius
+        /// floor and the altitude floor, below <see cref="FiniteBurnRadiusM"/>.</summary>
+        public static double FiniteBurnPeriapsisRadiusM(BodyRuntime body)
+        {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            if (body.RadiusM <= 0.0)
+                throw new ArgumentException("A capture periapsis needs a body with a radius.", nameof(body));
+
+            return Math.Max(body.RadiusM * FiniteBurnPeriapsisFactor,
+                body.RadiusM + DefaultAltitudeM);
         }
 
         private static double BaseRadiusM(BodyRuntime body)

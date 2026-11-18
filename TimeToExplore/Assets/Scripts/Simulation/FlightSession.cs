@@ -148,11 +148,19 @@ namespace TimeToExplore.Simulation
 
         /// <summary>Arrival style used for the next plan. The planner's quintic
         /// capture is the default; a conic arrival is the cheap, slow
-        /// alternative.</summary>
+        /// alternative, and a fixed-thrust arrival flies the same coasts with
+        /// finite 0.3 g burns instead of impulses.</summary>
         public CaptureStyle ArrivalStyle
         {
             get => _planner.ArrivalStyle;
             set => _planner.ArrivalStyle = value;
+        }
+
+        /// <summary>Acceleration the fixed-thrust arrival's burns command.</summary>
+        public double FixedBurnAccelerationMps2
+        {
+            get => _planner.FixedBurnAccelerationMps2;
+            set => _planner.FixedBurnAccelerationMps2 = value;
         }
 
         /// <summary>Current phase of the plan, or null when there is none.</summary>

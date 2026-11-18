@@ -63,6 +63,10 @@ namespace TimeToExplore.Simulation
         /// quintic.</summary>
         public bool IsCoast => Path is ConicArc;
 
+        /// <summary>True when the arc is a fixed-thrust finite burn rather than
+        /// a smooth quintic or a coast.</summary>
+        public bool IsFiniteBurn => Path is FiniteBurnArc;
+
         /// <summary>Largest commanded thrust on the arc, including the gravity
         /// feed-forward. Set by the planner when it measures the arc.</summary>
         public double PeakThrustMps2 { get; internal set; }

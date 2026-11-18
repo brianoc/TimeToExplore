@@ -20,7 +20,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Game vision](/vision/game-vision.md) — the fantasy, the loop, and what the player actually does.
 * [Design pillars](/vision/design-pillars.md) — the six rules that settle design arguments.
 * [Flight model](/simulation/flight-model.md) — 10 m/s², brachistochrone travel, and the delta-v economy.
-* [Glossary](/glossary.md) — the shared words, starting with the local view and the solar system view.
+* [Glossary](/glossary.md) — the shared words: the two camera views, the thrust and manoeuvre vocabulary, and the arrival geometry.
 
 # Vision
 
@@ -73,3 +73,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-012: An assembly layout that enforces the layering](/decisions/adr-012-assembly-layout.md) — Core, Simulation, and Presentation runtime assemblies plus Editor and test assemblies, with the dependency direction checked by `AssemblyLayoutTests`.
 * [ADR-013: A runtime uGUI HUD, and Input System New only](/decisions/adr-013-ugui-hud.md) — replace IMGUI with a code-built uGUI canvas, give uGUI an `InputSystemUIInputModule`, and drop the legacy backend.
 * [ADR-014: Transfer conics and the Oberth capture](/decisions/adr-014-keplerian-coast.md) — universal-variable propagation, a true-anomaly-parameterised coast, and an impulsive periapsis capture that parks lower and cheaper.
+* [ADR-015: Fixed-thrust burns and the third arrival style](/decisions/adr-015-fixed-thrust-burns.md) — fly the conic impulses as constant 0.3 g burns on the same coasts, step the throttle instead of blending, and park higher to pay for the finite-burn loss.

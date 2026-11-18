@@ -126,6 +126,23 @@ burn magnitudes. The style is opt-in because the coast from the sphere of
 influence is long. [ADR-014](../decisions/adr-014-keplerian-coast.md) has the
 geometry.
 
+A **fixed-thrust arrival** is the third style (`CaptureStyle.FiniteBurn`). It
+uses the same inbound hyperbola, transfer ellipse, and parking coast, but the
+two impulses are flown as finite burns at a constant 0.3 g (2.94 m/s²). The
+throttle is exactly zero on a coast and exactly that level on a burn; the
+acceleration steps at the seam rather than blending. `FiniteBurnArc` integrates
+the constant thrust through the two-body field and tabulates the local state.
+The capture burn straddles periapsis, because a finite burn cannot sit there; its
+start offset and duration are solved so the post-burn apoapsis is the parking
+radius. The finite burn loses periapsis altitude, so this style parks at
+`max(1.4 R, R + 300 km)` with a `max(1.2 R, R + 300 km)` periapsis, and the
+circularisation is centred on the transfer apoapsis. Measured captures are
+3.65 km/s at Mars, 4.38 at Earth, 19.68 at Jupiter, and 10.40 at Saturn; the
+impulse model's 3.53, 4.28, 17.40, and 10.66 show the finite-burn loss. The
+departure and cruise are still powered quintics: a fixed-thrust *cruise* needs
+the Lambert solve. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records
+the decision.
+
 Because the throttle is the curve's magnitude, the accelerate and decelerate
 phases are smooth ramps rather than a step at the flip. That is the price of the
 time penalty against the ideal table above.
@@ -221,6 +238,10 @@ curve is the throttle setting, so the HUD can draw it and the future fuel model
 can charge for its integral. Thrust direction is instantaneous: there is no
 attitude dynamics or slew limit yet.
 
+The quintic plan uses a smooth ramp. The fixed-thrust arrival is the deliberate
+opposite: a burn is a constant 0.3 g and a coast is zero, with a step at each
+seam. The nav computer's third arrival style is where that texture is exposed.
+
 # Delta-v is the real currency
 
 The rocket equation:
@@ -312,7 +333,8 @@ date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
 **Implemented so far:** the torch plan and its trip-time control, plus the conic
-**arrival** (a coasting hyperbola and an impulsive Oberth capture). Burn-and-coast
+**arrival** (a coasting hyperbola and an impulsive Oberth capture) and its
+fixed-thrust variant (the same coasts with finite 0.3 g burns). Burn-and-coast
 across the cruise is not implemented, because the middle of the trip still has to
 be solved: a Keplerian coast is a Lambert problem, and the conic arc alone does
 not choose the heliocentric connecting orbit. The slider deliberately stops at

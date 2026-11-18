@@ -193,9 +193,11 @@ namespace TimeToExplore.Rendering
             {
                 List<Vector3d> target = arc.Phase == FlightPhase.Parking
                     ? _parking
-                    : arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture
-                        ? _dashed
-                        : _solid;
+                    : arc.IsFiniteBurn
+                        ? _solid
+                        : arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture
+                            ? _dashed
+                            : _solid;
 
                 // Curvature-adaptive, not uniform in time. A conic is
                 // anomaly-parameterised, so periapsis is sampled densely; a
@@ -203,7 +205,7 @@ namespace TimeToExplore.Rendering
                 // keeps the runs joined.
                 PathTessellation.Append(arc.Path, target, includeStart: target.Count == 0);
 
-                if (arc.EntryImpulseMps > 0.0)
+                if (arc.EntryImpulseMps > 0.0 || arc.IsFiniteBurn)
                     _burnPositionsM.Add(arc.Path.PositionAt(0.0));
             }
 

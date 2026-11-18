@@ -359,6 +359,34 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheThirdArrivalStyleButtonChoosesFixedThrustBurns()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            _hud.OpenDetails();
+
+            Update();
+            Button fixedBurn = ButtonNamed("FixedBurnButton");
+            Assert.That(fixedBurn.interactable, Is.False, "one frame of click protection");
+            Assert.That(ButtonLabel("FixedBurnButton").text, Is.EqualTo("0.3 g burn"));
+
+            Update();
+            Assert.That(fixedBurn.interactable, Is.True);
+            fixedBurn.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
+                "the fixed style previews finite burn arcs");
+            Assert.That(ButtonLabel("FixedBurnButton").color,
+                Is.Not.EqualTo(ButtonLabel("QuinticCaptureButton").color));
+            Assert.That(ButtonLabel("FixedBurnButton").color,
+                Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color));
+        }
+
+        [Test]
         public void ClosingTheDetailsScreenDiscardsAPlottedPreview()
         {
             Build();

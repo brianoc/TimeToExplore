@@ -397,7 +397,8 @@ namespace TimeToExplore
         }
 
         /// <summary>How the nav computer brings the ship into orbit: the fast
-        /// quintic capture, or the cheap coasted conic one.</summary>
+        /// quintic capture, the cheap coasted conic one, or the same conic with
+        /// finite 0.3 g burns instead of impulses.</summary>
         public CaptureStyle ArrivalStyle =>
             Flight != null ? Flight.ArrivalStyle : CaptureStyle.Quintic;
 

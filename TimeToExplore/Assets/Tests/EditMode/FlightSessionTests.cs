@@ -193,6 +193,37 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void AdvancingAFixedBurnArrivalStepsThroughTheBurnsAndArrivesMatched()
+        {
+            var planner = new TripPlanner(_model, _gravity)
+            {
+                ArrivalStyle = CaptureStyle.FiniteBurn
+            };
+            var session = new FlightSession(_model, _gravity, planner);
+            session.PlaceAt("gateway", _epoch);
+
+            TrajectoryPlan plan = session.Begin("mars", _epoch);
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
+            Assert.That(plan.ImpulseDeltaVMps, Is.EqualTo(0.0).Within(1e-9));
+
+            FlightStep step = session.Advance(plan.ArrivalJulianDate, 200_000);
+            double positionError = Vector3d.Distance(session.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (session.State.VelocityMps - plan.ArrivalState.VelocityMps)
+                .Magnitude;
+            TestContext.WriteLine($"fixed burn arrival error {positionError:F1} m, " +
+                                  $"{velocityError:F4} m/s, {step.Substeps} substeps");
+
+            Assert.That(step.CollisionDetected, Is.False);
+            Assert.That(step.BudgetExhausted, Is.False);
+            Assert.That(step.Arrived, Is.True);
+            Assert.That(session.Status, Is.EqualTo(FlightStatus.Arrived));
+            Assert.That(positionError, Is.LessThan(10_000.0));
+            Assert.That(velocityError, Is.LessThan(10.0));
+        }
+
+        [Test]
         public void TheReachedDateIsClampedToWhatTheBudgetCouldIntegrate()
         {
             TrajectoryPlan plan = _session.Begin("mars", _epoch);

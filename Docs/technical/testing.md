@@ -62,15 +62,17 @@ because Unity test assemblies cannot reference the predefined
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
 | `PlanGeometryTests` | quintic endpoint conditions and peak factors, parking radius and its gravity ceiling across the catalogue, circular/equatorial/prograde orbits, SOI radii |
 | `ShipIntegratorTests` | orbit stability, Kepler agreement, kinematic thrust, the brachistochrone table, step-size independence, collision, step cap |
-| `TripPlannerTests` | arc chain and phases, exact arrival, seam continuity, flight-time envelope, Venus, Jupiter at the ceiling, the Moon, LEO departure, determinism, no mutation, the default quintic arrival style, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
+| `TripPlannerTests` | arc chain and phases, exact arrival, seam continuity, flight-time envelope, Venus, Jupiter at the ceiling, the Moon, LEO departure, determinism, no mutation, the default quintic arrival style, the fixed-thrust style's default 0.3 g level and its higher-than-conic but ceiling-free parking radius, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
 | `FlightExecutionTests` | plan, fly, and arrive at Mars and Jupiter in stable orbits; feedback from a perturbed start; Mars back to Earth; the orrery is untouched |
-| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the `[minimum, 3 × minimum]` trip-time window, retiming without moving the ship, clamping, and Begin keeping the chosen time), and the idle coast that keeps the ship moving with the clock |
+| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the fixed-thrust arrival stepping through two finite burns and arriving matched, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the `[minimum, 3 × minimum]` trip-time window, retiming without moving the ship, clamping, and Begin keeping the chosen time), and the idle coast that keeps the ship moving with the clock |
 | `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
-| `PlanPathTests` | arc boundary walking, the flip point's sign change, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the conic flip staying in the powered arc, and the periapsis and circularisation as plan boundaries |
-| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, a re-timed preview's flight time and later arrival, the conic Coast/Capture/Parking rows and the impulsive `Burns` row, status labels, countdown formatting |
+| `PlanPathTests` | arc boundary walking, the flip point's sign change, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the conic flip staying in the powered arc, the periapsis and circularisation as plan boundaries, the fixed-thrust arcs meeting the same flatness tolerance, and exactly two finite burns with no impulses |
+| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, a re-timed preview's flight time and later arrival, the conic Coast/Capture/Parking rows and the impulsive `Burns` row, the fixed-thrust `Burns` row reading `0.3 g fixed` and not `impulsive`, status labels, countdown formatting |
 | `KeplerPropagatorTests` | universal-variable propagation against the elements path on circular and eccentric ellipses, the hyperbolic periapsis and its analytic speed, forward/backward round trip, energy and angular momentum over 40 steps, state ↔ conic elements, a circular conic arc, and its two-body reference acceleration |
 | `TransferConicTests` | the entry at the sphere of influence, an inbound coast to a low periapsis, the capture plane and prograde direction, the retrograde periapsis and prograde apoapsis burns, the conic parking radius below the gravity ceiling, and invalid geometries reported rather than built |
 | `ConicTripPlannerTests` | the conic arc chain, lower parking and cheaper capture than the quintic, seam continuity with velocity steps at the burns, end-to-end conic flights to Mars, Earth, Venus, Jupiter, and Saturn with a stable lower orbit, and the capture cost across all five targets |
+| `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, and meeting the plan's sagitta tolerance; the capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe post-burn periapsis and the parking apoapsis, and a circularisation that leaves e < 0.01 |
+| `FiniteBurnTripPlannerTests` | the seven-arc fixed plan with two finite burns and two coasts, no impulses, a 0.3 g burn level, acceleration steps of exactly the burn level at the seams, end-to-end flights to Mars, Earth, Venus, Jupiter, and Saturn with stable parking orbits, the cheaper-than-quintic capture across all five targets, and the parking radius below the quintic ceiling |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
@@ -81,9 +83,9 @@ because Unity test assemblies cannot reference the predefined
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
-| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and retiming through its `onValueChanged`, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
+| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and retiming through its `onValueChanged`, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with finite burns, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
-The suite currently has **407 tests**. It deliberately tests the shipped
+The suite currently has **443 tests**. It deliberately tests the shipped
 catalogue as well as the maths, so a bad regeneration fails before Unity opens
 a scene.
 
@@ -149,6 +151,25 @@ from the system map: 3,939 frames, 65.7 s, arrival 2026-11-19 10:29:02 UTC,
 0.0 m and 0.0000 m/s, 3,898 km and e = 4.3 × 10⁻⁹ at arrival. The identical
 counts are the point: the map is a camera pose, so the flight path does not
 depend on how the player found the target.
+
+The fixed-thrust arrival (0.3 g = 2.942 m/s²) has these measured anchors:
+
+| Target | Capture burn | Circularisation | Parking radius | Post-burn periapsis |
+|---|---:|---:|---:|---:|
+| Moon | 22.3 min | 31 s | 2,432 km | 1,901 km |
+| Mars | 19.8 min | 55 s | 4,745 km | 3,841 km |
+| Venus | 22.0 min | 115 s | 8,473 km | 6,851 km |
+| Earth | 22.7 min | 126 s | 8,919 km | 7,186 km |
+| Saturn | 53.0 min | 353 s | 81,525 km | 67,524 km |
+| Jupiter | 94.1 min | 1,042 s | 97,875 km | 70,577 km |
+
+The end-to-end flights arrive 0.1–0.5 m and 0.0001–0.0006 m/s from the reference
+state; the parking eccentricities are 1.3 × 10⁻⁵ at the Moon, 1.9 × 10⁻⁵ at
+Mars, 5.3 × 10⁻⁵ at Earth, 3.9 × 10⁻⁵ at Saturn, and 5.5 × 10⁻⁴ at Jupiter. The
+capture delta-v is 3.65 km/s at Mars, 4.21 at Venus, 4.38 at Earth, 10.40 at
+Saturn, and 19.68 at Jupiter. The finite burn spends more than the impulse
+model in [ADR-014](/decisions/adr-014-keplerian-coast.md); that difference is the
+finite-burn loss, and it is what the higher parking radius pays for.
 
 The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the
@@ -341,7 +362,8 @@ non-empty `parent` for orbits) and keep a regression test for it.
   dash texture. Its data sources (the plan's boundaries, flip, and adaptive
   chord flatness) are tested, but no test renders a frame.
 * Performance budgets for orbit-line updates and per-frame HUD text updates.
-* Fuel accounting, attitude dynamics, finite-burn arcs, ring/atmosphere arrival
-  models, and the Lambert cruise (the conic *arrival* is covered).
+* Fuel accounting, attitude dynamics, ring/atmosphere arrival models, and the
+  Lambert cruise (the conic *arrival* and its finite fixed-thrust variant are
+  covered; a fixed-thrust departure and cruise are not).
 * Continuous integration. The repository is not under version control yet;
   when it is, `tools/check.sh` is the single CI entry point.

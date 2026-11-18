@@ -90,6 +90,23 @@ namespace TimeToExplore.Simulation
             }
         }
 
+        /// <summary>Delta-v spent inside fixed-thrust burn arcs. Zero for the
+        /// quintic and impulsive conic styles.</summary>
+        public double FiniteBurnDeltaVMps
+        {
+            get
+            {
+                double total = 0.0;
+                foreach (PlanArc arc in _arcs)
+                    if (arc.IsFiniteBurn) total += arc.DeltaVMps;
+                return total;
+            }
+        }
+
+        /// <summary>The fixed burn acceleration the plan's finite burns use, or
+        /// zero when the plan has none. The panel prints it as a g level.</summary>
+        public double FiniteBurnAccelerationMps2 { get; internal set; }
+
         public double MinimumClearanceM
         {
             get

@@ -32,6 +32,27 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheFixedBurnStyleUsesTheDefaultLevelAndItsOwnParkingRadius()
+        {
+            _planner.ArrivalStyle = CaptureStyle.FiniteBurn;
+            TrajectoryPlan plan = PlanToMars();
+
+            BodyRuntime mars = _model.Get("mars");
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(_planner.FixedBurnAccelerationMps2,
+                Is.EqualTo(TripPlanner.DefaultFixedBurnAccelerationMps2).Within(1e-12));
+            Assert.That(plan.FiniteBurnAccelerationMps2,
+                Is.EqualTo(TripPlanner.DefaultFixedBurnAccelerationMps2).Within(1e-6));
+            Assert.That(ParkingOrbit.FiniteBurnRadiusM(mars),
+                Is.GreaterThan(ParkingOrbit.ConicRadiusM(mars)));
+
+            BodyRuntime jupiter = _model.Get("jupiter");
+            Assert.That(ParkingOrbit.FiniteBurnRadiusM(jupiter),
+                Is.LessThan(ParkingOrbit.RadiusM(jupiter, 10.0)),
+                "the fixed burn still parks far below the quintic gravity ceiling");
+        }
+
+        [Test]
         public void AConicPlanAtAPinnedDurationLandsExactlyOnIt()
         {
             _planner.ArrivalStyle = CaptureStyle.Conic;
