@@ -45,8 +45,7 @@ coasts the inbound leg and captures impulsively at periapsis
 profile: the powered middle is replaced by the zero-revolution prograde conic
 that reaches the target's sphere of influence on time. The fixed burns that
 bookend it have landed as `CruiseStyle.BurnCoastBurn`, so the planner can emit
-the whole five-arc profile; only the nav-computer control for it is still
-missing.
+the whole five-arc profile; the nav computer's `PROFILE` buttons choose it.
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
@@ -92,13 +91,14 @@ circularisation burn at apoapsis. On the two-body reference the coast's
 acceleration is the local gravity pointwise, so the commanded thrust is zero;
 the autopilot supplies only the small third-body correction. The conic style is
 opt-in because the coast is slow at the outer planets. In the nav computer it is
-a two-button choice beside the trip-time slider: **Quintic capture** or
-**Conic coast**. Pressing one rebuilds the plotted preview against that style
-and resets the slider to the new style's fastest plan, so the player sees the
-coast, the periapsis and circularisation burns, the lower parking orbit, and the
-flight time and delta-v that come with them. A chosen flight time survives the
-switch when it fits the new window. The quintic capture remains the default, and
-a live flight keeps the plan it was begun with.
+part of the three-button `ARRIVAL` choice beside the trip-time slider — **Quintic
+capture**, **Conic coast**, or the hybrid **X g burn** — and the `PROFILE` row
+above it chooses the crossing. Pressing one rebuilds the plotted preview against
+that style and resets the slider to the new style's fastest plan, so the player
+sees the coast, the periapsis and circularisation burns, the lower parking orbit,
+and the flight time and delta-v that come with them. A chosen flight time
+survives the switch when it fits the new window. The quintic capture remains the
+default, and a live flight keeps the plan it was begun with.
 [ADR-014](../decisions/adr-014-keplerian-coast.md) records the geometry and the
 impulse model.
 
@@ -149,8 +149,9 @@ A **burn–coast–burn cruise** (`CruiseStyle.BurnCoastBurn`, default
 `CruiseStyle.Powered`) inserts the two finite burns into the coast skeleton. The
 departure burn is prograde about the Sun; it spends the excess of the coast's
 departure speed over the local escape speed, so the quintic breaks orbit and the
-burn supplies everything above escape. The brake is a retrograde fixed-thrust
-burn that spends the handover the coast plan would have made an impulse, so the
+burn supplies everything above escape. The brake is a fixed-thrust burn whose
+direction is the change the chain needs rather than the velocity direction; it
+spends the handover the coast plan would have made an impulse, so the
 capture chain is handed its entry state with **no impulse at the target's sphere
 of influence**. Both burns are placed by integrating them backwards from the
 state the next arc must begin at, so every seam is continuous in position and
@@ -167,9 +168,11 @@ quintic break, a 78-minute departure burn of 13.7 km/s, an 84-day coast, a
 3.1-hour brake of 19.2 km/s, and the 3.5 km/s conic capture, 50 km/s in total
 against the coast plan's 14 km/s at 200 days. The fastest plan the planner finds
 on its own is 57 days at 89 km/s. The flight arrives 0.1 m and 0.0001 m/s from
-the reference state and holds the parking orbit. The nav-computer control for
-this profile is step 4 of the plan: until then it is reachable through
-`TripPlanner.CruiseStyle`.
+the reference state and holds the parking orbit. The nav computer exposes the
+cruise as a `PROFILE` row beside the arrival buttons — **Powered** (the
+default), **Coast**, and **Burn-coast-burn** — and the existing burn-level
+slider is the level both fixed burns are planned at; no second level control was
+added.
 
 ## The trip-time control
 
@@ -180,14 +183,26 @@ flight time, peak thrust, and delta-v. It is a **duration** control, not a
 throttle cap, because `MaxAccelerationMps2` also sets the parking-orbit radius;
 lowering it would silently move where the ship parks.
 
-The control only lengthens the torch plan. Every implemented quintic plan
-already peaks at about 97% of the drive, so the left end is the floor and "burn
-harder" needs a stronger drive or the fuel model. The cheap alternative is the
-conic **arrival**, chosen by the two-button style control beside the slider: the
-capture is cheap and the coast from the sphere of influence is long, so the
-arrival is a time/delta-v choice the nav computer now exposes as fast-and-
-expensive against slow-and-cheap. The slider itself continues to stretch the
-torch plan and never pretends a quintic is a coast.
+The three-times span is the **powered** plan's window. A coasting profile has a
+real upper bound: the prograde short-way Lambert transfer sweeps past 180° as the
+trip lengthens, and a slow coast arrives slower than the target's frame, which
+would need an acceleration rather than a brake. Selecting **Coast** or
+**Burn-coast-burn** therefore resets the slider to that profile's own fastest
+plan and clamps the right end to the slowest duration the planner still accepts,
+found by probing inside the same span. At the epoch the burn–coast–burn window
+starts at its 57-day Mars plan, not at the torch plan's 4.4 days and not at an
+arbitrary three times the powered minimum. The slider's value line says what the
+drive is doing — `0.3 g burns · coast` or `coast · drive off` — instead of
+quoting a peak throttle for a plan that coasts.
+
+On the powered profile the control only lengthens the torch plan. Every
+implemented quintic plan already peaks at about 97% of the drive, so the left end
+is the floor and "burn harder" needs a stronger drive or the fuel model. The
+cheap alternatives are the `PROFILE` row's unpowered **Coast** and the
+**Burn-coast-burn** crossing, and the `ARRIVAL` row's conic capture: the capture
+is cheap and the coast from the sphere of influence is long, so the arrival is a
+time/delta-v choice the nav computer exposes as fast-and-expensive against
+slow-and-cheap. The powered slider never pretends a quintic is a coast.
 
 ## The parking orbit
 
@@ -542,24 +557,27 @@ the simulation, not decoration.
 **Implemented:** one coloured route line per arc by path type — gold solid for
 a quintic, blue dashed for a conic, red solid for a fixed burn, with consecutive
 same-type arcs taking darker or paler shades of the same hue — burn markers at
-each impulsive periapsis or circularisation, an
+each impulsive periapsis or circularisation and at each fixed burn start, an
 arrival marker at the parking-orbit point, a flip marker where the along-track
-thrust changes sign, a countdown to the next arc boundary, a phase table with
-each leg's start and duration, the arrival date, peak thrust, planned delta-v
-and the burn total, the live throttle, the trip-time slider, which re-solves the
-route and its arrival date as it moves, and the arrival-style buttons, which
-rebuild the preview as a fast quintic capture, a cheap conic coast, or the
-hybrid fixed-thrust arrival. The hybrid's long burn is a solid red line with a
-marker at its start, the terminal trim marks the injection point, and the
-`Burns` row reads the fixed and trim delta-v separately. The warp policy keeps
-the final approach visible, and the periapsis and circularisation are plan
-boundaries in every style; the hybrid's burn window is a boundary too.
+thrust changes direction, a countdown to the next arc boundary, a phase table with
+each leg's start, duration, and what the drive is doing, the arrival date,
+peak thrust for a torch plan, planned delta-v and the burn total, the live
+throttle, the `PROFILE` buttons, the trip-time slider, which re-solves the route
+and its arrival date as it moves, and the arrival-style buttons, which rebuild
+the preview as a fast quintic capture, a cheap conic coast, or the hybrid
+fixed-thrust arrival. A coasting profile replaces the peak-throttle row with a
+`DRIVE` summary: the break, the coast with the drive off, and the departure
+burn and brake with their own delta-v and durations. The brake is reported by
+what it spends, not described as anti-velocity, because its direction is the
+change the chain needs. The hybrid's long burn is a solid red line with a marker
+at its start, the terminal trim marks the injection point, and the `Burns` row
+reads the fixed and trim delta-v separately. The warp policy keeps the final
+approach visible, and the periapsis and circularisation are plan boundaries in
+every style; the hybrid's burn window is a boundary too.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
-against a budget (there is no budget yet), the nav-computer control for the
-burn–coast–burn cruise (the planner builds it, but step 4 adds the button, the
-speed control, and the panel rows), and the docking corridor.
+against a budget (there is no budget yet), and the docking corridor.
 
 # Failure and rescue
 

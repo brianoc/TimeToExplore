@@ -36,32 +36,50 @@ namespace TimeToExplore.UI
             {
                 rows.Add(DetailRow.Of(PhaseLabel(arc.Phase),
                     $"{JulianDate.FormatShort(arc.StartJulianDate)}  ·  " +
-                    SolarSystemHud.FormatDuration(arc.DurationSeconds)));
+                    $"{SolarSystemHud.FormatDuration(arc.DurationSeconds)}  ·  " +
+                    DriveLabel(arc, model)));
             }
 
             rows.Add(DetailRow.Of("Arrival", JulianDate.FormatShort(plan.ArrivalJulianDate)));
             rows.Add(DetailRow.Of("Flight time", SolarSystemHud.FormatDuration(plan.FlightTimeSeconds)));
-            rows.Add(DetailRow.Of("Peak thrust",
-                $"{plan.PeakThrustMps2:0.00} m/s²  ({plan.PeakThrottle * 100.0:0}%)"));
-            rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
-            if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps > 0.0)
+
+            // A coasting profile has no torch plan: the peak-throttle row would
+            // describe the capture's impulses as if they were a continuous
+            // burn. Report what the drive actually does on each leg instead.
+            bool coastProfile = IsCoastProfile(plan);
+            if (coastProfile)
             {
-                double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
-                rows.Add(DetailRow.Of("Burns",
-                    $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s fixed  ·  " +
-                    $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s trim  ·  {g:0.0} g"));
+                AddDriveRows(rows, plan, model);
             }
-            else if (plan.ImpulseDeltaVMps > 0.0)
+            else
             {
-                rows.Add(DetailRow.Of("Burns",
-                    $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s  ·  impulsive"));
+                rows.Add(DetailRow.Of("Peak thrust",
+                    $"{plan.PeakThrustMps2:0.00} m/s²  ({plan.PeakThrottle * 100.0:0}%)"));
             }
 
-            if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps <= 0.0)
+            rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
+
+            if (!coastProfile)
             {
-                double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
-                rows.Add(DetailRow.Of("Burns",
-                    $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s  ·  {g:0.0} g fixed"));
+                if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps > 0.0)
+                {
+                    double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
+                    rows.Add(DetailRow.Of("Burns",
+                        $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s fixed  ·  " +
+                        $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s trim  ·  {g:0.0} g"));
+                }
+                else if (plan.ImpulseDeltaVMps > 0.0)
+                {
+                    rows.Add(DetailRow.Of("Burns",
+                        $"{plan.ImpulseDeltaVMps / 1000.0:F1} km/s  ·  impulsive"));
+                }
+
+                if (plan.FiniteBurnDeltaVMps > 0.0 && plan.ImpulseDeltaVMps <= 0.0)
+                {
+                    double g = plan.FiniteBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
+                    rows.Add(DetailRow.Of("Burns",
+                        $"{plan.FiniteBurnDeltaVMps / 1000.0:F1} km/s  ·  {g:0.0} g fixed"));
+                }
             }
 
             if (session.Plan == null)
@@ -95,8 +113,10 @@ namespace TimeToExplore.UI
                 if (session.Status == FlightStatus.Flying)
                 {
                     rows.Add(DetailRow.Of("Throttle",
-                        $"{session.Throttle * 100.0:0}%  ·  " +
-                        $"{session.CurrentThrust.MagnitudeMps2:0.00} m/s²"));
+                        session.Throttle > 0.005
+                            ? $"{session.Throttle * 100.0:0}%  ·  " +
+                              $"{session.CurrentThrust.MagnitudeMps2:0.00} m/s²"
+                            : "drive off"));
                 }
 
                 rows.Add(DetailRow.Of("Flip", FlipLabel(session)));
@@ -121,6 +141,136 @@ namespace TimeToExplore.UI
                 case FlightPhase.Capture: return "Capture";
                 case FlightPhase.Parking: return "Parking";
                 default: return phase.ToString();
+            }
+        }
+
+        /// <summary>What the drive is doing on one arc. The same path type reads
+        /// differently by phase: a fixed burn on the cruise is the profile's
+        /// departure burn, the one at the target's sphere of influence is the
+        /// brake, and the hybrid's is the capture burn.</summary>
+        public static string DriveLabel(PlanArc arc, SolarSystemModel model = null)
+        {
+            if (arc == null) return "—";
+
+            bool aboutSun = model?.Sun != null && arc.ReferenceBodyId == model.Sun.Id;
+            if (arc.IsFiniteBurn)
+            {
+                if (aboutSun && arc.Phase == FlightPhase.Cruise) return "prograde burn";
+                if (aboutSun && arc.Phase == FlightPhase.Capture) return "brake";
+                return "capture burn";
+            }
+
+            if (arc.IsCoast) return "drive off";
+            return arc.Phase == FlightPhase.Departure ? "break" : "powered";
+        }
+
+        /// <summary>True when the plan crosses on a coast rather than a powered
+        /// quintic: the coast cruise, and the burn–coast–burn profile whose
+        /// heliocentric middle is the same coast.</summary>
+        public static bool IsCoastProfile(TrajectoryPlan plan)
+        {
+            if (plan == null) return false;
+
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase != FlightPhase.Cruise) continue;
+                return arc.IsCoast || arc.IsFiniteBurn;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// The drive summary for a coasting plan: the break out of the departure
+        /// well, the coast with the drive off, the fixed departure burn and the
+        /// brake reported separately with their own delta-v and durations, and
+        /// the capture chain's own cost. The brake's direction is the change the
+        /// chain needs, not a velocity-aligned retrograde burn, so the row says
+        /// what it spends and how long it takes, not that it is anti-velocity.
+        /// </summary>
+        private static void AddDriveRows(List<DetailRow> rows, TrajectoryPlan plan,
+            SolarSystemModel model)
+        {
+            rows.Add(DetailRow.Heading("DRIVE"));
+
+            string sunId = model?.Sun?.Id;
+            PlanArc departureBurn = null;
+            PlanArc brake = null;
+            PlanArc coast = null;
+            int chainStart = plan.Arcs.Count;
+
+            for (int i = 0; i < plan.Arcs.Count; i++)
+            {
+                PlanArc arc = plan.Arcs[i];
+                bool aboutSun = sunId != null && arc.ReferenceBodyId == sunId;
+
+                if (aboutSun && arc.Phase == FlightPhase.Cruise && arc.IsFiniteBurn)
+                    departureBurn = arc;
+                else if (aboutSun && arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn)
+                    brake = arc;
+                else if (aboutSun && arc.Phase == FlightPhase.Cruise && arc.IsCoast)
+                    coast = arc;
+
+                if (chainStart == plan.Arcs.Count && !aboutSun &&
+                    (arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture ||
+                     arc.Phase == FlightPhase.Parking))
+                    chainStart = i;
+            }
+
+            double level = plan.FiniteBurnAccelerationMps2
+                           / TripPlanner.StandardGravityMps2;
+
+            if (departureBurn != null)
+            {
+                rows.Add(DetailRow.Of("Departure burn",
+                    $"{departureBurn.DeltaVMps / 1000.0:F1} km/s  ·  " +
+                    $"{SolarSystemHud.FormatDuration(departureBurn.DurationSeconds)}  ·  " +
+                    $"{level:0.0} g"));
+            }
+            else if (plan.Arcs.Count > 0 && plan.Arcs[0].Phase == FlightPhase.Departure)
+            {
+                PlanArc breakArc = plan.Arcs[0];
+                rows.Add(DetailRow.Of("Break",
+                    $"{breakArc.DeltaVMps / 1000.0:F1} km/s  ·  " +
+                    $"{SolarSystemHud.FormatDuration(breakArc.DurationSeconds)}  ·  quintic"));
+            }
+
+            if (coast != null)
+            {
+                rows.Add(DetailRow.Of("Coast",
+                    $"drive off  ·  {SolarSystemHud.FormatDuration(coast.DurationSeconds)}"));
+            }
+
+            if (brake != null)
+            {
+                rows.Add(DetailRow.Of("Brake",
+                    $"{brake.DeltaVMps / 1000.0:F1} km/s  ·  " +
+                    $"{SolarSystemHud.FormatDuration(brake.DurationSeconds)}  ·  " +
+                    $"{level:0.0} g"));
+            }
+
+            if (chainStart < plan.Arcs.Count)
+            {
+                double chainDeltaV = 0.0;
+                if (brake == null && plan.Arcs[chainStart].EntryImpulseMps > 0.0)
+                {
+                    rows.Add(DetailRow.Of("Handover",
+                        $"{plan.Arcs[chainStart].EntryImpulseMps / 1000.0:F1} km/s  ·  " +
+                        "at the target SOI"));
+                }
+
+                for (int i = chainStart; i < plan.Arcs.Count; i++)
+                {
+                    chainDeltaV += plan.Arcs[i].EntryImpulseMps;
+                    if (plan.Arcs[i].IsFiniteBurn) chainDeltaV += plan.Arcs[i].DeltaVMps;
+                }
+
+                double chainSeconds = (plan.ArrivalJulianDate
+                                       - plan.Arcs[chainStart].StartJulianDate)
+                                      * JulianDate.SecondsPerDay;
+                rows.Add(DetailRow.Of("Capture",
+                    $"{chainDeltaV / 1000.0:F1} km/s  ·  " +
+                    SolarSystemHud.FormatDuration(chainSeconds)));
             }
         }
 

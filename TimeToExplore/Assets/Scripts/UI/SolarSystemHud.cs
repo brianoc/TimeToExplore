@@ -33,7 +33,7 @@ namespace TimeToExplore.UI
 
         private const float DetailsHeaderHeight = 95f;
         private const float DetailsFooterHeight = 122f;
-        private const float DetailsSliderHeight = 118f;
+        private const float DetailsSliderHeight = 154f;
         private const float DetailsHeadingHeight = 22f;
         private const float DetailsRowHeight = 17f;
         private const float FlightHeaderHeight = 58f;
@@ -47,7 +47,7 @@ namespace TimeToExplore.UI
         private const float LegendSwatchHeight = 3f;
 
         private const int MaxDetailsRows = 20;
-        private const int MaxFlightRows = 22;
+        private const int MaxFlightRows = 30;
         private const int MaxLegendRows = 6;
         private const int InitialLabelPool = 24;
 
@@ -117,12 +117,19 @@ namespace TimeToExplore.UI
 
         // Trip-time and arrival-style controls, shown only while a preview for
         // the selected body exists. The slider's value is flight time in
-        // seconds, so its range is the preview's own feasible window; the two
-        // buttons choose the capture model the preview was built with.
+        // seconds, so its range is the preview's own feasible window; the
+        // profile buttons choose how the ship crosses, and the arrival buttons
+        // choose the capture model the preview was built with.
         private RectTransform _timeSliderGroup;
+        private Button _poweredButton;
+        private Button _coastButton;
+        private Button _burnCoastBurnButton;
         private Button _quinticButton;
         private Button _conicButton;
         private Button _fixedBurnButton;
+        private Text _poweredLabel;
+        private Text _coastLabel;
+        private Text _burnCoastBurnLabel;
         private Text _quinticLabel;
         private Text _conicLabel;
         private Text _fixedBurnLabel;
@@ -596,15 +603,25 @@ namespace TimeToExplore.UI
 
             // The click that opened the screen cannot also choose a style.
             bool interactive = !_detailsOpenedThisFrame;
+            _poweredButton.interactable = interactive;
+            _coastButton.interactable = interactive;
+            _burnCoastBurnButton.interactable = interactive;
             _quinticButton.interactable = interactive;
             _conicButton.interactable = interactive;
             _fixedBurnButton.interactable = interactive;
+
+            CruiseStyle profile = _owner.CruiseProfile;
+            ShowModeChoice(_poweredButton, _poweredLabel, profile == CruiseStyle.Powered);
+            ShowModeChoice(_coastButton, _coastLabel, profile == CruiseStyle.Coast);
+            ShowModeChoice(_burnCoastBurnButton, _burnCoastBurnLabel,
+                profile == CruiseStyle.BurnCoastBurn);
+
             CaptureStyle style = _owner.ArrivalStyle;
-            ShowArrivalChoice(_quinticButton, _quinticLabel,
+            ShowModeChoice(_quinticButton, _quinticLabel,
                 style == CaptureStyle.Quintic);
-            ShowArrivalChoice(_conicButton, _conicLabel,
+            ShowModeChoice(_conicButton, _conicLabel,
                 style == CaptureStyle.Conic);
-            ShowArrivalChoice(_fixedBurnButton, _fixedBurnLabel,
+            ShowModeChoice(_fixedBurnButton, _fixedBurnLabel,
                 style == CaptureStyle.FiniteBurn);
 
             if (flight != null)
@@ -613,7 +630,10 @@ namespace TimeToExplore.UI
                 _fixedBurnLabel.text = $"{g:0.0} g burn";
             }
 
-            bool showLevel = style == CaptureStyle.FiniteBurn;
+            // The level belongs to the fixed-thrust arrival and to the
+            // burn–coast–burn cruise, which plans both its burns at it.
+            bool showLevel = style == CaptureStyle.FiniteBurn ||
+                             profile == CruiseStyle.BurnCoastBurn;
             if (_burnLevelLabel.gameObject.activeSelf != showLevel)
             {
                 _burnLevelLabel.gameObject.SetActive(showLevel);
@@ -634,7 +654,9 @@ namespace TimeToExplore.UI
 
                 double acceleration = flight.FixedBurnAccelerationMps2;
                 _burnLevelValue.text = level < 0.005
-                    ? "0.0 g · conic"
+                    ? profile == CruiseStyle.BurnCoastBurn
+                        ? "0.0 g · coast"
+                        : "0.0 g · conic"
                     : $"{level:0.00} g  ·  {acceleration:0.00} m/s²";
             }
 
@@ -670,8 +692,7 @@ namespace TimeToExplore.UI
 
             double scale = minimum > 0.0 ? duration / minimum : 1.0;
             _timeLabel.text = $"TRIP TIME   ×{scale:0.00}";
-            _timeValue.text = FormatDuration(duration) + "  ·  " +
-                              $"{flight.Preview.PeakThrottle * 100.0:0}% burn";
+            _timeValue.text = FormatDuration(duration) + "  ·  " + DriveStateLabel(flight);
         }
 
         private void OnTimeSliderChanged(float seconds)
@@ -704,9 +725,51 @@ namespace TimeToExplore.UI
             _owner.SetBurnLevel(levelG);
         }
 
-        /// <summary>Mark the active arrival style: its label takes the selected
-        /// gold and its fill is brighter, so the pair reads as one choice.</summary>
-        private static void ShowArrivalChoice(Button button, Text label, bool active)
+        private void OnPoweredProfileClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetCruiseProfile(CruiseStyle.Powered);
+        }
+
+        private void OnCoastProfileClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetCruiseProfile(CruiseStyle.Coast);
+        }
+
+        private void OnBurnCoastBurnProfileClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+            _owner.SetCruiseProfile(CruiseStyle.BurnCoastBurn);
+        }
+
+        /// <summary>
+        /// The one-line state of the drive under the trip-time slider. A coast
+        /// is reported as a coast, never as the torch plan's peak throttle.
+        /// </summary>
+        private static string DriveStateLabel(FlightSession flight)
+        {
+            if (flight?.Preview == null) return "—";
+
+            switch (flight.CruiseProfile)
+            {
+                case CruiseStyle.Coast:
+                    return "coast · drive off";
+                case CruiseStyle.BurnCoastBurn:
+                    double g = flight.FixedBurnAccelerationMps2
+                               / TripPlanner.StandardGravityMps2;
+                    return g < 0.005
+                        ? "coast · drive off"
+                        : $"{g:0.0} g burns · coast";
+                default:
+                    return $"{flight.Preview.PeakThrottle * 100.0:0}% burn";
+            }
+        }
+
+        /// <summary>Mark the active profile or arrival style: its label takes the
+        /// selected gold and its fill is brighter, so the row reads as one
+        /// choice.</summary>
+        private static void ShowModeChoice(Button button, Text label, bool active)
         {
             label.color = active ? SelectedLabelColour : DimColour;
 
@@ -1245,11 +1308,13 @@ namespace TimeToExplore.UI
         }
 
         /// <summary>
-        /// The footer controls: the trip-time slider, the three arrival-style
-        /// buttons, and the fixed-burn level slider. The style is a mode, not a
-        /// slider value, because each model trades time, delta-v, and park radius
-        /// differently; the level is a continuous property of the fixed-thrust
-        /// style ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md),
+        /// The footer controls: the trip-time slider, the cruise-profile buttons,
+        /// the three arrival-style buttons, and the fixed-burn level slider. The
+        /// profile and the style are modes, not slider values, because each
+        /// model trades time, delta-v, and park radius differently; the level is
+        /// a continuous property of the fixed-thrust style and of the
+        /// burn–coast–burn profile's two burns
+        /// ([ADR-014](../../../Docs/decisions/adr-014-keplerian-coast.md),
         /// [ADR-015](../../../Docs/decisions/adr-015-fixed-thrust-burns.md)).
         /// </summary>
         private void BuildTimeSlider(Transform parent)
@@ -1258,48 +1323,69 @@ namespace TimeToExplore.UI
                 new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero,
                 new Vector2(DetailsWidth - 36f, DetailsSliderHeight));
 
+            Text profileLabel = CreateText(_timeSliderGroup, "CruiseProfileLabel",
+                "PROFILE", 10, SectionColour, FontStyle.Bold);
+            PlaceTopLeft(profileLabel, 0f, 0f, 62f, 20f);
+
+            _poweredButton = CreateButton(_timeSliderGroup, "PoweredProfileButton",
+                "Powered");
+            PlaceTopLeft(_poweredButton.image, 62f, 0f, 84f, 22f);
+            _poweredLabel = _poweredButton.GetComponentInChildren<Text>(true);
+            _poweredButton.onClick.AddListener(OnPoweredProfileClicked);
+
+            _coastButton = CreateButton(_timeSliderGroup, "CoastProfileButton", "Coast");
+            PlaceTopLeft(_coastButton.image, 148f, 0f, 68f, 22f);
+            _coastLabel = _coastButton.GetComponentInChildren<Text>(true);
+            _coastButton.onClick.AddListener(OnCoastProfileClicked);
+
+            _burnCoastBurnButton = CreateButton(_timeSliderGroup,
+                "BurnCoastBurnProfileButton", "Burn-coast-burn");
+            PlaceTopLeft(_burnCoastBurnButton.image, 218f, 0f, 138f, 22f);
+            _burnCoastBurnLabel = _burnCoastBurnButton.GetComponentInChildren<Text>(true);
+            _burnCoastBurnButton.onClick.AddListener(OnBurnCoastBurnProfileClicked);
+
             Text arrivalLabel = CreateText(_timeSliderGroup, "ArrivalStyleLabel", "ARRIVAL", 10,
                 SectionColour, FontStyle.Bold);
-            PlaceTopLeft(arrivalLabel, 0f, 0f, 76f, 20f);
+            PlaceTopLeft(arrivalLabel, 0f, 30f, 76f, 20f);
 
             _quinticButton = CreateButton(_timeSliderGroup, "QuinticCaptureButton",
                 "Quintic");
-            PlaceTopLeft(_quinticButton.image, 76f, 0f, 80f, 22f);
+            PlaceTopLeft(_quinticButton.image, 76f, 30f, 80f, 22f);
             _quinticLabel = _quinticButton.GetComponentInChildren<Text>(true);
             _quinticButton.onClick.AddListener(OnQuinticCaptureClicked);
 
             _conicButton = CreateButton(_timeSliderGroup, "ConicCaptureButton",
                 "Conic");
-            PlaceTopLeft(_conicButton.image, 158f, 0f, 66f, 22f);
+            PlaceTopLeft(_conicButton.image, 158f, 30f, 66f, 22f);
             _conicLabel = _conicButton.GetComponentInChildren<Text>(true);
             _conicButton.onClick.AddListener(OnConicCaptureClicked);
 
             _fixedBurnButton = CreateButton(_timeSliderGroup, "FixedBurnButton",
                 "0.3 g burn");
-            PlaceTopLeft(_fixedBurnButton.image, 226f, 0f, 130f, 22f);
+            PlaceTopLeft(_fixedBurnButton.image, 226f, 30f, 130f, 22f);
             _fixedBurnLabel = _fixedBurnButton.GetComponentInChildren<Text>(true);
             _fixedBurnButton.onClick.AddListener(OnFixedBurnClicked);
 
             _timeLabel = CreateText(_timeSliderGroup, "TimeSliderLabel", "TRIP TIME", 10,
                 SectionColour, FontStyle.Bold);
-            PlaceTopLeft(_timeLabel, 0f, 30f, 190f, 16f);
+            PlaceTopLeft(_timeLabel, 0f, 60f, 190f, 16f);
 
             _timeValue = CreateText(_timeSliderGroup, "TimeSliderValue", "", 11, TextColour,
                 FontStyle.Normal, TextAnchor.MiddleRight);
-            PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 30f, 210f, 16f);
+            PlaceTopLeft(_timeValue, DetailsWidth - 36f - 210f, 60f, 210f, 16f);
 
-            _timeSlider = BuildSlider(_timeSliderGroup, "TimeSlider", 52f,
+            _timeSlider = BuildSlider(_timeSliderGroup, "TimeSlider", 82f,
                 OnTimeSliderChanged);
 
             _burnLevelLabel = CreateText(_timeSliderGroup, "BurnLevelLabel",
                 "BURN LEVEL", 10, SectionColour, FontStyle.Bold);
-            PlaceTopLeft(_burnLevelLabel, 0f, 78f, 160f, 16f);
+            PlaceTopLeft(_burnLevelLabel, 0f, 108f, 160f, 16f);
 
             _burnLevelValue = CreateText(_timeSliderGroup, "BurnLevelValue", "", 11,
                 TextColour, FontStyle.Normal, TextAnchor.MiddleRight);
-            PlaceTopLeft(_burnLevelValue, DetailsWidth - 36f - 230f, 78f, 230f, 16f);
+            PlaceTopLeft(_burnLevelValue, DetailsWidth - 36f - 230f, 108f, 230f, 16f);
 
-            _burnLevelSlider = BuildSlider(_timeSliderGroup, "BurnLevelSlider", 100f,
+            _burnLevelSlider = BuildSlider(_timeSliderGroup, "BurnLevelSlider", 130f,
                 OnBurnLevelChanged);
             _burnLevelSlider.minValue = 0f;
             _burnLevelSlider.maxValue = (float)TripPlanner.MaxBurnLevelG;

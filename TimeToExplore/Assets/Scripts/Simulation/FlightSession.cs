@@ -107,12 +107,13 @@ namespace TimeToExplore.Simulation
         /// or NaN. The trip-time control's lower bound.</summary>
         public double PreviewMinimumSeconds { get; private set; } = double.NaN;
 
-        /// <summary>The slowest trip the trip-time control offers, or NaN. A
-        /// fixed multiple of <see cref="PreviewMinimumSeconds"/>.</summary>
-        public double PreviewMaximumSeconds =>
-            double.IsNaN(PreviewMinimumSeconds)
-                ? double.NaN
-                : PreviewMinimumSeconds * TripPlanner.MaxDurationScale;
+        /// <summary>The slowest trip the trip-time control offers, or NaN. For
+        /// the powered cruise it is <see cref="TripPlanner.MaxDurationScale"/>
+        /// times the minimum; for a coasting cruise it is the slowest duration
+        /// the planner still accepts, found by probing the same window, because
+        /// a long coast is rejected once its transfer sweeps 180° or its
+        /// arrival no longer needs a brake.</summary>
+        public double PreviewMaximumSeconds { get; private set; } = double.NaN;
 
         /// <summary>The preview's current flight time, or NaN.</summary>
         public double PreviewDurationSeconds => Preview?.FlightTimeSeconds ?? double.NaN;
@@ -154,6 +155,16 @@ namespace TimeToExplore.Simulation
         {
             get => _planner.ArrivalStyle;
             set => _planner.ArrivalStyle = value;
+        }
+
+        /// <summary>How the ship crosses between the spheres of influence: the
+        /// powered quintic, the unpowered Lambert coast, or the burn–coast–burn
+        /// profile with its departure burn and brake. The powered cruise is the
+        /// default, matching the planner.</summary>
+        public CruiseStyle CruiseProfile
+        {
+            get => _planner.CruiseStyle;
+            set => _planner.CruiseStyle = value;
         }
 
         /// <summary>Player-facing fixed-burn level in g. Zero selects the pure
@@ -247,6 +258,7 @@ namespace TimeToExplore.Simulation
             Preview = _planner.Plan(_previewDeparture, targetId);
             PreviewJulianDate = julianDate;
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
+            PreviewMaximumSeconds = MaximumPreviewSeconds(targetId, PreviewMinimumSeconds);
             return Preview;
         }
 
@@ -285,10 +297,29 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Choose the fixed-burn level and rebuild a fixed-thrust preview from
-        /// the pinned departure state. The level is rounded to 0.05 g so a
-        /// slider drag does not re-solve the whole route at every pixel. A live
-        /// flight keeps the plan it was begun with.
+        /// Choose the cruise profile and rebuild the preview against it, from the
+        /// same pinned departure state. The fastest feasible plan of the new
+        /// profile sets the trip-time window, and a coasting profile's window is
+        /// clamped to the durations its Lambert solve actually accepts. The
+        /// previous flight time is kept when it falls inside that window, so the
+        /// choice changes the crossing rather than silently throwing away the
+        /// player's trip time. A live flight is never touched: it keeps the plan
+        /// it was begun with.
+        /// Returns the rebuilt preview, or null when there was none.
+        /// </summary>
+        public TrajectoryPlan SetCruiseProfile(CruiseStyle style)
+        {
+            if (style == CruiseProfile) return Preview;
+            CruiseProfile = style;
+            return RebuildPreview();
+        }
+
+        /// <summary>
+        /// Choose the fixed-burn level and rebuild a preview that uses it from
+        /// the pinned departure state. Both the hybrid arrival and the
+        /// burn–coast–burn cruise plan their burns at this level. The level is
+        /// rounded to 0.05 g so a slider drag does not re-solve the whole route
+        /// at every pixel. A live flight keeps the plan it was begun with.
         /// </summary>
         public TrajectoryPlan SetBurnLevel(double levelG)
         {
@@ -297,15 +328,17 @@ namespace TimeToExplore.Simulation
             if (Math.Abs(levelG - BurnLevelG) < 1e-9) return Preview;
 
             BurnLevelG = levelG;
-            if (Preview == null || ArrivalStyle != CaptureStyle.FiniteBurn)
+            if (Preview == null ||
+                (ArrivalStyle != CaptureStyle.FiniteBurn &&
+                 CruiseProfile != CruiseStyle.BurnCoastBurn))
                 return Preview;
 
             return RebuildPreview();
         }
 
         /// <summary>Rebuild the preview from the pinned departure state and the
-        /// current style and burn level, keeping the previous flight time when
-        /// the new style's window contains it.</summary>
+        /// current profile, style, and burn level, keeping the previous flight
+        /// time when the new window contains it.</summary>
         private TrajectoryPlan RebuildPreview()
         {
             if (Preview == null) return null;
@@ -315,6 +348,7 @@ namespace TimeToExplore.Simulation
 
             Preview = _planner.Plan(_previewDeparture, targetId);
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
+            PreviewMaximumSeconds = MaximumPreviewSeconds(targetId, PreviewMinimumSeconds);
 
             if (Preview.IsFeasible && requested > PreviewMinimumSeconds)
                 Preview = _planner.PlanAtDuration(_previewDeparture, targetId,
@@ -329,6 +363,52 @@ namespace TimeToExplore.Simulation
             Preview = null;
             PreviewJulianDate = double.NaN;
             PreviewMinimumSeconds = double.NaN;
+            PreviewMaximumSeconds = double.NaN;
+        }
+
+        /// <summary>How many bisection probes find a coasting profile's slowest
+        /// accepted trip. Six puts the right-hand end within a few percent of
+        /// the planner's actual limit, which is finer than the slider needs.</summary>
+        private const int CoastWindowProbes = 6;
+
+        /// <summary>
+        /// The slowest trip the trip-time control may offer for the current
+        /// profile. The powered cruise keeps the historical three-times-minimum
+        /// window. A coasting cruise has a real upper bound: the short-way
+        /// Lambert transfer sweeps past 180°, and a slow coast arrives slower
+        /// than the target's frame, so the planner rejects those durations. The
+        /// end is therefore the largest accepted duration inside the same
+        /// three-times-minimum span, found by probing; the slider can never ask
+        /// for a plan the planner refuses.
+        /// </summary>
+        private double MaximumPreviewSeconds(string targetId, double minimum)
+        {
+            if (!(minimum > 0.0) || !double.IsFinite(minimum))
+                return double.NaN;
+
+            double cap = minimum * TripPlanner.MaxDurationScale;
+            if (CruiseProfile == CruiseStyle.Powered) return cap;
+
+            if (IsDurationFeasible(targetId, cap)) return cap;
+
+            // The minimum is the plan the planner just found, so it is the
+            // feasible floor; the cap is the infeasible ceiling.
+            double feasible = minimum;
+            double infeasible = cap;
+            for (int probe = 0; probe < CoastWindowProbes; probe++)
+            {
+                double middle = 0.5 * (feasible + infeasible);
+                if (IsDurationFeasible(targetId, middle)) feasible = middle;
+                else infeasible = middle;
+            }
+
+            return feasible;
+        }
+
+        private bool IsDurationFeasible(string targetId, double seconds)
+        {
+            if (!(seconds > 0.0) || !double.IsFinite(seconds)) return false;
+            return _planner.PlanAtDuration(_previewDeparture, targetId, seconds).IsFeasible;
         }
 
         /// <summary>

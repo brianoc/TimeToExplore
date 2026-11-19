@@ -407,6 +407,28 @@ namespace TimeToExplore
         public double BurnLevelG =>
             Flight != null ? Flight.BurnLevelG : TripPlanner.DefaultBurnLevelG;
 
+        /// <summary>How the ship crosses between the spheres of influence: the
+        /// powered quintic, the unpowered Lambert coast, or the burn–coast–burn
+        /// profile.</summary>
+        public CruiseStyle CruiseProfile =>
+            Flight != null ? Flight.CruiseProfile : CruiseStyle.Powered;
+
+        /// <summary>
+        /// Switch the cruise profile. A plotted preview is rebuilt against the
+        /// new profile and redrawn; a live flight is left alone, because it
+        /// keeps the plan it was begun with. The camera is not re-framed: the
+        /// choice changes the crossing, not the viewer's aim.
+        /// </summary>
+        public void SetCruiseProfile(CruiseStyle style)
+        {
+            if (Flight == null || Flight.CruiseProfile == style) return;
+
+            TrajectoryPlan preview = Flight.SetCruiseProfile(style);
+            if (preview == null) return;
+
+            ShowPlan(preview, Model?.Get(preview.TargetId));
+        }
+
         /// <summary>
         /// Switch the arrival style. A plotted preview is rebuilt against the
         /// new style and redrawn; a live flight is left alone, because it keeps

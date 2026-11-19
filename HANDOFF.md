@@ -1,7 +1,7 @@
 # Handoff
 
 **Active handoff (2026-11-19): burn–coast–burn trips.** The design is settled;
-steps 1–3 are implemented. The source of truth for the design is
+steps 1–4 are implemented. The source of truth for the design is
 [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md). Do not redesign it
 in a step; if a step cannot proceed without changing it, stop and ask.
 
@@ -45,7 +45,7 @@ a time. The caretaker is deliberately light so its context stays clean.
 | 1 | `LambertSolver` in Core + `LambertSolverTests` | `tools/check.sh --tests core` green (done) |
 | 2 | Lambert coast in the planner: `CruiseStyle.Coast` builds quintic departure → Lambert `ConicArc` → existing conic/hybrid capture | `--tests flight` green; a plan closes and arrives (done) |
 | 3 | Prograde departure fixed burn + `CruiseStyle.BurnCoastBurn` stitching the five arcs | `--tests flight` green; burn level respected; arrival exact (done) |
-| 4 | Nav-computer profile control, speed/time control, panel rows, colours/legend | `--tests presentation smoke` green; bootstrap smoke covers the new profile |
+| 4 | Nav-computer profile control, speed/time control, panel rows, colours/legend | `--tests presentation,smoke` green; bootstrap smoke covers the new profile (done) |
 | 5 | Docs pass, log, clear this handoff | `tools/check.sh --fast` and the validator clean; no screenshot this task |
 
 ### Step 0 — done (this commit)
@@ -105,13 +105,24 @@ the departure SOI. `0 g` delegates to `CruiseStyle.Coast`. Measured at the epoch
 Gateway→Mars 90 d, 0.3 g: 50 km/s total, seams < 1 cm and 10⁻⁵ m/s, arrival
 0.1 m / 0.0001 m/s. `tools/check.sh --tests flight`: passed, 0 failed.
 
-### Step 4 — the control
+### Step 4 — the control (done)
 
-Expose the profile beside the existing arrival buttons; reuse the trip-time
-slider as the speed control; add `Coast`/burn rows to the flight report. The
-route colours and legend already handle the arc types. Tests: HUD state, profile
-switch rebuilds the preview, the legend gains/loses rows, and a bootstrap smoke
-flight in the new profile.
+The details footer exposes the cruise profile as a `PROFILE` row (Powered, Coast,
+Burn-coast-burn), with Powered still the default. A profile switch rebuilds the
+preview from the pinned departure state and redraws it; a live flight is left
+alone. The trip-time slider is the profile's speed control: its left end is the
+profile's own fastest plan (57.4 d to Mars for burn–coast–burn) and its right
+end is the slowest duration the planner accepts, found by probing inside the
+three-times span, so no slider position asks for a refused plan. The existing
+burn-level slider drives both fixed burns at 0.3 g by default, with no second
+control. The flight report annotates each leg with the drive state, replaces the
+torch peak-throttle row with a `DRIVE` summary on a coast, and reports the
+departure burn and the brake separately. The legend gains the Fixed burn row for
+the profile and loses it again for Coast and Powered. Tests: HUD profile state
+and rebuild, the coast's wording and level wiring, the legend's rows, and a
+bootstrap frame-loop burn–coast–burn flight (arrival 0.1 m / 0.0001 m/s,
+parking orbit e = 1.0 × 10⁻⁸).
+`tools/check.sh --tests presentation,smoke`: passed, 0 failed.
 
 ### Step 5 — close out
 
@@ -125,7 +136,7 @@ check result and the commit.
 ```bash
 tools/check.sh --tests core                  # step 1: Core and its tests
 tools/check.sh --tests flight                # steps 2–3: planner and flight
-tools/check.sh --tests presentation smoke    # step 4: HUD and frame loop
+tools/check.sh --tests presentation,smoke    # step 4: HUD and frame loop
 tools/check.sh --fast                        # steps 0 and 5: docs only
 python3 tools/validate_okf.py                # whenever a concept changes
 ```
@@ -184,17 +195,16 @@ needs.
 
 ## Next action
 
-Start **step 4** with a fresh sub-agent: the nav-computer control. The planner
-half is complete — `CruiseStyle.BurnCoastBurn` emits quintic break → departure
-burn → Lambert coast → brake → conic/hybrid capture, with an exact arrival and no
-impulse at the target SOI — but nothing in the HUD selects it, and the trip-time
-slider's `MaxDurationScale = 3` window was sized for the torch plan. Traps:
-the profile is the *fast* end of the trade, so a coast that arrives slower than
-the target's frame is rejected ("would need an acceleration rather than a
-brake"); `Plan()` finds about 57 days to Mars at 89 km/s at the epoch, and the
-sensible slider window starts there, not at the powered plan's 4.4 days. The
-brake's thrust direction is fixed along the required change, so the panel must
-not claim the burn is a velocity-aligned retrograde burn; report the fixed and
-brake delta-v separately. `0 g` is exactly `CruiseStyle.Coast`. Do not
-re-optimise the brake/capture split. Verify with `tools/check.sh --tests
-presentation smoke`.
+Start **step 5** with a fresh sub-agent: the docs pass and close-out. Steps 1–4
+are complete — the Lambert solver, the coast cruise, the burn–coast–burn chain,
+and the nav-computer profile control (with its own 57-day window, the shared burn
+level, and the flight-panel drive rows) — so the close-out updates the flight
+model, navigation, flight session, testing, architecture, and roadmap as the code
+requires, adds the log entry, and clears this file to the "no active handoff"
+stub. No screenshots or video for this task. Traps still worth keeping: the
+profile is the *fast* end of the trade (57 days to Mars, not 4.4), a coasting
+profile's slider maximum is probed from what the planner accepts rather than
+`MaxDurationScale`, the brake's direction is the fixed change the chain needs and
+must not be described as anti-velocity, and `0 g` is exactly
+`CruiseStyle.Coast`. Verify with `tools/check.sh --fast` and
+`python3 tools/validate_okf.py`.

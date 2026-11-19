@@ -90,7 +90,7 @@ The cost: it is not fuel-optimal, and the seams between a shaped arc, a fixed
 burn, and a coast need care. That is an acceptable trade for a first flyable
 profile.
 
-# What exists and what is missing
+# What exists
 
 **Exists:** `Quintic`, `ConicArc`, `FiniteBurnArc`, the conic and hybrid
 captures, the autopilot, coasts and burns as plan phases, dashed coasts, burn
@@ -111,7 +111,10 @@ markers, and the route legend.
 
 4. **The control.** "How fast do I want to go" is the natural knob. The existing
    trip-time slider is the right shape: short time = long burns, no coast; long
-   time = short burns, long coast. *Not built yet; it is the next step.*
+   time = short burns, long coast. *Built:* the nav computer's `PROFILE` row
+   selects Powered, Coast, or Burn-coast-burn, the slider's window is the selected
+   profile's own feasible range, and the burn level is the level both burns are
+   planned at.
 
 # The first cut
 
@@ -124,7 +127,7 @@ Landed as `TripPlanner.CruiseStyle.Coast`, with the powered cruise still the
 default.
 
 **Stage B — the burns.** Add the prograde departure fixed burn and the
-retrograde brake, stitch the five arcs, and expose the burn level and the trip
+fixed-thrust brake, stitch the five arcs, and expose the burn level and the trip
 time. Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`: quintic break →
 departure burn → Lambert coast → brake → conic or hybrid capture, with no
 impulse at the target's sphere of influence. The chain is built backwards from

@@ -220,7 +220,7 @@ well outside the planets' spheres of influence. The measured plan at 90 days:
 | Quintic break | 4.73 d | 13.4 km/s | 0.06 m/s² |
 | Departure burn (prograde) | 78 min | 13.7 km/s | 2.94 m/s² |
 | Lambert coast | 83.7 d | 0.06 km/s | 0.0005 m/s² |
-| Brake (retrograde) | 3.1 h | 19.2 km/s | 2.94 m/s² |
+| Brake (fixed thrust) | 3.1 h | 19.2 km/s | 2.94 m/s² |
 | Conic capture | 1.36 d | 3.53 km/s (impulse) | 0 |
 
 The total is 50 km/s against the coast plan's 14 km/s at 200 days: the burns buy
@@ -245,10 +245,17 @@ its 87-day inbound coast.
 
 ## Tuning the trip in the nav computer
 
-The route preview has one **trip-time slider**. Its range is the fastest
-feasible plan — the drive at its 97% margin — to three times that, and every
-position is a fresh solve at that duration: the arcs are rebuilt, the arrival
-date moves, and the target is met where the ephemeris puts it on that date.
+The route preview has one **trip-time slider**. Its range starts at the fastest
+feasible plan of the selected cruise profile, and every position is a fresh solve
+at that duration: the arcs are rebuilt, the arrival date moves, and the target is
+met where the ephemeris puts it on that date. The **Powered** profile keeps the
+historical window to three times that minimum. **Coast** and
+**Burn-coast-burn** have a real upper bound — the short-way Lambert transfer
+sweeps past 180°, and a coast that arrives slower than the target's frame would
+need an acceleration — so their right-hand end is the slowest duration the
+planner still accepts, probed inside the same three-times span. At the epoch the
+burn–coast–burn window begins at its 57-day Mars plan, not at the torch plan's
+4.4 days.
 
 The slider is one honest axis with two costs on it:
 
@@ -258,14 +265,13 @@ The slider is one honest axis with two costs on it:
 | Delta-v rises roughly as `1/T` | Delta-v falls |
 | Arrives sooner | Arrives later |
 
-The current plans already sit at the left end, so there is no "burn harder"
-above them. A faster trip needs a stronger drive (a data value) or the
-burn-and-coast regime below. The slider therefore only stretches the existing
-torch plan: the drive stays on, just more gently. It is **not** a coast. A coast
-is a Keplerian conic, not a quintic with a flat middle; the conic arrival exists
-as an opt-in planner style, but the slider does not offer it because the coast's
-time cost is a second axis
-([navigation and arrival](navigation-and-arrival.md#burn-and-coast-lambert)).
+The powered plans already sit at the left end, so there is no "burn harder"
+above them. A faster torch trip needs a stronger drive (a data value). The slider
+therefore only stretches the existing torch plan: the drive stays on, just more
+gently. It is **not** a coast. A coast is a Keplerian conic, not a quintic with a
+flat middle; the `PROFILE` buttons choose the unpowered `Coast` or the
+`Burn-coast-burn` profile, whose slider is a speed control over its own feasible
+range ([navigation and arrival](navigation-and-arrival.md#the-trip-time-control)).
 
 ## What the throttle is
 
@@ -370,13 +376,15 @@ date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
 **Implemented so far:** the torch plan and its trip-time control, plus the conic
-**arrival** (a coasting hyperbola and an impulsive Oberth capture) and the
-hybrid fixed-thrust variant (one finite burn at a player-set level, an impulse
-trim, and the conic circularisation). Burn-and-coast across the cruise is not
-implemented, because the middle of the trip still has to be solved: a Keplerian
-coast is a Lambert problem, and the conic arc alone does not choose the
-heliocentric connecting orbit. The slider deliberately stops at the torch plan
-until that exists.
+**arrival** (a coasting hyperbola and an impulsive Oberth capture), the hybrid
+fixed-thrust variant (one finite burn at a player-set level, an impulse trim, and
+the conic circularisation), and the **burn–coast–burn cruise** (a quintic break,
+a prograde fixed burn, a Lambert coast, a brake, and the conic or hybrid
+capture). The `PROFILE` row chooses the powered cruise (the default), the
+unpowered coast, or the burn–coast–burn profile; the trip-time slider becomes
+that profile's speed control and the existing level slider sets both burns'
+level. A fixed-thrust *cruise* elsewhere — a slow spiral that does not coast on a
+Lambert conic — is still deferred.
 
 # Gravity assists and Oberth
 

@@ -107,8 +107,11 @@ The details footer splits the old one-press **Go To** into two actions:
    curve is close to the preview but never stale.
 
 Once a preview exists, the details footer grows a **trip-time slider**. Its
-range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds` (three times the
-minimum), and its value is the flight time in seconds. A change calls
+range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds`, and its value is the
+flight time in seconds. For the powered plan the maximum is three times the
+minimum; for a coasting profile it is the slowest duration the planner still
+accepts, because a long short-way Lambert transfer is rejected once it sweeps
+180° or its arrival no longer needs a brake. A change calls
 `FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
 departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
 solve, no ship movement, and no camera move. The preview stays pinned to
@@ -128,23 +131,30 @@ since the plot, the status reads `Preview, stale` and a note says **replot or
 begin anyway**. **Replot route** refreshes it on demand. There is no automatic
 per-frame replanning.
 
-The same footer also exposes the **arrival style**, as a three-button choice
-between **Quintic**, **Conic**, and **X g burn**, plus a **burn-level** slider
-shown for the fixed style. The style appears with the preview because it is a
-property of the plan, not a global setting the player has to imagine: pressing
-one calls `FlightSession.SetArrivalStyle`, which sets the planner mode, rebuilds
-the preview from the pinned departure state, and resets the trip-time window to
-the new style's fastest plan. The previous flight time is kept when it still
-falls inside that window, so switching to a coast shows the same trip stretched
-by the capture rather than silently resetting a slider the player had moved. The
-active style's label is gold and its fill brighter; the route redraws with the
-coast, burn, and parking orbit, and the flight panel gains the `Coast`,
-`Capture`, `Parking`, and `Burns` rows. The hybrid `Burns` row reads the fixed
-and trim delta-v at the chosen level; the conic style's reads `impulsive`.
-Moving the level slider calls `FlightSession.SetBurnLevel`, which rounds to
-0.05 g and rebuilds the fixed preview from the same pinned state; at 0 g the
-preview is the conic plan. A live flight is never restyled: it keeps the plan it
-was begun with, and a later replan uses the style and level currently selected.
+The same footer also exposes the **cruise profile** as a three-button `PROFILE`
+row — **Powered** (the default), **Coast**, and **Burn-coast-burn** — and the
+**arrival style** as a three-button choice between **Quintic**, **Conic**, and
+**X g burn**, plus a **burn-level** slider. Pressing a profile button calls
+`FlightSession.SetCruiseProfile`, which sets the planner's `CruiseStyle`,
+rebuilds the preview from the pinned departure state, and resets the trip-time
+window to the new profile's fastest plan; a coasting profile's right-hand end is
+clamped to the durations its Lambert solve accepts. The previous flight time is
+kept when it still falls inside that window. The burn-level slider is shown for
+the hybrid arrival and for the burn–coast–burn profile, and it is the level both
+of that profile's fixed burns are planned at — there is one level control, not
+two. The style works the same way: pressing one calls
+`FlightSession.SetArrivalStyle`, which sets the planner mode, rebuilds the
+preview from the pinned departure state, and resets the trip-time window to the
+new style's fastest plan. The active choice's label is gold and its fill
+brighter; the route redraws with the coast, burn, and parking orbit, and the
+flight panel gains the `Coast`, `Capture`, `Parking`, and `Burns` rows. The
+hybrid `Burns` row reads the fixed and trim delta-v at the chosen level; the
+conic style's reads `impulsive`. Moving the level slider calls
+`FlightSession.SetBurnLevel`, which rounds to 0.05 g and rebuilds the fixed
+preview (or the burn–coast–burn preview) from the same pinned state; at 0 g the
+arrival is the conic plan and the cruise is the unpowered coast. A live flight is
+never restyled: it keeps the plan it was begun with, and a later replan uses the
+profile, style, and level currently selected.
 
 Only one preview exists. A second plot replaces it; selecting another body,
 `Esc`, **Close**, Cancel, teleport, and reset all discard it. `Begin` consumes
@@ -164,7 +174,7 @@ the player reads the physics rather than the flight phase:
 |---|---|---|---|
 | Quintic (`Quintic`) | departure, cruise, and the continuous quintic capture | warm gold | solid — the drive is on |
 | Conic (`ConicArc`) | the conic coast, the transfer ellipse, and the parking orbit | sky blue | dashed — no thrust on the reference path |
-| Fixed burn (`FiniteBurnArc`) | the hybrid's one long capture burn | red | solid — the drive is on |
+| Fixed burn (`FiniteBurnArc`) | the hybrid's one long capture burn, and the burn–coast–burn profile's departure burn and brake | red | solid — the drive is on |
 
 There are no other path types in the project; those three are every
 implementation of `IArcPath`. Line style therefore also says *whether the drive
@@ -199,10 +209,11 @@ row per arc type present, with a swatch that carries both the colour and the
 solid/dashed style, and the type label — *Quintic arc*, *Conic arc*, *Fixed
 burn*. It is built from the trajectory line, so it always matches what is drawn:
 the default plan is a single *Quintic arc* row, the conic arrival adds *Conic
-arc*, and the hybrid adds *Fixed burn*. Consecutive same-type arcs share their
-row; the shade change is a within-family cue, not a separate legend entry. The
-legend stacks above the flight panel, which owns the corner during a route, and
-it hides with the HUD on `H`.
+arc*, the hybrid adds *Fixed burn*, and the burn–coast–burn profile lists
+*Quintic arc*, *Fixed burn*, and *Conic arc* in the order they first appear.
+Consecutive same-type arcs share their row; the shade change is a within-family
+cue, not a separate legend entry. The legend stacks above the flight panel, which
+owns the corner during a route, and it hides with the HUD on `H`.
 
 Line width follows the **camera distance**, not the path: `LineWidth` converts
 3 screen pixels to render units at the camera's depth, so the route stays a
@@ -221,9 +232,9 @@ the same whether the ship is next to it or an AU away.
 ```
 PLAN
   Target        Mars
-  Departure     2026-11-15 00:00 · 6.6 h
-  Cruise        2026-11-15 06:35 · 3.9 d
-  Capture       2026-11-19 05:25 · 5.1 h
+  Departure     2026-11-15 00:00 · 6.6 h · break
+  Cruise        2026-11-15 06:35 · 3.9 d · powered
+  Capture       2026-11-19 05:25 · 5.1 h · powered
   Arrival       2026-11-19 10:29
   Flight time   4.4 d
   Peak thrust   9.76 m/s² (98%)
@@ -237,12 +248,33 @@ NOW
   Warp          x10,000
 ```
 
+Each phase row ends with what the drive is doing on that leg: `break`,
+`powered`, `prograde burn`, `drive off`, `brake`, or `capture burn`.
+
 The header shows the target and the status, and the line under it is the
 countdown to the next action (`Arrival  T− 12m 04s`). On arrival the status
 reads `Arrived, in orbit`, the countdown reads `Arrived`, and the flip reads
 `passed`. A conic arrival adds `Coast`, `Capture`, and `Parking` rows and a
 `Burns` row with the impulsive total, and its next-event countdown lands on the
 periapsis and circularisation boundaries.
+
+A coasting plan has no torch peak to report, so the `Peak thrust` row is
+replaced by a `DRIVE` summary in the same space:
+
+```
+DRIVE
+  Departure burn  50.0 km/s · 1.3 h · 0.3 g
+  Coast           drive off · 83.7 d
+  Brake           19.2 km/s · 3.1 h · 0.3 g
+  Capture         3.5 km/s · 1.4 d
+```
+
+The departure burn and the brake are separate rows with their own delta-v and
+durations; the coast is explicitly `drive off`; and the brake is described by
+what it spends rather than as an anti-velocity burn, because its thrust
+direction is the change the chain needs. An unpowered coast also gains a
+`Handover` row for the impulse at the target's sphere of influence. The live
+throttle row reads `drive off` whenever the drive is not firing.
 
 A route preview uses the same plan rows with `PREVIEW` in place of `NOW`:
 
@@ -262,7 +294,8 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
 | **Trip-time slider** on a preview | Re-solve the preview at a longer duration; updates the route, arrival, thrust, and delta-v without moving the ship |
-| **Quintic / Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the fixed-burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending |
+| **Powered / Coast / Burn-coast-burn** on a preview | Switch the cruise profile, rebuild the preview against it, and reset the trip-time window to that profile's own feasible range; a coast's line and report read `drive off` |
+| **Quintic / Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the fixed-burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the burn–coast–burn profile's two burns |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |

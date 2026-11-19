@@ -431,6 +431,165 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheCruiseProfileControlDefaultsToPoweredAndRebuildsThePreview()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            _hud.OpenDetails();
+
+            Update();
+            Assert.That(Child("TimeSliderGroup").activeSelf, Is.True);
+            Assert.That(TextNamed("CruiseProfileLabel").text, Is.EqualTo("PROFILE"));
+            Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.Powered),
+                "the powered torch plan stays the default");
+            Button powered = ButtonNamed("PoweredProfileButton");
+            Button coast = ButtonNamed("CoastProfileButton");
+            Button burnCoastBurn = ButtonNamed("BurnCoastBurnProfileButton");
+            Assert.That(powered.interactable, Is.False, "one frame of click protection");
+
+            Update();
+            Assert.That(powered.interactable, Is.True);
+            Assert.That(ButtonLabel("PoweredProfileButton").color,
+                Is.Not.EqualTo(ButtonLabel("CoastProfileButton").color),
+                "the active profile is marked");
+            Assert.That(Child("BurnLevelSlider").activeSelf, Is.False,
+                "the powered profile has no fixed burn to level");
+
+            burnCoastBurn.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.BurnCoastBurn));
+            Assert.That(_bootstrap.Flight.CruiseProfile,
+                Is.EqualTo(CruiseStyle.BurnCoastBurn));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
+                "the profile previews its departure burn and brake");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(
+                    arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast), Is.True);
+
+            double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(20.0),
+                "the window starts at the profile's own fastest plan, not the torch plan");
+            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
+            TestContext.WriteLine($"burn-coast-burn window: " +
+                $"{minimum / JulianDate.SecondsPerDay:F2} d to " +
+                $"{maximum / JulianDate.SecondsPerDay:F2} d");
+            Assert.That(maximum, Is.GreaterThanOrEqualTo(minimum));
+            Assert.That(maximum,
+                Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6),
+                "the window never reaches past the planner's own span");
+            Assert.That(SliderNamed("TimeSlider").minValue,
+                Is.EqualTo((float)minimum).Within(1.0));
+            Assert.That(SliderNamed("TimeSlider").maxValue,
+                Is.EqualTo((float)maximum).Within(10.0));
+
+            List<DetailRow> report = FlightReport.Build(_bootstrap.Flight,
+                _bootstrap.Model, "x1");
+            Assert.That(report.Any(row => row.Label == "Peak thrust"), Is.False,
+                "a coast has no torch peak to report");
+            DetailRow departureBurn = report.First(row => row.Label == "Departure burn");
+            Assert.That(departureBurn.Value, Does.Contain("km/s"));
+            Assert.That(departureBurn.Value, Does.Contain("0.3 g"));
+            DetailRow brake = report.First(row => row.Label == "Brake");
+            Assert.That(brake.Value, Does.Contain("km/s"));
+            Assert.That(brake.Value, Does.Contain("0.3 g"));
+            Assert.That(report.First(row => row.Label == "Coast" && 
+                                               row.Value.StartsWith("drive off")).Value,
+                Does.Contain("drive off"));
+            Assert.That(report.Any(row => row.Label == "Capture"), Is.True);
+            Assert.That(report.Any(row => row.Label == "Cruise" &&
+                                          row.Value.Contains("prograde burn")), Is.True);
+            Assert.That(report.Any(row => row.Label == "Capture" &&
+                                          row.Value.Contains("brake")), Is.True);
+
+            TrajectoryPlan atMaximum = _bootstrap.Flight.SetPreviewDuration(maximum);
+            Assert.That(atMaximum.IsFeasible, Is.True, atMaximum.InfeasibleReason);
+            Assert.That(TextNamed("TimeSliderValue").text, Does.Contain("g burns"));
+            Assert.That(TextNamed("TimeSliderValue").text, Does.Not.Contain("% burn"),
+                "a coast is not reported as a torch plan");
+
+            Assert.That(Child("BurnLevelSlider").activeSelf, Is.True,
+                "the profile plans its burns at the existing level control");
+            Assert.That(SliderNamed("BurnLevelSlider").value, Is.EqualTo(0.3f).Within(1e-4));
+
+            SliderNamed("BurnLevelSlider").value = 0.5f;
+            Update();
+
+            Assert.That(_bootstrap.BurnLevelG, Is.EqualTo(0.5).Within(1e-9));
+            Assert.That(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2,
+                Is.EqualTo(0.5 * TripPlanner.StandardGravityMps2).Within(1e-6),
+                "the commanded level is the level the profile is planned at");
+
+            coast.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.Coast));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.False,
+                "the unpowered coast has no burns");
+            Assert.That(TextNamed("TimeSliderValue").text, Does.Contain("drive off"));
+            Assert.That(Child("BurnLevelSlider").activeSelf, Is.False,
+                "an unpowered coast has no level to command");
+
+            powered.onClick.Invoke();
+            Update();
+
+            Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.Powered));
+            Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
+                Is.LessThan(10.0 * JulianDate.SecondsPerDay),
+                "switching back restores the torch plan's own window");
+            Assert.That(TextNamed("TimeSliderValue").text, Does.Contain("% burn"));
+        }
+
+        [Test]
+        public void TheProfileChoiceGainsAndLosesTheFixedBurnLegendRow()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.PlotRoute(mars);
+            _hud.OpenDetails();
+
+            Update();
+            Update();
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(1));
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+
+            ButtonNamed("BurnCoastBurnProfileButton").onClick.Invoke();
+            Update();
+
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(3),
+                "the profile draws a quintic break, fixed burns, and conic coasts");
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Fixed burn"));
+            Assert.That(_hud.RouteLegendColour(1), Is.EqualTo(RouteColours.FixedBurn));
+            Assert.That(_hud.RouteLegendIsDashed(1), Is.False);
+            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Conic arc"));
+            Assert.That(_hud.RouteLegendIsDashed(2), Is.True);
+
+            int fixedRows = 0;
+            for (int i = 0; i < _hud.RouteLegendCount; i++)
+                if (_hud.RouteLegendLabel(i) == "Fixed burn") fixedRows++;
+            Assert.That(fixedRows, Is.EqualTo(1),
+                "the departure burn and the brake share one legend row");
+
+            ButtonNamed("CoastProfileButton").onClick.Invoke();
+            Update();
+
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(2),
+                "the unpowered coast loses the fixed-burn row");
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
+
+            ButtonNamed("PoweredProfileButton").onClick.Invoke();
+            Update();
+
+            Assert.That(_hud.RouteLegendCount, Is.EqualTo(1),
+                "the torch plan loses the coast row too");
+            Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
+        }
+
+        [Test]
         public void TheRouteLegendListsTheVisibleArcTypesAboveTheFlightPanel()
         {
             Build();

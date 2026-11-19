@@ -405,6 +405,99 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// The burn–coast–burn profile end to end through the composition root:
+        /// choose the profile before plotting (so the plot is the profile's own
+        /// fastest plan), fly the plotted route, and arrive on the same conic
+        /// parking orbit the planner promised. This is the smoke acceptance for
+        /// the new profile, not a second planner test.
+        /// </summary>
+        [Test]
+        public void ABurnCoastBurnFlightArrivesThroughTheBootstrap()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _bootstrap.SetCruiseProfile(CruiseStyle.BurnCoastBurn);
+            _bootstrap.PlotRoute(mars);
+
+            Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.BurnCoastBurn));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+            TrajectoryPlan preview = _bootstrap.Flight.Preview;
+            Assert.That(preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
+                "the preview carries the departure burn and the brake");
+
+            double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(20.0),
+                "the profile is the fast end of the trade, not the torch plan");
+            Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
+                Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+
+            _bootstrap.BeginPlottedFlight();
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False, "Begin consumes the preview");
+            TrajectoryPlan plan = _bootstrap.Flight.Plan;
+            Assert.That(plan.TargetId, Is.EqualTo("mars"));
+            Assert.That(plan.Arcs.Count(arc => arc.IsFiniteBurn), Is.GreaterThanOrEqualTo(2),
+                "a departure burn and a brake at minimum");
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0),
+                "a two-month trip must not start at 1x");
+
+            int frames = 0;
+            while (_bootstrap.Flight.IsFlying && frames < MaxFrames)
+            {
+                Invoke("Update");
+                Invoke("LateUpdate");
+                frames++;
+            }
+
+            TestContext.WriteLine(
+                $"bootstrap burn-coast-burn flight: arrived " +
+                $"{JulianDate.Format(_bootstrap.Flight.ArrivedJulianDate)} in " +
+                $"{frames:N0} frames ({frames * FrameSeconds:F1} s real), " +
+                $"warp {SolarSystemBootstrap.ScaleLabel(_bootstrap.RequestedScaleIndex)}, " +
+                $"{plan.FlightTimeDays:F1} d planned");
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Arrived),
+                "the flight must finish through the frame loop, not a teleport");
+            Assert.That(frames, Is.LessThan(MaxFrames), "the loop is bounded");
+            Assert.That(_bootstrap.Clock.JulianDate,
+                Is.EqualTo(_bootstrap.Flight.State.JulianDate).Within(1e-9),
+                "the world never runs ahead of the ship");
+            Assert.That(_bootstrap.Flight.ArrivedJulianDate,
+                Is.EqualTo(plan.ArrivalJulianDate).Within(1e-6));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+
+            double positionError = Vector3d.Distance(_bootstrap.Flight.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (_bootstrap.Flight.State.VelocityMps
+                - plan.ArrivalState.VelocityMps).Magnitude;
+            TestContext.WriteLine($"arrival error {positionError:F1} m, " +
+                                  $"{velocityError:F4} m/s");
+
+            Assert.That(positionError, Is.LessThan(50_000.0), "matched within 50 km");
+            Assert.That(velocityError, Is.LessThan(20.0), "matched within 20 m/s");
+
+            _bootstrap.Model.ComputeState(mars, _bootstrap.Flight.State.JulianDate,
+                out Vector3d marsPosition, out Vector3d marsVelocity);
+            Vector3d relativePosition = _bootstrap.Flight.State.PositionM - marsPosition;
+            Vector3d relativeVelocity = _bootstrap.Flight.State.VelocityMps - marsVelocity;
+            double radius = ParkingOrbit.ConicRadiusM(mars);
+            double eccentricity = TwoBody.Eccentricity(relativePosition, relativeVelocity,
+                mars.Gm);
+
+            TestContext.WriteLine($"parking orbit r={relativePosition.Magnitude / 1000.0:F0} km " +
+                                  $"(target {radius / 1000.0:F0} km), e={eccentricity:E3}");
+
+            Assert.That(Math.Abs(relativePosition.Magnitude - radius) / radius,
+                Is.LessThan(0.02), "the ship is on the conic parking orbit");
+            Assert.That(eccentricity, Is.LessThan(0.03), "and the orbit is near-circular");
+            Assert.That(_bootstrap.Flight.CurrentThrust.IsActive, Is.False, "the drive is off");
+        }
+
+        /// <summary>
         /// Step 6's frame-loop acceptance: map, select Mars, plot, Begin, and
         /// arrive — all through the real composition root. The existing
         /// Gateway→Mars numbers must hold, so this is the scene-level version of
