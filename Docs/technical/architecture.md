@@ -488,7 +488,9 @@ twenty requests published one plan, the newest, with nothing queued.
 That took one Mercury 1 g `Plan()` from 36.2 s to **1.5 s**, `PlanAtDuration(8 d)`
 from 183 ms to **95 ms**, the first selection (floor, window probes, retime) to
 1.5 s at Mercury and 0.93 s at Mars, and a repeat selection to under a
-millisecond, with the plans, floors and seams unchanged.
+millisecond, with the plans, floors and seams unchanged. The two-tier model, its
+boundary, and the full measurement set are in
+[Planning performance](/technical/planning-performance.md).
 
 The orbit lines are the first thing to optimise: updating 30 × 161 positions per
 frame is unnecessary when the camera has not moved and the parent has barely

@@ -54,7 +54,12 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
   reverse-placed from the capture chain's entry state. The nav computer's
   `PROFILE` row selects Powered (the default), Coast, or Burn-coast-burn, with
   the trip-time slider as that profile's speed control
-  ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)).
+  ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)). Planning it is
+  two-tier: a fast, search-only central-body model chooses the duration, the
+  returned plan and the flight stay full-field, a 5% screen certifies near-limit
+  probes, the floor and window are cached, and the slider retimes on a
+  latest-wins background worker
+  ([Planning performance](/technical/planning-performance.md)).
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
@@ -312,7 +317,11 @@ torch-ship fiction uses is flyable. The design is
   than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
   the chain closing, so at the epoch the Mars window is **8.03–24.09 days** and
   the Mercury fast end is 3.46 days at 1 g. A 90-day Mars plan is a direct
-  `PlanAtDuration` build outside that window.
+  `PlanAtDuration` build outside that window. The floor plan and window are
+  cached per date, target, level, cruise and arrival style, and moving the
+  slider retimes on a latest-wins background worker; every published preview is
+  the full-field build, never the fast search estimate
+  ([Planning performance](/technical/planning-performance.md)).
 * Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 45 km/s in
   total (a 4.79-day break at 9.0 km/s, a 13.7 km/s departure burn in 78 minutes,
   an 83.7-day coast, a 19.1 km/s brake in 1.8 hours, and the 3.5 km/s conic

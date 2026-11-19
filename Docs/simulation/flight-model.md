@@ -272,7 +272,9 @@ from 36.2 s in the first cut to 12.0 s after the two-tier break search and to
 0.85 s); `PlanAtDuration(8 d)` fell from 183 ms to **95 ms**. The first
 selection (floor, window probes, retime) is 1.5 s at Mercury and 0.93 s at Mars;
 a repeat selection is under 0.1 ms. The plans, floors and seams are unchanged.
-[Burn–coast–burn trips](burn-coast-burn.md) has the detail.
+[Burn–coast–burn trips](burn-coast-burn.md) has the detail, and
+[planning performance](/technical/planning-performance.md) has the two-tier
+boundary, the 5% screen, and the background retime.
 
 ## Tuning the trip in the nav computer
 

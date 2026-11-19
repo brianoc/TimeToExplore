@@ -137,6 +137,15 @@ the full-field build; the fast search model is never shown.
 for tests and callers that need a plan immediately, and builds the same plan as
 the worker for the same inputs.
 
+The retime worker has a lifecycle, not just a queue. `FlightSession` is
+`IDisposable`: `Dispose` stops the worker, drops the queue, and joins the thread
+for up to five seconds, and the bootstrap disposes the session on teardown. A
+disposed session refuses new requests, and the worker checks the stop flag
+before publishing. The synchronous path is still the equality reference: for the
+same duration the worker and `SetPreviewDuration` build the identical plan.
+[Planning performance](/technical/planning-performance.md) has the two-tier
+model, the 5% screen, the cache, and the measurements.
+
 Begin carries the chosen duration into the flight: it solves the fastest plan at
 the current date, then re-times it to the preview's flight time, clamped up to
 the new minimum. That keeps Begin's "always replan" rule while honouring the

@@ -255,7 +255,9 @@ drag) published only the newest plan, 311 ms after the first request at Mercury
 and 324 ms at Mars; superseded builds were dropped, nothing queued, and the drag
 loop kept its 10 ms cadence because the main thread only enqueues and pumps. The
 first selection (floor and window) on this copy was 1.78 s at Mercury and 0.94 s
-at Mars, unchanged by the retime work.
+at Mars, unchanged by the retime work. The two-tier boundary, the 5% screen and
+the worker's lifecycle are in
+[Planning performance](/technical/planning-performance.md).
 
 The departure burn's delta-v is level-independent (it spends the coast's
 departure speed above escape); its duration is `1/level`, so 13.7 km/s is

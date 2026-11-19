@@ -300,7 +300,11 @@ iterations so the long, low-level burns still close.
 The preview's floor plan and trip-time window are cached per departure date,
 target, burn level, cruise style, and arrival style in `FlightSession`. A repeat
 selection reuses the plan and the window; a changed departure date (or a
-teleport/place) drops the cache.
+teleport/place) drops the cache. A slider retime is one full-field
+`PlanAtDuration` build; it runs on a latest-wins background worker so the handle
+never blocks the frame, and every published preview is that full-field plan.
+[Planning performance](/technical/planning-performance.md) records the two-tier
+boundary, the screen, the cache, and the measured timings.
 
 A plan rejected for exceeding the drive now carries an `InfeasibleReason`
 naming the arc and the thrust it needs, for example *"the departure break

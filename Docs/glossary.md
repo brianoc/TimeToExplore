@@ -157,6 +157,17 @@ informal, phase-level portion; an arrival leg can contain several arcs. Use
 "Delta-v" is the whole plan; "Burns" is the capture-plus-circularisation
 subtotal, by whichever model the style uses.
 
+**Search model** — the fast, search-only gravity model inside the planner: each
+arc's own central body in a body-relative frame. It chooses a duration and is
+never a result. The break's fast peak is screened against the drive with
+`BreakScreenMargin` (5%), and a probe inside that band is certified full-field.
+See [planning performance](/technical/planning-performance.md).
+
+**Full-field plan** — the plan the planner returns and the ship flies: rebuilt
+and measured with the complete `GravityField` over the catalogue after the
+search has chosen a duration. Its peak thrust, delta-v, clearance, and
+feasibility are always full-field numbers.
+
 ### Arrival
 
 **Arrival style** — the player's choice for how the target leg ends:

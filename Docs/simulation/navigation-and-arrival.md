@@ -211,6 +211,17 @@ slider's value line says
 what the drive is doing — `0.3 g burns · coast` or `coast · drive off` — instead
 of quoting a peak throttle for a plan that coasts.
 
+Finding that window is the expensive part of a selection, so `FlightSession`
+caches the floor plan and the window per departure date, target, burn level,
+cruise and arrival style; plotting the same route again at the same date is
+free, and a changed date or a place/teleport clears the cache. Moving the handle
+does not block the frame: the newest duration goes to one background worker,
+which builds it with its own planner and gravity field; a build superseded by a
+newer request is dropped, and the previous full-field preview stays on screen
+until the finished plan is handed back on the main thread. Every plan the nav
+computer shows is the full-field build — the planner's fast search model only
+chooses a duration.
+
 On the powered profile the control only lengthens the torch plan. Every
 implemented quintic plan already peaks at about 97% of the drive, so the left end
 is the floor and "burn harder" needs a stronger drive or the fuel model. The
