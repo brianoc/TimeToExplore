@@ -30,7 +30,16 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
 4. **Show the result before you call it done.** Finish a task with evidence in
    the chat: screenshots of the visible change, or a short video when motion or
    interaction is what changed. A visual result the person asking cannot see is
-   not finished.
+   not finished. A plan may explicitly waive this when it changes no visible
+   behaviour.
+5. **Run multi-step work as a caretaker with one sub-agent per step, and commit
+   each step.** The caretaker keeps `HANDOFF.md` live and dispatches one
+   self-contained sub-agent per step, in order. A step is not done until its
+   code, tests, concept updates, `Docs/log.md` entry, and handoff update are in
+   **one commit** and the tree is clean. Do not start the next step until the
+   previous commit is in. Stop after two failures on the same step, leaving the
+   failure and last command in the handoff, and stop for any design decision
+   the notes do not settle.
 
 Details: [Testing and verification](/technical/testing.md). The full working
 rules are in `AGENTS.md`.
