@@ -118,7 +118,8 @@ profile.
    level; the brake spends the handover the coast skeleton would have made an
    impulse. Both of the profile's burns are placed by integrating them backwards
    from the state the next arc must begin at, so each seam is continuous and the
-   arrival is exact.
+   arrival is exact. See the known gap below: at fast trip times that placement
+   is what puts the break far outside the boundary.
 4. **The control.** The nav computer's `PROFILE` row selects Powered, Coast, or
    Burn-coast-burn; the trip-time slider is the profile's speed control and its
    window is that profile's own feasible range; the existing burn-level slider
@@ -128,6 +129,38 @@ The measured window at the epoch is **57.44 to 152.57 days** for the
 Gateway→Mars burn–coast–burn profile, against the powered plan's 4.4 days and
 the cheap coast's 200+. `Powered` is still the default, and `0 g` is exactly
 `CruiseStyle.Coast`.
+
+# Known gap: the break is not pinned to the sphere of influence
+
+The profile is meant to break orbit gently and start the steady burn just
+outside the departure sphere of influence. The clearance target is 1.02 SOI, but
+the chain is solved backwards from the coast: the departure burn is integrated
+in reverse from the coast's start, and wherever that lands becomes the break's
+endpoint. At fast trip times that endpoint is far outside the boundary.
+
+Measured at the epoch from Gateway to Mercury at 1 g, 8 days, conic capture:
+
+| Quantity | Value |
+|---|---|
+| Sphere of influence | 925 Mm |
+| Break end distance from Earth | **4,366 Mm** (~4.7 SOI) |
+| Break end speed relative to Earth | 32.2 km/s |
+| Break duration | 0.26 d |
+| Break peak thrust | **53.2 m/s²** |
+| Departure burn | 0.30 d, 250 km/s |
+| Brake | 0.56 d, 225 km/s |
+| Total delta-v | 1,231 km/s |
+
+Both fixed burns sit at the commanded 9.7 m/s²; only the break is over the
+drive limit. The same 8-day trip is therefore rejected at 1 g for the break,
+while the burn-coast-burn idea itself is sound: a break to the boundary at
+escape speed costs a few km/s and a much lower peak, and a 1 g burn from there
+covers the same distance in about the same time.
+
+A follow-up plan in `HANDOFF.md` pins the departure burn's start to the
+clearance radius and solves the burn duration and the break's own duration,
+then measures whether 8 and 6 days to Mercury close at 1 g. Do not treat the
+4.7 SOI endpoint as a physical limit; it is an artefact of the backwards solve.
 
 # How it was cut
 
