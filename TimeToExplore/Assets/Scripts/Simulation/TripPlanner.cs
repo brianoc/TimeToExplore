@@ -108,6 +108,17 @@ namespace TimeToExplore.Simulation
         /// than the gentle trips; the loop exits as soon as it converges.</summary>
         private const int DepartureSolveIterations = 48;
 
+        /// <summary>How close the fast, departure-body-only break peak may come
+        /// to the drive limit before the break search certifies the probe with
+        /// the full gravity field. The departure body dominates the break, but
+        /// the Sun and the other catalogue bodies still pull on the ship; inside
+        /// this band the full field decides, so a fast estimate can never let an
+        /// over-thrust break through. The band is much wider than the omitted
+        /// term at the limit: at Mercury the Sun contributes about 0.04 m/s²
+        /// against a 10 m/s² break peak, and less at the other departure
+        /// bodies.</summary>
+        public const double BreakScreenMargin = 0.05;
+
         /// <summary>How far the nav computer lets a player stretch a trip beyond
         /// the fastest feasible plan. Three times the minimum roughly divides
         /// the geometric peak thrust by nine, which is enough to see the
@@ -1473,19 +1484,202 @@ namespace TimeToExplore.Simulation
             return high;
         }
 
-        /// <summary>The quintic break's peak commanded thrust for one duration.</summary>
+        /// <summary>The quintic break's peak commanded thrust for one duration.
+        /// The search uses the departure body's gravity alone: the break's
+        /// meaningful field is its own central body, and evaluating the full
+        /// field at 64 samples per probe is what made the profile freeze the nav
+        /// computer. The endpoint accelerations stay full-field, so the quintic
+        /// is exactly the arc the final plan builds; only the along-arc gravity
+        /// subtraction is reduced. Inside <see cref="BreakScreenMargin"/> of the
+        /// drive limit the full field certifies the probe, because there the
+        /// omitted Sun and third-body terms decide whether the break fits.</summary>
         private double BreakPeakMps2(ShipState ship, BodyRuntime departureBody,
             Vector3d direction, double clearanceRadius, double escapeSpeed,
             double seconds)
         {
-            double endJd = ship.JulianDate + seconds / SecondsPerDay;
+            double fast = BreakPeakCentralBody(ship, departureBody, direction,
+                clearanceRadius, escapeSpeed, seconds);
+            double limit = MaxAccelerationMps2 * ThrustMargin;
+            if (fast <= limit * (1.0 - BreakScreenMargin))
+                return fast;
+
+            return BreakPeakFullField(ship, departureBody, direction,
+                clearanceRadius, escapeSpeed, seconds);
+        }
+
+        /// <summary>The break peak with only the departure body's gravity. The
+        /// quintic is built exactly as <see cref="MakeArc"/> builds the final
+        /// break, so the reported and fast arcs share a shape; the samples
+        /// subtract the central body instead of the full catalogue.</summary>
+        private double BreakPeakCentralBody(ShipState ship, BodyRuntime departureBody,
+            Vector3d direction, double clearanceRadius, double escapeSpeed,
+            double seconds)
+        {
+            double startJd = ship.JulianDate;
+            double endJd = startJd + seconds / SecondsPerDay;
             _model.ComputeState(departureBody, endJd,
                 out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            PlanArc arc = MakeArc(FlightPhase.Departure, departureBody.Id,
-                ship.JulianDate, endJd, ship.PositionM, ship.VelocityMps,
-                anchorPosition + direction * clearanceRadius,
-                anchorVelocity + direction * escapeSpeed);
-            return arc.PeakThrustMps2;
+            Vector3d endPosition = anchorPosition + direction * clearanceRadius;
+            Vector3d endVelocity = anchorVelocity + direction * escapeSpeed;
+
+            // Full-field endpoint accelerations keep this curve identical to the
+            // final plan's break arc. Only two Prepare calls are paid per probe;
+            // the samples evaluate one body's state, not the whole catalogue.
+            _gravity.Prepare(ship.PositionM, startJd);
+            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, startJd);
+            _gravity.Prepare(endPosition, endJd);
+            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJd);
+
+            Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
+                endPosition, endVelocity, endGravity, seconds);
+
+            int samples = Math.Max(8, ArcSamples);
+            double peak = 0.0;
+            for (int i = 0; i <= samples; i++)
+            {
+                double magnitude = BreakThrustAt(path, departureBody, startJd,
+                    (double)i / samples);
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            return peak;
+        }
+
+        /// <summary>Thrust the break quintic needs at a parameter, against the
+        /// departure body's gravity alone.</summary>
+        private double BreakThrustAt(Quintic path, BodyRuntime departureBody,
+            double startJd, double u)
+        {
+            Vector3d position = path.PositionAt(u);
+            double julianDate = startJd + path.SecondsAt(u) / SecondsPerDay;
+            return (path.AccelerationAt(u)
+                    - CentralBodyGravity(departureBody, position, julianDate)).Magnitude;
+        }
+
+        /// <summary>One body's softened point-mass acceleration at a position.
+        /// Mirrors <see cref="GravityField"/>'s per-source term, so the fast break
+        /// model is the full field minus every other body.</summary>
+        private Vector3d CentralBodyGravity(BodyRuntime body, Vector3d positionM,
+            double julianDate)
+        {
+            _model.ComputeState(body, julianDate,
+                out Vector3d bodyPosition, out _);
+            Vector3d delta = bodyPosition - positionM;
+            double radius2 = Math.Max(delta.SqrMagnitude, body.RadiusM * body.RadiusM);
+            double inverse = 1.0 / Math.Sqrt(radius2);
+            return delta * (body.Gm * inverse * inverse * inverse);
+        }
+
+        /// <summary>The full-field break peak: the same quintic the plan reports,
+        /// sampled through the complete field. The field is prepared once at the
+        /// break's start, where the departure body and its moons are strongest,
+        /// and that selected set is evaluated at every sample. The break only
+        /// climbs outward, so no new body becomes significant along it; this is
+        /// the field <see cref="Measure"/> sees, without recomputing every
+        /// catalogue ephemeris at each sample. Used only inside the screen band,
+        /// so the common path stays central-body-only.</summary>
+        private double BreakPeakFullField(ShipState ship, BodyRuntime departureBody,
+            Vector3d direction, double clearanceRadius, double escapeSpeed,
+            double seconds)
+        {
+            double startJd = ship.JulianDate;
+            double endJd = startJd + seconds / SecondsPerDay;
+            _model.ComputeState(departureBody, endJd,
+                out Vector3d anchorPosition, out Vector3d anchorVelocity);
+            Vector3d endPosition = anchorPosition + direction * clearanceRadius;
+            Vector3d endVelocity = anchorVelocity + direction * escapeSpeed;
+
+            // Endpoint accelerations exactly as MakeArc builds them, so the
+            // certified curve and the plan's break arc share their shape.
+            _gravity.Prepare(ship.PositionM, startJd);
+            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, startJd);
+            _gravity.Prepare(endPosition, endJd);
+            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJd);
+
+            Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
+                endPosition, endVelocity, endGravity, seconds);
+
+            return BreakPeakFullFieldAlongPath(path, startJd);
+        }
+
+        /// <summary>Full-field peak of an already-built break path. The field is
+        /// prepared once at the path's start, where the departure body and its
+        /// moons are strongest, and that selected set is evaluated at every
+        /// sample; the outward break cannot make a new body significant.</summary>
+        private double BreakPeakFullFieldAlongPath(IArcPath path, double startJd)
+        {
+            _gravity.Prepare(path.PositionAt(0.0), startJd);
+            int samples = Math.Max(8, ArcSamples);
+            double peak = 0.0;
+            for (int i = 0; i <= samples; i++)
+            {
+                double u = (double)i / samples;
+                Vector3d position = path.PositionAt(u);
+                double julianDate = startJd + path.SecondsAt(u) / SecondsPerDay;
+                double magnitude = (path.AccelerationAt(u)
+                                    - _gravity.AccelerationAt(position, julianDate)).Magnitude;
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            return peak;
+        }
+
+        /// <summary>Diagnostic only: measure a returned plan's break arc with the
+        /// departure body's gravity alone (the search's fast model), with the
+        /// full field (the plan's reported measurement), and with the screen the
+        /// break search applies. The planner never returns these numbers; the
+        /// tests use them to bound the fast model and prove the 5% screen picks
+        /// the full field when the fast peak is near the drive limit.</summary>
+        public void MeasureBreakPeak(TrajectoryPlan plan, out double fastPeakMps2,
+            out double fullPeakMps2, out double screenedPeakMps2)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+
+            PlanArc arc = plan.Arcs[0];
+            if (arc.Phase != FlightPhase.Departure || arc.IsCoast || arc.IsFiniteBurn)
+                throw new ArgumentException(
+                    "The plan's first arc is not a quintic break.", nameof(plan));
+
+            BodyRuntime departureBody = _model.Get(arc.ReferenceBodyId)
+                ?? throw new ArgumentException(
+                    $"No body '{arc.ReferenceBodyId}' for the break arc.", nameof(plan));
+
+            int samples = Math.Max(8, ArcSamples);
+            double peak = 0.0;
+            for (int i = 0; i <= samples; i++)
+            {
+                double u = (double)i / samples;
+                Vector3d position = arc.Path.PositionAt(u);
+                double julianDate = arc.StartJulianDate
+                                    + arc.Path.SecondsAt(u) / SecondsPerDay;
+                double magnitude = (arc.Path.AccelerationAt(u)
+                                    - CentralBodyGravity(departureBody, position,
+                                        julianDate)).Magnitude;
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            fastPeakMps2 = peak;
+            fullPeakMps2 = arc.PeakThrustMps2;
+            double limit = MaxAccelerationMps2 * ThrustMargin;
+            screenedPeakMps2 = fastPeakMps2 <= limit * (1.0 - BreakScreenMargin)
+                ? fastPeakMps2
+                : fullPeakMps2;
+        }
+
+        /// <summary>Diagnostic only: re-measure a returned plan's break with the
+        /// screen's one-prepare full-field sweep. The tests compare it with the
+        /// plan's own <see cref="Measure"/> peak, which prepares the field at
+        /// every sample.</summary>
+        public double MeasureBreakPeakFullField(TrajectoryPlan plan)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+
+            PlanArc arc = plan.Arcs[0];
+            if (arc.Phase != FlightPhase.Departure || arc.IsCoast || arc.IsFiniteBurn)
+                throw new ArgumentException(
+                    "The plan's first arc is not a quintic break.", nameof(plan));
+
+            return BreakPeakFullFieldAlongPath(arc.Path, arc.StartJulianDate);
         }
 
         /// <summary>

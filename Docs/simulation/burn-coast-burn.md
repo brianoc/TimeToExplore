@@ -198,6 +198,50 @@ distance, so a gentle break spends tens of kilometres per second even though it
 ends at 0.92 km/s. What the pin removes is the 53 m/s² peak and the
 four-sphere-long backwards burn.
 
+# The break search
+
+The break's duration is found by a **two-tier** solve. The search itself measures
+the quintic against the departure body alone, in that body's frame: the break's
+meaningful field is its own central body, and the full catalogue at every sample
+is what made the old search cost 4.88 ms per probe. The quintic is still built
+with **full-field endpoint accelerations**, exactly as the final plan builds it,
+so the search and the plan share one curve; only the along-arc gravity
+subtraction is reduced. That choice keeps the final plans closest to the
+pre-two-tier plans, which the measured anchors confirm.
+
+The plan that leaves the planner is always rebuilt and measured with the full
+field. The fast estimate is a search input only. When the fast peak comes within
+**5%** of the search's drive limit — `MaxAccelerationMps2 * ThrustMargin`, 9.7
+m/s² at 1 g — the probe is certified with the full field instead. The
+certification prepares the field once at the break's start, where the departure
+body and its moons are strongest, and evaluates that selected set at the same 64
+samples `Measure` uses. The break only climbs outward, so the prepared set stays
+a superset of the bodies that matter along it; this is the full field the plan
+reports, without recomputing every catalogue ephemeris per sample. A fast
+estimate can therefore never talk an over-thrust break past the drive.
+
+The constant is `TripPlanner.BreakScreenMargin`. It is a guard, not a licence:
+inside the band the full field decides, and the returned plan's peak is still the
+full-field number.
+
+Measured at the epoch, Mercury at 1 g, conic capture, on a throwaway profiling
+copy (never committed):
+
+| Quantity | Before | After |
+|---|---:|---:|
+| One `Plan()` | 36.2 s | **12.0 s** |
+| `SolveBreakSeconds` per `Plan()` | 26.9 s (74%) | **3.3 s (28%)** |
+| Break-peak cost per evaluation | 4.88 ms | **0.60 ms** |
+| One `PlanAtDuration(8 d)` | 183 ms | **105 ms** |
+| Break-search cost per `PlanAtDuration(8 d)` | 75 ms | **2.8 ms** |
+
+The break-search cost fell by **8.1×**, past this step's 5× target. The pins,
+floors, and reported plans did not move: 8 d Mercury is still 3.02 m/s² and
+569.9 km/s, 12.3 d is 1.35 and 379.9, Mars 90 d is 0.033 and 45.4, and the floors
+are still 3.46 d and 8.03 d. The fast peak tracks the full-field peak to 0.18% at
+8 d Mercury, 0.41% at 12.3 d, 4.5% on the very gentle 90-day Mars break, and
+0.05% at the Mercury floor.
+
 # The floor after the pin
 
 With the break gentle, the fast end is no longer set by an over-thrusting

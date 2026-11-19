@@ -585,6 +585,124 @@ namespace TimeToExplore.Tests.EditMode
                 "the reason names the peak the arc needs");
         }
 
+        /// <summary>The break search's fast model is the departure body alone;
+        /// the plan reports the full field. The two peaks must stay close enough
+        /// that the search's duration decision does not move the plan, and the
+        /// near-floor case is the one that runs through the 5% screen.</summary>
+        [TestCase("mercury", 1.0, 8.0, 3.0165, 92.906, 569.9)]
+        [TestCase("mercury", 1.0, 12.3, 1.3534, 61.699, 379.9)]
+        [TestCase("mars", 0.3, 90.0, 0.0334, 8.978, 45.4)]
+        public void TheFastBreakPeakTracksTheFullFieldPlan(string targetId,
+            double level, double days, double expectedBreakPeak,
+            double expectedBreakDeltaVKm, double expectedTotalDeltaVKm)
+        {
+            _planner.BurnLevelG = level;
+            TrajectoryPlan plan = PlanTo(targetId, days);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            _planner.MeasureBreakPeak(plan,
+                out double fast, out double full, out double screened);
+            TestContext.WriteLine($"{targetId} {days} d: fast {fast:F6}, " +
+                                  $"full {full:F6}, screened {screened:F6} m/s²");
+            PrintPlan(plan);
+
+            // The departure body dominates; the Sun and the other bodies are
+            // the omitted term. Ten percent, or 0.02 m/s² on the very gentle
+            // 90-day Mars break, bounds it. Near the drive limit the screen
+            // does not use this number at all.
+            Assert.That(Math.Abs(fast - full),
+                Is.LessThanOrEqualTo(Math.Max(0.02, 0.1 * full)),
+                "the fast break peak tracks the full field");
+
+            // The search input changed; the plan the caller receives did not.
+            PlanArc breakArc = plan.Arcs[0];
+            Assert.That(breakArc.PeakThrustMps2,
+                Is.EqualTo(expectedBreakPeak).Within(
+                    Math.Max(1e-4, 0.005 * expectedBreakPeak)),
+                "the reported break peak is unchanged");
+            Assert.That(breakArc.DeltaVMps / 1000.0,
+                Is.EqualTo(expectedBreakDeltaVKm).Within(
+                    0.005 * expectedBreakDeltaVKm),
+                "the reported break delta-v is unchanged");
+            Assert.That(plan.DeltaVMps / 1000.0,
+                Is.EqualTo(expectedTotalDeltaVKm).Within(
+                    0.005 * expectedTotalDeltaVKm),
+                "the reported total delta-v is unchanged");
+        }
+
+        [Test]
+        public void TheFastBreakPeakTracksTheFullFieldAtTheMercuryFloor()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = _planner.Plan(
+                FlightFixture.ShipAt(_model, "gateway"), "mercury");
+
+            _planner.MeasureBreakPeak(plan,
+                out double fast, out double full, out double screened);
+            TestContext.WriteLine($"mercury floor: fast {fast:F6}, full {full:F6}, " +
+                                  $"screened {screened:F6} m/s²");
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(Math.Abs(fast - full),
+                Is.LessThanOrEqualTo(Math.Max(0.02, 0.1 * full)),
+                "the fast break peak tracks the full field at the floor");
+            Assert.That(plan.PeakThrustMps2, Is.EqualTo(9.702).Within(0.005),
+                "the floor peak is unchanged");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1763.0).Within(2.0),
+                "the floor total delta-v is unchanged");
+
+            // The floor sits on the drive limit, so its break goes through the
+            // full-field branch of the screen.
+            Assert.That(fast,
+                Is.GreaterThan(_planner.MaxAccelerationMps2 * _planner.ThrustMargin
+                               * (1.0 - TripPlanner.BreakScreenMargin)),
+                "the near-floor break is inside the screen band");
+        }
+
+        /// <summary>The 5% screen: when the fast peak is inside the band the
+        /// break search certifies with the full field, so no fast estimate can
+        /// talk an over-thrust break past the drive.</summary>
+        [Test]
+        public void TheFivePercentScreenCertifiesNearLimitBreaksWithTheFullField()
+        {
+            _planner.BurnLevelG = 1.0;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            double limit = _planner.MaxAccelerationMps2 * _planner.ThrustMargin;
+
+            // 4 d sits on the drive limit, the floor is just below it, and
+            // 3.43 d is the rejected just-under-floor case.
+            foreach (double days in new[] { 4.0, 3.47, 3.43 })
+            {
+                TrajectoryPlan plan = _planner.PlanAtDuration(ship, "mercury",
+                    days * JulianDate.SecondsPerDay);
+                _planner.MeasureBreakPeak(plan,
+                    out double fast, out double full, out double screened);
+                double cheapFull = _planner.MeasureBreakPeakFullField(plan);
+                TestContext.WriteLine($"{days} d: fast {fast:F4}, full {full:F4}, " +
+                                      $"cheap full {cheapFull:F4}, screened {screened:F4}, " +
+                                      $"limit {limit:F4}, feasible {plan.IsFeasible}");
+
+                Assert.That(cheapFull, Is.EqualTo(full).Within(1e-3),
+                    "the screen's one-prepare field matches the plan's measurement");
+
+                if (fast > limit * (1.0 - TripPlanner.BreakScreenMargin))
+                {
+                    Assert.That(screened, Is.EqualTo(full).Within(1e-12),
+                        "a near-limit fast peak is certified by the full field");
+                }
+
+                if (plan.IsFeasible)
+                {
+                    Assert.That(full, Is.LessThanOrEqualTo(limit * (1.0 + 1e-6)),
+                        "the screen never accepts a full-field over-thrust break");
+                }
+            }
+
+            TrajectoryPlan refused = _planner.PlanAtDuration(ship, "mercury",
+                3.43 * JulianDate.SecondsPerDay);
+            Assert.That(refused.IsFeasible, Is.False,
+                "the just-below-floor trip still rejects");
+        }
+
         [Test]
         public void TheAdvertisedMinimumIsTheTrueMarsFloor()
         {

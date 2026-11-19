@@ -4,7 +4,8 @@
 weakening the simulation.** Split planning into a fast, search-only gravity model
 and the existing full-field final plan and flight model. Read this file and
 [Burn–coast–burn trips](/simulation/burn-coast-burn.md) first. The pinned-break
-work is done and committed; do not reopen it.
+work is done and committed; do not reopen it. **Step 1 is done** (break search
+26.9 s → 3.3 s); **step 2, the floor and pinned solve, is next.**
 
 ## Goal
 
@@ -67,7 +68,7 @@ the same break search.
 | Step | Deliverable | Done when |
 |---|---|---|
 | 0 | This plan and the working-agreement rule (one commit per step) | `tools/check.sh --fast` and `validate_okf.py` clean (done) |
-| 1 | Fast single-central-body peak for the break search; full-field final plan | `--tests flight` green; final plans unchanged within the stated tolerance; break-search share down at least 5×; times reported |
+| 1 | Fast single-central-body peak for the break search; full-field final plan | `--tests flight` green; final plans unchanged within the stated tolerance; break-search share down at least 5×; times reported (done: 26.9 s → 3.3 s, 8.1×) |
 | 2 | Cheaper floor search and pinned solve, plus a window cache | `--tests flight` green; floors 3.46 d / 8.03 d unchanged; first selection < 1 s; repeat instant; exact arrivals still green |
 | 3 | Slider responsiveness, async only if the retime is over 33 ms | `--tests presentation,smoke` green; measured retime meets the target or async is covered by tests |
 | 4 | Docs, log, clear this handoff | `tools/check.sh --fast`, validator, and the narrow suites green |
@@ -76,34 +77,35 @@ the same break search.
 
 The working-agreement rule, this plan, and the log entry.
 
-### Step 1 — the fast break peak
+### Step 1 — done (this commit): the fast break peak
 
-In `TripPlanner`:
+`BreakPeakMps2` now measures the quintic against the departure body alone and
+keeps full-field endpoint accelerations, so the search curve is the plan's break
+arc. `Plan()` and `PlanAtDuration()` still rebuild and measure the returned plan
+with the full `GravityField`. `BreakScreenMargin = 0.05`: a fast peak inside 5%
+of the search limit (9.7 m/s² at 1 g) is certified with the full field, using one
+`Prepare` at the break's start and the same 64 samples `Measure` uses. The
+certification is the same field the plan reports, without per-sample catalogue
+ephemeris.
 
-- Replace the full-field `MakeArc` → `Measure` path inside `BreakPeakMps2` (and
-  therefore `SolveBreakSeconds`) with a **central-body-only** peak. It must not
-  call `GravityField.Prepare` per sample and must not build a full-field plan.
-  The departure body is already a parameter of `BreakPeakMps2`.
-- The fast peak may evaluate the quintic cheaply along the arc (one body's
-  gravity is one Kepler state, not 137) or use a low-sample bracket plus a 1D
-  refinement. It does not need to be an exact calculus solve. It must be
-  deterministic and smooth enough for the existing solve.
-- Keep the returned plan path exactly as it is: `BuildBurnCoastBurn` still
-  builds the final arcs and `Measure` still uses the full field for the plan that
-  leaves the planner. The fast estimate is a search input only.
-- Use the 5% conservative screen from the design decisions: when the fast peak
-  is close to the drive limit, take the longer/gentler duration or certify with
-  the full field. Never let the screen accept a plan whose full-field peak is
-  over the limit.
-- Tests: fast vs full peak within tolerance on Mercury 8 d, Mercury 12.3 d,
-  Mars 90 d and the floor; the final plans' peak/delta-v/feasibility unchanged
-  within tolerance; the 8 d Mercury plan still closes at 1 g; the floors still
-  reject the just-below cases; seams unchanged. Add tests for the 5% screen.
-- Measure with the profiling harness (below) and report `Plan()` and
-  `PlanAtDuration(8 d)` before/after. The target for this step is at least a 5×
-  reduction in the break-search share; the whole `Plan()` need not be under a
-  second yet.
-- Update the affected concept (flight model and/or architecture) and the log.
+Measured at the epoch on the `.cache` copy (Mercury, 1 g): `Plan()` **36.2 →
+12.0 s**, `SolveBreakSeconds` **26.9 → 3.3 s (8.1×)**, break-peak cost **4.88 →
+0.60 ms**, `PlanAtDuration(8 d)` **183 → 105 ms**. The final plans are unchanged:
+8 d Mercury 3.02 m/s² / 92.9 km/s break and 569.9 km/s total; 12.3 d 1.35 / 61.7
+and 379.9; Mars 90 d 0.033 / 9.0 and 45.4; floors 3.46 d and 8.03 d; seams under
+a millimetre and 1e-5 m/s. Fast-vs-full peak: +0.18%, +0.41%, +4.5%, +0.05% at
+the floor. `--tests flight` and `validate_okf.py` green.
+
+**Trap for step 2:** the floor search is inherently near the drive limit, so
+almost every break probe takes the 5% certification branch (14,991 of 16,551 on
+Mercury). That branch is now cheap (one `Prepare` plus the selected bodies), but
+it is still the part of `SolveBreakSeconds` that did not disappear. Reducing the
+floor probe count is what will remove the remaining 3.3 s; do not "fix" it by
+widening the screen or by letting a fast estimate stand in near the limit. The
+certification's one-prepare active set is selected at the break start, where the
+departure body and its moons are strongest; the outward break cannot make a new
+body significant. `TripPlanner.MeasureBreakPeak` and
+`MeasureBreakPeakFullField` are diagnostics for the tests, not a production API.
 
 ### Step 2 — the floor and the pinned solve
 
@@ -226,6 +228,9 @@ measured numbers, and any trap the next step needs.
 
 ## Next action
 
-Start **step 1**: the central-body-only break peak behind the 5% screen, with the
-full-field final plan unchanged. Report the before/after break-search share and
-the plan numbers.
+Start **step 2**: give the floor search and the pinned solve a fast mode, cut the
+floor probe count, and cache the window per epoch/target/level/style. Keep the
+floors at 3.46 d and 8.03 d and the final candidate full-field. First selection
+target under a second, repeat effectively instant. The break search is now 3.3 s
+of the 12.0 s `Plan()`, so the floor's 84 builds and the pinned solve's 12 + 3
+passes are the next cost.

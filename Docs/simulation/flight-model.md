@@ -249,6 +249,19 @@ spends 119 km/s (departure 40, brake 53) after its 87-day inbound coast. A plan
 the drive cannot fly carries an `InfeasibleReason` naming the arc and the peak it
 needs.
 
+The break's duration search is **two-tier**. It measures the quintic against the
+departure body alone — the break's own central body — and rebuilds and measures
+the final plan with the full field, so the reported peak, delta-v and clearance
+stay full-field numbers. When the fast peak is within 5% of the search's drive
+limit, the probe is certified with the full field; the certification prepares
+the field once at the break's start and evaluates that set along the arc. The
+quintic keeps full-field endpoint accelerations, so the search's curve is the
+plan's curve. Measured on a throwaway copy at the epoch: one `Plan()` to Mercury
+at 1 g fell from 36.2 s to **12.0 s**, the break search from 26.9 s to **3.3 s**
+(8.1×), and `PlanAtDuration(8 d)` from 183 ms to **105 ms**, with the plans,
+floors and seams unchanged. [Burn–coast–burn trips](burn-coast-burn.md) has the
+break-search detail.
+
 ## Tuning the trip in the nav computer
 
 The route preview has one **trip-time slider**. Its range starts at the fastest
