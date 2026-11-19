@@ -9,7 +9,9 @@ namespace TimeToExplore.Tests.EditMode
     /// The burn–coast–burn cruise: a quintic break out of the departure sphere of
     /// influence, a prograde finite burn at the chosen level, a heliocentric
     /// Lambert coast, a retrograde finite brake, and the existing conic or hybrid
-    /// capture. The chain is solved backwards from the target so every seam is
+    /// capture. The break ends on the departure clearance sphere at the local
+    /// escape speed and the burn starts there; the burn's ray and duration, the
+    /// break's duration, and the coast are solved together so every seam is
     /// continuous in position and velocity, and the brake spends the handover the
     /// coast plan would have made an impulse. The torch cruise stays the default.
     /// </summary>
@@ -17,6 +19,10 @@ namespace TimeToExplore.Tests.EditMode
     public class BurnCoastBurnTripPlannerTests
     {
         private const double TripDays = 90.0;
+
+        /// <summary>The clearance the profile pins its break to, as a multiple of
+        /// the departure body's sphere of influence.</summary>
+        private const double ClearanceSoi = 1.02;
 
         private SolarSystemModel _model;
         private GravityField _gravity;
@@ -406,6 +412,143 @@ namespace TimeToExplore.Tests.EditMode
                 "mars");
             Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
             Assert.That(plan.FiniteBurnDeltaVMps, Is.EqualTo(0.0));
+        }
+
+        [Test]
+        public void TheBreakEndsOnTheClearanceSphereAtTheLocalEscapeSpeed()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = PlanTo("mercury", 8.0);
+            PrintPlan(plan);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            PlanArc breakArc = plan.Arcs[0];
+            Assert.That(breakArc.Phase, Is.EqualTo(FlightPhase.Departure));
+
+            BodyRuntime earth = _model.Get("earth");
+            double clearance = ClearanceSoi * SphereOfInfluence.RadiusM(earth);
+            _model.ComputeState(earth, breakArc.EndJulianDate,
+                out Vector3d earthPosition, out Vector3d earthVelocity);
+            Vector3d relativePosition = breakArc.Path.PositionAt(1.0) - earthPosition;
+            Vector3d relativeVelocity = breakArc.Path.VelocityAt(1.0) - earthVelocity;
+            double escapeSpeed = Math.Sqrt(2.0 * earth.Gm / clearance);
+
+            TestContext.WriteLine($"break end {relativePosition.Magnitude / clearance:F6} of the " +
+                                  $"clearance, {relativeVelocity.Magnitude / 1000.0:F6} km/s " +
+                                  $"against escape {escapeSpeed / 1000.0:F6} km/s, " +
+                                  $"radial fraction {Vector3d.Dot(relativeVelocity, relativePosition.Normalized) / relativeVelocity.Magnitude:F9}");
+
+            Assert.That(relativePosition.Magnitude, Is.EqualTo(clearance).Within(1.0),
+                "the break ends on the clearance sphere");
+            Assert.That(relativeVelocity.Magnitude, Is.EqualTo(escapeSpeed).Within(1e-6 * escapeSpeed),
+                "the break ends at the local escape speed");
+            Assert.That(Vector3d.Dot(relativeVelocity, relativePosition.Normalized),
+                Is.EqualTo(relativeVelocity.Magnitude).Within(1e-6 * escapeSpeed),
+                "the escape speed is along the escape ray");
+
+            PlanArc burn = plan.Arcs[1];
+            Assert.That(burn.IsFiniteBurn, Is.True);
+            Assert.That(Vector3d.Distance(breakArc.Path.PositionAt(1.0), burn.Path.PositionAt(0.0)),
+                Is.LessThan(1e-3), "the burn starts where the break ends");
+            Assert.That((breakArc.Path.VelocityAt(1.0) - burn.Path.VelocityAt(0.0)).Magnitude,
+                Is.LessThan(1e-5), "the burn starts at the break's velocity");
+            Assert.That(breakArc.PeakThrustMps2,
+                Is.LessThanOrEqualTo(plan.MaxAccelerationMps2 * (1.0 + 1e-6)),
+                "the break is inside the drive's limit");
+        }
+
+        [TestCase(8.0)]
+        [TestCase(6.0)]
+        [TestCase(4.0)]
+        public void TheFastMercuryTripsCloseAtOneG(double days)
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = PlanTo("mercury", days);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.FlightTimeDays, Is.EqualTo(days).Within(1e-3));
+            Assert.That(plan.PeakThrustMps2,
+                Is.LessThanOrEqualTo(plan.MaxAccelerationMps2 * (1.0 + 1e-6)));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+
+            PlanArc breakArc = plan.Arcs[0];
+            BodyRuntime earth = _model.Get("earth");
+            double clearance = ClearanceSoi * SphereOfInfluence.RadiusM(earth);
+            _model.ComputeState(earth, breakArc.EndJulianDate, out Vector3d earthPosition, out _);
+            Assert.That(Vector3d.Distance(breakArc.Path.PositionAt(1.0), earthPosition),
+                Is.EqualTo(clearance).Within(1.0),
+                "a fast trip's break still ends on the clearance sphere");
+        }
+
+        [Test]
+        public void AFastMercuryFlightArrivesOnTheParkingOrbit()
+        {
+            _planner.BurnLevelG = 1.0;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan plan = _planner.PlanAtDuration(ship, "mercury",
+                8.0 * JulianDate.SecondsPerDay);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            var autopilot = new Autopilot(_gravity, plan);
+            IntegrationReport report = autopilot.Fly(ref ship, _integrator);
+
+            double positionError = Vector3d.Distance(ship.PositionM, plan.ArrivalState.PositionM);
+            double velocityError = (ship.VelocityMps - plan.ArrivalState.VelocityMps).Magnitude;
+            TestContext.WriteLine($"8 d Mercury arrival error: {positionError:F2} m, " +
+                                  $"{velocityError:E3} m/s, {report.Substeps} substeps");
+
+            Assert.That(report.CollisionDetected, Is.False);
+            Assert.That(report.StepLimitReached, Is.False);
+            Assert.That(ship.JulianDate, Is.EqualTo(plan.ArrivalJulianDate).Within(1e-6));
+            Assert.That(positionError, Is.LessThan(10.0));
+            Assert.That(velocityError, Is.LessThan(0.1));
+
+            BodyRuntime mercury = _model.Get("mercury");
+            AssertOrbitAround(mercury, ship, ParkingOrbit.ConicRadiusM(mercury), 0.02, 0.02);
+        }
+
+        [Test]
+        public void TheOlderFastAndSlowPlansKeepContinuousSeams()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan mercury = PlanTo("mercury", 12.3);
+            _planner.BurnLevelG = 0.3;
+            TrajectoryPlan mars = PlanTo("mars", TripDays);
+
+            foreach (TrajectoryPlan plan in new[] { mercury, mars })
+            {
+                PrintPlan(plan);
+                Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+                for (int i = 0; i < plan.Arcs.Count - 1; i++)
+                {
+                    PlanArc left = plan.Arcs[i];
+                    PlanArc right = plan.Arcs[i + 1];
+                    double positionStep = Vector3d.Distance(
+                        left.Path.PositionAt(1.0), right.Path.PositionAt(0.0));
+                    double velocityStep = (left.Path.VelocityAt(1.0)
+                                           + right.EntryImpulseVectorMps
+                                           - right.Path.VelocityAt(0.0)).Magnitude;
+                    TestContext.WriteLine($"seam {i} {left.Phase}->{right.Phase}: " +
+                                          $"{positionStep:E2} m, {velocityStep:E2} m/s");
+                    Assert.That(positionStep, Is.LessThan(1e-3), $"seam {i}");
+                    Assert.That(velocityStep, Is.LessThan(1e-5), $"seam {i}");
+                }
+
+                Assert.That(plan.Arcs[plan.Arcs.Count - 1].EndJulianDate,
+                    Is.EqualTo(plan.ArrivalJulianDate).Within(1e-12));
+            }
+        }
+
+        [Test]
+        public void ALevelTooLowForTheFastTripIsRejected()
+        {
+            _planner.BurnLevelG = 0.01;
+            TrajectoryPlan plan = PlanTo("mercury", 8.0);
+
+            TestContext.WriteLine("reason: " + plan.InfeasibleReason);
+            Assert.That(plan.IsFeasible, Is.False);
+            Assert.That(plan.InfeasibleReason, Does.Contain("burn-coast-burn"));
         }
 
         private void AssertOrbitAround(BodyRuntime body, ShipState ship,

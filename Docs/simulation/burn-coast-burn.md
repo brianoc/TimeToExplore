@@ -111,56 +111,94 @@ profile.
    the existing conic or hybrid capture its entry state. The handover is an
    impulse at the target's sphere of influence; at 200 days to Mars it is
    14 km/s in total.
-3. **The burns.** `TripPlanner.CruiseStyle.BurnCoastBurn` is quintic break →
-   prograde departure burn → Lambert coast → brake → conic or hybrid capture.
-   Both burns sit about the Sun. The departure burn spends the coast's departure
-   speed above the local escape speed, so its delta-v is independent of the
-   level; the brake spends the handover the coast skeleton would have made an
-   impulse. Both of the profile's burns are placed by integrating them backwards
-   from the state the next arc must begin at, so each seam is continuous and the
-   arrival is exact. See the known gap below: at fast trip times that placement
-   is what puts the break far outside the boundary.
+3. **The burns.** `TripPlanner.CruiseStyle.BurnCoastBurn` is a quintic break →
+   departure burn → Lambert coast → brake → conic or hybrid capture. The break
+   ends on the departure clearance sphere (`1.02 × SOI`) at the local escape
+   speed along the escape ray, and the departure burn starts there. The burn
+   holds that ray — its prograde direction in the departure body's frame — and
+   its duration and the coast's start are solved together: the burn is
+   integrated forward, the Lambert coast from its end to the brake's start, and
+   the two ray angles and the duration are driven until the burn's end velocity
+   is the coast's departure velocity. The brake spends the handover the coast
+   skeleton would have made an impulse. Every seam is continuous and the arrival
+   is exact. The break's duration is solved as well: it keeps the reference
+   coast's departure share while that is gentle enough for the drive, and
+   lengthens it to the drive's limit when the share is too short.
 4. **The control.** The nav computer's `PROFILE` row selects Powered, Coast, or
    Burn-coast-burn; the trip-time slider is the profile's speed control and its
    window is that profile's own feasible range; the existing burn-level slider
    is the level both burns are planned at.
 
-The measured window at the epoch is **57.44 to 152.57 days** for the
-Gateway→Mars burn–coast–burn profile, against the powered plan's 4.4 days and
-the cheap coast's 200+. `Powered` is still the default, and `0 g` is exactly
+The measured window at the epoch is **9.64 to 28.91 days** for the
+Gateway→Mars burn–coast–burn profile at 0.3 g, against the powered plan's
+4.4 days and the cheap coast's 200+. The right-hand end is the three-times cap:
+with the break gentle, the fast end moved from 57.44 days to 9.64 and the cap
+is feasible. `Powered` is still the default, and `0 g` is exactly
 `CruiseStyle.Coast`.
 
-# Known gap: the break is not pinned to the sphere of influence
+# The pinned break
 
-The profile is meant to break orbit gently and start the steady burn just
-outside the departure sphere of influence. The clearance target is 1.02 SOI, but
-the chain is solved backwards from the coast: the departure burn is integrated
-in reverse from the coast's start, and wherever that lands becomes the break's
-endpoint. At fast trip times that endpoint is far outside the boundary.
+The break's end state is a design decision: the point where the departure burn
+starts, on the clearance sphere `1.02 × SOI`, at the local escape speed along
+the escape ray. The break's only job is to leave the parking orbit and reach
+escape; the burn supplies everything above it. The old chain solved the coast's
+start and integrated the burn backwards, so at fast trip times the burn began
+4.7 SOI out at 32 km/s and the break was fitted to that hard backwards solve.
 
-Measured at the epoch from Gateway to Mercury at 1 g, 8 days, conic capture:
+The escape ray is the outbound asymptote the crossing needs, not the ship's own
+relative velocity. A station's orbital direction has no relation to the
+transfer, and a burn that follows the heliocentric velocity cannot start at
+escape speed: at the boundary the heliocentric velocity is the departure body's
+own orbital velocity, so the thrust would point along the body's motion rather
+than at the target. Scanning the ray and duration of a velocity-following burn
+at 8 days to Mercury found a best seam of 269 km/s; holding the escape ray
+closes it below 1e-5 m/s.
 
-| Quantity | Value |
-|---|---|
-| Sphere of influence | 925 Mm |
-| Break end distance from Earth | **4,366 Mm** (~4.7 SOI) |
-| Break end speed relative to Earth | 32.2 km/s |
-| Break duration | 0.26 d |
-| Break peak thrust | **53.2 m/s²** |
-| Departure burn | 0.30 d, 250 km/s |
-| Brake | 0.56 d, 225 km/s |
-| Total delta-v | 1,231 km/s |
+The burn's ray angles and duration and the coast's start are one solve: three
+equations (the burn's end velocity is the coast's departure velocity) in three
+unknowns, with the burn integrated forward from the pinned state and the
+Lambert coast running from its end to the brake's start. The departure burn's
+duration is therefore no longer the coast's excess speed divided by the
+acceleration; it is the duration that lands on the coast. The break's duration
+is solved separately against the drive's limit: the reference coast's departure
+share is kept while its peak thrust fits, and it is lengthened to the shortest
+duration that fits when the share is too short. The burn's speed and the
+coast's departure speed still set its delta-v, so the level still scales its
+duration as `1/level`.
 
-Both fixed burns sit at the commanded 9.7 m/s²; only the break is over the
-drive limit. The same 8-day trip is therefore rejected at 1 g for the break,
-while the burn-coast-burn idea itself is sound: a break to the boundary at
-escape speed costs a few km/s and a much lower peak, and a 1 g burn from there
-covers the same distance in about the same time.
+Measured at the epoch (2026-11-15) from Gateway at 1 g (9.70 m/s²), conic
+capture:
 
-A follow-up plan in `HANDOFF.md` pins the departure burn's start to the
-clearance radius and solves the burn duration and the break's own duration,
-then measures whether 8 and 6 days to Mercury close at 1 g. Do not treat the
-4.7 SOI endpoint as a physical limit; it is an artefact of the backwards solve.
+| Target | Days | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Burn (d) | Burn Δv (km/s) | Coast (d) | Brake (d) | Brake Δv (km/s) | Total Δv (km/s) | Feasible |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Mercury | 8 | 0.553 | 3.02 | 92.9 | 0.307 | 257.1 | 6.594 | 0.258 | 216.3 | 569.9 | yes |
+| Mercury | 6 | 0.421 | 5.24 | 122.9 | 0.411 | 344.0 | 4.523 | 0.358 | 299.7 | 770.1 | yes |
+| Mercury | 12.32 | 0.823 | 1.35 | 61.6 | 0.207 | 173.2 | 10.834 | 0.168 | 141.0 | 379.3 | yes |
+| Mercury | 12.3 | 0.822 | 1.35 | 61.7 | 0.207 | 173.5 | 10.815 | 0.168 | 141.2 | 379.9 | yes |
+| Mars | 90 | 4.787 | 0.033 | 9.0 | 0.016 | 13.7 | 83.815 | 0.023 | 19.1 | 45.4 | yes |
+
+The 8-day trip now closes at 1 g: the break's peak is 3.02 m/s² and the plan's
+9.70 m/s² peak is the two fixed burns at the commanded level. The break ends at
+1.02 SOI at 0.919 km/s, the local escape speed, instead of 4.77 SOI at
+32.2 km/s, and the 8-day total falls from 1,231 to 570 km/s. The 6-day trip also
+closes, at 770 km/s. The fast Mercury seams are continuous to better than a
+millimetre in position and 1e-5 m/s in velocity, and the 8-day flight arrives
+0.05 m and 4.4 × 10⁻⁵ m/s from the reference state on the conic parking orbit.
+
+The **break Δv** is the integrated thrust over the quintic, not the speed change
+at the boundary. The quintic still cancels the station's motion and flies the
+distance, so a gentle break spends tens of kilometres per second even though it
+ends at 0.92 km/s. What the pin removes is the 53 m/s² peak and the
+four-sphere-long backwards burn.
+
+# The floor after the pin
+
+With the break gentle, the planner's own minimum search no longer stops at an
+over-thrusting break. `Plan()` now reports **3.94 days** for Mercury at 1 g and
+**9.64 days** for Mars at 0.3 g; the old 12.32 and 57.44 day floors were
+artefacts of the break, not the drive. The advertised floor is still the
+search's first feasible plan rather than a solved minimum, and a plan rejected
+for exceeding maximum thrust still carries no reason; both are the next step.
 
 # How it was cut
 
@@ -171,13 +209,16 @@ quintic departure retargeted to the Lambert's `v₁`, a heliocentric `ConicArc`
 coast, and the existing conic/hybrid capture. Landed as
 `TripPlanner.CruiseStyle.Coast`.
 
-**Stage B — the burns.** Add the prograde departure fixed burn and the
-fixed-thrust brake, stitch the five arcs, and expose the burn level and the trip
-time. Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`, with no impulse at the
+**Stage B — the burns.** Add the departure fixed burn and the fixed-thrust
+brake, stitch the five arcs, and expose the burn level and the trip time.
+Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`, with no impulse at the
 target's sphere of influence. Because a burn along the velocity can only change
 the speed, the brake's thrust direction is the change the chain needs and
-opposes the arrival velocity, not an anti-velocity direction. The nav-computer
-control landed in the plan's fourth step.
+opposes the arrival velocity, not an anti-velocity direction. The first cut
+placed the departure burn backwards from the coast and followed the
+heliocentric velocity; the pinned-break follow-up replaced that with the
+forward-solved escape-ray burn above. The nav-computer control landed in the
+plan's fourth step.
 
 # Not in the first cut
 
@@ -203,6 +244,10 @@ control landed in the plan's fourth step.
   The coasting profiles' right-hand end is probed from what the planner accepts,
   not taken as three times the minimum: a long short-way transfer sweeps past
   180°, and a slow coast would need an acceleration rather than a brake.
+- **The pinned break and the escape ray.** The break ends at `1.02 × SOI` at
+  the local escape speed along the escape ray, and the departure burn holds
+  that ray. A velocity-following burn cannot close the seam at fast trip times,
+  so the ray, not the heliocentric velocity, sets the burn's attitude.
 - **Brake and capture split.** The brake spends only the coast's handover and
   hands the capture chain its entry state with no impulse; the split is not
   optimised. The brake's thrust direction follows the change the chain needs

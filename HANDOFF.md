@@ -1,19 +1,23 @@
 # Handoff
 
-**Active handoff (2026-11-19): pin the burn–coast–burn departure break to the
-sphere of influence.** The design is the follow-up to
-[Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md); read that note and
-its *Known gap* section first. Do not redesign the profile in a step; if a step
-cannot proceed without changing the note, stop and ask.
+**Active handoff (2026-11-19): the pinned break, step 2 of 3.** Step 1 landed:
+the break ends on the clearance sphere at escape speed and the departure burn
+and coast are solved from it; 8, 6 and 4 days to Mercury now close at 1 g. The
+design is the follow-up to
+[Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md); read that note's
+*The pinned break* section first. Step 2 is the floor and the reason below. Do
+not redesign the profile in a step; if a step cannot proceed without changing
+the note, stop and ask.
 
 ## Goal
 
-Make the departure break do only what its name says: leave the parking orbit and
-arrive at the departure sphere of influence at escape speed, so the steady 1 g
-burn starts at the boundary instead of millions of kilometres outside it. Then
-measure whether fast trips — 8 days and 6 days to Mercury at 1 g — close, which
-they currently do not because the break is stretched to the burn's backwards
-solved start.
+Step 1 made the departure break do only what its name says: it ends on the
+clearance sphere at escape speed and the steady burn starts there. That landed,
+and the fast trips close (8 days and 6 days to Mercury at 1 g). Step 2 is to
+expose the true floor and give a rejected plan its reason: the planner's minimum
+search now finds 3.94 days for Mercury at 1 g and 9.64 days for Mars at 0.3 g,
+but it is still the search's first feasible plan rather than a solved minimum,
+and a max-thrust rejection still carries a null `InfeasibleReason`.
 
 ## The evidence this starts from
 
@@ -34,17 +38,25 @@ Measured at the epoch (2026-11-15) from Gateway to Mercury, 1 g level
 Both fixed burns are at the commanded 9.7 m/s²; only the break is over the
 limit. The same trip is rejected solely for the break. At 6 days the quintic
 solve has diverged (3,738 m/s², 8,721 km/s) and is not a real plan at any drive
-size; 8 days is the useful target.
+size; 8 days was the useful target. **The pin changed that:** the break now ends
+at 1.02 SOI at 0.919 km/s, the 8-day plan closes at 1 g (break peak 3.02 m/s²,
+total 570 km/s), and the 6-day plan closes at 770 km/s. The measured table is in
+the design note.
 
 Two other defects were found in the same probe and belong to step 2:
 
-- `Plan()` reports a Mercury minimum of 12.32 d at 1 g, but 11.0 d closes and
-  10.8 d is refused at the drive limit. The advertised floor is about 1.3 d too
-  conservative, so the slider hides the most aggressive burns.
+- The advertised floor was 12.32 d for Mercury at 1 g, but 11.0 d closed and
+  10.8 d was refused at the drive limit. The pin moved the floor much further:
+  `Plan()` now reports 3.94 d for Mercury at 1 g and 9.64 d for Mars at 0.3 g,
+  because the fast plans are no longer rejected for the break. That is still the
+  search's first feasible plan, not a solved minimum, so the floor work remains
+  — just around 3.9/9.6 d.
 - A plan rejected for exceeding maximum thrust has `IsFeasible == false` but a
   null `InfeasibleReason`, so the nav computer says "Plan infeasible" with no
-  cause. The 60-day Mercury plan (outside the 3× window) is degenerate as well
-  (peak 176,855 m/s²); out of scope, note it and move on.
+  cause. The 60-day Mercury plan (outside the 3× window) is still degenerate
+  (peak 176,855 m/s²) and now fails in the coast skeleton with a misleading
+  Lambert "needs a transfer short of 180 deg" at a 97.9° transfer angle; out of
+  scope, note it and move on.
 
 ## How this runs
 
@@ -72,73 +84,82 @@ a time. The caretaker is deliberately light so its context stays clean.
 
 | Step | Deliverable | Done when |
 |---|---|---|
-| 0 | Known gap, log entry, this plan | `python3 tools/validate_okf.py` clean (done) |
-| 1 | Pin the departure burn's start to the clearance radius in `TripPlanner`; solve the burn duration and the break's own duration; measure 8/6/12.3/90 d | `tools/check.sh --tests flight` green; 8 d closes at 1 g or the step stops and reports |
-| 2 | True minimum search and a reason for the max-thrust rejection | `tools/check.sh --tests flight` green; the slider floor is the true floor |
+| 0 | The gap, log entry, this plan | `python3 tools/validate_okf.py` clean (done) |
+| 1 | Pin the departure burn's start to the clearance radius in `TripPlanner`; solve the burn duration and the break's own duration; measure 8/6/12.3/90 d | **done** — `tools/check.sh --tests flight` green; 8 d closes at 1 g |
+| 2 | True minimum search and a reason for the max-thrust rejection | `tools/check.sh --tests flight` green; the slider floor is the true floor; `--tests presentation,smoke` green after the window change |
 | 3 | Docs pass, log, visual evidence, clear this handoff | `tools/check.sh --fast` and the validator clean |
 
 ### Step 0 — done (this commit)
 
-The *Known gap* section in the design note, the log entry, and this plan.
+The gap section that step 1 later replaced, the log entry, and this plan.
 
-### Step 1 — pin the break
+### Step 1 — done (this commit)
 
-In `TripPlanner.BuildBurnCoastBurn` and its helpers:
+The break ends on `1.02 × SOI` at the local escape speed along the escape ray;
+the departure burn holds that ray and its ray angles, its duration, and the
+coast are one forward solve, with the brake still integrated backwards from the
+entry. The break's duration is solved against the drive's limit. `0 g` still
+delegates to `Coast`, the arrival is exact, and the seams are under a
+centimetre and 1e-5 m/s. Measured at 1 g from Gateway: Mercury 8 d 570 km/s
+(break 0.553 d / 3.02 m/s² / 92.9 km/s; burn 0.307 d / 257.1 km/s; coast
+6.594 d; brake 0.258 d / 216.3 km/s), 6 d 770 km/s, 12.32 d 379 km/s, 12.3 d
+380 km/s, Mars 90 d 45.4 km/s. The 8-day flight arrives 0.05 m / 4.4e-5 m/s.
+Verification: `tools/check.sh --tests flight` passed;
+`.venv/bin/python tools/validate_okf.py` clean.
 
-- Pin the departure burn's **start** to the clearance radius
-  (`DepartureBurnClearance * SOI`, currently 1.02) on the escape ray, at the
-  break's end state. The break must end there, not wherever the backwards burn
-  lands.
-- The break's **duration** is currently inherited from the reference coast
-  (`quinticSeconds = referenceCruise.StartJulianDate - t0`). Decouple it: a
-  break that only reaches the boundary can take longer, and that longer time is
-  the point of the change. Solve the duration that reaches the boundary at the
-  chosen end state.
-- The departure burn's **duration** is currently
-  `(coast departure speed - escape) / a`. With the start pinned, it becomes a
-  solved quantity: the burn must start at the boundary and end at the coast's
-  start. Solve the burn duration and the coast start together (one root find on
-  the coast start distance, as today, with the burn start fixed instead of
-  derived).
-- Keep the brake, the coast, and the conic/hybrid capture chain untouched. The
-  seams must stay continuous (< 1 cm, 1e-5 m/s) and the arrival exact.
-- The break's end state is a **design decision**: the natural choice is the
-  local escape speed along the escape ray, which makes the break's job constant
-  and puts all the speed in the burn. If the note does not settle it, stop and
-  ask; do not pick a different speed silently.
-- Measure and report, at 1 g and the epoch, for Mercury: 8 d, 6 d, the current
-  advertised minimum (12.32 d), and the old 12.3 d case; plus the 90 d Mars
-  case. Record days, break duration/peak/delta-v, burn duration/delta-v, coast,
-  brake, total delta-v, and feasibility. If 8 d still does not close at 1 g,
-  **stop and report the numbers**; do not tune the profile or raise the level to
-  make it fit.
-- Tests: the break's end is at the clearance radius (within a tolerance); the
-  burn starts there; the 8 d Mercury plan closes at 1 g; the existing 12.3 d
-  Mercury and 90 d Mars plans still close with continuous seams; `0 g` still
-  delegates to `Coast`; a level too low for the trip still rejects.
+Traps carried into step 2:
+
+- **`Plan()`'s floor moved.** It now reports 3.94 d for Mercury at 1 g and
+  9.64 d for Mars at 0.3 g; the old 12.32/57.44 d floors were artefacts of the
+  break. The search's first feasible plan is still not a solved minimum, so the
+  floor work is still needed, just around 3.9/9.6 d, not 11.
+- **The HUD and bootstrap tests assume a 20-day floor.**
+  `SolarSystemHudTests.TheCruiseProfileControlDefaultsToPoweredAndRebuildsThePreview`
+  and `BootstrapSmokeTests.ABurnCoastBurnFlightArrivesThroughTheBootstrap` assert
+  `minimum > 20 d`; the Mars window is now 9.64–28.91 d. They are presentation/
+  smoke tests, outside step 1's narrow band, and step 2 must update them with
+  the window change.
+- **The 60-day Mercury plan fails in the coast skeleton** with a `CoastReason`
+  whose transfer angle is 97.9°, so the "needs a transfer short of 180 deg"
+  wording is misleading there. It is still degenerate; the reason work should
+  cover it.
+- **The departure burn must hold the escape ray.** A velocity-following burn
+  leaves a 269 km/s seam at 8 d; do not "fix" it back to the heliocentric
+  velocity. `DepartureBurnStaysOutside` must still pass.
 
 ### Step 2 — the floor and the reason
 
-- Make `Plan()`'s minimum search reach the true floor (11.0 d closes at 1 g;
-  10.8 d is refused at the drive limit). The growing search currently stops
-  early; tighten it or replace it with a bracketed solve. The slider then
-  exposes the burns the profile can actually fly.
+- Make `Plan()`'s minimum search reach the true floor. It now finds 3.94 d for
+  Mercury at 1 g and 9.64 d for Mars at 0.3 g, but that is the search's first
+  feasible plan; the true floor is at or below it and the old 10.8/11.0 d probe
+  is stale. Tighten the search or replace it with a bracketed solve, and
+  re-measure the fast end (3.9 d Mercury and 9.6 d Mars are the new reference).
+  The Mars window moved to 9.64–28.91 d at 0.3 g; the slider then exposes the
+  burns the profile can actually fly.
 - Give a plan rejected for `PeakThrustMps2 > MaxAccelerationMps2 * (1 + eps)` an
   `InfeasibleReason` naming the arc and the required peak, so the nav computer
   shows a cause. This is the `IsFeasible` check in `TrajectoryPlan`, not just the
   builder's reason strings.
-- Tests: the true floor for Mercury at 1 g is found (and is below the old
-  12.32 d); a trip just under the floor is rejected with a non-empty reason; the
-  HUD shows the reason. Re-run `--tests flight`; add `--tests presentation,smoke`
-  if the window or report changes.
-- Do not fix the 60-day degenerate plan unless it is cheap; note it in the log.
+- Update `SolarSystemHudTests` and `BootstrapSmokeTests`: both assert the
+  profile's minimum is greater than 20 days, which the pinned break made false
+  (Mars at 0.3 g is 9.64 d). Their window assertions and any 57-day text in
+  presentation and smoke go with this change.
+- Tests: the true floor for Mercury at 1 g is found (it is at or below 3.94 d);
+  a trip just under the floor is rejected with a non-empty reason; the HUD shows
+  the reason. Re-run `--tests flight`; add `--tests presentation,smoke` because
+  the window changed.
+- Do not fix the 60-day degenerate plan unless it is cheap; its new reason is a
+  misleading Lambert "needs a transfer short of 180 deg" at 97.9°, so note it
+  in the log.
 
 ### Step 3 — close out
 
-- Update the design note (remove the known gap once it is fixed, record the
-  measured break and the new floors), navigation and arrival, the flight model,
-  the flight session, testing, architecture, and the roadmap as the code
-  requires. Add the log entry.
+- Update the design note (it now carries *The pinned break* and the measured
+  table, and *The floor after the pin*), navigation and arrival, the flight
+  model, the flight session, testing, architecture, and the roadmap as the code
+  requires. The window is now 9.64–28.91 d at Mars and the fast end is 3.94 d at
+  Mercury; the old 57.44/12.32 d statements in navigation and the flight model
+  are stale. Add the log entry.
 - Visual evidence: the break is now visibly longer and gentler, so finish with
   screenshots or a short video of the route and the nav computer, in the chat.
   The previous session's method works: a copy of the project with a warm
@@ -151,9 +172,13 @@ In `TripPlanner.BuildBurnCoastBurn` and its helpers:
 
 ## Verification
 
+Last run (step 1): `tools/check.sh --tests flight` passed, and
+`.venv/bin/python tools/validate_okf.py` reported 38 concepts, 0 warnings,
+0 errors. The system `python3` lacks PyYAML, so use `.venv/bin/python`.
+
 ```bash
 tools/check.sh --tests flight                # steps 1–2
-tools/check.sh --tests presentation,smoke    # step 2 if the window/report moves
+tools/check.sh --tests presentation,smoke    # step 2, because the window moved
 tools/check.sh --fast                        # step 0 and 3
 python3 tools/validate_okf.py                # whenever a concept changes
 ```
@@ -169,18 +194,20 @@ the exact command and its result. Do not record a test count in the bundle.
 - **Never burn across the SOI.** The boundary is the point of the plan; the
   burn starts outside it and never crosses it. `DepartureBurnStaysOutside` must
   still pass.
-- **The clearance solve is not a bisection to tighten.** `TrySolveDepartureExit`
-  grows the coast start until the *backwards solved* burn clears 1.02 SOI, and at
-  8 d it lands at 4.7 SOI. Pinning is a constraint on the burn's start, not a
-  larger clearance search.
+- **The clearance solve is not a bisection to tighten.** The old
+  `TrySolveDepartureExit` grew the coast start until the *backwards solved* burn
+  cleared 1.02 SOI, and at 8 d it landed at 4.7 SOI. Pinning is a constraint on
+  the burn's start, not a larger clearance search; that backwards solve is gone,
+  and step 2 must not reintroduce it.
 - **The brake is not anti-velocity.** Its direction is the change the chain
   needs; the slow-arrival rejection is deliberate. Do not "fix" it.
 - **Capture stays conic/hybrid.** Never use the quintic capture to fit the plan;
   do not raise parking orbits.
 - **`0 g` is exactly `Coast`.** `Powered` and `Coast` keep their current
   behaviour; only `BurnCoastBurn` changes.
-- **The advertised minimum is not the floor.** Until step 2 lands, `Plan()`
-  overstates it; measure with `PlanAtDuration`.
+- **The advertised minimum is still not a solved floor.** `Plan()` now returns
+  3.94 d for Mercury at 1 g and 9.64 d for Mars at 0.3 g, but that is the search's
+  first feasible plan; measure a pinned time with `PlanAtDuration`.
 - **Do not treat the 4.7 SOI endpoint as physics.** It is an artefact of the
   backwards solve; that is the whole premise of this plan.
 - Assembly rules: Core has no engine references; Simulation has
@@ -197,7 +224,7 @@ the exact command and its result. Do not record a test count in the bundle.
 ```text
 You are step <N> of the pinned-break plan in
 /Users/brian.oconnor/Personal/TimeToExplore. Read HANDOFF.md and
-Docs/simulation/burn-coast-burn.md first, including the Known gap section. Do
+Docs/simulation/burn-coast-burn.md first, including *The pinned break*. Do
 only step <N>: <deliverable>. Touch only: <files>. Follow the constraints in
 HANDOFF.md. Add tests for every new behaviour. Iterate and finish with the
 narrow check for this step (see Verification), not the full suite. Update the
@@ -209,8 +236,7 @@ numbers this step asked for, and any trap the next step needs.
 
 ## Next action
 
-Start **step 1** with a fresh sub-agent: pin the departure burn's start to the
-clearance radius, decouple the break's duration, solve the burn duration and the
-coast start, and measure Mercury at 8, 6, 12.32, and 12.3 days and Mars at 90
-days at 1 g. The gate is whether 8 days closes at 1 g; if it does not, stop and
-report rather than tuning the profile.
+Start **step 2** with a fresh sub-agent: make `Plan()`'s minimum search reach the
+true floor around 3.9 d Mercury / 9.6 d Mars, give a max-thrust rejection a
+reason, and update the presentation and smoke window assertions. The measured
+numbers and traps are in *Step 1 — done* above. Do not start step 3.
