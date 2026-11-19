@@ -96,22 +96,22 @@ profile.
 captures, the autopilot, coasts and burns as plan phases, dashed coasts, burn
 markers, and the route legend.
 
-**Missing:**
+**Built since this note was written:**
 
-1. **The Lambert solver.** The coast must be chosen, not guessed. This is the
-   universal-variable sibling of `KeplerPropagator`. It has landed in Core as
-   `LambertSolver.SolveShortWay` (zero-rev, prograde, short-way).
-2. **The planner that stitches the arcs.** It chooses when to stop burning,
-   where the coast goes, and when to brake, so the chain closes on the moving
-   target. This is a small targeting/fixed-point solve, the same pattern as the
-   conic planner's five-pass arrival loop. Stage A now does it for the coast
-   cruise; the burn timing is still missing.
-3. **The departure fixed burn.** The hybrid capture is the arrival version; a
-   prograde finite burn out of the parking orbit is its mirror and does not
-   exist.
+1. **The Lambert solver.** In Core as `LambertSolver.SolveShortWay`
+   (zero-rev, prograde, short-way).
+2. **The planner that stitches the arcs.** `TripPlanner.CruiseStyle.BurnCoastBurn`:
+   it chooses the burns and the coast so the chain closes on the moving target,
+   with the small fixed-point solve the conic planner uses.
+3. **The departure fixed burn.** A prograde finite burn about the Sun, the
+   mirror of the hybrid capture's retrograde arrival burn. It begins outside the
+   departure sphere of influence and spends the excess over escape.
+
+**Still missing:**
+
 4. **The control.** "How fast do I want to go" is the natural knob. The existing
    trip-time slider is the right shape: short time = long burns, no coast; long
-   time = short burns, long coast.
+   time = short burns, long coast. *Not built yet; it is the next step.*
 
 # The first cut
 
@@ -120,12 +120,17 @@ Two stages, both part of the same implementation:
 **Stage A — the coast skeleton.** Add the Lambert solver (zero-rev, prograde,
 short-way) and build a trip as a quintic departure retargeted to the Lambert's
 `v₁`, a heliocentric `ConicArc` coast, and the existing conic/hybrid capture.
-This proves the coast arrives and the capture still works. It has landed as
-`TripPlanner.CruiseStyle.Coast`, with the powered cruise still the default.
+Landed as `TripPlanner.CruiseStyle.Coast`, with the powered cruise still the
+default.
 
 **Stage B — the burns.** Add the prograde departure fixed burn and the
 retrograde brake, stitch the five arcs, and expose the burn level and the trip
-time. This delivers the trip described at the top.
+time. Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`: quintic break →
+departure burn → Lambert coast → brake → conic or hybrid capture, with no
+impulse at the target's sphere of influence. The chain is built backwards from
+the target, so every seam is continuous and the arrival is exact; the brake's
+direction is the change the chain needs, because a burn along the velocity can
+only change the speed. The control is still to come.
 
 # Not in the first cut
 
@@ -149,4 +154,12 @@ time. This delivers the trip described at the top.
   Time is the simpler first control.
 - **Brake and capture split.** The brake can stop at the target's heliocentric
   velocity and hand over to the capture, or do part of the orbit insertion
-  itself. The planner should choose the cheaper split.
+  itself. *Settled for the first cut:* the brake spends only the coast's
+  handover and hands the capture chain its entry state with no impulse; the
+  split is not optimised. The brake's thrust direction follows the change the
+  chain needs rather than the velocity alone, because a purely anti-velocity
+  burn cannot close the seam.
+- **Slow crossings.** A coast that arrives slower than the target's frame needs
+  an acceleration rather than a brake, so those trip times are rejected. The
+  profile is the fast, expensive end of the trade; the coast remains the cheap,
+  slow one.

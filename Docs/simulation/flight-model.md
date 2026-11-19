@@ -208,6 +208,41 @@ tide. The total plan delta-v is usually lower (Jupiter 2,783 km/s against
 slightly more than the quintic plan even while the capture itself is 20–100×
 cheaper. That trade is why the style is a choice, not a replacement.
 
+### The burn–coast–burn profile in numbers
+
+The same epoch and ship, with `CruiseStyle.BurnCoastBurn` at 0.3 g and the conic
+capture. The departure burn is about the Sun and the brake is about the Sun as
+well: at these speeds the steady burns span tens of thousands of kilometres,
+well outside the planets' spheres of influence. The measured plan at 90 days:
+
+| Leg | Duration | Delta-v | Peak thrust |
+|---|---:|---:|---:|
+| Quintic break | 4.73 d | 13.4 km/s | 0.06 m/s² |
+| Departure burn (prograde) | 78 min | 13.7 km/s | 2.94 m/s² |
+| Lambert coast | 83.7 d | 0.06 km/s | 0.0005 m/s² |
+| Brake (retrograde) | 3.1 h | 19.2 km/s | 2.94 m/s² |
+| Conic capture | 1.36 d | 3.53 km/s (impulse) | 0 |
+
+The total is 50 km/s against the coast plan's 14 km/s at 200 days: the burns buy
+the speed. The burns are sized from velocity changes, not from a time share. The
+departure burn spends the coast's departure speed above the local escape speed,
+so its delta-v is the same at every level — 13.7 km/s here — while its duration
+scales inversely: 7.8 hours at 0.05 g, 78 minutes at 0.3 g, 24 minutes at 1 g.
+The brake spends the handover the coast plan leaves as an impulse at the
+target's sphere of influence (19.2 km/s here against 19.2 km/s), so the capture
+chain is handed its entry state with no impulse. Every seam is continuous to
+better than a centimetre and 10⁻⁵ m/s, the flight arrives 0.1 m and 0.0001 m/s
+from the reference state, and the parking orbit holds. At `0 g` the style is
+exactly the coast plan: five arcs and the handover impulse.
+
+The fastest plan the planner finds on its own is 57 days at 89 km/s, with the
+departure burn at 28.6 km/s and the brake at 36.2 km/s. Faster crossings are
+throttle-limited by the quintic break that has to reach the burn's start, and a
+coast that arrives slower than the target's frame is rejected: it would need an
+acceleration, not a brake. Venus at 11.66 days spends 268 km/s (departure 71,
+brake 61); Jupiter at 230.6 days spends 116 km/s (departure 40, brake 53) after
+its 87-day inbound coast.
+
 ## Tuning the trip in the nav computer
 
 The route preview has one **trip-time slider**. Its range is the fastest

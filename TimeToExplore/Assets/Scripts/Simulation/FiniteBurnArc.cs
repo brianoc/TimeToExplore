@@ -5,11 +5,16 @@ namespace TimeToExplore.Simulation
 {
     /// <summary>
     /// A finite burn around one body: a constant thrust magnitude along the
-    /// instantaneous velocity (prograde or retrograde), integrated through the
-    /// body's two-body gravity. Unlike a quintic, the thrust does not ramp from
-    /// zero; the arc is the fixed-thrust burn the drive can actually fly, and it
-    /// meets a coast with a step in acceleration rather than a blend
+    /// instantaneous velocity (prograde or retrograde), or along a fixed inertial
+    /// direction, integrated through the body's two-body gravity. Unlike a
+    /// quintic, the thrust does not ramp from zero; the arc is the fixed-thrust
+    /// burn the drive can actually fly, and it meets a coast with a step in
+    /// acceleration rather than a blend
     /// ([ADR-015](/decisions/adr-015-fixed-thrust-burns.md)).
+    ///
+    /// A fixed direction is the honest model of a real burn: the ship holds one
+    /// attitude instead of tracking its velocity. The planner uses it for the
+    /// burn–coast–burn brake, whose velocity change is not along the velocity.
     ///
     /// The parameter u is linear in time. Local samples are stored at a uniform
     /// step and interpolated with a cubic Hermite in position, so position and
@@ -35,11 +40,12 @@ namespace TimeToExplore.Simulation
         private readonly Vector3d _fallbackDirection;
         private readonly Vector3d[] _localPositionsM;
         private readonly Vector3d[] _localVelocitiesMps;
+        private readonly Vector3d _fixedThrustDirection;
 
         private FiniteBurnArc(SolarSystemModel model, BodyRuntime centre, double startJulianDate,
             double durationSeconds, double accelerationMps2, bool retrograde,
             Vector3d fallbackDirection, Vector3d[] localPositionsM,
-            Vector3d[] localVelocitiesMps)
+            Vector3d[] localVelocitiesMps, Vector3d fixedThrustDirection = default)
         {
             _model = model;
             _centre = centre;
@@ -50,6 +56,7 @@ namespace TimeToExplore.Simulation
             _fallbackDirection = fallbackDirection;
             _localPositionsM = localPositionsM;
             _localVelocitiesMps = localVelocitiesMps;
+            _fixedThrustDirection = fixedThrustDirection;
         }
 
         public double StartJulianDate => _startJulianDate;
@@ -68,11 +75,14 @@ namespace TimeToExplore.Simulation
         /// model is used only to place the centre at each queried date, never
         /// mutated. <paramref name="samples"/> above zero overrides the automatic
         /// sample count; the solver uses a coarser table than the final arc.
+        /// <paramref name="fixedThrustDirection"/>, when given, holds the thrust
+        /// along that inertial direction instead of the velocity.
         /// </summary>
         public static FiniteBurnArc Create(SolarSystemModel model, BodyRuntime centre,
             double startJulianDate, double durationSeconds,
             Vector3d localStartPositionM, Vector3d localStartVelocityMps,
-            double accelerationMps2, bool retrograde, int samples = 0)
+            double accelerationMps2, bool retrograde, int samples = 0,
+            Vector3d? fixedThrustDirection = null)
         {
             if (model == null) throw new ArgumentNullException(nameof(model));
             if (centre == null) throw new ArgumentNullException(nameof(centre));
@@ -88,6 +98,10 @@ namespace TimeToExplore.Simulation
             Vector3d position = localStartPositionM;
             Vector3d velocity = localStartVelocityMps;
             Vector3d fallback = FallbackDirection(position, velocity);
+            Vector3d direction = fixedThrustDirection.HasValue
+                ? Normalized(fixedThrustDirection.Value)
+                : Vector3d.Zero;
+            bool directed = direction.SqrMagnitude > 0.5;
 
             positions[0] = position;
             velocities[0] = velocity;
@@ -95,14 +109,15 @@ namespace TimeToExplore.Simulation
             double step = durationSeconds / count;
             for (int i = 0; i < count; i++)
             {
-                Step(centre.Gm, accelerationMps2, retrograde, fallback,
+                Step(centre.Gm, accelerationMps2, retrograde, fallback, direction, directed,
                     ref position, ref velocity, step);
                 positions[i + 1] = position;
                 velocities[i + 1] = velocity;
             }
 
             return new FiniteBurnArc(model, centre, startJulianDate, durationSeconds,
-                accelerationMps2, retrograde, fallback, positions, velocities);
+                accelerationMps2, retrograde, fallback, positions, velocities,
+                directed ? direction : Vector3d.Zero);
         }
 
         /// <summary>
@@ -129,7 +144,7 @@ namespace TimeToExplore.Simulation
             for (int i = 0; i < count; i++)
             {
                 Step(centre.Gm, accelerationMps2, retrograde, fallback,
-                    ref position, ref velocity, step);
+                    Vector3d.Zero, false, ref position, ref velocity, step);
                 double radius = position.Magnitude;
                 if (radius < minimumRadiusM) minimumRadiusM = radius;
             }
@@ -174,7 +189,7 @@ namespace TimeToExplore.Simulation
                 Vector3d previousVelocity = velocity;
 
                 Step(centre.Gm, accelerationMps2, retrograde, fallback,
-                    ref position, ref velocity, step);
+                    Vector3d.Zero, false, ref position, ref velocity, step);
 
                 double radius = position.Magnitude;
                 if (radius > targetRadiusM)
@@ -199,6 +214,43 @@ namespace TimeToExplore.Simulation
             return false;
         }
 
+        /// <summary>
+        /// Integrate a burn backwards from its end state and return the state it
+        /// started from. The forward dynamics are unchanged: constant thrust along
+        /// the instantaneous velocity (prograde, or retrograde), or along a fixed
+        /// direction, through the two-body field. Running them with a negative
+        /// time step is the exact reverse flow, so a planner can place a burn that
+        /// must end on a state another arc already needs, without a shooting
+        /// solve.
+        /// </summary>
+        public static void SimulateBackward(BodyRuntime centre, Vector3d localEndPositionM,
+            Vector3d localEndVelocityMps, double accelerationMps2, bool retrograde,
+            double durationSeconds, int samples,
+            out Vector3d localStartPositionM, out Vector3d localStartVelocityMps,
+            Vector3d? fixedThrustDirection = null)
+        {
+            if (centre == null) throw new ArgumentNullException(nameof(centre));
+            if (!(durationSeconds > 0.0))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds));
+
+            int count = SampleCount(durationSeconds, samples);
+            Vector3d position = localEndPositionM;
+            Vector3d velocity = localEndVelocityMps;
+            Vector3d fallback = FallbackDirection(position, velocity);
+            Vector3d fixedDirection = fixedThrustDirection.HasValue
+                ? Normalized(fixedThrustDirection.Value)
+                : Vector3d.Zero;
+            bool directed = fixedDirection.SqrMagnitude > 0.5;
+
+            double step = -durationSeconds / count;
+            for (int i = 0; i < count; i++)
+                Step(centre.Gm, accelerationMps2, retrograde, fallback,
+                    fixedDirection, directed, ref position, ref velocity, step);
+
+            localStartPositionM = position;
+            localStartVelocityMps = velocity;
+        }
+
         public Vector3d PositionAt(double u)
         {
             LocalStateAt(u, out Vector3d localPosition, out _);
@@ -220,7 +272,8 @@ namespace TimeToExplore.Simulation
 
             return _model.ComputeAcceleration(_centre, julianDate)
                    + LocalAcceleration(_centre.Gm, localPosition, localVelocity,
-                       _accelerationMps2, _retrograde, _fallbackDirection);
+                       _accelerationMps2, _retrograde, _fallbackDirection,
+                       _fixedThrustDirection, _fixedThrustDirection.SqrMagnitude > 0.5);
         }
 
         public double SecondsAt(double u) =>
@@ -301,13 +354,16 @@ namespace TimeToExplore.Simulation
 
         private static Vector3d LocalAcceleration(double mu, Vector3d position,
             Vector3d velocity, double accelerationMps2, bool retrograde,
-            Vector3d fallbackDirection)
+            Vector3d fallbackDirection, Vector3d fixedDirection, bool directed)
         {
             double radiusSquared = position.SqrMagnitude;
             double radius = Math.Sqrt(radiusSquared);
             Vector3d gravity = radius > 0.0
                 ? position * (-mu / (radiusSquared * radius))
                 : Vector3d.Zero;
+
+            if (directed)
+                return gravity + fixedDirection * accelerationMps2;
 
             Vector3d direction = velocity.SqrMagnitude > 1e-12
                 ? velocity.Normalized
@@ -318,35 +374,40 @@ namespace TimeToExplore.Simulation
         }
 
         private static void Step(double mu, double accelerationMps2, bool retrograde,
-            Vector3d fallbackDirection, ref Vector3d position, ref Vector3d velocity,
-            double h)
+            Vector3d fallbackDirection, Vector3d fixedDirection, bool directed,
+            ref Vector3d position, ref Vector3d velocity, double h)
         {
             Vector3d k1Position = velocity;
             Vector3d k1Velocity = LocalAcceleration(mu, position, velocity,
-                accelerationMps2, retrograde, fallbackDirection);
+                accelerationMps2, retrograde, fallbackDirection, fixedDirection, directed);
 
             Vector3d p2 = position + k1Position * (0.5 * h);
             Vector3d v2 = velocity + k1Velocity * (0.5 * h);
             Vector3d k2Position = v2;
             Vector3d k2Velocity = LocalAcceleration(mu, p2, v2,
-                accelerationMps2, retrograde, fallbackDirection);
+                accelerationMps2, retrograde, fallbackDirection, fixedDirection, directed);
 
             Vector3d p3 = position + k2Position * (0.5 * h);
             Vector3d v3 = velocity + k2Velocity * (0.5 * h);
             Vector3d k3Position = v3;
             Vector3d k3Velocity = LocalAcceleration(mu, p3, v3,
-                accelerationMps2, retrograde, fallbackDirection);
+                accelerationMps2, retrograde, fallbackDirection, fixedDirection, directed);
 
             Vector3d p4 = position + k3Position * h;
             Vector3d v4 = velocity + k3Velocity * h;
             Vector3d k4Position = v4;
             Vector3d k4Velocity = LocalAcceleration(mu, p4, v4,
-                accelerationMps2, retrograde, fallbackDirection);
+                accelerationMps2, retrograde, fallbackDirection, fixedDirection, directed);
 
             position += (k1Position + 2.0 * k2Position + 2.0 * k3Position + k4Position)
                         * (h / 6.0);
             velocity += (k1Velocity + 2.0 * k2Velocity + 2.0 * k3Velocity + k4Velocity)
                         * (h / 6.0);
+        }
+
+        private static Vector3d Normalized(Vector3d value)
+        {
+            return value.SqrMagnitude > 1e-12 ? value.Normalized : Vector3d.Zero;
         }
 
         public override string ToString() =>

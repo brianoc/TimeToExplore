@@ -1,7 +1,7 @@
 # Handoff
 
-**Active handoff (2026-11-18): burn–coast–burn trips.** The design is settled;
-steps 1 and 2 are implemented. The source of truth for the design is
+**Active handoff (2026-11-19): burn–coast–burn trips.** The design is settled;
+steps 1–3 are implemented. The source of truth for the design is
 [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md). Do not redesign it
 in a step; if a step cannot proceed without changing it, stop and ask.
 
@@ -44,7 +44,7 @@ a time. The caretaker is deliberately light so its context stays clean.
 | 0 | Design note, navigation link, index link, log, this handoff | `python3 tools/validate_okf.py` clean (done) |
 | 1 | `LambertSolver` in Core + `LambertSolverTests` | `tools/check.sh --tests core` green (done) |
 | 2 | Lambert coast in the planner: `CruiseStyle.Coast` builds quintic departure → Lambert `ConicArc` → existing conic/hybrid capture | `--tests flight` green; a plan closes and arrives (done) |
-| 3 | Prograde departure fixed burn + `CruiseStyle.BurnCoastBurn` stitching the five arcs | `--tests flight` green; burn level respected; arrival exact |
+| 3 | Prograde departure fixed burn + `CruiseStyle.BurnCoastBurn` stitching the five arcs | `--tests flight` green; burn level respected; arrival exact (done) |
 | 4 | Nav-computer profile control, speed/time control, panel rows, colours/legend | `--tests presentation smoke` green; bootstrap smoke covers the new profile |
 | 5 | Docs pass, log, clear this handoff | `tools/check.sh --fast` and the validator clean; no screenshot this task |
 
@@ -87,13 +87,23 @@ orders-of-magnitude delta-v drop, the t₀-invariance of the style switch, the
 rejected long transfer, and the hybrid handover.
 `tools/check.sh --tests flight`: passed, 0 failed.
 
-### Step 3 — the burns
+### Step 3 — the burns (done)
 
-Add the prograde departure finite burn as the mirror of the hybrid capture, and
-`CruiseStyle.BurnCoastBurn`: quintic break → finite burn at the chosen level →
-Lambert coast → finite brake → capture. Solve the burn durations and coast so
-the chain closes on the moving target. Tests: five-arc chain, burn level
-respected, exact arrival, infeasible cases, `0 g` equivalence where meaningful.
+`CruiseStyle.BurnCoastBurn` builds quintic break → prograde departure finite
+burn at the level → Lambert coast → retrograde finite brake → conic/hybrid
+capture. The chain is built **backwards** from the capture chain's entry state:
+the brake is reverse-integrated from the entry, the coast from the brake's
+start, and the departure burn from the coast's start, with the quintic matching
+the burn's start. Every seam is therefore continuous and the arrival is exact.
+The brake spends the coast skeleton's handover, so there is no impulse at the
+target SOI; its thrust direction follows the required change (a pure
+anti-velocity burn cannot close the seam) and it opposes the arrival velocity.
+Slow crossings whose coast arrives slower than the target's frame are rejected.
+The departure burn is sized from the coast's departure speed above escape, not
+from a time share: level-independent delta-v, duration ∝ 1/level, never inside
+the departure SOI. `0 g` delegates to `CruiseStyle.Coast`. Measured at the epoch
+Gateway→Mars 90 d, 0.3 g: 50 km/s total, seams < 1 cm and 10⁻⁵ m/s, arrival
+0.1 m / 0.0001 m/s. `tools/check.sh --tests flight`: passed, 0 failed.
 
 ### Step 4 — the control
 
@@ -140,6 +150,17 @@ the exact command and its result. Do not record a test count in the bundle.
   not reuse `MaxDurationScale = 3`.
 - **`% burn` is meaningless on a coast.** The panel must say what the drive is
   doing, not report a peak throttle as if it were a torch plan.
+- **The burn–coast–burn brake is not anti-velocity.** A fixed-thrust burn along
+  the instantaneous velocity can only change the speed, and the coast's handover
+  is not a pure speed change. The brake's direction is the change the chain
+  needs, iterated with its duration until the burn starts where the coast ends;
+  it opposes the arrival velocity, and a crossing that would need an
+  acceleration is rejected. Do not "fix" the direction back to −v̂: the seam will
+  open by kilometres per second.
+- **The profile is the fast end of the trade.** `Plan()` finds about 57 days to
+  Mars at the epoch; the powered plan is 4.4 days and the cheap coast 200+. The
+  trip-time window for step 4 starts at the new profile's own fastest plan, not
+  at the torch plan's.
 - **Assembly rules.** Core has no engine references; Simulation has
   `noEngineReferences`; route colour and HUD work belongs in Presentation. Do
   not add `UnityEngine.Input` or Input System calls outside the two seam files.
@@ -163,18 +184,17 @@ needs.
 
 ## Next action
 
-Start **step 3** with a fresh sub-agent: add the prograde departure fixed burn
-and `CruiseStyle.BurnCoastBurn`, stitching quintic break → finite burn →
-Lambert coast → finite brake → conic/hybrid capture. Step 2's coast ends with an
-impulse at the target SOI (`EntryImpulseVectorMps` on the inbound coast arc)
-because the Lambert `v₂` need not equal the capture chain's entry velocity; the
-brake can absorb that trim instead of modelling it as a separate impulse. The
-departure fix in step 2 is an *allocation* fix, not a burn: the quintic break
-gets a share of the trip proportional to its kinematic floor, and that share
-must not be mistaken for the burn duration in step 3. The solver is prograde
-short-way only, so a trip time sweeping 180° or more (exactly 180° included)
-returns `HasSolution == false`; treat that as an infeasible trip time and clamp
-the time window, not as a solver bug. `Plan()` alone finds the fastest feasible
-coast (about 14 days to Mars at the epoch, with a huge arrival handover); the
-trip-time control in step 4 is what picks a cheaper one.
-Verify with `tools/check.sh --tests flight`.
+Start **step 4** with a fresh sub-agent: the nav-computer control. The planner
+half is complete — `CruiseStyle.BurnCoastBurn` emits quintic break → departure
+burn → Lambert coast → brake → conic/hybrid capture, with an exact arrival and no
+impulse at the target SOI — but nothing in the HUD selects it, and the trip-time
+slider's `MaxDurationScale = 3` window was sized for the torch plan. Traps:
+the profile is the *fast* end of the trade, so a coast that arrives slower than
+the target's frame is rejected ("would need an acceleration rather than a
+brake"); `Plan()` finds about 57 days to Mars at 89 km/s at the epoch, and the
+sensible slider window starts there, not at the powered plan's 4.4 days. The
+brake's thrust direction is fixed along the required change, so the panel must
+not claim the burn is a velocity-aligned retrograde burn; report the fixed and
+brake delta-v separately. `0 g` is exactly `CruiseStyle.Coast`. Do not
+re-optimise the brake/capture split. Verify with `tools/check.sh --tests
+presentation smoke`.

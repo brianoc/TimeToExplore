@@ -41,10 +41,12 @@ is not implemented: Go To plans "leave now" and takes the first feasible trip.
 A **transfer-conic arrival** is implemented as an opt-in planner style: it
 coasts the inbound leg and captures impulsively at periapsis
 ([ADR-014](../decisions/adr-014-keplerian-coast.md)). A **Lambert coast cruise**
-(`CruiseStyle.Coast`) is the first stage of the burn–coast–burn profile: the
-powered middle is replaced by the zero-revolution prograde conic that reaches
-the target's sphere of influence on time. The fixed burns that bookend it are
-the next stage.
+(`CruiseStyle.Coast`) is the unpowered first stage of the burn–coast–burn
+profile: the powered middle is replaced by the zero-revolution prograde conic
+that reaches the target's sphere of influence on time. The fixed burns that
+bookend it have landed as `CruiseStyle.BurnCoastBurn`, so the planner can emit
+the whole five-arc profile; only the nav-computer control for it is still
+missing.
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
@@ -114,8 +116,8 @@ conic `max(1.15 R, R + 300 km)`, so the level no longer forces the higher
 Jupiter, and 12.06 at Saturn; the flights arrive 0.0–0.8 m and
 0.0000–0.0031 m/s from the reference state. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
 records the geometry and the split. In the `Powered` cruise style the departure
-and cruise are still powered quintics: the fixed-thrust *brake* is stage B of the
-burn–coast–burn plan, and the Lambert cruise is reachable through
+and cruise are still powered quintics: the burn–coast–burn profile is a separate
+cruise style, and the Lambert coast is reachable on its own through
 `CruiseStyle.Coast`.
 
 A **coast cruise style** (`CruiseStyle.Coast`, default `CruiseStyle.Powered`)
@@ -130,18 +132,44 @@ planner rejects it with the geometry that failed rather than coasting the long
 way. The departure takes a share of the trip proportional to its kinematic
 floor, because the Lambert break velocity is a real velocity change; the rest is
 coast. The coast's arrival velocity need not equal the chain's entry velocity,
-so the handover at the sphere of influence is an impulse — the placeholder for
-the brake burn. Measured at the epoch from Gateway to Mars at 200 days: 14 km/s
-in total (6.0 km/s break, 3.9 km/s handover, 3.5 km/s capture), peak coast thrust
-0.0005 m/s², against the torch plan's 2,345 km/s over 4.4 days. The flight
-arrives 0.1 m and 0.0000 m/s from the reference state and holds the conic
-parking orbit.
+so the handover at the sphere of influence is an impulse — the placeholder the
+burn–coast–burn cruise's brake later fills. Measured at the epoch from Gateway
+to Mars at 200 days: 14 km/s in total (6.0 km/s break, 3.9 km/s handover,
+3.5 km/s capture), peak coast thrust 0.0005 m/s², against the torch plan's
+2,345 km/s over 4.4 days. The flight arrives 0.1 m and 0.0000 m/s from the
+reference state and holds the conic parking orbit.
 
-The target profile is a **burn–coast–burn** trip that mixes all four ingredients:
+The fourth recipe is a **burn–coast–burn** trip that mixes all four ingredients:
 a quintic departure, a fixed burn, a Lambert coast, a brake, and the conic or
 hybrid capture. [Burn–coast–burn trips](burn-coast-burn.md) sets out the profile,
 the speed/delta-v trade, and the first cut. The existing three arrival styles are
-fixed recipes; this is a fourth recipe built from the same arcs.
+fixed recipes; this one is built from the same arcs and the same capture chain.
+
+A **burn–coast–burn cruise** (`CruiseStyle.BurnCoastBurn`, default
+`CruiseStyle.Powered`) inserts the two finite burns into the coast skeleton. The
+departure burn is prograde about the Sun; it spends the excess of the coast's
+departure speed over the local escape speed, so the quintic breaks orbit and the
+burn supplies everything above escape. The brake is a retrograde fixed-thrust
+burn that spends the handover the coast plan would have made an impulse, so the
+capture chain is handed its entry state with **no impulse at the target's sphere
+of influence**. Both burns are placed by integrating them backwards from the
+state the next arc must begin at, so every seam is continuous in position and
+velocity, and the plan arrives on the parking orbit exactly. The brake's thrust
+direction is fixed along the change the chain needs, because a burn along the
+instantaneous velocity can only change the speed; the direction opposes the
+arrival velocity, and a trip time whose coast arrives slower than the target's
+frame — which would need an acceleration rather than a brake — is rejected. The
+departure burn begins outside the departure sphere of influence and never
+crosses it: a level long enough to force a crossing is an infeasible trip, not a
+reference-body handover. At `0 g` the style is exactly `CruiseStyle.Coast`.
+Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.7-day
+quintic break, a 78-minute departure burn of 13.7 km/s, an 84-day coast, a
+3.1-hour brake of 19.2 km/s, and the 3.5 km/s conic capture, 50 km/s in total
+against the coast plan's 14 km/s at 200 days. The fastest plan the planner finds
+on its own is 57 days at 89 km/s. The flight arrives 0.1 m and 0.0001 m/s from
+the reference state and holds the parking orbit. The nav-computer control for
+this profile is step 4 of the plan: until then it is reachable through
+`TripPlanner.CruiseStyle`.
 
 ## The trip-time control
 
@@ -529,9 +557,9 @@ boundaries in every style; the hybrid's burn window is a boundary too.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
-against a budget (there is no budget yet), the coast fraction of a
-burn-and-coast *cruise* (it needs the Lambert solve, not just the conic arc),
-and the docking corridor.
+against a budget (there is no budget yet), the nav-computer control for the
+burn–coast–burn cruise (the planner builds it, but step 4 adds the button, the
+speed control, and the panel rows), and the docking corridor.
 
 # Failure and rescue
 
