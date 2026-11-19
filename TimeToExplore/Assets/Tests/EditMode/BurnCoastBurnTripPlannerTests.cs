@@ -551,6 +551,93 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.InfeasibleReason, Does.Contain("burn-coast-burn"));
         }
 
+        [Test]
+        public void TheAdvertisedMinimumIsTheTrueMercuryFloor()
+        {
+            _planner.BurnLevelG = 1.0;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.Plan(ship, "mercury");
+
+            TestContext.WriteLine($"mercury floor: {fastest}, " +
+                                  $"peak {fastest.PeakThrustMps2:F3} m/s²");
+            Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
+            Assert.That(fastest.FlightTimeDays, Is.LessThan(3.6),
+                "the pinned break moved the true floor well below the old 12.32 d");
+            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(3.3),
+                "the floor is a real burn-coast-burn plan, not an unphysical request");
+            Assert.That(fastest.PeakThrustMps2,
+                Is.LessThanOrEqualTo(fastest.MaxAccelerationMps2 * (1.0 + 1e-6)));
+            AssertChainCloses(fastest);
+
+            // A little below the floor is the same geometry with the break
+            // working harder than the drive allows.
+            TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mercury",
+                3.43 * JulianDate.SecondsPerDay);
+            TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
+
+            Assert.That(tooFast.IsFeasible, Is.False);
+            Assert.That(tooFast.InfeasibleReason, Is.Not.Empty,
+                "a max-thrust rejection carries a cause");
+            Assert.That(tooFast.InfeasibleReason, Does.Contain("departure break"),
+                "the reason names the arc that is over the drive");
+            Assert.That(tooFast.InfeasibleReason,
+                Does.Contain(tooFast.PeakThrustMps2.ToString("F1")),
+                "the reason names the peak the arc needs");
+        }
+
+        [Test]
+        public void TheAdvertisedMinimumIsTheTrueMarsFloor()
+        {
+            _planner.BurnLevelG = 0.3;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.Plan(ship, "mars");
+
+            TestContext.WriteLine($"mars floor: {fastest}, " +
+                                  $"peak {fastest.PeakThrustMps2:F3} m/s²");
+            PrintPlan(fastest);
+            for (int i = 0; i < fastest.Arcs.Count - 1; i++)
+            {
+                PlanArc left = fastest.Arcs[i];
+                PlanArc right = fastest.Arcs[i + 1];
+                TestContext.WriteLine($"floor seam {i}: " +
+                    $"{Vector3d.Distance(left.Path.PositionAt(1.0), right.Path.PositionAt(0.0)):E2} m, " +
+                    $"{(left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps - right.Path.VelocityAt(0.0)).Magnitude:E2} m/s");
+            }
+            Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
+            Assert.That(fastest.FlightTimeDays, Is.LessThan(9.6),
+                "the true floor is below the old 9.64 d first-feasible plan");
+            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(7.0));
+            AssertChainCloses(fastest);
+
+            TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
+                7.8 * JulianDate.SecondsPerDay);
+            TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
+
+            Assert.That(tooFast.IsFeasible, Is.False);
+            Assert.That(tooFast.InfeasibleReason, Does.Contain("departure break"));
+            Assert.That(tooFast.InfeasibleReason,
+                Does.Contain(tooFast.PeakThrustMps2.ToString("F1")));
+        }
+
+        private static void AssertChainCloses(TrajectoryPlan plan)
+        {
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                PlanArc left = plan.Arcs[i];
+                PlanArc right = plan.Arcs[i + 1];
+                double positionStep = Vector3d.Distance(
+                    left.Path.PositionAt(1.0), right.Path.PositionAt(0.0));
+                double velocityStep = (left.Path.VelocityAt(1.0)
+                                       + right.EntryImpulseVectorMps
+                                       - right.Path.VelocityAt(0.0)).Magnitude;
+
+                Assert.That(positionStep, Is.LessThan(1e3),
+                    $"seam {i} ({left.Phase}->{right.Phase}) position");
+                Assert.That(velocityStep, Is.LessThan(1.0),
+                    $"seam {i} ({left.Phase}->{right.Phase}) velocity");
+            }
+        }
+
         private void AssertOrbitAround(BodyRuntime body, ShipState ship,
             double expectedRadius, double eccentricityTolerance, double radiusTolerance)
         {

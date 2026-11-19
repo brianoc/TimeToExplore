@@ -469,8 +469,10 @@ namespace TimeToExplore.Tests.EditMode
                     arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast), Is.True);
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(20.0),
-                "the window starts at the profile's own fastest plan, not the torch plan");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(9.0),
+                "the window starts at the profile's true floor, below the old 9.64 d first-feasible plan");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(7.0),
+                "the floor is the shortest plan the profile can fly, not the torch plan");
             double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
                 $"{minimum / JulianDate.SecondsPerDay:F2} d to " +
@@ -676,6 +678,73 @@ namespace TimeToExplore.Tests.EditMode
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(pick, Is.Not.Null, "SolarSystemHud.PickAt is missing");
             Assert.DoesNotThrow(() => pick.Invoke(_hud, new object[] { new Vector2(960f, 540f) }));
+        }
+
+        [Test]
+        public void ARejectedPlanShowsItsCauseNextToPlanInfeasible()
+        {
+            Build();
+            BodyRuntime mercury = _bootstrap.Model.Get("mercury");
+            _bootstrap.Select(mercury);
+
+            var planner = new TripPlanner(_bootstrap.Model,
+                FlightFixture.FullField(_bootstrap.Model))
+            {
+                CruiseStyle = CruiseStyle.BurnCoastBurn,
+                ArrivalStyle = CaptureStyle.Conic,
+                BurnLevelG = 1.0
+            };
+            TrajectoryPlan rejected = planner.PlanAtDuration(
+                FlightFixture.ShipAt(_bootstrap.Model, "gateway"), "mercury",
+                3.43 * JulianDate.SecondsPerDay);
+            Assert.That(rejected.IsFeasible, Is.False);
+            Assert.That(rejected.InfeasibleReason, Does.Contain("departure break"));
+
+            // A rejected flight is a state the planner only reaches through a
+            // full Begin; put the session there directly so the display path is
+            // what this test exercises.
+            FlightSession flight = _bootstrap.Flight;
+            SetField(flight, "<Plan>k__BackingField", rejected);
+            SetField(flight, "<Status>k__BackingField", FlightStatus.Rejected);
+            SetField(flight, "<Failure>k__BackingField", rejected.InfeasibleReason);
+
+            _hud.OpenDetails();
+            Update();
+
+            Assert.That(ButtonNamed("RouteButton").GetComponentInChildren<Text>(true).text,
+                Is.EqualTo("Plan infeasible"));
+
+            string reason = rejected.InfeasibleReason;
+            Assert.That(RowText("DetailsRow", 20), Does.Contain("departure break"),
+                "the details panel names the cause beside the rejected route");
+            Assert.That(RowText("FlightRow", 30), Does.Contain("departure break"),
+                "the nav computer shows the max-thrust cause");
+            Assert.That(RowText("FlightRow", 30), Does.Contain(reason),
+                "the nav computer shows the whole reason");
+        }
+
+        private string RowText(string prefix, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Text value = TextNamed(prefix + i + "Value");
+                if (value != null && value.gameObject.activeInHierarchy &&
+                    !string.IsNullOrEmpty(value.text) &&
+                    value.text.Contains("departure break"))
+                {
+                    return value.text;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static void SetField(object target, string name, object value)
+        {
+            FieldInfo field = target.GetType().GetField(name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, $"{target.GetType().Name}.{name} is missing");
+            field.SetValue(target, value);
         }
 
         // --- Fixture ------------------------------------------------------------

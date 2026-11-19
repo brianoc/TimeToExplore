@@ -63,8 +63,48 @@ namespace TimeToExplore.Simulation
                                   && PeakThrustMps2 <= MaxAccelerationMps2 * (1.0 + 1e-6);
 
         /// <summary>Why the plan is not flyable, or null. A conic arrival that
-        /// cannot be built reports the reason rather than a fake thrust.</summary>
+        /// cannot be built reports the reason rather than a fake thrust, and a
+        /// plan the drive cannot fly names the arc that needs the most thrust
+        /// and the peak it requires.</summary>
         public string InfeasibleReason { get; internal set; }
+
+        /// <summary>Name the arc that sets the peak when the plan is over the
+        /// drive, and the thrust it needs. The planner calls this on every plan
+        /// it returns; the build loop reads <see cref="IsFeasible"/> without it
+        /// so a trial plan can still grow towards a longer, gentler trip.</summary>
+        internal void EnsureInfeasibleReason()
+        {
+            if (!string.IsNullOrEmpty(InfeasibleReason)) return;
+            if (PeakThrustMps2 <= MaxAccelerationMps2 * (1.0 + 1e-6)) return;
+
+            PlanArc worst = null;
+            foreach (PlanArc arc in _arcs)
+                if (worst == null || arc.PeakThrustMps2 > worst.PeakThrustMps2) worst = arc;
+
+            InfeasibleReason = worst == null
+                ? $"the plan peaks at {PeakThrustMps2:F1} m/s², above the " +
+                  $"{MaxAccelerationMps2:F1} m/s² drive"
+                : $"{ArcLabel(worst)} needs {worst.PeakThrustMps2:F1} m/s², above the " +
+                  $"{MaxAccelerationMps2:F1} m/s² drive";
+        }
+
+        /// <summary>A short name for the arc in a rejection message: the same
+        /// words the nav computer uses for it.</summary>
+        private static string ArcLabel(PlanArc arc)
+        {
+            if (arc.IsFiniteBurn)
+            {
+                switch (arc.Phase)
+                {
+                    case FlightPhase.Cruise: return "the departure burn";
+                    case FlightPhase.Capture: return "the brake";
+                    default: return "the capture burn";
+                }
+            }
+
+            if (arc.IsCoast) return "the coast";
+            return arc.Phase == FlightPhase.Departure ? "the departure break" : "the powered arc";
+        }
 
         public double DeltaVMps
         {

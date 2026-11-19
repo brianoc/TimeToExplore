@@ -478,6 +478,12 @@ namespace TimeToExplore.UI
             bool plottable = body.Gm > 0.0 && !rejected;
             bool showSlider = hasPreview;
 
+            // The rejected route button says "Plan infeasible"; the row above it
+            // carries the cause, so the player is not left guessing which part of
+            // the profile the drive could not fly.
+            if (rejected && !string.IsNullOrEmpty(flight.Failure))
+                rows.Add(DetailRow.Of("Plan", flight.Failure));
+
             float rowsHeight = 0f;
             foreach (DetailRow row in rows)
                 rowsHeight += row.IsHeading ? DetailsHeadingHeight : DetailsRowHeight;

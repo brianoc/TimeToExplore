@@ -129,12 +129,12 @@ profile.
    window is that profile's own feasible range; the existing burn-level slider
    is the level both burns are planned at.
 
-The measured window at the epoch is **9.64 to 28.91 days** for the
+The measured window at the epoch is **8.03 to 24.09 days** for the
 Gateway→Mars burn–coast–burn profile at 0.3 g, against the powered plan's
-4.4 days and the cheap coast's 200+. The right-hand end is the three-times cap:
-with the break gentle, the fast end moved from 57.44 days to 9.64 and the cap
-is feasible. `Powered` is still the default, and `0 g` is exactly
-`CruiseStyle.Coast`.
+4.4 days and the cheap coast's 200+. At 1 g the fast end is **3.46 days** to
+Mercury. The right-hand end is the three-times cap: with the break gentle, the
+fast end moved from 57.44 days to 8.03 and the cap is feasible. `Powered` is
+still the default, and `0 g` is exactly `CruiseStyle.Coast`.
 
 # The pinned break
 
@@ -193,12 +193,39 @@ four-sphere-long backwards burn.
 
 # The floor after the pin
 
-With the break gentle, the planner's own minimum search no longer stops at an
-over-thrusting break. `Plan()` now reports **3.94 days** for Mercury at 1 g and
-**9.64 days** for Mars at 0.3 g; the old 12.32 and 57.44 day floors were
-artefacts of the break, not the drive. The advertised floor is still the
-search's first feasible plan rather than a solved minimum, and a plan rejected
-for exceeding maximum thrust still carries no reason; both are the next step.
+With the break gentle, the fast end is no longer set by an over-thrusting
+break. `Plan()` searches for the shortest trip whose chain closes and whose
+peak fits the drive: it starts at half the kinematic estimate, grows out to a
+feasible plan, steps back in 15% steps to a rejected shorter request, then
+bisects the bracket, retrying a rejected probe a fifth of a percent higher so a
+narrow non-convergence hole does not become the advertised floor. The plan it
+returns is the floor, not the first feasible plan the old growth loop settled
+on.
+
+Measured at the epoch (2026-11-15) from Gateway, conic capture:
+
+| Target | Level | True floor | Peak | Total Δv | Just below | Why the shorter trip is refused |
+|---|---|---:|---:|---:|---|---|
+| Mercury | 1 g | **3.46 d** | 9.70 m/s² | 1,763 km/s | 3.43 d | departure break needs 10.2 m/s², above the 10.0 m/s² drive; 3.44–3.45 d also leave the brake 375,000 km short of the capture entry |
+| Mars | 0.3 g | **8.03 d** | 5.27 m/s² | 1,170 km/s | 7.80 d | departure break needs 58.1 m/s², above the 10.0 m/s² drive; 8.00 d leaves the brake 7,493 km short of the entry |
+
+The floor search also requires the chain to be **closed**: a plan whose peak
+fits but whose brake misses the capture entry is not flyable. The near-floor
+trips amplify the brake solve's forward/backward mismatch, so the shortest
+plan that fits the peak can end the brake hundreds of thousands of kilometres
+from the entry; the planner reports that as a trip time too short for the
+profile instead of handing it to the autopilot. The gate is a kilometre of
+position and a metre per second of velocity: the 8- and 12-day trips close to
+millimetres, the 8.03 d Mars floor's worst seam is 0.9 km, and a broken brake
+misses by thousands of kilometres. The 8.03 d flight arrives 0.1 m and
+10⁻⁴ m/s from the reference parking state.
+
+A plan rejected for exceeding the drive now carries an `InfeasibleReason`
+naming the arc and the thrust it needs, for example *"the departure break
+needs 10.2 m/s², above the 10.0 m/s² drive"*. The nav computer's flight panel
+shows it in its `Note` row, and the details panel shows it beside the
+"Plan infeasible" route button, so a rejection names its cause rather than
+reporting only that the plan is infeasible.
 
 # How it was cut
 

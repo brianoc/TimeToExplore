@@ -96,6 +96,18 @@ namespace TimeToExplore.Simulation
         /// its two burns. A trip time that cannot fit one is stretched.</summary>
         private const double MinimumCoastSeconds = 3_600.0;
 
+        /// <summary>Velocity mismatch, in m/s, that ends the pinned departure
+        /// solve. The design note promises fast-plan seams at or under 1e-5 m/s,
+        /// so the solve aims there rather than at a tolerance no seam test asks
+        /// for; the tighter 1e-6 target left narrow non-convergence holes at the
+        /// fast end of the profile.</summary>
+        private const double DepartureSolveToleranceMps = 1e-5;
+
+        /// <summary>Newton iterations for the pinned departure solve. The fast
+        /// end of the profile is close to degenerate and needs more iterations
+        /// than the gentle trips; the loop exits as soon as it converges.</summary>
+        private const int DepartureSolveIterations = 48;
+
         /// <summary>How far the nav computer lets a player stretch a trip beyond
         /// the fastest feasible plan. Three times the minimum roughly divides
         /// the geometric peak thrust by nine, which is enough to see the
@@ -213,6 +225,21 @@ namespace TimeToExplore.Simulation
             double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
             if (UsesConicCapture)
                 total += EstimateConicCaptureSeconds(target);
+
+            // The burn–coast–burn profile has a real floor that the generic
+            // growing loop cannot see: the pinned break is gentle, so the fast
+            // end is limited by the drive and the solver, not by the break's
+            // clearance. Search for it instead of returning the loop's first
+            // feasible plan.
+            bool insideTarget = Vector3d.Distance(targetPosition, ship.PositionM)
+                                < SphereOfInfluence.RadiusM(target);
+            if (CruiseStyle == CruiseStyle.BurnCoastBurn
+                && FixedBurnAccelerationMps2 > 0.0
+                && !insideTarget)
+            {
+                return PlanBurnCoastBurnMinimum(ship, target, total);
+            }
+
             TrajectoryPlan plan = null;
             double required = total;
 
@@ -233,7 +260,7 @@ namespace TimeToExplore.Simulation
                         continue;
                     }
 
-                    return plan;
+                    return Reported(plan);
                 }
 
                 Trace?.Invoke($"iter {iteration}: total {total / SecondsPerDay:F3} d, " +
@@ -241,7 +268,7 @@ namespace TimeToExplore.Simulation
                               $"peak {plan.PeakThrustMps2:F3}, feasible {plan.IsFeasible}");
 
                 if (Math.Abs(required - total) <= ConvergenceTolerance * total && plan.IsFeasible)
-                    return plan;
+                    return Reported(plan);
 
                 total = 0.5 * (total + required);
             }
@@ -252,6 +279,112 @@ namespace TimeToExplore.Simulation
             if (!plan.IsFeasible || required > total)
                 plan = Build(ship, target, Math.Max(required, total)).Plan;
 
+            return Reported(plan);
+        }
+
+        /// <summary>
+        /// The burn–coast–burn profile's true floor: a bracketed search for the
+        /// shortest duration whose build fits the drive. The generic growth loop
+        /// above stops at the first plan it happens to settle on, which is a
+        /// conservative overestimate on the fast end; this walks out to a
+        /// feasible duration and bisects back to the crossing.
+        /// </summary>
+        private TrajectoryPlan PlanBurnCoastBurnMinimum(ShipState ship, BodyRuntime target,
+            double estimateSeconds)
+        {
+            double low = Math.Max(MinimumArcSeconds, estimateSeconds * 0.5);
+            TrajectoryPlan plan = Build(ship, target, low).Plan;
+            TrajectoryPlan highPlan = null;
+            double high = 0.0;
+
+            // Grow out to the first duration whose own plan fits. A build below
+            // the arcs' kinematic floor comes back longer than asked, so a plan
+            // counts as the bracket's top only when it reaches the request.
+            for (int step = 0; step < 18; step++)
+            {
+                if (IsFeasibleAt(plan, low))
+                {
+                    high = plan.FlightTimeSeconds;
+                    highPlan = plan;
+                    break;
+                }
+
+                low *= 1.2;
+                plan = Build(ship, target, low).Plan;
+            }
+
+            if (highPlan == null)
+                return Reported(plan);
+
+            // Walk back down from the first feasible plan to a rejected shorter
+            // request. This is both a cheaper bracket than bisecting from the
+            // growth point and the path taken when the estimate was already
+            // above the floor.
+            for (int step = 0; step < 10; step++)
+            {
+                double shorter = high * 0.85;
+                if (!(shorter > MinimumArcSeconds)) break;
+
+                TrajectoryPlan shorterPlan = Build(ship, target, shorter).Plan;
+                if (!IsFeasibleAt(shorterPlan, shorter))
+                {
+                    low = shorter;
+                    break;
+                }
+
+                low = shorter;
+                high = shorterPlan.FlightTimeSeconds;
+                highPlan = shorterPlan;
+            }
+
+            // Bisect the bracket. A near-floor non-convergence can make a
+            // flyable duration look rejected, so a failing probe is retried a
+            // fifth of a percent higher before it lowers the bracket.
+            for (int iteration = 0; iteration < 12; iteration++)
+            {
+                if (!(high - low > Math.Max(30.0, high * 1e-4))) break;
+
+                double middle = 0.5 * (low + high);
+                TrajectoryPlan middlePlan = Build(ship, target, middle).Plan;
+                if (IsFeasibleAt(middlePlan, middle)
+                    && middlePlan.FlightTimeSeconds < high)
+                {
+                    high = middlePlan.FlightTimeSeconds;
+                    highPlan = middlePlan;
+                    continue;
+                }
+
+                double retrySeconds = middle * 1.002;
+                TrajectoryPlan retryPlan = Build(ship, target, retrySeconds).Plan;
+                if (IsFeasibleAt(retryPlan, retrySeconds)
+                    && retryPlan.FlightTimeSeconds < high)
+                {
+                    high = retryPlan.FlightTimeSeconds;
+                    highPlan = retryPlan;
+                    continue;
+                }
+
+                low = middle;
+            }
+
+            return Reported(highPlan);
+        }
+
+        /// <summary>True when a build is a plan the drive can fly at the
+        /// duration asked for. A request below the arcs' kinematic floor comes
+        /// back longer, and that longer plan is not proof this duration fits.</summary>
+        private static bool IsFeasibleAt(TrajectoryPlan plan, double seconds) =>
+            plan.IsFeasible
+            && plan.FlightTimeSeconds > 0.0
+            && plan.FlightTimeSeconds <= seconds * (1.0 + 1e-3) + 1.0;
+
+        /// <summary>Populate the thrust-limit reason on a plan before it leaves
+        /// the planner. The build loop reads <see cref="TrajectoryPlan.IsFeasible"/>
+        /// without a reason so an over-thrust trial still grows; only the plan the
+        /// caller receives carries the cause.</summary>
+        private static TrajectoryPlan Reported(TrajectoryPlan plan)
+        {
+            plan?.EnsureInfeasibleReason();
             return plan;
         }
 
@@ -281,7 +414,7 @@ namespace TimeToExplore.Simulation
                 throw new ArgumentOutOfRangeException(nameof(durationSeconds),
                     "A pinned flight time must be finite and positive.");
 
-            return Build(ship, target, durationSeconds).Plan;
+            return Reported(Build(ship, target, durationSeconds).Plan);
         }
 
         private BodyRuntime RequireTarget(string targetId)
@@ -1250,6 +1383,18 @@ namespace TimeToExplore.Simulation
                 worst = Math.Max(worst, arc.PeakThrustMps2 / limit);
             }
 
+            // A plan inside the drive whose brake does not meet the capture
+            // entry is not flyable, whatever its peak says. The near-floor trips
+            // amplify the brake solve's mismatch, so report the trip time as too
+            // short rather than handing the autopilot a broken chain. An
+            // over-thrust plan is already rejected for its peak, so keep that
+            // cause instead.
+            if (worst <= 1.0 / ThrustMargin && !BurnChainIsClosed(arcs, out string seamReason))
+            {
+                return StretchedPlan(ship, target, totalSeconds,
+                    "burn-coast-burn: " + seamReason);
+            }
+
             double actualSeconds = (parkingEndJd - t0) * SecondsPerDay;
             double requiredSeconds = Math.Max(totalSeconds, actualSeconds)
                                      * Math.Clamp(Math.Sqrt(worst), 0.85, 3.0);
@@ -1376,7 +1521,7 @@ namespace TimeToExplore.Simulation
             double seconds = burnSeconds;
             double best = double.PositiveInfinity;
 
-            for (int iteration = 0; iteration < 12; iteration++)
+            for (int iteration = 0; iteration < DepartureSolveIterations; iteration++)
             {
                 if (!EvaluatePinnedDeparture(ship, departureBody, direction,
                         tangent1, tangent2, clearanceRadius, escapeSpeed,
@@ -1393,7 +1538,7 @@ namespace TimeToExplore.Simulation
 
                 double residual = mismatch.Magnitude;
                 best = Math.Min(best, residual);
-                if (residual <= 1e-6)
+                if (residual <= DepartureSolveToleranceMps)
                 {
                     direction = Ray(direction, tangent1, tangent2, angle1, angle2);
                     burnSeconds = seconds;
@@ -1662,6 +1807,40 @@ namespace TimeToExplore.Simulation
             solution = new double[size];
             for (int row = 0; row < size; row++)
                 solution[row] = work[row, size] / work[row, row];
+            return true;
+        }
+
+        /// <summary>
+        /// True when every seam between adjacent arcs closes: position is shared
+        /// and velocity differs only by the arc's declared impulse. This is a
+        /// broken-chain gate, not the seam-quality specification; the solve aims
+        /// at 1e-5 m/s, and a metre or a millimetre per second here means the
+        /// brake missed the capture entry by orders of magnitude.
+        /// </summary>
+        private static bool BurnChainIsClosed(List<PlanArc> arcs, out string reason)
+        {
+            reason = null;
+            for (int i = 0; i < arcs.Count - 1; i++)
+            {
+                PlanArc left = arcs[i];
+                PlanArc right = arcs[i + 1];
+                double positionStep = Vector3d.Distance(
+                    left.Path.PositionAt(1.0), right.Path.PositionAt(0.0));
+                double velocityStep = (left.Path.VelocityAt(1.0)
+                                       + right.EntryImpulseVectorMps
+                                       - right.Path.VelocityAt(0.0)).Magnitude;
+
+                if (positionStep <= 1e3 && velocityStep <= 1.0) continue;
+
+                string seam = left.Phase == FlightPhase.Capture
+                              && right.Phase == FlightPhase.Coast
+                    ? "the brake does not close on the capture entry"
+                    : $"the {left.Phase} and {right.Phase} arcs do not meet";
+                reason = $"{seam} at this trip time ({positionStep:F1} m, " +
+                         $"{velocityStep:F1} m/s)";
+                return false;
+            }
+
             return true;
         }
 
