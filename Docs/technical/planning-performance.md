@@ -126,7 +126,7 @@ throwaway profiling copy under `.cache` (never committed):
 
 | Quantity | Mercury 1 g | Mars 0.3 g |
 |---|---:|---:|
-| `Plan()` before | 36.2 s | several seconds |
+| `Plan()` before | 36.2 s | 8.9 s |
 | `Plan()` after | **1.44–1.46 s** | **0.85 s** |
 | First selection (`Plan` + window + retime) | 1.53–1.78 s | 0.93–0.94 s |
 | Repeat selection, same inputs | under 0.1 ms | under 0.1 ms |
