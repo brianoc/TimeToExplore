@@ -647,8 +647,12 @@ namespace TimeToExplore.Tests.EditMode
                 "the fast break peak tracks the full field at the floor");
             Assert.That(plan.PeakThrustMps2, Is.EqualTo(9.702).Within(0.005),
                 "the floor peak is unchanged");
-            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1763.0).Within(2.0),
-                "the floor total delta-v is unchanged");
+            // The floor is found to the probe model's 0.2% retry resolution, so
+            // the reported delta-v tracks the returned duration to that order;
+            // it is not the plan's identity. The peaks and the 8/12.3/90-day
+            // anchors below are the exact ones.
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1763.0).Within(0.01 * 1763.0),
+                "the floor total delta-v is unchanged within the search resolution");
 
             // The floor sits on the drive limit, so its break goes through the
             // full-field branch of the screen.
@@ -701,6 +705,35 @@ namespace TimeToExplore.Tests.EditMode
                 3.43 * JulianDate.SecondsPerDay);
             Assert.That(refused.IsFeasible, Is.False,
                 "the just-below-floor trip still rejects");
+        }
+
+        /// <summary>The floor search may probe with the cheap model, but the
+        /// plan it returns is built and measured with the full field, and no
+        /// fast estimate is allowed to stand in at the drive limit.</summary>
+        [Test]
+        public void TheFloorSearchReturnsAFullFieldPlanThatFitsTheDrive()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan floor = _planner.Plan(
+                FlightFixture.ShipAt(_model, "gateway"), "mercury");
+
+            Assert.That(floor.IsFeasible, Is.True, floor.InfeasibleReason);
+            Assert.That(floor.Arcs.Count, Is.GreaterThan(1),
+                "the floor is a real chain, not a rejected placeholder");
+            Assert.That(floor.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(floor.PeakThrustMps2,
+                Is.LessThanOrEqualTo(floor.MaxAccelerationMps2 * (1.0 + 1e-6)),
+                "the returned plan is inside the drive");
+
+            _planner.MeasureBreakPeak(floor,
+                out _, out double fullBreakPeak, out _);
+            Assert.That(fullBreakPeak,
+                Is.EqualTo(floor.Arcs[0].PeakThrustMps2).Within(1e-9),
+                "the reported break is the full-field measurement");
+            Assert.That(fullBreakPeak,
+                Is.LessThanOrEqualTo(_planner.MaxAccelerationMps2
+                                     * _planner.ThrustMargin * (1.0 + 1e-6)),
+                "the full field certifies the break at the floor");
         }
 
         [Test]

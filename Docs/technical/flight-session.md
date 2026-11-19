@@ -114,7 +114,10 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
 burn–coast–burn window is **8.03 to 24.09 days**, from the profile's true floor
 of 8.03 days at 0.3 g; the Mercury floor at 1 g is 3.46 days. A 90-day Mars build
-is outside that window. A change calls
+is outside that window. The floor plan and the window are cached per departure
+date, target, burn level, cruise style, and arrival style, so plotting the same
+route again at the same date reuses both; a changed departure date, or a
+place/teleport, drops the cache. A change calls
 `FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
 departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
 solve, no ship movement, and no camera move. The preview stays pinned to
@@ -374,7 +377,9 @@ orrery untouched, and the preview: it never moves the ship, one replaces
 another, Begin consumes it and replans at the current date, Cancel clears it,
 the staleness window is one percent of the flight, the powered trip-time window
 is `[minimum, 3 × minimum]` and clamps to it, retiming changes the flight time
-and arrival without moving the ship, and Begin keeps the chosen time.
+and arrival without moving the ship, Begin keeps the chosen time, and the preview
+window is cached — a repeat plot at the same date returns the same plan, another
+target or burn level misses, and a changed departure date invalidates the cache.
 `SolarSystemHudTests` covers the profile control and the coasting window: the
 `PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
 burn–coast–burn slider ends at the slowest duration the planner accepts rather

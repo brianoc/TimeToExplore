@@ -108,6 +108,52 @@ namespace TimeToExplore.Simulation
         /// than the gentle trips; the loop exits as soon as it converges.</summary>
         private const int DepartureSolveIterations = 48;
 
+        /// <summary>Burn samples used by the floor search's probes. The final
+        /// plan always integrates its burns at the full
+        /// <see cref="ArcSamples"/>-or-better resolution; a probe only has to
+        /// decide whether a duration fits, and the certified build is the
+        /// authority.</summary>
+        private const int FastProbeBurnSamples = 128;
+
+        /// <summary>Velocity mismatch, in m/s, at the brake's start that ends
+        /// the pinned brake/departure fixed point. The mismatch is integrated
+        /// over the brake, so 1e-7 m/s is under a centimetre of entry position
+        /// even on the fastest, longest brake.</summary>
+        private const double BrakeConvergenceMps = 1e-7;
+
+        /// <summary>Change in the brake's duration that ends the fixed point.</summary>
+        private const double BrakeDurationToleranceSeconds = 1e-6;
+
+        /// <summary>Change in the brake's unit thrust direction that ends the
+        /// fixed point.</summary>
+        private const double BrakeDirectionTolerance = 1e-10;
+
+        /// <summary>Looser fixed-point stops for a floor probe. A probe only
+        /// has to decide whether the chain closes at all; the certified build
+        /// converges to the tolerances above.</summary>
+        private const double FastBrakeConvergenceMps = 1e-4;
+        private const double FastBrakeDurationToleranceSeconds = 1e-3;
+        private const double FastBrakeDirectionTolerance = 1e-6;
+
+        /// <summary>Outer brake/departure passes a floor probe may run. A probe
+        /// stops on <see cref="FastBrakeConvergenceMps"/>; the slow near-floor
+        /// fixed point needs the full twelve to reach the one-kilometre gate.</summary>
+        private const int FastProbeOuterPasses = 12;
+
+        /// <summary>Change in the solved departure ray and burn duration that
+        /// ends the pinned fixed point.</summary>
+        private const double RayDirectionTolerance = 1e-10;
+        private const double BurnDurationToleranceSeconds = 1e-6;
+
+        /// <summary>How close the floor search's bracket must be before it
+        /// returns the feasible end, as an absolute floor and a fraction of the
+        /// floor. The old search bisected to 30 s; the fast model costs enough
+        /// per probe that a twentieth of a percent is the useful resolution,
+        /// and the returned duration is still the shortest feasible plan the
+        /// drive can fly.</summary>
+        private const double FloorToleranceSeconds = 30.0;
+        private const double FloorRelativeTolerance = 5e-4;
+
         /// <summary>How close the fast, departure-body-only break peak may come
         /// to the drive limit before the break search certifies the probe with
         /// the full gravity field. The departure body dominates the break, but
@@ -294,91 +340,202 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// The burn–coast–burn profile's true floor: a bracketed search for the
-        /// shortest duration whose build fits the drive. The generic growth loop
-        /// above stops at the first plan it happens to settle on, which is a
-        /// conservative overestimate on the fast end; this walks out to a
-        /// feasible duration and bisects back to the crossing.
+        /// The burn–coast–burn profile's true floor: the shortest duration whose
+        /// build fits the drive and whose chain closes. The search runs on the
+        /// fast probe model (<see cref="Build"/>'s <c>fast</c> mode), which
+        /// measures the break against its own central body and treats a fixed
+        /// burn as its commanded acceleration. A bracket is found by probing a
+        /// little above the planner's kinematic estimate and walking down in 15%
+        /// steps to the first rejected request; the crossing is then bisected to
+        /// <see cref="FloorRelativeTolerance"/>. The candidate the search
+        /// returns is rebuilt with the full field before it leaves the planner,
+        /// and if the fast model was optimistic the search finishes with
+        /// full-field builds. The fast numbers are never reported.
         /// </summary>
         private TrajectoryPlan PlanBurnCoastBurnMinimum(ShipState ship, BodyRuntime target,
             double estimateSeconds)
         {
-            double low = Math.Max(MinimumArcSeconds, estimateSeconds * 0.5);
-            TrajectoryPlan plan = Build(ship, target, low).Plan;
-            TrajectoryPlan highPlan = null;
-            double high = 0.0;
+            FloorSearch fast = SearchFloor(ship, target, estimateSeconds,
+                fast: true, seedLow: 0.0, seedHigh: 0.0);
+            if (fast.Plan == null)
+                return Reported(fast.LastPlan);
 
-            // Grow out to the first duration whose own plan fits. A build below
-            // the arcs' kinematic floor comes back longer than asked, so a plan
-            // counts as the bracket's top only when it reaches the request.
-            for (int step = 0; step < 18; step++)
+            // The full field is the authority. The fast crossing is normally
+            // feasible there (the floor's break is certified either way), but a
+            // fast estimate may not stand in when it is not.
+            TrajectoryPlan certified = Build(ship, target, fast.HighSeconds).Plan;
+            if (IsFeasibleAt(certified, fast.HighSeconds))
+                return Reported(certified);
+
+            // The fast model was optimistic. Finish the search with full-field
+            // builds, seeded with the fast bracket so it stays a few probes.
+            FloorSearch full = SearchFloor(ship, target, estimateSeconds,
+                fast: false, seedLow: fast.LowSeconds, seedHigh: fast.HighSeconds);
+            return Reported(full.Plan ?? full.LastPlan);
+        }
+
+        /// <summary>One bracketed search for the floor. <paramref name="fast"/>
+        /// selects the probe model; the final call is full-field. A feasible
+        /// high and a rejected low are established with direct probes, then the
+        /// bracket is bisected to a tolerance. The 0.2% retry keeps a near-floor
+        /// non-convergence from becoming the advertised floor.</summary>
+        private FloorSearch SearchFloor(ShipState ship, BodyRuntime target,
+            double estimateSeconds, bool fast, double seedLow, double seedHigh)
+        {
+            double low = 0.0;
+            double high = 0.0;
+            TrajectoryPlan highPlan = null;
+            TrajectoryPlan lastPlan = null;
+            double lastRequest = double.NaN;
+            bool seedRejected = false;
+
+            FloorProbe Probe(double seconds)
             {
-                if (IsFeasibleAt(plan, low))
+                BuildResult result = Build(ship, target, seconds, fast);
+                lastPlan = result.Plan;
+                lastRequest = seconds;
+                bool feasible = IsFeasibleAt(result.Plan, seconds);
+                Trace?.Invoke($"floor {(fast ? "fast" : "full")} " +
+                              $"{seconds / SecondsPerDay:F5} d: feasible {feasible}, " +
+                              $"time {result.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
+                              $"peak {result.Plan.PeakThrustMps2:F3}, " +
+                              $"reason {result.Plan.InfeasibleReason}");
+                return new FloorProbe(result.Plan, feasible);
+            }
+
+            // A seeded high (the fast search's feasible end) is the best hint
+            // for the full-field retry; probe it first rather than starting over.
+            if (seedHigh > MinimumArcSeconds && seedHigh > seedLow)
+            {
+                FloorProbe seeded = Probe(seedHigh);
+                if (seeded.Feasible)
                 {
-                    high = plan.FlightTimeSeconds;
-                    highPlan = plan;
+                    high = seeded.Plan.FlightTimeSeconds;
+                    highPlan = seeded.Plan;
+
+                    if (seedLow > MinimumArcSeconds)
+                    {
+                        FloorProbe below = Probe(seedLow);
+                        if (below.Feasible)
+                        {
+                            high = below.Plan.FlightTimeSeconds;
+                            highPlan = below.Plan;
+                        }
+                        else
+                        {
+                            low = seedLow;
+                        }
+                    }
+                }
+                else
+                {
+                    low = seedHigh;
+                    seedRejected = true;
+                }
+            }
+            else
+            {
+                double probe = Math.Max(estimateSeconds * 1.2, MinimumArcSeconds);
+                FloorProbe estimate = Probe(probe);
+                if (estimate.Feasible)
+                {
+                    high = estimate.Plan.FlightTimeSeconds;
+                    highPlan = estimate.Plan;
+                }
+                else
+                {
+                    low = probe;
+                }
+            }
+
+            // Grow to a feasible duration in 20% steps. A seed rejected by the
+            // full field is retried at the 0.2% step first, because it is a
+            // near-floor bracket and the next feasible duration is close.
+            for (int step = 0; step < 5 && highPlan == null; step++)
+            {
+                if (!(lastRequest == low))
+                {
+                    FloorProbe rejected = Probe(low);
+                    if (rejected.Feasible)
+                    {
+                        high = rejected.Plan.FlightTimeSeconds;
+                        highPlan = rejected.Plan;
+                        break;
+                    }
+                }
+
+                double next = seedRejected ? low * 1.002 : low * 1.2;
+                next = Math.Min(next, low * 3.0);
+                if (!(next > low)) break;
+                seedRejected = false;
+
+                FloorProbe growth = Probe(next);
+                if (growth.Feasible)
+                {
+                    high = growth.Plan.FlightTimeSeconds;
+                    highPlan = growth.Plan;
                     break;
                 }
 
-                low *= 1.2;
-                plan = Build(ship, target, low).Plan;
+                low = next;
             }
 
             if (highPlan == null)
-                return Reported(plan);
+                return new FloorSearch(low, high, null, lastPlan);
 
-            // Walk back down from the first feasible plan to a rejected shorter
-            // request. This is both a cheaper bracket than bisecting from the
-            // growth point and the path taken when the estimate was already
-            // above the floor.
-            for (int step = 0; step < 10; step++)
+            // Walk down to a rejected request. The 15% step is the bracket the
+            // old search used, bounded here; the first step below the crossing
+            // is the low end.
+            for (int step = 0; step < 8 && !(low > 0.0); step++)
             {
                 double shorter = high * 0.85;
                 if (!(shorter > MinimumArcSeconds)) break;
 
-                TrajectoryPlan shorterPlan = Build(ship, target, shorter).Plan;
-                if (!IsFeasibleAt(shorterPlan, shorter))
+                FloorProbe walk = Probe(shorter);
+                if (!walk.Feasible)
                 {
                     low = shorter;
                     break;
                 }
 
-                low = shorter;
-                high = shorterPlan.FlightTimeSeconds;
-                highPlan = shorterPlan;
+                high = walk.Plan.FlightTimeSeconds;
+                highPlan = walk.Plan;
             }
 
-            // Bisect the bracket. A near-floor non-convergence can make a
-            // flyable duration look rejected, so a failing probe is retried a
-            // fifth of a percent higher before it lowers the bracket.
-            for (int iteration = 0; iteration < 12; iteration++)
-            {
-                if (!(high - low > Math.Max(30.0, high * 1e-4))) break;
+            if (!(low > 0.0))
+                return new FloorSearch(low, high, highPlan, lastPlan);
 
+            // Bisect the bracket to a tolerance. A near-floor non-convergence
+            // can make a flyable duration look rejected, so a failing probe is
+            // retried a fifth of a percent higher before it lowers the bracket.
+            double tolerance = Math.Max(FloorToleranceSeconds, high * FloorRelativeTolerance);
+            for (int iteration = 0; iteration < 10 && high - low > tolerance; iteration++)
+            {
                 double middle = 0.5 * (low + high);
-                TrajectoryPlan middlePlan = Build(ship, target, middle).Plan;
-                if (IsFeasibleAt(middlePlan, middle)
-                    && middlePlan.FlightTimeSeconds < high)
+                FloorProbe probe = Probe(middle);
+                if (probe.Feasible && probe.Plan.FlightTimeSeconds < high)
                 {
-                    high = middlePlan.FlightTimeSeconds;
-                    highPlan = middlePlan;
+                    high = probe.Plan.FlightTimeSeconds;
+                    highPlan = probe.Plan;
                     continue;
                 }
 
                 double retrySeconds = middle * 1.002;
-                TrajectoryPlan retryPlan = Build(ship, target, retrySeconds).Plan;
-                if (IsFeasibleAt(retryPlan, retrySeconds)
-                    && retryPlan.FlightTimeSeconds < high)
+                if (retrySeconds < high)
                 {
-                    high = retryPlan.FlightTimeSeconds;
-                    highPlan = retryPlan;
-                    continue;
+                    FloorProbe retry = Probe(retrySeconds);
+                    if (retry.Feasible && retry.Plan.FlightTimeSeconds < high)
+                    {
+                        high = retry.Plan.FlightTimeSeconds;
+                        highPlan = retry.Plan;
+                        continue;
+                    }
                 }
 
                 low = middle;
             }
 
-            return Reported(highPlan);
+            return new FloorSearch(low, high, highPlan, lastPlan);
         }
 
         /// <summary>True when a build is a plan the drive can fly at the
@@ -442,12 +599,13 @@ namespace TimeToExplore.Simulation
             return target;
         }
 
-        private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds)
+        private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds,
+            bool fast = false)
         {
             if (CruiseStyle == CruiseStyle.Coast)
-                return BuildCoast(ship, target, totalSeconds);
+                return BuildCoast(ship, target, totalSeconds, fast);
             if (CruiseStyle == CruiseStyle.BurnCoastBurn)
-                return BuildBurnCoastBurn(ship, target, totalSeconds);
+                return BuildBurnCoastBurn(ship, target, totalSeconds, fast);
 
             return ArrivalStyle == CaptureStyle.Conic || ArrivalStyle == CaptureStyle.FiniteBurn
                 ? BuildConic(ship, target, totalSeconds)
@@ -820,7 +978,8 @@ namespace TimeToExplore.Simulation
         /// infeasible trip time, reported with the geometry that rejected it,
         /// not a planner fault and not a long-way fallback.
         /// </summary>
-        private BuildResult BuildCoast(ShipState ship, BodyRuntime target, double totalSeconds)
+        private BuildResult BuildCoast(ShipState ship, BodyRuntime target, double totalSeconds,
+            bool fast = false)
         {
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
@@ -961,7 +1120,8 @@ namespace TimeToExplore.Simulation
                 arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, escapeEndJd,
                     ship.PositionM, ship.VelocityMps, exitPosition,
                     coast.DepartureVelocityMps,
-                    endAcceleration: heliocentricCoast.AccelerationAt(0.0)));
+                    endAcceleration: heliocentricCoast.AccelerationAt(0.0),
+                    fast: fast));
             }
             else
             {
@@ -969,7 +1129,7 @@ namespace TimeToExplore.Simulation
             }
 
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, escapeEndJd, cruiseEndJd,
-                heliocentricCoast, startImpulse));
+                heliocentricCoast, startImpulse, fast));
 
             // The coast arrives with the Lambert arrival velocity, which need
             // not equal the capture chain's entry velocity. The trim is the
@@ -988,7 +1148,7 @@ namespace TimeToExplore.Simulation
             {
                 if (!AppendHybridCapture(arcs, target, cruiseEndJd, chain, arrivalTrim,
                         out parkingEndJd, out parking, out string reason,
-                        out finiteBurnAcceleration))
+                        out finiteBurnAcceleration, fast))
                 {
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "hybrid capture: " + reason);
@@ -997,7 +1157,7 @@ namespace TimeToExplore.Simulation
             else
             {
                 AppendConicCapture(arcs, target, cruiseEndJd, chain, arrivalTrim,
-                    out parkingEndJd, out parking);
+                    out parkingEndJd, out parking, fast);
             }
 
             double limit = MaxAccelerationMps2 * ThrustMargin;
@@ -1078,15 +1238,15 @@ namespace TimeToExplore.Simulation
         /// time is rejected.
         /// </summary>
         private BuildResult BuildBurnCoastBurn(ShipState ship, BodyRuntime target,
-            double totalSeconds)
+            double totalSeconds, bool fast = false)
         {
             double acceleration = FixedBurnAccelerationMps2;
             if (!(acceleration > 0.0))
-                return BuildCoast(ship, target, totalSeconds);
+                return BuildCoast(ship, target, totalSeconds, fast);
 
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
-            int burnSamples = Math.Max(512, ArcSamples);
+            int burnSamples = fast ? FastProbeBurnSamples : Math.Max(512, ArcSamples);
             int brakeSamples = FiniteBurnArc.MaximumSamples;
 
             _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
@@ -1105,7 +1265,7 @@ namespace TimeToExplore.Simulation
             // The coast skeleton supplies the capture chain, the handover the
             // brake spends, and a first guess at the outbound direction and the
             // burn's size.
-            BuildResult reference = BuildCoast(ship, target, totalSeconds);
+            BuildResult reference = BuildCoast(ship, target, totalSeconds, fast);
             if (!string.IsNullOrEmpty(reference.Plan.InfeasibleReason))
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
@@ -1197,8 +1357,20 @@ namespace TimeToExplore.Simulation
             // The brake and the departure solve feed each other: the brake's start
             // is the coast's end, and the coast's start is the burn's end. Settle
             // both by repeating the reverse brake, the break's duration, and the
-            // pinned departure solve.
-            for (int pass = 0; pass < 12; pass++)
+            // pinned departure solve, and stop once the brake's own velocity
+            // mismatch stops falling. A probe may stop at a looser tolerance than
+            // the plan that is reported: the certified build is the authority.
+            double brakeTolerance = fast ? FastBrakeConvergenceMps : BrakeConvergenceMps;
+            double directionTolerance = fast ? FastBrakeDirectionTolerance : BrakeDirectionTolerance;
+            double durationTolerance = fast ? FastBrakeDurationToleranceSeconds
+                : BrakeDurationToleranceSeconds;
+
+            double previousBurnSeconds = double.NaN;
+            Vector3d previousRay = Vector3d.Zero;
+            double brakeMismatch = double.PositiveInfinity;
+
+            int outerPasses = fast ? FastProbeOuterPasses : 12;
+            for (int pass = 0; pass < outerPasses; pass++)
             {
                 _model.ComputeState(_model.Sun, entryJd,
                     out Vector3d sunAtEntry, out Vector3d sunVelocityAtEntry);
@@ -1215,7 +1387,7 @@ namespace TimeToExplore.Simulation
 
                 breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
                     clearanceRadius, escapeSpeed, breakSeconds, brakeStartJd,
-                    burnSeconds, brakeSeconds);
+                    burnSeconds, brakeSeconds, fast);
 
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 _model.ComputeState(departureBody, burnStartJd,
@@ -1235,25 +1407,49 @@ namespace TimeToExplore.Simulation
                 coastStartJd = burnStartJd + burnSeconds / SecondsPerDay;
 
                 // The forward brake from the coast's arrival must reach the entry
-                // state; the difference is the thrust the brake needs.
+                // state; the difference is the thrust the brake needs. The
+                // mismatch itself is the physical convergence of the fixed point,
+                // so read it before it is folded back into the brake.
+                brakeMismatch = (brakeStartVelocity - coastArrivalVelocity).Magnitude;
                 Vector3d thrustDelta = brakeDirection * (acceleration * brakeSeconds);
                 Vector3d gravityDelta = entryVelocity - brakeStartVelocity - thrustDelta;
                 Vector3d required = entryVelocity - coastArrivalVelocity - gravityDelta;
-                if (!(required.SqrMagnitude > 1e-18))
-                    break;
 
-                brakeSeconds = required.Magnitude / acceleration;
-                brakeDirection = required.Normalized;
+                double nextBrakeSeconds = required.Magnitude / acceleration;
+                Vector3d nextBrakeDirection = required.Normalized;
+
+                bool converged = pass > 0
+                    && brakeMismatch <= brakeTolerance
+                    && Math.Abs(nextBrakeSeconds - brakeSeconds) <= durationTolerance
+                    && (nextBrakeDirection - brakeDirection).Magnitude <= directionTolerance
+                    && Math.Abs(burnSeconds - previousBurnSeconds) <= durationTolerance
+                    && (escapeDirection - previousRay).Magnitude <= directionTolerance;
+
+                Trace?.Invoke($"pin pass {pass}: brake {brakeSeconds:F3} s, " +
+                    $"mismatch {brakeMismatch:E2} m/s, " +
+                    $"burn {burnSeconds:F3} s, converged {converged}");
+
+                previousBurnSeconds = burnSeconds;
+                previousRay = escapeDirection;
+                brakeSeconds = nextBrakeSeconds;
+                brakeDirection = nextBrakeDirection;
+                if (converged)
+                    break;
             }
 
-            // Settle the break and the departure once more against the final ray,
-            // so the break's duration, the burn's start state, and the coast all
-            // belong to the arcs that are about to be built.
-            for (int settle = 0; settle < 3; settle++)
+            // Settle the break and the departure against the brake the loop
+            // finished with, so the arcs that are about to be built all belong
+            // to the same ray. A converged loop needs one pass; a near-floor
+            // probe whose fixed point is still drifting gets the old three.
+            int settlePasses = fast ? 0 : 3;
+            for (int settle = 0; settle < settlePasses; settle++)
             {
+                double previousSettleBurn = burnSeconds;
+                Vector3d previousSettleRay = escapeDirection;
+
                 breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
                     clearanceRadius, escapeSpeed, breakSeconds, brakeStartJd,
-                    burnSeconds, brakeSeconds);
+                    burnSeconds, brakeSeconds, fast);
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 if (!TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
@@ -1262,6 +1458,12 @@ namespace TimeToExplore.Simulation
                         out coastArrivalVelocity, out coastSeconds, out string settleReason))
                 {
                     return StretchedPlan(ship, target, totalSeconds, settleReason);
+                }
+
+                if (Math.Abs(burnSeconds - previousSettleBurn) <= durationTolerance
+                    && (escapeDirection - previousSettleRay).Magnitude <= directionTolerance)
+                {
+                    break;
                 }
             }
 
@@ -1345,9 +1547,10 @@ namespace TimeToExplore.Simulation
 
             var arcs = new List<PlanArc>(8);
             arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, burnStartJd,
-                ship.PositionM, ship.VelocityMps, burnStartPosition, burnStartVelocity));
+                ship.PositionM, ship.VelocityMps, burnStartPosition, burnStartVelocity,
+                fast: fast));
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
-                burnStartJd, coastStartJd, departureBurn));
+                burnStartJd, coastStartJd, departureBurn, fast));
 
             if (!DepartureBurnStaysOutside(arcs, departureBody, departureSoi))
             {
@@ -1357,12 +1560,12 @@ namespace TimeToExplore.Simulation
             }
 
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, coastStartJd,
-                brakeStartFinalJd, coast, Vector3d.Zero));
+                brakeStartFinalJd, coast, Vector3d.Zero, fast));
 
             if (brakeSeconds > 0.0)
             {
                 arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
-                    brakeStartFinalJd, entryJd, brake));
+                    brakeStartFinalJd, entryJd, brake, fast));
             }
 
             double parkingEndJd;
@@ -1374,7 +1577,7 @@ namespace TimeToExplore.Simulation
             {
                 if (!AppendHybridCapture(arcs, target, entryJd, chain, Vector3d.Zero,
                         out parkingEndJd, out parking, out string reason,
-                        out finiteBurnAcceleration))
+                        out finiteBurnAcceleration, fast))
                 {
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "burn-coast-burn: hybrid capture: " + reason);
@@ -1383,7 +1586,7 @@ namespace TimeToExplore.Simulation
             else
             {
                 AppendConicCapture(arcs, target, entryJd, chain, Vector3d.Zero,
-                    out parkingEndJd, out parking);
+                    out parkingEndJd, out parking, fast);
             }
 
             double limit = MaxAccelerationMps2 * ThrustMargin;
@@ -1400,7 +1603,8 @@ namespace TimeToExplore.Simulation
             // short rather than handing the autopilot a broken chain. An
             // over-thrust plan is already rejected for its peak, so keep that
             // cause instead.
-            if (worst <= 1.0 / ThrustMargin && !BurnChainIsClosed(arcs, out string seamReason))
+            if (worst <= 1.0 / ThrustMargin
+                && !BurnChainIsClosed(arcs, out string seamReason))
             {
                 return StretchedPlan(ship, target, totalSeconds,
                     "burn-coast-burn: " + seamReason);
@@ -1431,7 +1635,7 @@ namespace TimeToExplore.Simulation
         private double SolveBreakSeconds(ShipState ship, BodyRuntime departureBody,
             Vector3d direction, double clearanceRadius, double escapeSpeed,
             double candidateSeconds, double brakeStartJd, double burnSeconds,
-            double brakeSeconds)
+            double brakeSeconds, bool fast = false)
         {
             double limit = MaxAccelerationMps2 * ThrustMargin;
             double available = (brakeStartJd - ship.JulianDate) * SecondsPerDay
@@ -1439,15 +1643,19 @@ namespace TimeToExplore.Simulation
             double cap = Math.Max(MinimumArcSeconds, available);
             double candidate = Math.Clamp(candidateSeconds, MinimumArcSeconds, cap);
 
-            if (BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, candidate) <= limit)
-            {
-                return candidate;
-            }
+            // A probe measures the break against its own central body and skips
+            // the full-field certification; the certified build at the end of
+            // the floor search decides with the field the plan reports.
+            double Peak(double seconds) => fast
+                ? BreakPeakCentralBody(ship, departureBody, direction, clearanceRadius,
+                    escapeSpeed, seconds)
+                : BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
+                    escapeSpeed, seconds);
 
-            if (!(available > candidate)
-                || BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, cap) > limit)
+            if (Peak(candidate) <= limit)
+                return candidate;
+
+            if (!(available > candidate) || Peak(cap) > limit)
             {
                 // The trip time itself is too short for a gentle break; the plan
                 // comes out over-thrust and is reported as infeasible rather than
@@ -1460,25 +1668,23 @@ namespace TimeToExplore.Simulation
             for (int step = 0; step < 24 && high < cap; step++)
             {
                 high = Math.Min(high * 1.25, cap);
-                if (BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                        escapeSpeed, high) <= limit)
-                {
+                if (Peak(high) <= limit)
                     break;
-                }
             }
 
+            // The crossing is a smooth function of the break's duration, so a
+            // tolerance-based bisection is enough; a probe stops a few steps
+            // early because only the certified build's break is reported.
+            double tolerance = fast ? 1e-3 * high : 0.0;
             for (int iteration = 0; iteration < 20; iteration++)
             {
                 double middle = 0.5 * (low + high);
-                if (BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                        escapeSpeed, middle) <= limit)
-                {
+                if (tolerance > 0.0 && high - low <= tolerance)
+                    break;
+                if (Peak(middle) <= limit)
                     high = middle;
-                }
                 else
-                {
                     low = middle;
-                }
             }
 
             return high;
@@ -1554,6 +1760,28 @@ namespace TimeToExplore.Simulation
             double julianDate = startJd + path.SecondsAt(u) / SecondsPerDay;
             return (path.AccelerationAt(u)
                     - CentralBodyGravity(departureBody, position, julianDate)).Magnitude;
+        }
+
+        /// <summary>The fast peak of an already-built quintic, against its own
+        /// reference body alone. The floor probes use this instead of the full
+        /// <see cref="Measure"/>, so a probe pays one body's ephemeris per
+        /// sample rather than the whole catalogue.</summary>
+        private double BreakPeakCentralBodyAlongPath(IArcPath path, double startJd,
+            BodyRuntime body)
+        {
+            int samples = Math.Max(8, ArcSamples);
+            double peak = 0.0;
+            for (int i = 0; i <= samples; i++)
+            {
+                double u = (double)i / samples;
+                Vector3d position = path.PositionAt(u);
+                double julianDate = startJd + path.SecondsAt(u) / SecondsPerDay;
+                double magnitude = (path.AccelerationAt(u)
+                                    - CentralBodyGravity(body, position, julianDate)).Magnitude;
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            return peak;
         }
 
         /// <summary>One body's softened point-mass acceleration at a position.
@@ -1714,6 +1942,9 @@ namespace TimeToExplore.Simulation
             double angle2 = 0.0;
             double seconds = burnSeconds;
             double best = double.PositiveInfinity;
+            var jacobian = new double[3, 3];
+            var rhs = new double[3];
+            int jacobianAge = int.MaxValue;
 
             for (int iteration = 0; iteration < DepartureSolveIterations; iteration++)
             {
@@ -1739,59 +1970,72 @@ namespace TimeToExplore.Simulation
                     return true;
                 }
 
-                double angleStep = 1e-3;
-                double timeStep = Math.Max(0.5, Math.Min(10.0, 0.001 * seconds));
-                if (!EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1 + angleStep, angle2, seconds, samples,
-                        out Vector3d mismatch1, out _, out _, out _, out _)
-                    || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1 - angleStep, angle2, seconds, samples,
-                        out Vector3d mismatch1Low, out _, out _, out _, out _)
-                    || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1, angle2 + angleStep, seconds, samples,
-                        out Vector3d mismatch2, out _, out _, out _, out _)
-                    || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1, angle2 - angleStep, seconds, samples,
-                        out Vector3d mismatch2Low, out _, out _, out _, out _)
-                    || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1, angle2, seconds + timeStep, samples,
-                        out Vector3d mismatch3, out _, out _, out _, out _)
-                    || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1, angle2, seconds - timeStep, samples,
-                        out Vector3d mismatch3Low, out _, out _, out _, out _))
+                // A full finite-difference Jacobian costs six evaluations. The
+                // curve is smooth and the Newton step is damped, so reusing it
+                // for one extra iteration halves the solve's cost without
+                // changing where it converges: the residual check above still
+                // decides when the seam is good enough.
+                if (jacobianAge >= 2)
                 {
-                    reason = "burn-coast-burn: the departure burn has no coast at " +
-                             "this trip time";
-                    return false;
+                    double angleStep = 1e-3;
+                    double timeStep = Math.Max(0.5, Math.Min(10.0, 0.001 * seconds));
+                    if (!EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1 + angleStep, angle2, seconds, samples,
+                            out Vector3d mismatch1, out _, out _, out _, out _)
+                        || !EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1 - angleStep, angle2, seconds, samples,
+                            out Vector3d mismatch1Low, out _, out _, out _, out _)
+                        || !EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1, angle2 + angleStep, seconds, samples,
+                            out Vector3d mismatch2, out _, out _, out _, out _)
+                        || !EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1, angle2 - angleStep, seconds, samples,
+                            out Vector3d mismatch2Low, out _, out _, out _, out _)
+                        || !EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1, angle2, seconds + timeStep, samples,
+                            out Vector3d mismatch3, out _, out _, out _, out _)
+                        || !EvaluatePinnedDeparture(ship, departureBody, direction,
+                            tangent1, tangent2, clearanceRadius, escapeSpeed,
+                            acceleration, burnStartJd, brakeStartJd, brakeStart,
+                            angle1, angle2, seconds - timeStep, samples,
+                            out Vector3d mismatch3Low, out _, out _, out _, out _))
+                    {
+                        reason = "burn-coast-burn: the departure burn has no coast at " +
+                                 "this trip time";
+                        return false;
+                    }
+
+                    for (int row = 0; row < 3; row++)
+                    {
+                        jacobian[row, 0] = (Component(mismatch1, row)
+                                            - Component(mismatch1Low, row))
+                                           / (2.0 * angleStep);
+                        jacobian[row, 1] = (Component(mismatch2, row)
+                                            - Component(mismatch2Low, row))
+                                           / (2.0 * angleStep);
+                        jacobian[row, 2] = (Component(mismatch3, row)
+                                            - Component(mismatch3Low, row))
+                                           / (2.0 * timeStep);
+                    }
+
+                    jacobianAge = 0;
+                }
+                else
+                {
+                    jacobianAge++;
                 }
 
-                var jacobian = new double[3, 3];
-                var rhs = new double[3];
-                for (int row = 0; row < 3; row++)
-                {
-                    jacobian[row, 0] = (Component(mismatch1, row)
-                                        - Component(mismatch1Low, row))
-                                       / (2.0 * angleStep);
-                    jacobian[row, 1] = (Component(mismatch2, row)
-                                        - Component(mismatch2Low, row))
-                                       / (2.0 * angleStep);
-                    jacobian[row, 2] = (Component(mismatch3, row)
-                                        - Component(mismatch3Low, row))
-                                       / (2.0 * timeStep);
-                    rhs[row] = -Component(mismatch, row);
-                }
+                for (int row = 0; row < 3; row++) rhs[row] = -Component(mismatch, row);
 
                 if (!SolveLinear(jacobian, rhs, out double[] step))
                 {
@@ -1912,7 +2156,7 @@ namespace TimeToExplore.Simulation
             correctedVelocity = localStartVelocity;
             double tolerance = 1e-4;
 
-            for (int iteration = 0; iteration < 8; iteration++)
+            for (int iteration = 0; iteration < 16; iteration++)
             {
                 KeplerPropagator.Propagate(localStartPosition, correctedVelocity,
                     sun.Gm, seconds, out Vector3d endPosition, out _);
@@ -2097,7 +2341,7 @@ namespace TimeToExplore.Simulation
         /// </summary>
         private void AppendConicCapture(List<PlanArc> arcs, BodyRuntime target,
             double cruiseEndJd, TransferConic chain, Vector3d inboundImpulseMps,
-            out double parkingEndJd, out ConicArc parking)
+            out double parkingEndJd, out ConicArc parking, bool fast = false)
         {
             double periapsisJd = cruiseEndJd + chain.InboundSeconds / SecondsPerDay;
             double apoapsisJd = periapsisJd + chain.TransferSeconds / SecondsPerDay;
@@ -2106,19 +2350,19 @@ namespace TimeToExplore.Simulation
             ConicArc inbound = ConicArc.Create(_model, target, cruiseEndJd,
                 chain.InboundSeconds, chain.EntryLocalPositionM, chain.EntryLocalVelocityMps);
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, cruiseEndJd, periapsisJd,
-                inbound, inboundImpulseMps));
+                inbound, inboundImpulseMps, fast));
 
             ConicArc transfer = ConicArc.Create(_model, target, periapsisJd,
                 chain.TransferSeconds, chain.PeriapsisLocalPositionM,
                 chain.TransferPeriapsisVelocityMps);
             arcs.Add(MakeConicArc(FlightPhase.Capture, target.Id, periapsisJd, apoapsisJd,
-                transfer, chain.CaptureBurnVectorMps));
+                transfer, chain.CaptureBurnVectorMps, fast));
 
             parking = ConicArc.Create(_model, target, apoapsisJd,
                 chain.ParkingSeconds, chain.ApoapsisLocalPositionM,
                 chain.CircularApoapsisVelocityMps);
             arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, apoapsisJd, parkingEndJd,
-                parking, chain.CircularisationBurnVectorMps));
+                parking, chain.CircularisationBurnVectorMps, fast));
         }
 
         /// <summary>
@@ -2132,7 +2376,7 @@ namespace TimeToExplore.Simulation
         private bool AppendHybridCapture(List<PlanArc> arcs, BodyRuntime target,
             double cruiseEndJd, TransferConic chain, Vector3d inboundImpulseMps,
             out double parkingEndJd, out ConicArc parking, out string reason,
-            out double accelerationMps2)
+            out double accelerationMps2, bool fast = false)
         {
             parkingEndJd = cruiseEndJd;
             parking = null;
@@ -2179,13 +2423,13 @@ namespace TimeToExplore.Simulation
                 inboundCoastSeconds, chain.EntryLocalPositionM,
                 chain.EntryLocalVelocityMps);
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, cruiseEndJd, burnStartJd,
-                inbound, inboundImpulseMps));
+                inbound, inboundImpulseMps, fast));
 
             FiniteBurnArc captureBurn = FiniteBurnArc.Create(_model, target, burnStartJd,
                 capture.BurnSeconds, capture.BurnStartLocalPositionM,
                 capture.BurnStartLocalVelocityMps, accelerationMps2, retrograde: true);
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, target.Id, burnStartJd,
-                burnEndJd, captureBurn));
+                burnEndJd, captureBurn, fast));
 
             // Recompute the trim from the plan's own burn end, not the solver's
             // sample, so the transfer actually starts where the flown arc ends.
@@ -2208,7 +2452,7 @@ namespace TimeToExplore.Simulation
                 transferSeconds, captureBurn.EndLocalPositionM, transferVelocity);
             double transferEndJd = burnEndJd + transferSeconds / SecondsPerDay;
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, burnEndJd,
-                transferEndJd, transfer, trim));
+                transferEndJd, transfer, trim, fast));
 
             // The transfer ends at its apoapsis; use the arc's own end state so
             // the circularisation impulse matches the drawn coast.
@@ -2225,7 +2469,7 @@ namespace TimeToExplore.Simulation
                 parkingSeconds, apoapsisPositionFlown, circularVelocity);
             parkingEndJd = transferEndJd + parkingSeconds / SecondsPerDay;
             arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, transferEndJd,
-                parkingEndJd, parking, circularisationFlown));
+                parkingEndJd, parking, circularisationFlown, fast));
 
             return true;
         }
@@ -2310,7 +2554,8 @@ namespace TimeToExplore.Simulation
         private PlanArc MakeArc(FlightPhase phase, string bodyId, double startJd, double endJd,
             Vector3d startPosition, Vector3d startVelocity,
             Vector3d endPosition, Vector3d endVelocity,
-            Vector3d? startAcceleration = null, Vector3d? endAcceleration = null)
+            Vector3d? startAcceleration = null, Vector3d? endAcceleration = null,
+            bool fast = false)
         {
             Vector3d startGravity;
             if (startAcceleration.HasValue)
@@ -2339,31 +2584,37 @@ namespace TimeToExplore.Simulation
                 endPosition, endVelocity, endGravity, durationSeconds);
 
             var arc = new PlanArc(phase, bodyId, startJd, endJd, path);
-            Measure(arc);
+            Measure(arc, fast);
             return arc;
         }
 
         private PlanArc MakeConicArc(FlightPhase phase, string bodyId, double startJd,
-            double endJd, ConicArc path, Vector3d entryImpulseMps)
+            double endJd, ConicArc path, Vector3d entryImpulseMps, bool fast = false)
         {
             var arc = new PlanArc(phase, bodyId, startJd, endJd, path)
             {
                 EntryImpulseVectorMps = entryImpulseMps
             };
-            Measure(arc);
+            Measure(arc, fast);
             return arc;
         }
 
         private PlanArc MakeFiniteBurnArc(FlightPhase phase, string bodyId,
-            double startJd, double endJd, FiniteBurnArc path)
+            double startJd, double endJd, FiniteBurnArc path, bool fast = false)
         {
             var arc = new PlanArc(phase, bodyId, startJd, endJd, path);
-            Measure(arc);
+            Measure(arc, fast);
             return arc;
         }
 
-        private void Measure(PlanArc arc)
+        private void Measure(PlanArc arc, bool fast = false)
         {
+            if (fast)
+            {
+                MeasureFast(arc);
+                return;
+            }
+
             int samples = Math.Max(8, ArcSamples);
             double peak = 0.0;
             double deltaV = 0.0;
@@ -2404,6 +2655,39 @@ namespace TimeToExplore.Simulation
             arc.NearestBodyId = nearest;
         }
 
+        /// <summary>
+        /// The floor probe's cheap measurement. A fixed burn commands its
+        /// acceleration by construction, a conic coasts, and a quintic is
+        /// measured against its own reference body. Delta-v is the burn's
+        /// commanded delta-v and clearance is not tracked: a probe only decides
+        /// whether a duration fits, and the certified full-field build restores
+        /// the numbers the plan reports.
+        /// </summary>
+        private void MeasureFast(PlanArc arc)
+        {
+            if (arc.Path is FiniteBurnArc burn)
+            {
+                arc.PeakThrustMps2 = burn.AccelerationMps2;
+                arc.DeltaVMps = burn.AccelerationMps2 * arc.DurationSeconds;
+            }
+            else if (arc.Path is ConicArc)
+            {
+                arc.PeakThrustMps2 = 0.0;
+                arc.DeltaVMps = 0.0;
+            }
+            else
+            {
+                BodyRuntime body = _model.Get(arc.ReferenceBodyId);
+                arc.PeakThrustMps2 = body != null
+                    ? BreakPeakCentralBodyAlongPath(arc.Path, arc.StartJulianDate, body)
+                    : 0.0;
+                arc.DeltaVMps = 0.0;
+            }
+
+            arc.MinimumClearanceM = double.PositiveInfinity;
+            arc.NearestBodyId = null;
+        }
+
         private double BaseDuration(double distanceM)
         {
             double distance = Math.Max(distanceM, 1.0);
@@ -2438,6 +2722,45 @@ namespace TimeToExplore.Simulation
 
             public TrajectoryPlan Plan { get; }
             public double RequiredSeconds { get; }
+        }
+
+        /// <summary>A floor search's bracket: the last rejected request, the
+        /// shortest feasible duration found, and the feasible plan itself.</summary>
+        private readonly struct FloorSearch
+        {
+            public FloorSearch(double lowSeconds, double highSeconds, TrajectoryPlan plan,
+                TrajectoryPlan lastPlan)
+            {
+                LowSeconds = lowSeconds;
+                HighSeconds = highSeconds;
+                Plan = plan;
+                LastPlan = lastPlan;
+            }
+
+            /// <summary>The last request that was refused, or zero when the
+            /// search found no refused request below the plan.</summary>
+            public double LowSeconds { get; }
+
+            /// <summary>The shortest feasible duration found.</summary>
+            public double HighSeconds { get; }
+
+            /// <summary>The feasible plan at <see cref="HighSeconds"/>, or null.</summary>
+            public TrajectoryPlan Plan { get; }
+
+            /// <summary>The last plan any probe returned, for the failure path.</summary>
+            public TrajectoryPlan LastPlan { get; }
+        }
+
+        private readonly struct FloorProbe
+        {
+            public FloorProbe(TrajectoryPlan plan, bool feasible)
+            {
+                Plan = plan;
+                Feasible = feasible;
+            }
+
+            public TrajectoryPlan Plan { get; }
+            public bool Feasible { get; }
         }
     }
 }

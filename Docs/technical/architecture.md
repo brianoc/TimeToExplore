@@ -155,7 +155,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the true floor search, and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
@@ -460,16 +460,23 @@ Planning a preview is a discrete cost, not a per-frame one. A coasting profile's
 trip-time window costs up to six extra `PlanAtDuration` builds at plot time, to
 probe the slowest duration the Lambert solve still accepts; each drag of the
 slider is one build, not a new minimum solve. The burn–coast–burn plot is the
-expensive one: the true-floor search grows, steps back, and bisects, so one plot
-costs tens of builds rather than one, and each build settles the reverse brake
-and the forward departure over up to twelve passes. A slider drag is still a
-single build. The break search inside each build is two-tier: it measures the
-quintic against the departure body alone as a search input, certifies probes
-within 5% of the drive limit with a one-prepare full-field sweep, and always
-returns a plan rebuilt and measured with the full field. That took one Mercury
-1 g `Plan()` from 36.2 s to 12.0 s and the break-search part from 26.9 s to
-3.3 s, with the plans, floors and seams unchanged; a direct `PlanAtDuration(8 d)`
-fell from 183 ms to 105 ms.
+expensive one: the true-floor search probes a fast model — fixed burns at their
+commanded acceleration, the break against its own body, a 128-sample burn and a
+loose pinned fixed point — and rebuilds and certifies the chosen duration with
+the full field at 512 samples, so one plot still costs about twenty probes but
+each is much cheaper than a full build. The break search inside each build is
+two-tier: it measures the quintic against the departure body alone as a search
+input, certifies probes within 5% of the drive limit with a one-prepare
+full-field sweep, and always returns a plan rebuilt and measured with the full
+field. The pinned brake/departure fixed point stops on its physical velocity
+mismatch instead of a fixed pass count. `FlightSession` caches the floor plan
+and the window per departure date, target, burn level, cruise and arrival style,
+so a repeat plot is free and a changed date invalidates the cache.
+
+That took one Mercury 1 g `Plan()` from 36.2 s to **1.5 s**, `PlanAtDuration(8 d)`
+from 183 ms to **95 ms**, the first selection (floor, window probes, retime) to
+1.5 s at Mercury and 0.93 s at Mars, and a repeat selection to under a
+millisecond, with the plans, floors and seams unchanged.
 
 The orbit lines are the first thing to optimise: updating 30 × 161 positions per
 frame is unnecessary when the camera has not moved and the parent has barely

@@ -238,8 +238,8 @@ from the reference state, and the parking orbit holds. At `0 g` the style is
 exactly the coast plan: five arcs and the handover impulse.
 
 The profile's true floors at the epoch are **3.46 days** to Mercury at 1 g
-(peak 9.70 m/s², 1,763 km/s) and **8.03 days** to Mars at 0.3 g (peak
-5.27 m/s², 1,170 km/s); the Mars trip-time window ends at **24.09 days**, three
+(peak 9.70 m/s², 1,760 km/s) and **8.03 days** to Mars at 0.3 g (peak
+5.25 m/s², 1,170 km/s); the Mars trip-time window ends at **24.09 days**, three
 times the floor, so the 90-day plan above is a direct `PlanAtDuration` build
 outside the nav computer's window. Faster crossings are limited by the pinned
 break reaching the drive's 10 m/s², and a coast that arrives slower than the
@@ -256,11 +256,23 @@ stay full-field numbers. When the fast peak is within 5% of the search's drive
 limit, the probe is certified with the full field; the certification prepares
 the field once at the break's start and evaluates that set along the arc. The
 quintic keeps full-field endpoint accelerations, so the search's curve is the
-plan's curve. Measured on a throwaway copy at the epoch: one `Plan()` to Mercury
-at 1 g fell from 36.2 s to **12.0 s**, the break search from 26.9 s to **3.3 s**
-(8.1×), and `PlanAtDuration(8 d)` from 183 ms to **105 ms**, with the plans,
-floors and seams unchanged. [Burn–coast–burn trips](burn-coast-burn.md) has the
-break-search detail.
+plan's curve.
+
+The floor search uses the same split. Its growth, walk-back and bisection probes
+measure fixed burns at their commanded acceleration, conics at zero, and the
+break against its own body, with a 128-sample burn and a loose pinned fixed
+point; the chosen duration is then rebuilt at 512 samples with the full field and
+certified. Previewing the floor and the profile's window is cached in
+`FlightSession` per departure date, target, burn level, cruise and arrival style,
+so a repeat selection is free; a changed departure date drops the cache.
+
+Measured on a throwaway copy at the epoch: one `Plan()` to Mercury at 1 g fell
+from 36.2 s in the first cut to 12.0 s after the two-tier break search and to
+**1.5 s** after the floor probe mode and the pinned convergence (Mars 0.3 g is
+0.85 s); `PlanAtDuration(8 d)` fell from 183 ms to **95 ms**. The first
+selection (floor, window probes, retime) is 1.5 s at Mercury and 0.93 s at Mars;
+a repeat selection is under 0.1 ms. The plans, floors and seams are unchanged.
+[Burn–coast–burn trips](burn-coast-burn.md) has the detail.
 
 ## Tuning the trip in the nav computer
 

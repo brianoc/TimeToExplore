@@ -494,6 +494,55 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void ReplottingTheSameRouteReusesTheCachedFloorAndWindow()
+        {
+            TrajectoryPlan first = _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            double maximum = _session.PreviewMaximumSeconds;
+
+            TrajectoryPlan repeat = _session.Plot("mars", _epoch);
+
+            Assert.That(repeat, Is.SameAs(first),
+                "the same departure, target, level, and style reuses the solved window");
+            Assert.That(_session.PreviewMinimumSeconds, Is.EqualTo(minimum));
+            Assert.That(_session.PreviewMaximumSeconds, Is.EqualTo(maximum));
+
+            TrajectoryPlan otherTarget = _session.Plot("venus", _epoch);
+            Assert.That(otherTarget, Is.Not.SameAs(first), "another target misses the cache");
+            Assert.That(_session.Preview.TargetId, Is.EqualTo("venus"));
+        }
+
+        [Test]
+        public void AChangedDepartureDateInvalidatesTheCachedWindow()
+        {
+            TrajectoryPlan first = _session.Plot("mars", _epoch);
+
+            TrajectoryPlan later = _session.Plot("mars", _epoch + 0.5);
+            Assert.That(later, Is.Not.SameAs(first), "a later departure is a new window");
+
+            TrajectoryPlan back = _session.Plot("mars", _epoch);
+            Assert.That(back, Is.Not.SameAs(first),
+                "the date change dropped the old window instead of reading it back");
+        }
+
+        [Test]
+        public void ABurnLevelChangeMissesTheWindowCache()
+        {
+            _session.CruiseProfile = CruiseStyle.BurnCoastBurn;
+            _session.BurnLevelG = 0.3;
+            TrajectoryPlan slow = _session.Plot("mars", _epoch);
+
+            _session.SetBurnLevel(0.5);
+            TrajectoryPlan fast = _session.SetPreviewDuration(
+                _session.PreviewMinimumSeconds);
+
+            Assert.That(fast, Is.Not.SameAs(slow),
+                "a different burn level is a different plan");
+            Assert.That(fast.FiniteBurnAccelerationMps2,
+                Is.EqualTo(0.5 * TripPlanner.StandardGravityMps2).Within(1e-6));
+        }
+
+        [Test]
         public void AnUnknownPreviewTargetIsRejectedAndLeavesTheOldPreviewAlone()
         {
             TrajectoryPlan preview = _session.Plot("mars", _epoch);

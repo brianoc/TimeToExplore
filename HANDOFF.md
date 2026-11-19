@@ -4,17 +4,20 @@
 weakening the simulation.** Split planning into a fast, search-only gravity model
 and the existing full-field final plan and flight model. Read this file and
 [Burn–coast–burn trips](/simulation/burn-coast-burn.md) first. The pinned-break
-work is done and committed; do not reopen it. **Step 1 is done** (break search
-26.9 s → 3.3 s); **step 2, the floor and pinned solve, is next.**
+work is done and committed; do not reopen it. **Steps 1 and 2 are done**
+(break search 26.9 s → 3.3 s; the floor and pinned solve 12.0 s → 1.5 s, with the
+window cached); **step 3, the slider, is next.**
 
 ## Goal
 
-Selecting `BURN-COAST-BURN` currently freezes the nav computer for about **37 s**
-at Mercury / 1 g and **9 s** at Mars / 0.3 g. A slider retime costs about
-**183 ms**. The work should make the slider responsive (target: retime ≤ 33 ms;
-first selection under a second; repeat selection effectively instant) while
-keeping the final plan's reported peak, delta-v, clearance, seams, and exact
-arrival exactly as they are today.
+At the start of this plan, selecting `BURN-COAST-BURN` froze the nav computer
+for about **37 s** at Mercury / 1 g and **9 s** at Mars / 0.3 g, and a slider
+retime cost about **183 ms**. Steps 1–2 brought `Plan()` to **1.46 s** (Mercury)
+and **0.85 s** (Mars), first selection to 1.52 s and 0.93 s, a repeat selection
+to under 0.1 ms, and the retime to 93–99 ms. The work should make the slider
+responsive (target: retime ≤ 33 ms; first selection under a second; repeat
+selection effectively instant) while keeping the final plan's reported peak,
+delta-v, clearance, seams, and exact arrival exactly as they are today.
 
 ## Evidence
 
@@ -69,7 +72,7 @@ the same break search.
 |---|---|---|
 | 0 | This plan and the working-agreement rule (one commit per step) | `tools/check.sh --fast` and `validate_okf.py` clean (done) |
 | 1 | Fast single-central-body peak for the break search; full-field final plan | `--tests flight` green; final plans unchanged within the stated tolerance; break-search share down at least 5×; times reported (done: 26.9 s → 3.3 s, 8.1×) |
-| 2 | Cheaper floor search and pinned solve, plus a window cache | `--tests flight` green; floors 3.46 d / 8.03 d unchanged; first selection < 1 s; repeat instant; exact arrivals still green |
+| 2 | Cheaper floor search and pinned solve, plus a window cache | `--tests flight` green; floors 3.46 d / 8.03 d unchanged; first selection < 1 s; repeat instant; exact arrivals still green (done: floors 3.462 / 8.032 d; first selection 1.5 s Mercury / 0.93 s Mars, repeat < 0.1 ms; retime 95 ms) |
 | 3 | Slider responsiveness, async only if the retime is over 33 ms | `--tests presentation,smoke` green; measured retime meets the target or async is covered by tests |
 | 4 | Docs, log, clear this handoff | `tools/check.sh --fast`, validator, and the narrow suites green |
 
@@ -107,30 +110,39 @@ departure body and its moons are strongest; the outward break cannot make a new
 body significant. `TripPlanner.MeasureBreakPeak` and
 `MeasureBreakPeakFullField` are diagnostics for the tests, not a production API.
 
-### Step 2 — the floor and the pinned solve
+### Step 2 — done (this commit): the floor and the pinned solve
 
-- Give the floor search a **fast mode** so its growth, walk-back and bisection
-  probes do not pay the full-field `Measure` for every arc. The final candidate
-  is rebuilt with the full field and certified before it is returned.
-- Reduce the probe count. The current 28 builds are a growth walk, a 15% walk
-  back and a 12-step bisection. With the fast model, use a direct bracket and a
-  tolerance-based bisection (roughly 6–10 builds), keeping the 0.2% retry for a
-  near-floor non-convergence. Do not loosen the 1 km / 1 m/s closure gate to
-  advertise a lower floor.
-- Reduce the pinned-solve cost without changing the seam: the outer loop always
-  runs 12 passes and the settle loop 3. Stop on a measured convergence (brake
-  direction/duration change below a named tolerance) instead of the effectively
-  unreachable `required.SqrMagnitude > 1e-18`, and/or reduce the probe burn
-  sample count while the final arc keeps 512. Whatever is chosen must keep the
-  seam tests (< 1 cm, 1e-5 m/s).
-- Cache the floor/window per `(epoch, target, level, style)` so a repeat
-  selection is free. Invalidate on a changed departure Julian date. Keep the
-  cache in `FlightSession` (or the planner) with a clear owner.
-- Tests: floor unchanged at 3.46 d (Mercury 1 g) and 8.03 d (Mars 0.3 g); the
-  window 8.03–24.09 d; cache hits and invalidation; exact arrivals; `0 g` is
-  exactly `Coast`.
-- Measure first selection and repeat selection. Target: < 1 s first, effectively
-  instant repeat.
+The floor search now probes `Build(..., fast: true)`: fixed burns report their
+commanded acceleration, conics zero, the break its own reference body, the probe
+burn integrates at 128 samples, and the pinned fixed point stops loosely. The
+chosen duration is rebuilt at 512 samples with the full field and certified; if
+the fast model is optimistic, the search finishes with full-field builds. The
+bracket is a probe just above the kinematic estimate, a 15% walk-down, and a
+0.05% (or 30 s) bisection; the 0.2% retry and the 1 km / 1 m/s gate are
+unchanged. The pinned loop stops on the brake's physical 1e-7 m/s mismatch, with
+up to three settles only while the ray drifts; the Newton Jacobian is reused for
+one iteration and the coast correction runs sixteen iterations. `FlightSession`
+caches the floor plan and window per `(date, target, level, cruise, arrival)`;
+a repeat plot is free, a changed date (or place/teleport) clears it.
+
+Measured on the `.cache` copy at the epoch: Mercury 1 g `Plan()` **12.0 → 1.46 s**,
+`PlanAtDuration(8 d)` **105 → 95 ms**, first selection `Plan + window + retime`
+**1.52 s**, repeat **0.09 ms**, retime 93 ms; Mars 0.3 g `Plan()` **0.85 s**,
+first selection **0.93 s**, retime 95 ms. Floors **3.462 d** (9.70 m/s²,
+1,760 km/s) and **8.032 d** (5.25 m/s², 1,170 km/s); 3.43 / 7.80 d still reject
+with their reasons; 8 d, 12.3 d, 90 d, seams, `0 g`, and the 8.03–24.09 d window
+are unchanged.
+
+**Trap for step 3:** the Mercury first selection is 1.5 s, over the 1 s target.
+The cost is not the full field any more; it is the near-floor basin, which is
+noisy enough that the search still pays about twenty fast probes even at the
+0.2% retry resolution. Do not fix this by loosening the floor search's closure
+gate or tolerance: the returned floor must stay 3.46 d / 1,760 km/s. The retime
+is 93–99 ms, so step 3's 33 ms target will need async (or a cheaper full pinned
+solve), not a faster floor search. The probe building blocks are
+`TripPlanner.Build(..., fast: true)`, `MeasureFast`, `FastProbeBurnSamples = 128`,
+`FastProbeOuterPasses = 12`, and `SearchFloor`; the cache lives in
+`FlightSession.WindowFor`.
 
 ### Step 3 — the slider
 
@@ -228,9 +240,10 @@ measured numbers, and any trap the next step needs.
 
 ## Next action
 
-Start **step 2**: give the floor search and the pinned solve a fast mode, cut the
-floor probe count, and cache the window per epoch/target/level/style. Keep the
-floors at 3.46 d and 8.03 d and the final candidate full-field. First selection
-target under a second, repeat effectively instant. The break search is now 3.3 s
-of the 12.0 s `Plan()`, so the floor's 84 builds and the pinned solve's 12 + 3
-passes are the next cost.
+Start **step 3**: measure `SetPreviewDuration` (now 93–99 ms) and make the slider
+responsive. Under 33 ms it stays synchronous; over it, add latest-wins async
+planning with a cancellation flag and a main-thread handover. The floor search is
+not the place to win this: keep the 3.46 d / 8.03 d floors and the full-field
+certified candidate. Cover the retime path with a test, keep the window cache
+unresolved, update the flight-session and testing concepts and the log, and run
+`tools/check.sh --tests presentation,smoke`.

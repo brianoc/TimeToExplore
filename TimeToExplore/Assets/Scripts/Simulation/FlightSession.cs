@@ -71,6 +71,22 @@ namespace TimeToExplore.Simulation
         private Autopilot _autopilot;
         private readonly HashSet<PlanArc> _appliedImpulses = new HashSet<PlanArc>();
 
+        /// <summary>Recent preview windows, keyed by departure date, target,
+        /// burn level, cruise, and arrival style. A repeat selection reuses the
+        /// floor plan and the slow end instead of re-solving either; the cache is
+        /// owned here because the preview is the session's draft. It is cleared
+        /// when the departure date or the ship's pinned state changes.</summary>
+        private readonly Dictionary<WindowKey, PreviewWindow> _windows =
+            new Dictionary<WindowKey, PreviewWindow>();
+
+        /// <summary>The departure date the cached windows belong to, or NaN
+        /// before the first plot.</summary>
+        private double _windowEpoch = double.NaN;
+
+        /// <summary>Keeps the preview cache from growing without bound while a
+        /// player tries many targets at one date.</summary>
+        private const int MaxCachedWindows = 8;
+
         /// <summary>Departure state the preview was solved from. Retiming
         /// rebuilds from this rather than the current (possibly coasted) state,
         /// so the preview stays one coherent draft.</summary>
@@ -229,6 +245,7 @@ namespace TimeToExplore.Simulation
             _model.ComputeState(body, julianDate, out Vector3d position, out Vector3d velocity);
 
             Cancel();
+            ClearWindows();
             _state = new ShipState(julianDate, position, velocity,
                 _state.DryMassKg, _state.PropellantKg);
             RefreshTelemetry();
@@ -240,6 +257,7 @@ namespace TimeToExplore.Simulation
         public void Teleport(Vector3d positionM, double julianDate)
         {
             Cancel();
+            ClearWindows();
             _state = new ShipState(julianDate, positionM, Vector3d.Zero,
                 _state.DryMassKg, _state.PropellantKg);
             RefreshTelemetry();
@@ -255,10 +273,11 @@ namespace TimeToExplore.Simulation
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
             _previewDeparture = _state.WithJulianDate(julianDate);
-            Preview = _planner.Plan(_previewDeparture, targetId);
+            PreviewWindow window = WindowFor(targetId, julianDate);
+            Preview = window.Plan;
             PreviewJulianDate = julianDate;
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
-            PreviewMaximumSeconds = MaximumPreviewSeconds(targetId, PreviewMinimumSeconds);
+            PreviewMaximumSeconds = window.MaximumSeconds;
             return Preview;
         }
 
@@ -346,15 +365,54 @@ namespace TimeToExplore.Simulation
             double requested = Preview.FlightTimeSeconds;
             string targetId = Preview.TargetId;
 
-            Preview = _planner.Plan(_previewDeparture, targetId);
+            PreviewWindow window = WindowFor(targetId, _previewDeparture.JulianDate);
+            Preview = window.Plan;
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
-            PreviewMaximumSeconds = MaximumPreviewSeconds(targetId, PreviewMinimumSeconds);
+            PreviewMaximumSeconds = window.MaximumSeconds;
 
             if (Preview.IsFeasible && requested > PreviewMinimumSeconds)
                 Preview = _planner.PlanAtDuration(_previewDeparture, targetId,
                     Math.Min(requested, PreviewMaximumSeconds));
 
             return Preview;
+        }
+
+        /// <summary>
+        /// The floor plan and the trip-time window for a target, at the current
+        /// pinned departure state. A repeat request for the same date, target,
+        /// level, cruise, and arrival style is free: it returns the plan and the
+        /// window the first request solved. A changed departure date drops every
+        /// cached window, because every window belongs to one departure date.
+        /// </summary>
+        private PreviewWindow WindowFor(string targetId, double julianDate)
+        {
+            if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
+            {
+                _windows.Clear();
+                _windowEpoch = julianDate;
+            }
+
+            var key = new WindowKey(julianDate, targetId, BurnLevelG, CruiseProfile,
+                ArrivalStyle);
+            if (_windows.TryGetValue(key, out PreviewWindow cached))
+                return cached;
+
+            TrajectoryPlan plan = _planner.Plan(_previewDeparture, targetId);
+            var window = new PreviewWindow(plan,
+                MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds));
+
+            if (_windows.Count >= MaxCachedWindows) _windows.Clear();
+            _windows[key] = window;
+            return window;
+        }
+
+        /// <summary>Drop every cached preview window. Called when the ship's
+        /// pinned departure state is replaced, so a later plot cannot reuse a
+        /// window that belonged to another state.</summary>
+        private void ClearWindows()
+        {
+            _windows.Clear();
+            _windowEpoch = double.NaN;
         }
 
         /// <summary>Forget the preview, if there is one.</summary>
@@ -455,6 +513,7 @@ namespace TimeToExplore.Simulation
                 requestedSeconds = Preview.FlightTimeSeconds;
 
             DiscardPreview();
+            ClearWindows();
             _state.JulianDate = julianDate;
             _appliedImpulses.Clear();
             Plan = _planner.Plan(_state, targetId);
@@ -738,6 +797,64 @@ namespace TimeToExplore.Simulation
             Throttle = Plan.MaxAccelerationMps2 > 0.0
                 ? CurrentThrust.Throttle(Plan.MaxAccelerationMps2)
                 : 0.0;
+        }
+
+        /// <summary>One cached preview window: the fastest feasible plan and the
+        /// slowest trip the slider may offer.</summary>
+        private readonly struct PreviewWindow
+        {
+            public PreviewWindow(TrajectoryPlan plan, double maximumSeconds)
+            {
+                Plan = plan;
+                MaximumSeconds = maximumSeconds;
+            }
+
+            public TrajectoryPlan Plan { get; }
+            public double MaximumSeconds { get; }
+        }
+
+        /// <summary>The inputs that make a preview window unique. The departure
+        /// date is part of the key and the cache is also dropped when it changes,
+        /// so a stale date can never be read back.</summary>
+        private readonly struct WindowKey : IEquatable<WindowKey>
+        {
+            public WindowKey(double julianDate, string targetId, double burnLevelG,
+                CruiseStyle cruise, CaptureStyle arrival)
+            {
+                JulianDate = julianDate;
+                TargetId = targetId;
+                BurnLevelG = burnLevelG;
+                Cruise = cruise;
+                Arrival = arrival;
+            }
+
+            public double JulianDate { get; }
+            public string TargetId { get; }
+            public double BurnLevelG { get; }
+            public CruiseStyle Cruise { get; }
+            public CaptureStyle Arrival { get; }
+
+            public bool Equals(WindowKey other) =>
+                JulianDate.Equals(other.JulianDate)
+                && string.Equals(TargetId, other.TargetId, StringComparison.Ordinal)
+                && BurnLevelG.Equals(other.BurnLevelG)
+                && Cruise == other.Cruise
+                && Arrival == other.Arrival;
+
+            public override bool Equals(object obj) => obj is WindowKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = JulianDate.GetHashCode();
+                    hash = hash * 397 ^ (TargetId != null ? TargetId.GetHashCode() : 0);
+                    hash = hash * 397 ^ BurnLevelG.GetHashCode();
+                    hash = hash * 397 ^ (int)Cruise;
+                    hash = hash * 397 ^ (int)Arrival;
+                    return hash;
+                }
+            }
         }
     }
 }

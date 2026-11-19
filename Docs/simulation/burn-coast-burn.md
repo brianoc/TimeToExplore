@@ -227,38 +227,55 @@ full-field number.
 Measured at the epoch, Mercury at 1 g, conic capture, on a throwaway profiling
 copy (never committed):
 
-| Quantity | Before | After |
+| Quantity | Step 1 | After step 2 |
 |---|---:|---:|
-| One `Plan()` | 36.2 s | **12.0 s** |
-| `SolveBreakSeconds` per `Plan()` | 26.9 s (74%) | **3.3 s (28%)** |
-| Break-peak cost per evaluation | 4.88 ms | **0.60 ms** |
-| One `PlanAtDuration(8 d)` | 183 ms | **105 ms** |
-| Break-search cost per `PlanAtDuration(8 d)` | 75 ms | **2.8 ms** |
+| One `Plan()` | 12.0 s | **1.5 s** |
+| One `PlanAtDuration(8 d)` | 105 ms | **95 ms** |
+| One Mars 0.3 g `Plan()` | — | **0.85 s** |
+| First selection, Mercury (Plan + window + retime) | — | **1.5 s** |
+| First selection, Mars (Plan + window + retime) | — | **0.93 s** |
+| Repeat selection, same date/target/level/style | — | **under 0.1 ms** |
+| Slider retime | 105 ms | **93–99 ms** |
 
-The break-search cost fell by **8.1×**, past this step's 5× target. The pins,
-floors, and reported plans did not move: 8 d Mercury is still 3.02 m/s² and
-569.9 km/s, 12.3 d is 1.35 and 379.9, Mars 90 d is 0.033 and 45.4, and the floors
-are still 3.46 d and 8.03 d. The fast peak tracks the full-field peak to 0.18% at
-8 d Mercury, 0.41% at 12.3 d, 4.5% on the very gentle 90-day Mars break, and
-0.05% at the Mercury floor.
+The break-search cost fell by **8.1×** in step 1. Step 2 cut the rest by
+searching the floor on the same fast model and settling the pinned solve on a
+physical tolerance instead of a fixed pass count. The pins, floors, and reported
+plans did not move: 8 d Mercury is still 3.02 m/s² and 569.9 km/s, 12.3 d is
+1.35 and 379.9, Mars 90 d is 0.033 and 45.4, and the floors are still 3.46 d and
+8.03 d. The fast peak tracks the full-field peak to 0.18% at 8 d Mercury, 0.41%
+at 12.3 d, 4.5% on the very gentle 90-day Mars break, and 0.05% at the Mercury
+floor.
 
 # The floor after the pin
 
 With the break gentle, the fast end is no longer set by an over-thrusting
 break. `Plan()` searches for the shortest trip whose chain closes and whose
-peak fits the drive: it starts at half the kinematic estimate, grows out to a
-feasible plan, steps back in 15% steps to a rejected shorter request, then
-bisects the bracket, retrying a rejected probe a fifth of a percent higher so a
-narrow non-convergence hole does not become the advertised floor. The plan it
-returns is the floor, not the first feasible plan the old growth loop settled
-on.
+peak fits the drive, and the search now separates **finding** the floor from
+**reporting** it. Every growth, walk-back and bisection probe runs through
+`Build`'s fast mode: a fixed burn measures its commanded acceleration, a conic
+coasts, and a quintic (the break) is measured against its own reference body.
+The probe's burn is integrated at 128 samples instead of the final 512, delta-v
+and clearance are not tracked, and the pinned brake/departure fixed point stops
+on a loose tolerance. The candidate the search returns is **rebuilt at 512
+samples with the full field** and certified before it leaves the planner; the
+fast numbers are never reported. If the fast model was optimistic, the search
+finishes with full-field builds seeded from the fast bracket.
+
+The bracket is found by probing a little above the planner's kinematic estimate,
+walking down in 15% steps to the first refused request, then bisecting to 0.05%
+(or 30 s, whichever is larger). A refused probe is retried 0.2% higher, because
+the near-floor chain has narrow non-convergence holes; that retry is the search's
+real resolution. The floors measured after the change are **3.462 d** to Mercury
+at 1 g and **8.032 d** to Mars at 0.3 g — still 3.46 and 8.03 to the printed
+precision. The near-floor basin is noisy, so the search still pays about twenty
+probes; that is the remaining cost in `Plan()` and the trap for the slider step.
 
 Measured at the epoch (2026-11-15) from Gateway, conic capture:
 
 | Target | Level | True floor | Peak | Total Δv | Just below | Why the shorter trip is refused |
 |---|---|---:|---:|---:|---|---|
-| Mercury | 1 g | **3.46 d** | 9.70 m/s² | 1,763 km/s | 3.43 d | departure break needs 10.2 m/s², above the 10.0 m/s² drive; 3.44–3.45 d also leave the brake 375,000 km short of the capture entry |
-| Mars | 0.3 g | **8.03 d** | 5.27 m/s² | 1,170 km/s | 7.80 d | departure break needs 58.1 m/s², above the 10.0 m/s² drive; 8.00 d leaves the brake 7,493 km short of the entry |
+| Mercury | 1 g | **3.46 d** | 9.70 m/s² | 1,760 km/s | 3.43 d | departure break needs 10.2 m/s², above the 10.0 m/s² drive; 3.44–3.45 d also leave the brake 375,000 km short of the capture entry |
+| Mars | 0.3 g | **8.03 d** | 5.25 m/s² | 1,170 km/s | 7.80 d | departure break needs 58.1 m/s², above the 10.0 m/s² drive; 8.00 d leaves the brake 7,493 km short of the entry |
 
 The floor search also requires the chain to be **closed**: a plan whose peak
 fits but whose brake misses the capture entry is not flyable. The near-floor
@@ -267,9 +284,23 @@ plan that fits the peak can end the brake hundreds of thousands of kilometres
 from the entry; the planner reports that as a trip time too short for the
 profile instead of handing it to the autopilot. The gate is a kilometre of
 position and a metre per second of velocity: the 8- and 12-day trips close to
-millimetres, the 8.03 d Mars floor's worst seam is 0.9 km, and a broken brake
-misses by thousands of kilometres. The 8.03 d flight arrives 0.1 m and
-10⁻⁴ m/s from the reference parking state.
+millimetres, the 8.03 d Mars floor's worst seam is under a kilometre, and a
+broken brake misses by thousands of kilometres. The 8.03 d flight arrives 0.1 m
+and 10⁻⁴ m/s from the reference parking state.
+
+The pinned solve itself now stops on the brake's own physical mismatch (1e-7 m/s
+at the brake's start) rather than the old `required.SqrMagnitude > 1e-18`, which
+a real brake can never satisfy. The fixed 12-pass outer loop and the three
+settle passes became a convergence loop plus up to three settles only while the
+fixed point is still drifting; the final brake and arcs still close to better
+than a centimetre and 1e-5 m/s on the tested trips. The Newton Jacobian is
+reused for one iteration, and the coast's propagator correction gets sixteen
+iterations so the long, low-level burns still close.
+
+The preview's floor plan and trip-time window are cached per departure date,
+target, burn level, cruise style, and arrival style in `FlightSession`. A repeat
+selection reuses the plan and the window; a changed departure date (or a
+teleport/place) drops the cache.
 
 A plan rejected for exceeding the drive now carries an `InfeasibleReason`
 naming the arc and the thrust it needs, for example *"the departure break
