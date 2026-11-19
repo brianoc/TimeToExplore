@@ -110,10 +110,12 @@ graph and reads the `.asmdef` files as the source of truth. See
      selects the body behind it.
 6. **Plot route** calls `TripPlanner.Plan` and draws the preview; the
    **`PROFILE`** and **`ARRIVAL`** rows rebuild it against the chosen cruise
-   profile, capture style, or burn level; its **trip-time slider** re-solves the
-   preview with `TripPlanner.PlanAtDuration` inside that profile's window;
-   **Begin flight** replans and hands the ship to the session. On arrival the
-   plan completes, the drive goes off, and the ship coasts in the parking orbit.
+   profile, capture style, or burn level; its **trip-time slider** requests a
+   retime with `TripPlanner.PlanAtDuration` inside that profile's window on a
+   background worker, and the HUD publishes the finished plan on the main
+   thread; **Begin flight** replans and hands the ship to the session. On
+   arrival the plan completes, the drive goes off, and the ship coasts in the
+   parking orbit.
 
 # Core types
 
@@ -157,7 +159,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
 | `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview; coasts an idle ship; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview synchronously or on a latest-wins background worker with its own planner and field, publishing the finished plan on the main thread; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
 The planner crosses in one of three profiles: the powered quintic (`Powered`, the
@@ -458,8 +460,8 @@ policy is what keeps it there.
 
 Planning a preview is a discrete cost, not a per-frame one. A coasting profile's
 trip-time window costs up to six extra `PlanAtDuration` builds at plot time, to
-probe the slowest duration the Lambert solve still accepts; each drag of the
-slider is one build, not a new minimum solve. The burn–coast–burn plot is the
+probe the slowest duration the Lambert solve still accepts; each retime is one
+build, not a new minimum solve. The burn–coast–burn plot is the
 expensive one: the true-floor search probes a fast model — fixed burns at their
 commanded acceleration, the break against its own body, a 128-sample burn and a
 loose pinned fixed point — and rebuilds and certifies the chosen duration with
@@ -472,6 +474,16 @@ field. The pinned brake/departure fixed point stops on its physical velocity
 mismatch instead of a fixed pass count. `FlightSession` caches the floor plan
 and the window per departure date, target, burn level, cruise and arrival style,
 so a repeat plot is free and a changed date invalidates the cache.
+
+The slider's retime is the other discrete cost, and it no longer runs on the
+frame. Moving the handle enqueues the newest duration for one background worker,
+which builds it with its own planner and gravity field — the simulation's field
+is mutable and stays on the main thread. A superseded build is dropped, the
+previous full-field preview stays published until the replacement lands, and the
+HUD publishes the finished plan on the main thread. At the epoch a retime is
+99–124 ms to Mercury at 1 g and 100–128 ms to Mars at 0.3 g, and
+request-to-publish is that build plus 2–4 ms of handover; a 200 ms drag of
+twenty requests published one plan, the newest, with nothing queued.
 
 That took one Mercury 1 g `Plan()` from 36.2 s to **1.5 s**, `PlanAtDuration(8 d)`
 from 183 ms to **95 ms**, the first selection (floor, window probes, retime) to

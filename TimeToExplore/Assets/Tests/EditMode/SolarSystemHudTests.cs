@@ -297,9 +297,19 @@ namespace TimeToExplore.Tests.EditMode
                            $"{_bootstrap.Flight.Preview.PeakThrottle * 100.0:0}% burn"));
 
             slider.value = (float)(2.0 * minimum);
+            Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
+                "moving the handle queues a retime instead of blocking the frame");
+
+            Update();
+            Assert.That(slider.value, Is.EqualTo((float)(2.0 * minimum)).Within(1.0),
+                "the handle keeps the player's ask while the plan lags");
+            Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"),
+                "the label follows the handle, not the older published plan");
+
+            WaitForRetime();
             Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
                 Is.EqualTo(2.0 * minimum).Within(1.0),
-                "moving the handle re-times the preview");
+                "the finished plan is published on this thread");
 
             Update();
             Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"));
@@ -764,6 +774,23 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         private void Update() => Invoke(_hud, "Update");
+
+        /// <summary>Pump the session's finished background retime until it is
+        /// published, as the HUD's frame does. The worker is a real thread, so
+        /// the test waits with a deadline rather than assuming one frame.</summary>
+        private void WaitForRetime()
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (_bootstrap.Flight.IsRetimePending)
+            {
+                _bootstrap.ApplyRetimeIfReady();
+                if (!_bootstrap.Flight.IsRetimePending) break;
+
+                if (watch.Elapsed.TotalSeconds > 20.0)
+                    Assert.Fail("the background retime was never published");
+                System.Threading.Thread.Sleep(1);
+            }
+        }
 
         private static void Invoke(object target, string method)
         {

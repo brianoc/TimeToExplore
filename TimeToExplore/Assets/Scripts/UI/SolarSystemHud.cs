@@ -227,6 +227,11 @@ namespace TimeToExplore.UI
 
             if (PlayerControls.CancelPressed) CloseDetails();
 
+            // The retime worker hands its finished plan back here, on the main
+            // thread, before the panels read the preview. The slider only
+            // requests; nothing a frame draws comes from the worker.
+            _owner.ApplyRetimeIfReady();
+
             UpdatePointer();
             Refresh();
 
@@ -670,7 +675,15 @@ namespace TimeToExplore.UI
 
             double minimum = flight.PreviewMinimumSeconds;
             double maximum = flight.PreviewMaximumSeconds;
-            double duration = flight.PreviewDurationSeconds;
+
+            // While a background retime is outstanding the published preview is
+            // the previous full-field plan and the handle is the player's newer
+            // ask. Show the ask and leave the handle alone: snapping it back to
+            // the older plan would fight the drag.
+            bool retimePending = flight.IsRetimePending;
+            double duration = retimePending
+                ? flight.PendingPreviewSeconds
+                : flight.PreviewDurationSeconds;
 
             bool rangeChanged = _sliderBodyId != flight.Preview.TargetId ||
                                 _sliderMinimumSeconds != minimum;
@@ -684,7 +697,8 @@ namespace TimeToExplore.UI
                 _timeSlider.value = (float)duration;
                 _syncingSlider = false;
             }
-            else if (Mathf.Abs(_timeSlider.value - (float)duration) >
+            else if (!retimePending &&
+                     Mathf.Abs(_timeSlider.value - (float)duration) >
                      Mathf.Max(0.5f, 1e-4f * (float)(maximum - minimum)))
             {
                 // The plan and the handle disagree (a fresh plot or a replan).

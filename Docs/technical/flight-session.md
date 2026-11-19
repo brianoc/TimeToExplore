@@ -117,13 +117,25 @@ of 8.03 days at 0.3 g; the Mercury floor at 1 g is 3.46 days. A 90-day Mars buil
 is outside that window. The floor plan and the window are cached per departure
 date, target, burn level, cruise style, and arrival style, so plotting the same
 route again at the same date reuses both; a changed departure date, or a
-place/teleport, drops the cache. A change calls
-`FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
-departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
-solve, no ship movement, and no camera move. The preview stays pinned to
-`PreviewJulianDate`, so dragging is stable even while the clock runs. The path,
-flip, arrival marker and ghost, and the panel's flight time, peak thrust, and
-delta-v all update; the arrival date slides and the target moves to meet it.
+place/teleport, drops the cache.
+
+The slider does **not** block the frame. Moving the handle calls
+`FlightSession.RequestPreviewDuration`, which enqueues the newest duration for
+one background worker; the worker rebuilds the plan from the stored departure
+state with `TripPlanner.PlanAtDuration`, using its own `TripPlanner` and
+`GravityField` because the flight simulation's field keeps a prepared active set
+and stays on the main thread. A plan that finishes after a newer request arrived
+is discarded and the newest request is built next, so a drag never queues work
+behind stale plans. The preview stays pinned to `PreviewJulianDate`, and the
+published preview — path, flip, arrival marker and ghost, panel flight time,
+peak thrust, and delta-v — stays on screen until the HUD's frame calls
+`SolarSystemBootstrap.ApplyRetimeIfReady`, which hands the finished plan back on
+the main thread. The handle and its label follow the player's ask rather than
+the older published plan, so a drag never snaps back. Every published plan is
+the full-field build; the fast search model is never shown.
+`FlightSession.SetPreviewDuration` remains the synchronous, deterministic path
+for tests and callers that need a plan immediately, and builds the same plan as
+the worker for the same inputs.
 
 Begin carries the chosen duration into the flight: it solves the fastest plan at
 the current date, then re-times it to the preview's flight time, clamped up to
@@ -299,7 +311,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | Input | Action |
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
-| **Trip-time slider** on a preview | Re-solve the preview at a longer duration; updates the route, arrival, thrust, and delta-v without moving the ship |
+| **Trip-time slider** on a preview | Request a retime at a longer duration on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship |
 | **Powered / Coast / Burn-coast-burn** on a preview | Switch the cruise profile, rebuild the preview against it, and reset the trip-time window to that profile's own feasible range; a coast's line and report read `drive off` |
 | **Quintic / Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the fixed-burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the burn–coast–burn profile's two burns |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
@@ -380,7 +392,14 @@ is `[minimum, 3 × minimum]` and clamps to it, retiming changes the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
 target or burn level misses, and a changed departure date invalidates the cache.
-`SolarSystemHudTests` covers the profile control and the coasting window: the
+It also covers the **background retime**: the second of two requests made while
+the first is building is the plan that is published and the older build is
+dropped, the worker's plan equals the synchronous plan for the same duration,
+the previous preview stays published until the new plan is ready, a synchronous
+retime supersedes an outstanding ask, discarding the preview drops one, and
+Dispose joins the worker and refuses
+new work. `SolarSystemHudTests` covers the profile control and the coasting
+window: the
 `PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
 burn–coast–burn slider ends at the slowest duration the planner accepts rather
 than at three times its minimum (8.03–24.09 days at the epoch for Gateway→Mars,

@@ -155,6 +155,18 @@ namespace TimeToExplore
             return Rig.NeighbourhoodRadiusM;
         }
 
+        /// <summary>
+        /// Stop the preview retime worker with the scene. The session owns a
+        /// background thread once the slider has asked for a retime; it must not
+        /// outlive the HUD and trajectory line whose plans it hands back. The
+        /// worker is a background thread and checks the stop flag before
+        /// publishing, so teardown never blocks on a plan being drawn.
+        /// </summary>
+        private void OnDestroy()
+        {
+            Flight?.Dispose();
+        }
+
         private void EnsureCamera()
         {
             ViewCamera = Camera.main;
@@ -381,17 +393,35 @@ namespace TimeToExplore
         }
 
         /// <summary>
-        /// Re-time the plotted route to a requested flight time. One planner
-        /// build and one redraw, no new minimum solve, so a slider drag can call
-        /// it every frame. The camera is deliberately not re-framed: a drag must
-        /// not yank the view.
+        /// Ask for the plotted route to be re-timed to a requested flight time.
+        /// The request is queued; the session's worker builds it with its own
+        /// planner and the HUD publishes it through
+        /// <see cref="ApplyRetimeIfReady"/> once it is ready. Nothing blocks the
+        /// frame, and the newest request wins: stale builds are dropped. The
+        /// camera is deliberately not re-framed: a drag must not yank the view.
         /// </summary>
         public void RetimePreview(double flightTimeSeconds)
         {
             if (Flight == null || !Flight.HasPreview) return;
 
-            TrajectoryPlan preview = Flight.SetPreviewDuration(flightTimeSeconds);
-            if (preview == null) return;
+            Flight.RequestPreviewDuration(flightTimeSeconds);
+        }
+
+        /// <summary>
+        /// Publish a finished background retime, on the main thread. The HUD
+        /// calls this once per frame; the worker never touches the trajectory
+        /// line or the HUD. A failed build is logged and leaves the published
+        /// preview in place.
+        /// </summary>
+        public void ApplyRetimeIfReady()
+        {
+            if (Flight == null) return;
+
+            string failure = Flight.TakeRetimeFailure();
+            if (!string.IsNullOrEmpty(failure))
+                Debug.LogWarning("Preview retime failed: " + failure);
+
+            if (!Flight.TryApplyCompletedRetime(out TrajectoryPlan preview)) return;
 
             ShowPlan(preview, Model?.Get(preview.TargetId));
         }

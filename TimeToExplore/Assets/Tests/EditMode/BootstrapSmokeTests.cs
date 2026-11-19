@@ -315,14 +315,21 @@ namespace TimeToExplore.Tests.EditMode
             float chosen = (float)(2.0 * minimum);
             slider.value = chosen;
 
+            Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
+                "the handle requests a retime; it does not block the frame");
+            Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
+                Is.EqualTo(minimum).Within(1.0),
+                "the previous preview stays published until the new plan is ready");
+
+            WaitForRetime();
             Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
                 Is.EqualTo(chosen).Within(1.0),
-                "moving the handle re-times the preview");
+                "moving the handle re-times the preview on the worker");
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.Zero,
                 "the slider never moves the ship");
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True,
-                "the re-timed route is redrawn");
+                "the re-timed route is redrawn when the plan is published");
         }
 
         [Test]
@@ -677,6 +684,22 @@ namespace TimeToExplore.Tests.EditMode
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(info, Is.Not.Null, $"SolarSystemHud.{method} is missing");
             info.Invoke(hud, null);
+        }
+
+        /// <summary>Pump the background retime until the session publishes it,
+        /// with a deadline so a broken worker fails instead of hanging.</summary>
+        private void WaitForRetime()
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (_bootstrap.Flight.IsRetimePending)
+            {
+                _bootstrap.ApplyRetimeIfReady();
+                if (!_bootstrap.Flight.IsRetimePending) break;
+
+                if (watch.Elapsed.TotalSeconds > 20.0)
+                    Assert.Fail("the background retime was never published");
+                System.Threading.Thread.Sleep(1);
+            }
         }
     }
 }

@@ -4,9 +4,10 @@
 weakening the simulation.** Split planning into a fast, search-only gravity model
 and the existing full-field final plan and flight model. Read this file and
 [Burn–coast–burn trips](/simulation/burn-coast-burn.md) first. The pinned-break
-work is done and committed; do not reopen it. **Steps 1 and 2 are done**
+work is done and committed; do not reopen it. **Steps 1, 2, and 3 are done**
 (break search 26.9 s → 3.3 s; the floor and pinned solve 12.0 s → 1.5 s, with the
-window cached); **step 3, the slider, is next.**
+window cached; the slider retimes on a latest-wins background worker without
+blocking the frame). **Step 4, the documentation close-out, is next.**
 
 ## Goal
 
@@ -14,10 +15,12 @@ At the start of this plan, selecting `BURN-COAST-BURN` froze the nav computer
 for about **37 s** at Mercury / 1 g and **9 s** at Mars / 0.3 g, and a slider
 retime cost about **183 ms**. Steps 1–2 brought `Plan()` to **1.46 s** (Mercury)
 and **0.85 s** (Mars), first selection to 1.52 s and 0.93 s, a repeat selection
-to under 0.1 ms, and the retime to 93–99 ms. The work should make the slider
-responsive (target: retime ≤ 33 ms; first selection under a second; repeat
-selection effectively instant) while keeping the final plan's reported peak,
-delta-v, clearance, seams, and exact arrival exactly as they are today.
+to under 0.1 ms, and the retime to 93–99 ms. Step 3 moved the retime off the
+main thread: a request returns immediately, the newest request wins, and the
+published preview stays until the finished full-field plan is handed back on the
+main thread. First selection is still under a second at Mars and about 1.5 s at
+Mercury, and the final plan's reported peak, delta-v, clearance, seams, and
+exact arrival are unchanged.
 
 ## Evidence
 
@@ -62,7 +65,10 @@ the same break search.
 5. **Async only if measured.** After steps 1–2, measure the retime. If it is
    ≤ 33 ms, keep it synchronous and record the measurement. If it is above
    33 ms, step 3 adds asynchronous latest-wins planning with cancellation; do not
-   add threads speculatively.
+   add threads speculatively. The retime measured 93–99 ms (120 ms at the
+   near-floor 4.5 d in step 3's harness), so step 3 added the worker; the
+   synchronous `SetPreviewDuration` stays for tests and callers that need an
+   immediate plan.
 6. **No visual change intended.** This plan waives the screenshot rule: there is
    no intended visible difference. The evidence is measured timing and tests.
 
@@ -73,7 +79,7 @@ the same break search.
 | 0 | This plan and the working-agreement rule (one commit per step) | `tools/check.sh --fast` and `validate_okf.py` clean (done) |
 | 1 | Fast single-central-body peak for the break search; full-field final plan | `--tests flight` green; final plans unchanged within the stated tolerance; break-search share down at least 5×; times reported (done: 26.9 s → 3.3 s, 8.1×) |
 | 2 | Cheaper floor search and pinned solve, plus a window cache | `--tests flight` green; floors 3.46 d / 8.03 d unchanged; first selection < 1 s; repeat instant; exact arrivals still green (done: floors 3.462 / 8.032 d; first selection 1.5 s Mercury / 0.93 s Mars, repeat < 0.1 ms; retime 95 ms) |
-| 3 | Slider responsiveness, async only if the retime is over 33 ms | `--tests presentation,smoke` green; measured retime meets the target or async is covered by tests |
+| 3 | Slider responsiveness, async only if the retime is over 33 ms | `--tests presentation,smoke` green; measured retime meets the target or async is covered by tests (done: latest-wins worker; request-to-publish 99–149 ms, no frame block) |
 | 4 | Docs, log, clear this handoff | `tools/check.sh --fast`, validator, and the narrow suites green |
 
 ### Step 0 — done (this commit)
@@ -133,32 +139,79 @@ first selection **0.93 s**, retime 95 ms. Floors **3.462 d** (9.70 m/s²,
 with their reasons; 8 d, 12.3 d, 90 d, seams, `0 g`, and the 8.03–24.09 d window
 are unchanged.
 
-**Trap for step 3:** the Mercury first selection is 1.5 s, over the 1 s target.
-The cost is not the full field any more; it is the near-floor basin, which is
-noisy enough that the search still pays about twenty fast probes even at the
-0.2% retry resolution. Do not fix this by loosening the floor search's closure
-gate or tolerance: the returned floor must stay 3.46 d / 1,760 km/s. The retime
-is 93–99 ms, so step 3's 33 ms target will need async (or a cheaper full pinned
-solve), not a faster floor search. The probe building blocks are
+**Trap that drove step 3:** the Mercury first selection is 1.5 s, over the 1 s
+target. The cost is not the full field any more; it is the near-floor basin,
+which is noisy enough that the search still pays about twenty fast probes even at
+the 0.2% retry resolution. Do not fix this by loosening the floor search's
+closure gate or tolerance: the returned floor must stay 3.46 d / 1,760 km/s. The
+retime was 93–99 ms, so step 3 chose async rather than a faster floor search.
+The probe building blocks are
 `TripPlanner.Build(..., fast: true)`, `MeasureFast`, `FastProbeBurnSamples = 128`,
 `FastProbeOuterPasses = 12`, and `SearchFloor`; the cache lives in
 `FlightSession.WindowFor`.
 
-### Step 3 — the slider
+### Step 3 — done (this commit): the slider
 
-- Measure `SetPreviewDuration` after steps 1–2. If ≤ 33 ms, keep it synchronous,
-  add a regression test that the retimed plan is full-field and the window cache
-  is not re-solved, and document the measurement.
-- If > 33 ms, run the retime asynchronously: one latest-wins request, a
-  cancellation flag checked between probes, the finished plan published back on
-  the main thread. Keep the previous preview until the new one is ready. Cover
-  the handover with a test that cannot race (or an EditMode test with a
-  deterministic fake worker).
-- Do not move `GravityField` or the flight path off the main thread. Do not add
-  a Unity Job/Burst dependency for this; plain managed worker threads are enough
-  unless the step's measurement says otherwise.
-- Update the flight-session and testing concepts and the log. Run
-  `--tests presentation,smoke`.
+The retime now runs on one background worker with **latest-wins** semantics.
+Moving the handle calls `FlightSession.RequestPreviewDuration`, which clamps the
+duration to the preview window, stores the newest request with a generation
+number, and returns. The worker builds it with its **own** `TripPlanner` and
+`GravityField`, because the flight simulation's field keeps a prepared active set
+and stays on the main thread; the worker reads only the catalogue (its elements
+and `ComputeState`) and never the simulation's mutable field or integrator
+state. A build that finishes
+after a newer request arrived is discarded and the newest request is built next.
+`TryApplyCompletedRetime` publishes the finished plan, guarded by the request
+lock and checked against the generation, and the HUD calls
+`SolarSystemBootstrap.ApplyRetimeIfReady` once per frame to hand it to the
+trajectory line and the report on the main thread. The previous full-field
+preview stays visible until then, and `PendingPreviewSeconds` keeps the handle
+and its label on the player's ask instead of snapping back.
+
+`SetPreviewDuration` is unchanged as the synchronous, deterministic path; it now
+also cancels any outstanding background request so it cannot be overwritten.
+`FlightSession` is `IDisposable`: `Dispose` sets the stop flag, drops the queue,
+pulses the worker, and joins it for up to `RetimeJoinMilliseconds` (5 s); the
+bootstrap disposes the session in `OnDestroy`. A disposed session refuses new
+requests, and the worker checks the stop flag before publishing, so no thread can
+touch a discarded plan.
+
+Measured on the rebuilt `.cache` copy at the epoch (Mercury 1 g, 4.5–10.2 d;
+Mars 0.3 g, 9–15 d):
+
+| Quantity | Mercury 1 g | Mars 0.3 g |
+|---|---:|---:|
+| Synchronous `SetPreviewDuration` | 120 ms (4.5 d), 97 ms (7.35 d) | 97–125 ms |
+| Background request-to-publish | 99–124 ms | 100–128 ms |
+| Handover over the same build | 2–4 ms | 2–3 ms |
+| Worker plan vs synchronous plan | identical | identical |
+| 20 requests at 10 ms, first publish | 311 ms | 324 ms |
+| Tail after the last request | 111 ms | 124 ms |
+| Plans published during the 200 ms drag | 1 (the newest) | 1 (the newest) |
+
+The worker's plan matched the synchronous plan exactly in flight time, arrival
+date, peak, delta-v, clearance, and arc count. The drag published only the newest
+plan: two intermediate builds were superseded and dropped, nothing queued, and
+the 20-tick loop kept its 10 ms cadence (200 ms for 200 ms of requested ticks), so
+the frame is not blocked. `FlightSessionTests` now covers latest-wins with the
+first build in flight, background-equals-synchronous, the previous preview staying
+published, a discard dropping an outstanding request, and Dispose stopping the
+worker; the HUD and bootstrap slider tests request the retime, hold the handle
+while it lags, and pump the real handover.
+
+**Trap for step 4:** the retime is not ≤ 33 ms and is not meant to be. Do not
+chase the threshold by loosening the floor search, the 5% screen, the 1e-7 brake
+tolerance, the 16-iteration coast correction, or the closure gate; the profile's
+own floor is 3.46 d / 1,760 km/s and the published plan must stay that. The
+latency is one full-field `PlanAtDuration` build (99–149 ms at the epoch), and the
+only headroom left is inside that build. The *planning* cost is now the slider's
+floor: a continuous drag publishes roughly one plan per build once the drag
+pauses; the handle is smooth because the frame is free, not because the plan is
+fast. The retimer is `FlightSession`'s `_retimeLock`, `_pendingRetime`,
+`_completedRetime`, `_retimeGeneration`, `RetimeLoop`, and `BuildRetime`; the
+worker's field is created in `StartRetimeWorker` and must never be the
+simulation's `_gravity`. The synchronous path is still the reference for equality
+tests.
 
 ### Step 4 — close out
 
@@ -181,19 +234,27 @@ python3 tools/validate_okf.py                # whenever a concept changes
 Use `.venv/bin/python tools/validate_okf.py` when the system Python lacks PyYAML.
 
 Performance measurement uses a throwaway copy under `.cache` (ignored, never
-committed). The previous harness is `.cache/perf-project`; it is stale after the
-last commit, so rebuild its `Assets` from the current project and keep its warm
-`Library`. The command is:
+committed). `.cache/perf-project` was rebuilt for step 3 and is stale again after
+this commit: `rsync -a --delete TimeToExplore/Assets/ .cache/perf-project/TimeToExplore/Assets/`
+and keep its warm `Library`. Step 2's harness is
+`TimeToExplore.EditorTools.PlanProfilerRunner`; step 3's is
+`TimeToExplore.EditorTools.Step3ProfilerRunner`, added only in the `.cache` copy.
+The command is:
 
 ```bash
-Unity -batchmode \
+python3 tools/unity_guard.py --log .cache/perf-project/perf-step3.log -- \
+  /Applications/Unity/Hub/Editor/6000.3.28f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode \
   -projectPath /Users/brian.oconnor/Personal/TimeToExplore/.cache/perf-project/TimeToExplore \
-  -executeMethod TimeToExplore.EditorTools.PlanProfilerRunner.Run \
-  -logFile /Users/brian.oconnor/Personal/TimeToExplore/.cache/perf-project/perf.log
+  -executeMethod TimeToExplore.EditorTools.Step3ProfilerRunner.Run \
+  -logFile /Users/brian.oconnor/Personal/TimeToExplore/.cache/perf-project/perf-step3.log
 ```
 
-Report `Plan()` and `PlanAtDuration` per call, and the break-search share. A
-standalone player is not used (it freezes on this machine); do not use it.
+The runner writes `TimeToExplore/report-step3.txt` in the throwaway project. It
+reports the synchronous retime, request-to-publish, background-versus-synchronous
+equality, and the 20-request drag. Report `Plan()` and `PlanAtDuration` per call
+and the break-search share too. A standalone player is not used (it freezes on
+this machine); do not use it.
 
 ## Constraints and traps
 
@@ -212,9 +273,11 @@ standalone player is not used (it freezes on this machine); do not use it.
   margin, certify with the full field or choose a longer duration; do not ship an
   over-thrust plan.
 - **Do not loosen the closure gate** to advertise a lower floor.
-- **Do not add async before the measurement says it is needed.** The planner is
-  pure managed C#; if threads are needed, use latest-wins and a clear
-  cancellation point, and keep the plan handover on the main thread.
+- **The retime worker is isolated and stoppable.** Plain managed thread only, no
+  JobSystem/Burst; the worker gets its own `TripPlanner` and `GravityField` and
+  must never touch the simulation's `_gravity`, the integrator, the autopilot, or
+  a Unity API. The plan handover stays on the main thread, and `Dispose` must
+  leave no alive worker.
 - Assembly rules: Core has no engine references; Simulation has
   `noEngineReferences`; no `UnityEngine.Input` or Input System calls outside the
   two seam files.
@@ -240,10 +303,15 @@ measured numbers, and any trap the next step needs.
 
 ## Next action
 
-Start **step 3**: measure `SetPreviewDuration` (now 93–99 ms) and make the slider
-responsive. Under 33 ms it stays synchronous; over it, add latest-wins async
-planning with a cancellation flag and a main-thread handover. The floor search is
-not the place to win this: keep the 3.46 d / 8.03 d floors and the full-field
-certified candidate. Cover the retime path with a test, keep the window cache
-unresolved, update the flight-session and testing concepts and the log, and run
-`tools/check.sh --tests presentation,smoke`.
+Start **step 4**, the documentation close-out. Walk the fast/full split and the
+background retime through the remaining concepts — the flight model,
+architecture, flight session, testing, navigation and arrival, and the roadmap —
+adding a short technical note (`Docs/technical/planning-performance.md`) if the
+two-tier model needs more than a paragraph, and link it from the index. The
+retime numbers and the lifecycle are in this file and in
+[the flight session](/technical/flight-session.md). Do not change the
+synchronous path's plan, the 3.46 d / 8.03 d floors, or the 5% screen to chase a
+latency budget: the worker is the step-3 answer and its build is one full-field
+`PlanAtDuration`. Log entry, clear this file to the no-active-handoff stub, no
+screenshots, and run `tools/check.sh --fast`, `validate_okf.py`, and the narrow
+suites.

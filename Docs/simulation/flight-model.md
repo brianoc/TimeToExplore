@@ -298,6 +298,23 @@ The slider is one honest axis with two costs on it:
 | Delta-v rises roughly as `1/T` | Delta-v falls |
 | Arrives sooner | Arrives later |
 
+The retime itself runs **off the main thread**. Moving the handle enqueues the
+newest duration; one background worker builds it with its own `TripPlanner` and
+`GravityField`, because the field keeps a prepared active set and the flight
+simulation's instance stays on the main thread. A plan that finishes after a
+newer request arrived is discarded and the newest request is built next, so a
+drag never queues work behind stale plans. The published preview stays on screen
+until the finished plan is handed back on the main thread, and every published
+plan is the full-field build, never a fast search estimate. `SetPreviewDuration`
+remains the synchronous, deterministic path for callers that need a plan
+immediately; both paths build the identical plan. At the epoch on the throwaway
+copy, one synchronous retime is 120 ms at 4.5 d and 97 ms at 7.35 d to Mercury
+1 g, and 97–125 ms to Mars at 0.3 g over 9–15 d; request-to-publish on the
+worker is the same build plus **2–4 ms** of handover. Twenty requests at 10 ms
+intervals published only the newest plan — 311 ms after the first request at
+Mercury, with no backlog — so the handle stays responsive while the route
+catches up.
+
 The powered plans already sit at the left end, so there is no "burn harder"
 above them. A faster torch trip needs a stronger drive (a data value). The slider
 therefore only stretches the existing torch plan: the drive stays on, just more

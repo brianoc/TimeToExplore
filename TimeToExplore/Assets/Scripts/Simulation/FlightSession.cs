@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using TimeToExplore.Core;
 
 namespace TimeToExplore.Simulation
@@ -45,10 +46,18 @@ namespace TimeToExplore.Simulation
     /// and the caller must clamp the clock to it rather than let the world run
     /// ahead of the ship.
     ///
+    /// A retime can also run on a background thread: <see cref="RequestPreviewDuration"/>
+    /// enqueues a latest-wins request, the worker builds it with its own planner
+    /// and gravity field, and <see cref="TryApplyCompletedRetime"/> publishes the
+    /// finished plan on the main thread. The synchronous
+    /// <see cref="SetPreviewDuration"/> remains the deterministic path for
+    /// callers that need a plan immediately.
+    ///
     /// This class is plain C# with no Unity dependency, so the whole flight loop
-    /// is verifiable in EditMode tests without a scene.
+    /// is verifiable in EditMode tests without a scene. Dispose it to stop the
+    /// retime worker: the scene calls it from the bootstrap's teardown.
     /// </summary>
-    public sealed class FlightSession
+    public sealed class FlightSession : IDisposable
     {
         /// <summary>Default RK4 substep budget for one rendered frame.</summary>
         public const int DefaultSubstepsPerFrame = 2_000;
@@ -91,6 +100,35 @@ namespace TimeToExplore.Simulation
         /// rebuilds from this rather than the current (possibly coasted) state,
         /// so the preview stays one coherent draft.</summary>
         private ShipState _previewDeparture;
+
+        /// <summary>How long <see cref="Dispose"/> waits for an in-flight
+        /// background retime to finish. A retime is one <c>PlanAtDuration</c>
+        /// build (about 100–150 ms at the epoch), so this is generous; the worker
+        /// is a background thread and checks the stop flag before publishing, so
+        /// a thread that somehow outlives the wait still cannot touch a
+        /// discarded plan.</summary>
+        public const int RetimeJoinMilliseconds = 5_000;
+
+        /// <summary>Guards the request queue, the finished plan, and the stop
+        /// flag. The worker never reads a plan the session has published, and
+        /// the main thread never mutates a plan the worker is building.</summary>
+        private readonly object _retimeLock = new object();
+
+        private Thread _retimeThread;
+        private bool _retimeStop;
+        private bool _retimeBusy;
+        private long _retimeGeneration;
+        private RetimeRequest _pendingRetime;
+        private TrajectoryPlan _completedRetime;
+        private long _completedRetimeGeneration;
+        private string _retimeFailure;
+        private double _requestedPreviewSeconds = double.NaN;
+
+        /// <summary>The worker's own planner and gravity field. The field is
+        /// mutable (it prepares an active set), so sharing the flight
+        /// simulation's instance would race the integrator; the catalogue is
+        /// read-only, so a second field over the same model is isolated.</summary>
+        private TripPlanner _retimePlanner;
 
         public FlightSession(SolarSystemModel model, GravityField gravity, TripPlanner planner,
             ShipIntegrator integrator = null)
@@ -272,6 +310,7 @@ namespace TimeToExplore.Simulation
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
+            CancelRetime();
             _previewDeparture = _state.WithJulianDate(julianDate);
             PreviewWindow window = WindowFor(targetId, julianDate);
             Preview = window.Plan;
@@ -293,10 +332,285 @@ namespace TimeToExplore.Simulation
         {
             if (Preview == null) return null;
 
+            // A synchronous retime is the authoritative answer: drop any
+            // outstanding background request so it cannot publish over this.
+            CancelRetime();
             double minimum = PreviewMinimumSeconds;
             double duration = Math.Clamp(seconds, minimum, PreviewMaximumSeconds);
             Preview = _planner.PlanAtDuration(_previewDeparture, Preview.TargetId, duration);
             return Preview;
+        }
+
+        /// <summary>
+        /// Ask for the preview to be re-timed on a background thread. This is
+        /// the slider's path: it returns immediately, the newest request wins,
+        /// and a plan that finishes after a newer ask arrived is discarded. The
+        /// published preview is left in place until
+        /// <see cref="TryApplyCompletedRetime"/> publishes the finished plan, so
+        /// the route and report never fall back to the fast search model: every
+        /// plan handed out is the full-field build.
+        ///
+        /// The request is clamped to the preview's window exactly as
+        /// <see cref="SetPreviewDuration"/> clamps it, and the worker's planner
+        /// copies the session planner's configuration, so the background plan is
+        /// the same plan the synchronous path would build for that duration.
+        /// Returns false when there is no preview or the session has been
+        /// disposed.
+        /// </summary>
+        public bool RequestPreviewDuration(double seconds)
+        {
+            if (Preview == null) return false;
+
+            double duration = Math.Clamp(seconds, PreviewMinimumSeconds,
+                PreviewMaximumSeconds);
+            var request = new RetimeRequest(_previewDeparture, Preview.TargetId, duration,
+                CruiseProfile, ArrivalStyle, _planner);
+
+            lock (_retimeLock)
+            {
+                if (_retimeStop) return false;
+
+                _retimeGeneration++;
+                request.Generation = _retimeGeneration;
+                _pendingRetime = request;
+                _completedRetime = null; // a newer ask supersedes a finished one
+                _requestedPreviewSeconds = duration;
+                Monitor.Pulse(_retimeLock);
+            }
+
+            StartRetimeWorker();
+            return true;
+        }
+
+        /// <summary>
+        /// Publish a finished background retime, on the main thread. Returns
+        /// false when nothing is waiting, when a newer request has superseded
+        /// the finished plan, or when the preview has gone away since the build
+        /// started; in every case the current preview is left untouched. The
+        /// caller applies the returned plan to the route and the report.
+        /// </summary>
+        public bool TryApplyCompletedRetime(out TrajectoryPlan plan)
+        {
+            plan = null;
+
+            lock (_retimeLock)
+            {
+                if (_completedRetime == null) return false;
+
+                if (_completedRetimeGeneration != _retimeGeneration)
+                {
+                    _completedRetime = null;
+                    return false;
+                }
+
+                plan = _completedRetime;
+                _completedRetime = null;
+            }
+
+            if (Preview == null || Preview.TargetId != plan.TargetId) return false;
+
+            Preview = plan;
+            _requestedPreviewSeconds = plan.FlightTimeSeconds;
+            return true;
+        }
+
+        /// <summary>True while a background retime is queued, building, or
+        /// finished and waiting to be published. The slider uses it to keep the
+        /// handle where the player put it instead of snapping back to the
+        /// published plan's older duration.</summary>
+        public bool IsRetimePending
+        {
+            get
+            {
+                lock (_retimeLock) return HasOutstandingRetimeLocked;
+            }
+        }
+
+        /// <summary>The trip time the player last asked for while a background
+        /// retime is outstanding, or NaN when none is. The published preview is
+        /// the last full-field plan; this is the newer ask that is still being
+        /// built.</summary>
+        public double PendingPreviewSeconds
+        {
+            get
+            {
+                lock (_retimeLock)
+                    return HasOutstandingRetimeLocked
+                        ? _requestedPreviewSeconds
+                        : double.NaN;
+            }
+        }
+
+        /// <summary>True while there is an ask that will still be published: a
+        /// queued or completed request, or a build in flight, and a requested
+        /// duration that has not been cancelled. A stale build that is still
+        /// unwinding after a discard is not outstanding.</summary>
+        private bool HasOutstandingRetimeLocked =>
+            !double.IsNaN(_requestedPreviewSeconds) &&
+            (_pendingRetime != null || _completedRetime != null || _retimeBusy);
+
+        /// <summary>True while the worker is building a request. A finished but
+        /// still-unpublished plan is not building; see
+        /// <see cref="IsRetimePending"/>.</summary>
+        public bool IsRetimeBuilding
+        {
+            get
+            {
+                lock (_retimeLock) return _retimeBusy;
+            }
+        }
+
+        /// <summary>True while the background retime thread is alive. A
+        /// diagnostic for the lifecycle test: a disposed session reports false
+        /// once the thread has stopped, and a session that never asked for a
+        /// background retime reports false.</summary>
+        public bool HasRetimeWorker
+        {
+            get
+            {
+                lock (_retimeLock)
+                    return _retimeThread != null && _retimeThread.IsAlive;
+            }
+        }
+
+        /// <summary>Take the background retime's last failure, if any, and clear
+        /// it. The worker cannot log; the main thread does. A failure discards
+        /// the plan and leaves the published preview alone.</summary>
+        public string TakeRetimeFailure()
+        {
+            lock (_retimeLock)
+            {
+                string failure = _retimeFailure;
+                _retimeFailure = null;
+                return failure;
+            }
+        }
+
+        /// <summary>Drop a queued, built, or in-flight background retime. Called
+        /// when the preview is replaced or discarded: a plan for an older
+        /// preview must never be published over the new one.</summary>
+        private void CancelRetime()
+        {
+            lock (_retimeLock)
+            {
+                _retimeGeneration++;
+                _pendingRetime = null;
+                _completedRetime = null;
+                _requestedPreviewSeconds = double.NaN;
+            }
+        }
+
+        private void StartRetimeWorker()
+        {
+            lock (_retimeLock)
+            {
+                if (_retimeStop) return;
+                if (_retimeThread != null && _retimeThread.IsAlive) return;
+
+                // The worker's own field: GravityField keeps a prepared active
+                // set, so it must not be the instance the flight integrator uses.
+                if (_retimePlanner == null)
+                    _retimePlanner = new TripPlanner(_model, new GravityField(_model));
+
+                _retimeThread = new Thread(RetimeLoop)
+                {
+                    IsBackground = true,
+                    Name = "TimeToExplore preview retime"
+                };
+                _retimeThread.Start();
+            }
+        }
+
+        /// <summary>
+        /// The worker: wait for a request, build it, and publish only if no newer
+        /// request has arrived. A superseded build is dropped and the newest
+        /// request is taken next, so a drag never queues work behind stale plans.
+        /// </summary>
+        private void RetimeLoop()
+        {
+            while (true)
+            {
+                RetimeRequest request;
+                lock (_retimeLock)
+                {
+                    while (!_retimeStop && _pendingRetime == null)
+                        Monitor.Wait(_retimeLock);
+
+                    if (_retimeStop) return;
+
+                    request = _pendingRetime;
+                    _pendingRetime = null;
+                    _retimeBusy = true;
+                }
+
+                TrajectoryPlan plan = null;
+                string failure = null;
+                try
+                {
+                    plan = BuildRetime(request);
+                }
+                catch (Exception error)
+                {
+                    // Never let an exception kill the worker: a dead thread
+                    // would leave every later request waiting for ever.
+                    failure = error.Message;
+                }
+
+                lock (_retimeLock)
+                {
+                    _retimeBusy = false;
+                    if (_retimeStop) return;
+
+                    if (failure != null)
+                    {
+                        if (request.Generation == _retimeGeneration)
+                            _retimeFailure = failure;
+                        continue;
+                    }
+
+                    if (request.Generation == _retimeGeneration)
+                    {
+                        _completedRetime = plan;
+                        _completedRetimeGeneration = request.Generation;
+                    }
+                }
+            }
+        }
+
+        /// <summary>One background build. Runs on the worker thread only: the
+        /// planner and its gravity field belong to that thread for the session's
+        /// life.</summary>
+        private TrajectoryPlan BuildRetime(RetimeRequest request)
+        {
+            request.ApplyTo(_retimePlanner);
+            return _retimePlanner.PlanAtDuration(request.Departure, request.TargetId,
+                request.DurationSeconds);
+        }
+
+        /// <summary>Stop and join the retime worker. Safe to call more than once
+        /// and from a session that never started one. After this, a retime
+        /// request is refused rather than starting a new thread.</summary>
+        public void Dispose()
+        {
+            Thread thread;
+            lock (_retimeLock)
+            {
+                _retimeStop = true;
+                _retimeGeneration++;
+                _pendingRetime = null;
+                _completedRetime = null;
+                _requestedPreviewSeconds = double.NaN;
+                Monitor.PulseAll(_retimeLock);
+                thread = _retimeThread;
+            }
+
+            if (thread != null && thread != Thread.CurrentThread)
+                thread.Join(RetimeJoinMilliseconds);
+
+            lock (_retimeLock)
+            {
+                if (_retimeThread == thread) _retimeThread = null;
+            }
         }
 
         /// <summary>
@@ -362,6 +676,7 @@ namespace TimeToExplore.Simulation
         {
             if (Preview == null) return null;
 
+            CancelRetime();
             double requested = Preview.FlightTimeSeconds;
             string targetId = Preview.TargetId;
 
@@ -415,9 +730,11 @@ namespace TimeToExplore.Simulation
             _windowEpoch = double.NaN;
         }
 
-        /// <summary>Forget the preview, if there is one.</summary>
+        /// <summary>Forget the preview, if there is one, and drop any background
+        /// retime that belonged to it.</summary>
         public void DiscardPreview()
         {
+            CancelRetime();
             Preview = null;
             PreviewJulianDate = double.NaN;
             PreviewMinimumSeconds = double.NaN;
@@ -797,6 +1114,69 @@ namespace TimeToExplore.Simulation
             Throttle = Plan.MaxAccelerationMps2 > 0.0
                 ? CurrentThrust.Throttle(Plan.MaxAccelerationMps2)
                 : 0.0;
+        }
+
+        /// <summary>One background retime: the pinned departure, the target, the
+        /// chosen duration, the session planner's configuration, and the
+        /// generation that makes it latest-wins. Immutable apart from
+        /// <see cref="Generation"/>, which only the requesting thread sets
+        /// before the request is queued.</summary>
+        private sealed class RetimeRequest
+        {
+            public RetimeRequest(ShipState departure, string targetId, double durationSeconds,
+                CruiseStyle cruise, CaptureStyle arrival, TripPlanner settings)
+            {
+                Departure = departure;
+                TargetId = targetId;
+                DurationSeconds = durationSeconds;
+                Cruise = cruise;
+                Arrival = arrival;
+                BurnLevelG = settings.BurnLevelG;
+                MaxAccelerationMps2 = settings.MaxAccelerationMps2;
+                ThrustMargin = settings.ThrustMargin;
+                EntrySpeedMps = settings.EntrySpeedMps;
+                EscapeSpeedMps = settings.EscapeSpeedMps;
+                ArcSamples = settings.ArcSamples;
+                MaxIterations = settings.MaxIterations;
+                ConvergenceTolerance = settings.ConvergenceTolerance;
+                ParkingPhaseOffsetRad = settings.ParkingPhaseOffsetRad;
+            }
+
+            public ShipState Departure { get; }
+            public string TargetId { get; }
+            public double DurationSeconds { get; }
+            public CruiseStyle Cruise { get; }
+            public CaptureStyle Arrival { get; }
+            public double BurnLevelG { get; }
+            public double MaxAccelerationMps2 { get; }
+            public double ThrustMargin { get; }
+            public double EntrySpeedMps { get; }
+            public double EscapeSpeedMps { get; }
+            public int ArcSamples { get; }
+            public int MaxIterations { get; }
+            public double ConvergenceTolerance { get; }
+            public double ParkingPhaseOffsetRad { get; }
+
+            /// <summary>Set by <see cref="RequestPreviewDuration"/> before the
+            /// request is queued; the worker only reads it.</summary>
+            public long Generation { get; set; }
+
+            /// <summary>Copy this request onto the worker's own planner. The
+            /// worker is its only caller.</summary>
+            public void ApplyTo(TripPlanner planner)
+            {
+                planner.CruiseStyle = Cruise;
+                planner.ArrivalStyle = Arrival;
+                planner.BurnLevelG = BurnLevelG;
+                planner.MaxAccelerationMps2 = MaxAccelerationMps2;
+                planner.ThrustMargin = ThrustMargin;
+                planner.EntrySpeedMps = EntrySpeedMps;
+                planner.EscapeSpeedMps = EscapeSpeedMps;
+                planner.ArcSamples = ArcSamples;
+                planner.MaxIterations = MaxIterations;
+                planner.ConvergenceTolerance = ConvergenceTolerance;
+                planner.ParkingPhaseOffsetRad = ParkingPhaseOffsetRad;
+            }
         }
 
         /// <summary>One cached preview window: the fastest feasible plan and the

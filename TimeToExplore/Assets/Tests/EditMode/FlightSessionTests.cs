@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -29,6 +31,13 @@ namespace TimeToExplore.Tests.EditMode
             _session = new FlightSession(_model, _gravity, _planner);
             _epoch = _model.CurrentJulianDate;
             _session.PlaceAt("gateway", _epoch);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            // A retime test starts the worker; every test ends without a thread.
+            _session?.Dispose();
         }
 
         [Test]
@@ -568,6 +577,198 @@ namespace TimeToExplore.Tests.EditMode
         public void AnUnknownTargetIsRejected()
         {
             Assert.Throws<ArgumentException>(() => _session.Begin("planet-x", _epoch));
+        }
+
+        // --- The background retime ---------------------------------------------
+
+        /// <summary>
+        /// The slider's path: the newest request wins. The first request is
+        /// already building when the second is queued, so the finished first
+        /// plan is stale; it must never be published, and the second must be.
+        /// </summary>
+        [Test]
+        public void TheBackgroundRetimePublishesTheNewestRequestAndDropsTheStaleOne()
+        {
+            TrajectoryPlan initial = _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            double first = 1.25 * minimum;
+            double second = 1.75 * minimum;
+
+            Assert.That(_session.RequestPreviewDuration(first), Is.True);
+            WaitUntil(() => _session.IsRetimeBuilding,
+                "the first retime never started building");
+
+            Assert.That(_session.RequestPreviewDuration(second), Is.True);
+            Assert.That(_session.Preview, Is.SameAs(initial),
+                "the published preview stays until the newest plan is ready");
+
+            TrajectoryPlan published = WaitForPublishedRetime();
+            Assert.That(published.FlightTimeSeconds, Is.EqualTo(second).Within(1e-3),
+                "the newest request is the one that reaches the HUD");
+            Assert.That(_session.Preview, Is.SameAs(published));
+            Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(second).Within(1e-3));
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN,
+                "nothing is outstanding once the newest plan is published");
+            Assert.That(_session.IsRetimePending, Is.False);
+        }
+
+        /// <summary>
+        /// The worker's plan is the same plan the deterministic synchronous path
+        /// builds for the same inputs. Both are full-field builds: the worker
+        /// gets its own planner and gravity field, not the flight simulation's.
+        /// </summary>
+        [Test]
+        public void TheBackgroundPlanEqualsTheSynchronousPlan()
+        {
+            _session.Plot("mars", _epoch);
+            double chosen = 1.6 * _session.PreviewMinimumSeconds;
+
+            _session.RequestPreviewDuration(chosen);
+            TrajectoryPlan background = WaitForPublishedRetime();
+
+            TrajectoryPlan synchronous = _session.SetPreviewDuration(chosen);
+
+            Assert.That(background.FlightTimeSeconds,
+                Is.EqualTo(synchronous.FlightTimeSeconds).Within(1e-6));
+            Assert.That(background.ArrivalJulianDate,
+                Is.EqualTo(synchronous.ArrivalJulianDate).Within(1e-12));
+            Assert.That(background.Arcs.Count, Is.EqualTo(synchronous.Arcs.Count));
+            Assert.That(background.PeakThrustMps2,
+                Is.EqualTo(synchronous.PeakThrustMps2).Within(1e-9));
+            Assert.That(background.DeltaVMps,
+                Is.EqualTo(synchronous.DeltaVMps).Within(1e-6));
+            Assert.That(background.MinimumClearanceM,
+                Is.EqualTo(synchronous.MinimumClearanceM).Within(1.0));
+            Assert.That(background.IsFeasible, Is.EqualTo(synchronous.IsFeasible));
+            Assert.That(background.PeakThrustMps2,
+                Is.LessThanOrEqualTo(background.MaxAccelerationMps2 * (1.0 + 1e-6)),
+                "the published plan is the full-field certified one");
+        }
+
+        /// <summary>
+        /// A pending request does not disturb the published preview: the plan,
+        /// its duration, its arrival and its route stay the last full-field
+        /// plan until the worker hands over a newer one.
+        /// </summary>
+        [Test]
+        public void ThePreviousPreviewRemainsPublishedUntilTheNewPlanIsReady()
+        {
+            TrajectoryPlan initial = _session.Plot("mars", _epoch);
+            int arcs = initial.Arcs.Count;
+            double arrival = initial.ArrivalJulianDate;
+            double asked = 2.0 * _session.PreviewMinimumSeconds;
+
+            _session.RequestPreviewDuration(asked);
+
+            Assert.That(_session.Preview, Is.SameAs(initial));
+            Assert.That(_session.PreviewDurationSeconds,
+                Is.EqualTo(initial.FlightTimeSeconds));
+            Assert.That(_session.Preview.ArrivalJulianDate, Is.EqualTo(arrival));
+            Assert.That(_session.Preview.Arcs.Count, Is.EqualTo(arcs));
+            Assert.That(_session.PendingPreviewSeconds, Is.EqualTo(asked).Within(1e-3),
+                "the handle's ask is still visible while the plan lags");
+            Assert.That(_session.IsRetimePending, Is.True);
+
+            TrajectoryPlan published = WaitForPublishedRetime();
+            Assert.That(published, Is.Not.SameAs(initial));
+            Assert.That(_session.Preview, Is.SameAs(published));
+            Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(asked).Within(1e-3));
+        }
+
+        /// <summary>
+        /// Discarding the preview drops an outstanding retime: a plan for the
+        /// old preview must never appear over the new state.
+        /// </summary>
+        [Test]
+        public void DiscardingThePreviewDropsAnOutstandingRetime()
+        {
+            _session.Plot("mars", _epoch);
+            _session.RequestPreviewDuration(1.5 * _session.PreviewMinimumSeconds);
+            WaitUntil(() => _session.IsRetimeBuilding, "the retime never started building");
+
+            _session.DiscardPreview();
+
+            Assert.That(_session.IsRetimePending, Is.False,
+                "a discarded ask can no longer be published");
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN);
+
+            // The stale build still finishes on the worker; it must be dropped.
+            WaitUntil(() => !_session.IsRetimeBuilding,
+                "the discarded build never finished");
+            Assert.That(_session.TryApplyCompletedRetime(out _), Is.False);
+            Assert.That(_session.HasPreview, Is.False);
+        }
+
+        /// <summary>
+        /// A synchronous retime is authoritative: it cancels an outstanding ask,
+        /// publishes its own plan immediately, and the worker's stale build is
+        /// dropped when it lands.
+        /// </summary>
+        [Test]
+        public void ASynchronousRetimeSupersedesAnOutstandingBackgroundAsk()
+        {
+            _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            _session.RequestPreviewDuration(1.4 * minimum);
+            WaitUntil(() => _session.IsRetimeBuilding, "the retime never started building");
+
+            TrajectoryPlan synchronous = _session.SetPreviewDuration(1.8 * minimum);
+
+            Assert.That(synchronous.FlightTimeSeconds, Is.EqualTo(1.8 * minimum).Within(1e-3));
+            Assert.That(_session.Preview, Is.SameAs(synchronous));
+            Assert.That(_session.IsRetimePending, Is.False,
+                "the background ask was superseded, not left dangling");
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN);
+
+            WaitUntil(() => !_session.IsRetimeBuilding,
+                "the superseded build never finished");
+            Assert.That(_session.TryApplyCompletedRetime(out _), Is.False,
+                "the superseded build must not publish over the synchronous plan");
+            Assert.That(_session.Preview, Is.SameAs(synchronous));
+        }
+
+        /// <summary>
+        /// The lifecycle: Dispose joins the worker, refuses new requests, and a
+        /// disposed session never publishes. A test that ends with an alive
+        /// worker would hang the editor's domain reload, so this is the guard.
+        /// </summary>
+        [Test]
+        public void DisposingTheSessionStopsTheRetimeWorker()
+        {
+            _session.Plot("mars", _epoch);
+            Assert.That(_session.RequestPreviewDuration(
+                1.5 * _session.PreviewMinimumSeconds), Is.True);
+            Assert.That(_session.HasRetimeWorker, Is.True,
+                "the first request starts the worker");
+
+            _session.Dispose();
+
+            Assert.That(_session.HasRetimeWorker, Is.False, "Dispose joins the worker");
+            Assert.That(_session.RequestPreviewDuration(
+                2.0 * _session.PreviewMinimumSeconds), Is.False,
+                "a disposed session refuses new work instead of starting a thread");
+            Assert.That(_session.TryApplyCompletedRetime(out _), Is.False);
+            Assert.That(_session.HasRetimeWorker, Is.False);
+        }
+
+        /// <summary>The test-side equivalent of the HUD's per-frame pump: wait
+        /// for a finished plan and publish it on this thread.</summary>
+        private TrajectoryPlan WaitForPublishedRetime()
+        {
+            TrajectoryPlan published = null;
+            WaitUntil(() => _session.TryApplyCompletedRetime(out published),
+                "no retimed plan was published");
+            return published;
+        }
+
+        private static void WaitUntil(Func<bool> condition, string message)
+        {
+            var watch = Stopwatch.StartNew();
+            while (!condition())
+            {
+                if (watch.Elapsed.TotalSeconds > 20.0) Assert.Fail(message);
+                Thread.Sleep(1);
+            }
         }
     }
 }
