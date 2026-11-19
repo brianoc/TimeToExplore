@@ -41,5 +41,7 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
    failure and last command in the handoff, and stop for any design decision
    the notes do not settle.
 
-Details: [Testing and verification](/technical/testing.md). The full working
-rules are in `AGENTS.md`.
+Details: [Testing and verification](/technical/testing.md). Working in a linked
+git worktree, and the files that always conflict when two branches merge, are in
+[Working in a worktree](/technical/worktrees.md). The full working rules are in
+`AGENTS.md`.

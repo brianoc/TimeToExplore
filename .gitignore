@@ -41,7 +41,7 @@ crashlytics-build.properties
 .cache/
 
 # Python
-.venv/
+.venv
 __pycache__/
 *.py[cod]
 

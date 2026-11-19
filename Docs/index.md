@@ -52,6 +52,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it in debug flight.
 * [The system map and route preview](/technical/system-map.md) — the blended top-down map, map drawing and picking, the local aid fade, Plot route → Begin, and the frame-loop acceptance are built; the ADR/docs pass is next.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
+* [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.
 * [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, and the galactic frame behind the orrery.
