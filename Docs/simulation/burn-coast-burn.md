@@ -1,34 +1,42 @@
 ---
 type: Design Document
 title: Burn–coast–burn trips
-description: The trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
+description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
-status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-18T00:00:00Z }
+status: accepted
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # The trip
 
-Leave a planet, cross to another, and park there. The ship should be able to:
+Leave a planet, cross to another, and park there. The ship:
 
-1. break out of its parking orbit,
-2. burn hard for a while and build speed,
-3. coast with the drive off, still travelling fast,
-4. flip and burn hard to slow down,
-5. drop into the target's parking orbit.
+1. breaks out of its parking orbit,
+2. burns hard for a while and builds speed,
+3. coasts with the drive off, still travelling fast,
+4. flips and burns hard to slow down,
+5. drops into the target's parking orbit.
 
 This is the standard **burn–coast–burn** profile, sometimes called a
 brachistochrone with a coast. It is not exotic physics. It is the profile most
 torch-ship fiction uses, and it sits between the two extremes the planner
 already has: the all-torch quintic (fast, ruinously expensive) and the
-Hohmann-like coast (slow, cheap).
+Hohmann-like coast (slow, cheap). It ships as
+`TripPlanner.CruiseStyle.BurnCoastBurn`.
 
 # Four ingredients, not four journeys
 
-The current planner offers three fixed recipes: all-quintic, conic arrival, and
+The planner started with three fixed recipes: all-quintic, conic arrival, and
 hybrid arrival. The route colours made them look like three separate kinds of
 trip. They are really three **arc shapes**, plus one solver, and a trip can mix
-them:
+them. Since this profile landed, the nav computer separates the two questions:
+
+* the **`PROFILE`** row chooses the crossing — **Powered** (the default),
+  **Coast**, or **Burn-coast-burn**;
+* the **`ARRIVAL`** row chooses the capture — **Quintic capture**, **Conic
+  coast**, or the hybrid **X g burn**.
+
+The new cruise profile is built from the same ingredients as the others:
 
 | Ingredient | What it is | Drive | Best at |
 |---|---|---|---|
@@ -50,8 +58,10 @@ leave orbit      burn hard        coast           brake          enter orbit
     gold             red             blue            red          blue/gold
 ```
 
-Every arc type already exists. The current planner simply does not emit this
-recipe.
+Every arc type already existed. The planner now emits this recipe as
+`TripPlanner.CruiseStyle.BurnCoastBurn`, and the nav computer's `PROFILE` row
+selects it. `CruiseStyle.Coast` is the same coast without the two burns, and it
+is reachable on its own.
 
 The capture is deliberately the conic or hybrid capture, not a quintic: a
 quintic capture cannot command less thrust than the parking orbit's own gravity,
@@ -90,50 +100,51 @@ The cost: it is not fuel-optimal, and the seams between a shaped arc, a fixed
 burn, and a coast need care. That is an acceptable trade for a first flyable
 profile.
 
-# What exists
+# What shipped
 
-**Exists:** `Quintic`, `ConicArc`, `FiniteBurnArc`, the conic and hybrid
-captures, the autopilot, coasts and burns as plan phases, dashed coasts, burn
-markers, and the route legend.
+1. **The Lambert solver.** In Core as `LambertSolver.SolveShortWay` (zero-rev,
+   prograde, short-way). It returns `v₁`, `v₂`, and the swept transfer angle, and
+   reports a rejected geometry through `HasSolution == false` rather than
+   throwing.
+2. **The coast skeleton.** `TripPlanner.CruiseStyle.Coast` retargets the quintic
+   departure to the Lambert `v₁`, coasts on a heliocentric `ConicArc`, and hands
+   the existing conic or hybrid capture its entry state. The handover is an
+   impulse at the target's sphere of influence; at 200 days to Mars it is
+   14 km/s in total.
+3. **The burns.** `TripPlanner.CruiseStyle.BurnCoastBurn` is quintic break →
+   prograde departure burn → Lambert coast → brake → conic or hybrid capture.
+   Both burns sit about the Sun. The departure burn spends the coast's departure
+   speed above the local escape speed, so its delta-v is independent of the
+   level; the brake spends the handover the coast skeleton would have made an
+   impulse. Both of the profile's burns are placed by integrating them backwards
+   from the state the next arc must begin at, so each seam is continuous and the
+   arrival is exact.
+4. **The control.** The nav computer's `PROFILE` row selects Powered, Coast, or
+   Burn-coast-burn; the trip-time slider is the profile's speed control and its
+   window is that profile's own feasible range; the existing burn-level slider
+   is the level both burns are planned at.
 
-**Built since this note was written:**
+The measured window at the epoch is **57.44 to 152.57 days** for the
+Gateway→Mars burn–coast–burn profile, against the powered plan's 4.4 days and
+the cheap coast's 200+. `Powered` is still the default, and `0 g` is exactly
+`CruiseStyle.Coast`.
 
-1. **The Lambert solver.** In Core as `LambertSolver.SolveShortWay`
-   (zero-rev, prograde, short-way).
-2. **The planner that stitches the arcs.** `TripPlanner.CruiseStyle.BurnCoastBurn`:
-   it chooses the burns and the coast so the chain closes on the moving target,
-   with the small fixed-point solve the conic planner uses.
-3. **The departure fixed burn.** A prograde finite burn about the Sun, the
-   mirror of the hybrid capture's retrograde arrival burn. It begins outside the
-   departure sphere of influence and spends the excess over escape.
-
-**Still missing:**
-
-4. **The control.** "How fast do I want to go" is the natural knob. The existing
-   trip-time slider is the right shape: short time = long burns, no coast; long
-   time = short burns, long coast. *Built:* the nav computer's `PROFILE` row
-   selects Powered, Coast, or Burn-coast-burn, the slider's window is the selected
-   profile's own feasible range, and the burn level is the level both burns are
-   planned at.
-
-# The first cut
+# How it was cut
 
 Two stages, both part of the same implementation:
 
-**Stage A — the coast skeleton.** Add the Lambert solver (zero-rev, prograde,
-short-way) and build a trip as a quintic departure retargeted to the Lambert's
-`v₁`, a heliocentric `ConicArc` coast, and the existing conic/hybrid capture.
-Landed as `TripPlanner.CruiseStyle.Coast`, with the powered cruise still the
-default.
+**Stage A — the coast skeleton.** Add the Lambert solver and build a trip as a
+quintic departure retargeted to the Lambert's `v₁`, a heliocentric `ConicArc`
+coast, and the existing conic/hybrid capture. Landed as
+`TripPlanner.CruiseStyle.Coast`.
 
 **Stage B — the burns.** Add the prograde departure fixed burn and the
 fixed-thrust brake, stitch the five arcs, and expose the burn level and the trip
-time. Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`: quintic break →
-departure burn → Lambert coast → brake → conic or hybrid capture, with no
-impulse at the target's sphere of influence. The chain is built backwards from
-the target, so every seam is continuous and the arrival is exact; the brake's
-direction is the change the chain needs, because a burn along the velocity can
-only change the speed. The control is still to come.
+time. Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`, with no impulse at the
+target's sphere of influence. Because a burn along the velocity can only change
+the speed, the brake's thrust direction is the change the chain needs and
+opposes the arrival velocity, not an anti-velocity direction. The nav-computer
+control landed in the plan's fourth step.
 
 # Not in the first cut
 
@@ -146,22 +157,24 @@ only change the speed. The control is still to come.
   remains the eventual answer ([ADR-006](/decisions/adr-006-quintic-plan.md)).
 - **Burning across a sphere of influence.** A long burn that crosses the SOI
   needs a reference-body handover. The first cut breaks orbit with the quintic
-  and starts the steady burn outside.
+  and starts the steady burn outside; a level or trip time that would force a
+  crossing is rejected.
 
-# Open choices
+# Settled choices
 
-- **Default profile.** The existing quintic capture stays the default until the
-  player has a reason to choose otherwise; with fuel modelled, the coast should
-  become the obvious default.
-- **Control units.** A trip time (matching the current slider) or a peak speed.
-  Time is the simpler first control.
-- **Brake and capture split.** The brake can stop at the target's heliocentric
-  velocity and hand over to the capture, or do part of the orbit insertion
-  itself. *Settled for the first cut:* the brake spends only the coast's
-  handover and hands the capture chain its entry state with no impulse; the
-  split is not optimised. The brake's thrust direction follows the change the
-  chain needs rather than the velocity alone, because a purely anti-velocity
-  burn cannot close the seam.
+- **Default profile.** `Powered` remains the default, matching the planner and
+  the nav computer; with fuel modelled, the coast becomes the obvious cheap
+  default.
+- **Control units.** A trip time, matching the existing slider. Time is the
+  simpler control, and its window is the selected profile's own feasible range.
+  The coasting profiles' right-hand end is probed from what the planner accepts,
+  not taken as three times the minimum: a long short-way transfer sweeps past
+  180°, and a slow coast would need an acceleration rather than a brake.
+- **Brake and capture split.** The brake spends only the coast's handover and
+  hands the capture chain its entry state with no impulse; the split is not
+  optimised. The brake's thrust direction follows the change the chain needs
+  rather than the velocity alone, because a purely anti-velocity burn cannot
+  close the seam.
 - **Slow crossings.** A coast that arrives slower than the target's frame needs
   an acceleration rather than a brake, so those trip times are rejected. The
   profile is the fast, expensive end of the trade; the coast remains the cheap,

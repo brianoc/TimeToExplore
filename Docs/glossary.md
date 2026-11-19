@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-18T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # Glossary
@@ -71,7 +71,7 @@ snap-to, a test) places the camera immediately.
 
 ## Thrust and manoeuvre vocabulary
 
-Four different questions hide under the word "thrust". Keep them apart:
+Five different questions hide under the word "thrust". Keep them apart:
 
 | Axis | Question | Members |
 |---|---|---|
@@ -79,6 +79,7 @@ Four different questions hide under the word "thrust". Keep them apart:
 | **Manoeuvre model** | How is the velocity change represented? | impulse, finite burn |
 | **Path shape** | What is the arc? | quintic, conic, finite-burn arc |
 | **Arrival choice** | How does the player end the target leg? | Quintic capture, Conic coast, Fixed-thrust arrival |
+| **Cruise profile** | How does the ship cross between the spheres of influence? | Powered, Coast, Burn-coast-burn |
 
 An **impulse** is a manoeuvre model, not a thrust profile. It is a Δv applied
 at an instant; the ship cannot fly it. The conic style's burns are *modelled*
@@ -107,8 +108,10 @@ or **continuous**; **capture**, **circularisation**, **departure**, or **trim**.
 
 **Coast** — an interval with the drive exactly off. A **coast arc** is a
 Keplerian `ConicArc`; a **parking coast** is the short one after
-circularisation; **burn-and-coast** is the deferred heliocentric regime. A
-quintic with a flat middle is not a coast.
+circularisation. A **Lambert coast** is the heliocentric middle chosen by
+`LambertSolver` from two positions and a time of flight; it is what
+**burn-and-coast** means in the flight model. A quintic with a flat middle is not
+a coast.
 
 ### Manoeuvre model
 
@@ -161,6 +164,17 @@ subtotal, by whichever model the style uses.
 coast"), and `CaptureStyle.FiniteBurn` ("X g burn", the hybrid). The code type
 says capture; prose says arrival. Use "arrival style" in prose.
 
+**Cruise profile** — the player's choice for how the ship crosses between the
+spheres of influence: `CruiseStyle.Powered` (the default powered quintic),
+`CruiseStyle.Coast` (the unpowered Lambert conic), and
+`CruiseStyle.BurnCoastBurn` (the quintic break, departure burn, Lambert coast,
+brake, and capture). The nav computer exposes it in the `PROFILE` row; an arrival
+style is the separate capture choice. `0 g` is exactly the `Coast` profile.
+
+**Brake** — the finite burn at the end of a burn–coast–burn crossing that spends
+the handover the unpowered coast would have made an impulse. Its thrust direction
+is the change the chain needs, not anti-velocity.
+
 **Capture** — the target-leg phase from sphere-of-influence entry to the parking
 orbit. It is not one burn: the conic and hybrid styles contain an inbound coast,
 a capture burn or burn-plus-trim, a transfer coast, a circularisation burn, and a
@@ -195,7 +209,8 @@ arrival.
 
 **Burn level** — the player's fixed-thrust acceleration, from 0 g to 1 g,
 clamped to the drive's thrust margin. It is a property of the `FiniteBurn`
-arrival style, not a fourth style.
+arrival style and of the `BurnCoastBurn` profile's two burns, not a fourth
+arrival style.
 
 **Injection point** — the radius `r_i` where the fixed burn ends and the trim is
 applied. It starts at the conic periapsis, must be below the parking radius and

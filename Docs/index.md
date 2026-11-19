@@ -31,9 +31,9 @@ bundle-relative paths that stay valid when a document moves.
 
 * [Orbital mechanics](/simulation/orbital-mechanics.md) — Keplerian ephemerides, frames, and station Lagrange points.
 * [Time and scale](/simulation/time-and-scale.md) — units, epoch, time acceleration, and the precision budget.
-* [Flight model](/simulation/flight-model.md) — the 10 m/s² torch drive, travel times, and the two travel regimes.
+* [Flight model](/simulation/flight-model.md) — the 10 m/s² torch drive, travel times, the trip profiles, and the delta-v economy.
 * [Navigation and arrival](/simulation/navigation-and-arrival.md) — how the player plans an intercept, inserts into orbit, and docks.
-* [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the burn-hard, coast-fast, brake-into-orbit profile, and the four arc ingredients it mixes.
+* [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the shipped burn-hard, coast-fast, brake-into-orbit profile, the Lambert solver, and the four arc ingredients it mixes.
 
 # World
 

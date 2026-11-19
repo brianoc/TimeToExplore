@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # Current state — milestone 0
@@ -48,11 +48,17 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
   ellipse, and the conic parking radius, with the throttle stepping instead of
   blending ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)). At 0 g it is
   the conic plan.
+* A **Lambert coast cruise** and the **burn–coast–burn** profile: a zero-rev
+  prograde `LambertSolver`, a heliocentric `ConicArc` coast, and a prograde
+  departure finite burn plus a brake placed backwards from the capture chain's
+  entry state. The nav computer's `PROFILE` row selects Powered (the default),
+  Coast, or Burn-coast-burn, with the trip-time slider as that profile's speed
+  control ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)).
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
   validator, a byte-for-byte catalogue check, a pixel-for-pixel sky check, and
-  the Unity EditMode suite. The suite is 407 tests.
+  the Unity EditMode suite.
 
 **Acceptance:** open the project, press Play, see Earth and the Sun, warp time,
 watch the planets move, click a planet for its details, and jump to it in debug
@@ -76,8 +82,9 @@ Done in `Assets/Scripts/Simulation/`, verified headlessly by the EditMode suite:
 * An autopilot that tracks the plan with light position and velocity feedback.
 * A circular equatorial parking orbit per body, with a gravity ceiling that
   lifts the arrival orbit until local gravity is 40% of the drive.
-* 51 new tests: field, integrator, quintic, parking orbit and its ceiling, SOI,
-  planner, and end-to-end flight to Mars, Jupiter, and back to Earth.
+* The field, integrator, quintic, parking orbit and its ceiling, SOI, planner,
+  and end-to-end flight to Mars, Jupiter, and back to Earth are covered by the
+  new tests.
 
 **Acceptance met:** plan Gateway→Mars, fly it, and arrive within 0.01 m and
 0.0000 m/s of the parking orbit, then hold the orbit for three orbits at an
@@ -178,7 +185,9 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    Begin. It is a duration control over the existing torch plan. Beside it, the
    **arrival-style** buttons switch between the fast quintic capture and the
    cheap conic coast, so the time/delta-v choice is now in the nav computer. The
-   coast in the middle of the cruise is still deferred.
+   **`PROFILE`** row later added the unpowered `Coast` and the
+   `Burn-coast-burn` crossing, which closed the deferred coast-in-the-middle
+   item below.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
 the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
@@ -267,51 +276,57 @@ player-set level, with an impulse trim for exactness. The third arrival style is
   parked at `1.4 R`; the hybrid parks at the conic radius and, at Jupiter,
   spends 18.44 km/s instead of 19.68 while parking 17,477 km lower.
 * [ADR-015](../decisions/adr-015-fixed-thrust-burns.md) records the decision.
-  The departure and cruise remain powered quintics; a fixed-thrust cruise is
-  the deferred Lambert work below.
+  The departure and cruise were powered quintics at the time; the fixed-thrust
+  cruise landed later as the burn–coast–burn profile below.
 
-# Deferred: burn-and-coast trip planning
+# Done: burn–coast–burn trips (2026-11-19)
 
-The trip-time slider is the first half of the time/fuel choice: it re-solves the
-torch plan from the fastest feasible time out to three times that, with the
-arrival date and target position moving with it. The second half — **coast in
-the middle** — is still deferred. The conic arrival now supplies the coast *arc*,
-the impulsive burns, and the hybrid fixed-thrust variant, but the heliocentric
-middle of the trip is still a powered quintic.
+The heliocentric middle can now be a real Keplerian coast, and the profile most
+torch-ship fiction uses is flyable. The design is
+[Burn–coast–burn trips](/simulation/burn-coast-burn.md).
 
-* A coast is a Keplerian conic with the commanded thrust exactly zero. A quintic
-  with a flat middle still commands thrust in a gravity field, so it would be a
-  shaped burn pretending to be a coast.
-* The plan becomes departure burn → coast → capture burn, and arrival targeting
-  becomes a Lambert problem: two positions and a time of flight give the coast's
-  velocities. That brings a discontinuous feasible set — no solution below a
-  minimum energy for some geometries, and multiple-revolution branches — which
-  the UI has never had to express.
-* The first version can reuse `ConicArc` for the heliocentric cruise; the
-  missing piece is the Lambert solve that chooses its two end velocities. The
-  full porkchop search comes later.
-* Until then the slider is honest about its limits: it lengthens the torch plan
-  but never offers a coast, and its left end is the drive's own ceiling.
+* `LambertSolver.SolveShortWay` in Core answers the zero-rev, prograde, short-way
+  branch in universal variables and reports a rejected geometry as
+  `HasSolution == false`. The long way, the retrograde branch, and multi-rev
+  coasts are deliberately absent.
+* `CruiseStyle.Coast` replaces the powered cruise with a heliocentric
+  `ConicArc` chosen by the Lambert solve, with the quintic departure retargeted
+  to `v₁` and the conic/hybrid capture chain at the far end.
+* `CruiseStyle.BurnCoastBurn` adds a prograde departure finite burn and a brake,
+  both about the Sun. The chain is solved backwards from the capture chain's
+  entry state with `FiniteBurnArc.SimulateBackward`, so every seam is continuous
+  and the arrival is exact. The brake spends the handover the coast skeleton
+  would have made an impulse, so there is no impulse at the target's sphere of
+  influence; its thrust direction is the change the chain needs, because a burn
+  along the velocity can only change the speed. `0 g` is exactly the coast plan.
+* The nav computer's `PROFILE` row selects Powered (the default), Coast, or
+  Burn-coast-burn. The trip-time slider is the profile's speed control: the
+  powered window stays `3 × minimum`, while a coasting profile's right-hand end
+  is the slowest duration the planner accepts, probed because a long short-way
+  transfer sweeps past 180° and a slow coast would need an acceleration rather
+  than a brake. At the epoch the burn–coast–burn window is 57.44–152.57 days.
+* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 50 km/s in
+  total (a 13.7 km/s departure burn in 78 minutes, a 19.2 km/s brake in 3.1
+  hours, and the 83.7-day coast), against the cheap coast's 14 km/s at 200 days
+  and the torch plan's 2,345 km/s at 4.4 days. Seams close under a centimetre and
+  10⁻⁵ m/s; the flight arrives 0.1 m and 0.0001 m/s from the reference state.
 
 # Immediate next tasks
 
 1. Default `EnableMapView` on (or remove the switch) now that the comparison is
    done, so the shipped scene gets the map and the neighbourhood aid fade. This
    is the first small follow-up to milestone 2.5.
-2. Close the gap to the ideal profile with a bang-bang planner once fuel makes
-   time and delta-v compete. The conic arrival and the fixed-thrust arrival
-   already close part of it in delta-v. The next fidelity step is the same
-   fixed-thrust texture on the departure and cruise: a finite departure burn, a
-   Lambert coast, and the finite capture, which needs the Lambert and shooting
-   solve the conic arc does not provide.
+2. Add the porkchop search now that a Lambert solve exists: sample departure and
+   arrival dates, draw the time/cost heat map, and let the coast profiles choose
+   a window instead of planning "leave now".
 3. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.
 4. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-6. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
+5. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
-7. Add a fourth sky layer from a small catalogue of real bright stars
+6. Add a fourth sky layer from a small catalogue of real bright stars
    (RA/Dec/magnitude for the brightest few hundred), so the procedural field
    gains the navigable constellations it is missing
    ([The sky](/technical/sky.md)).
@@ -326,6 +341,7 @@ middle of the trip is still a powered quintic.
 | Float/depth artefacts on a target platform | Medium | Medium | Ship-relative rendering; reversed-Z; two-camera fallback |
 | Autopilot removes the gameplay | Medium | High | Autopilot handles long burns; the current build is plan-and-watch, and manual override and fuel are the milestone-3 answer |
 | The smooth plan is 35–75% slower than the design's tables | Certain | Medium | Show the plan's real time, not the ideal, in the HUD; close the gap with a bang-bang planner once fuel makes time and delta-v compete |
-| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted for the default quintic capture: the alternative is an unreachable destination. The conic arrival style restores lower, cheaper orbits at the cost of months of coasting, and the nav computer's arrival-style buttons expose the choice |
+| The gravity ceiling moves arrival orbits out on the big bodies | Certain | Medium | Accepted for the default quintic capture: the alternative is an unreachable destination. The conic arrival style restores lower, cheaper orbits at the cost of months of coasting, and the nav computer's arrival-style buttons expose the choice; a coasting profile always uses the conic or hybrid capture, so it never pays the ceiling |
+| A coasting profile's feasible trip times are discontinuous | Certain | Medium | The planner reports the rejected geometry, and the trip-time slider's right-hand end is probed from what the planner accepts rather than assumed, so no slider position asks for a refused plan |
 | Data accuracy drifts with epoch | Low | Low | Regenerate from JPL; document epoch and accuracy |
 | Scope grows beyond a solo project | High | High | Milestone gates; one ship, one system, no combat |

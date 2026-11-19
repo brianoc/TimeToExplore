@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-16T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -111,7 +111,8 @@ range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds`, and its value is th
 flight time in seconds. For the powered plan the maximum is three times the
 minimum; for a coasting profile it is the slowest duration the planner still
 accepts, because a long short-way Lambert transfer is rejected once it sweeps
-180° or its arrival no longer needs a brake. A change calls
+180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
+burn–coast–burn window is 57.44 to 152.57 days. A change calls
 `FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
 departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
 solve, no ship movement, and no camera move. The preview stays pinned to
@@ -263,7 +264,7 @@ replaced by a `DRIVE` summary in the same space:
 
 ```
 DRIVE
-  Departure burn  50.0 km/s · 1.3 h · 0.3 g
+  Departure burn  13.7 km/s · 1.3 h · 0.3 g
   Coast           drive off · 83.7 d
   Brake           19.2 km/s · 3.1 h · 0.3 g
   Capture         3.5 km/s · 1.4 d
@@ -369,22 +370,29 @@ camera, not the trajectory.
 clamping, cancel, teleport, a flight through a body, that planning leaves the
 orrery untouched, and the preview: it never moves the ship, one replaces
 another, Begin consumes it and replans at the current date, Cancel clears it,
-the staleness window is one percent of the flight, the trip-time window is
-`[minimum, 3 × minimum]`, retiming changes the flight time and arrival without
-moving the ship, and Begin keeps the chosen time. `TripPlannerTests` covers the
-pinned duration: exact flight time, a gentler burn and lower delta-v at twice
-the minimum, and an infeasible report below it. `WarpPolicyTests` covers
-the three caps and the scale rounding. `PlanPathTests` covers the arc boundaries
-and the flip. `FlightReportTests` covers the panel rows, the preview and stale
-rows, and the countdown format. `OrbitCameraTests` covers the pitch clamp, yaw
-wrap, zoom limits, the shortest turn, the slew rate, and the distance easing.
-`CameraRigTests` covers the framing distance and the follow flags.
+the staleness window is one percent of the flight, the powered trip-time window
+is `[minimum, 3 × minimum]` and clamps to it, retiming changes the flight time
+and arrival without moving the ship, and Begin keeps the chosen time.
+`SolarSystemHudTests` covers the profile control and the coasting window: the
+`PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
+burn–coast–burn slider ends at the slowest duration the planner accepts rather
+than at three times its minimum (57.44–152.57 days at the epoch).
+`TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
+and lower delta-v at twice the minimum, and an infeasible report below it.
+`CoastTripPlannerTests` and `BurnCoastBurnTripPlannerTests` cover the two Lambert
+profiles, and `LambertSolverTests` covers the solver itself. `WarpPolicyTests`
+covers the three caps and the scale rounding. `PlanPathTests` covers the arc
+boundaries and the flip. `FlightReportTests` covers the panel rows, the preview
+and stale rows, and the countdown format. `OrbitCameraTests` covers the pitch
+clamp, yaw wrap, zoom limits, the shortest turn, the slew rate, and the distance
+easing. `CameraRigTests` covers the framing distance and the follow flags.
 `SceneFlightTests` is the frame-loop acceptance flight. `BootstrapSmokeTests`
 runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit mode,
 including drawing the preview and its arrival ghost without flying, Begin
-replanning at the current date, discard leaving the ship alone, and the full
+replanning at the current date, discard leaving the ship alone, the full
 map-to-arrival acceptance (3,939 frames, 0.0 m and 0.0000 m/s, on the 3,898 km
-parking orbit).
+parking orbit), and the burn–coast–burn profile plotted and flown to the conic
+parking orbit through the same loop.
 
 See [Testing and verification](/technical/testing.md) for the suite and the
 numerical anchors, and [Navigation and arrival](/simulation/navigation-and-arrival.md)

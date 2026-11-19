@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # Shape of the prototype
@@ -108,8 +108,10 @@ graph and reads the `.asmdef` files as the source of truth. See
      markers and picks a body; the details screen updates from the same model
      state. uGUI owns the pointer over a panel, so a button press never also
      selects the body behind it.
-6. **Plot route** calls `TripPlanner.Plan` and draws the preview; its
-   **trip-time slider** re-solves the preview with `TripPlanner.PlanAtDuration`;
+6. **Plot route** calls `TripPlanner.Plan` and draws the preview; the
+   **`PROFILE`** and **`ARRIVAL`** rows rebuild it against the chosen cruise
+   profile, capture style, or burn level; its **trip-time slider** re-solves the
+   preview with `TripPlanner.PlanAtDuration` inside that profile's window;
    **Begin flight** replans and hands the ship to the session. On arrival the
    plan completes, the drive goes off, and the ship coasts in the parking orbit.
 
@@ -124,6 +126,7 @@ graph and reads the `.asmdef` files as the source of truth. See
 | `BodyRuntime` | `Scripts/Core/BodyRuntime.cs` | Per-body state, hierarchy, equatorial basis |
 | `SolarSystemModel` | `Scripts/Core/SolarSystemModel.cs` | Catalogue load, ordering, propagation |
 | `SimulationClock` | `Scripts/Core/SimulationClock.cs` | Julian date, warp, pause |
+| `LambertSolver` | `Scripts/Core/LambertSolver.cs` | Zero-rev prograde short-way coast solve: two positions and a time of flight → `v₁`, `v₂`, and the swept angle, with rejected geometry reported rather than thrown |
 | `SolarSystemData` | `Scripts/Core/SolarSystemData.cs` | JSON DTOs |
 
 # Flight core
@@ -143,8 +146,8 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `ConicElements` | `Scripts/Core/ConicElements.cs` | State → conic, the perifocal basis, and true anomaly ↔ time |
 | `IArcPath` | `Scripts/Simulation/IArcPath.cs` | The arc contract: position, velocity, acceleration, and the parameter/time mappings |
 | `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends; linear in time |
-| `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Planetocentric Keplerian coast, linear in true anomaly, re-added to the body's ephemeris |
-| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, and the radius-crossing solver step |
+| `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Keplerian coast around any body, linear in true anomaly, re-added to that body's ephemeris: the planetocentric capture and the heliocentric Lambert cruise |
+| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, the radius-crossing solver step, an optional fixed thrust direction, and `SimulateBackward` for the reverse-placed burns |
 | `TransferConic` | `Scripts/Simulation/TransferConic.cs` | The arrival hyperbola, periapsis and apoapsis burns, transfer ellipse, and circular state |
 | `HybridCapture` | `Scripts/Simulation/HybridCapture.cs` | The fixed capture burn, its injection radius and trim, the transfer ellipse, and the split |
 | `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive arc polyline with a scale-free chord tolerance |
@@ -152,10 +155,22 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (quintic, conic, or hybrid arrival; moving-target loop, thrust check), the burn level, and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the coast's Lambert stitching and reverse-placed burns, and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; re-times the preview; coasts an idle ship; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
+
+The planner crosses in one of three profiles: the powered quintic (`Powered`, the
+default), the zero-revolution prograde Lambert conic chosen by
+`LambertSolver.SolveShortWay` (`Coast`), or the same coast bookended by a
+prograde departure finite burn and a brake (`BurnCoastBurn`). The burn–coast–burn
+chain is built backwards from the capture chain's entry state with
+`FiniteBurnArc.SimulateBackward`, so every seam is continuous and the arrival is
+exact; the brake's thrust direction is the change the chain needs, not the
+instantaneous velocity. `CruiseStyle` and `CaptureStyle` are independent: the
+powered profile can pair with any of the three arrival styles, while a coasting
+profile builds the conic or hybrid capture, because a quintic capture cannot be
+fed by a coast.
 
 Gateway→Mars and Mars→Earth are both exercised end to end by the suite, and the
 same Mars trip is flown through the scene's frame loop.
@@ -376,7 +391,8 @@ The controller is an inspection tool now, not a flight model:
 
 | Input | Action |
 |---|---|
-| **Go To …** on the details screen | Plan and fly to the selected body; raises the warp |
+| **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
+| **Begin flight** | Replan and fly from the current state and date |
 | **Jump (debug)**, `F` | Three-second eased debug teleport to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |
@@ -437,6 +453,13 @@ per frame, each with four gravity evaluations over at most eight active bodies.
 The Mars acceptance flight used 63 substeps in its busiest frame, and the warp
 policy is what keeps it there.
 
+Planning a preview is a discrete cost, not a per-frame one. A coasting profile's
+trip-time window costs up to six extra `PlanAtDuration` builds at plot time, to
+probe the slowest duration the Lambert solve still accepts; each drag of the
+slider is one build, not a new minimum solve. The burn–coast–burn search adds
+its reverse integrations and up to six brake passes on top of the conic
+planner's pass.
+
 The orbit lines are the first thing to optimise: updating 30 × 161 positions per
 frame is unnecessary when the camera has not moved and the parent has barely
 moved. A dirty-flag or lower update rate (5–10 Hz) is an easy win.
@@ -462,7 +485,8 @@ Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its map
 blend (pose, input routing, pan, extended zoom, near plane), the map drawing
 rules and neighbourhood aid fade, the URP pipeline and shader wiring, the sky's
-texture and shader, the flight core, the input seam's key table and mouse
+texture and shader, the flight core (including the Lambert solver and both coast
+profiles), the input seam's key table and mouse
 conversions, the uGUI HUD's object graph, content, and button wiring, the
 assembly layout graph, the scene's frame loop, and the same map-to-arrival
 flight through the real bootstrap.
@@ -498,7 +522,8 @@ deferred until the presentation code settles.
   not a hand-flown ship.
 * No mid-flight re-plan beyond pressing **Replan** again, which replans from
   the current state and discards the old plan and any preview.
-* No Lambert solver, no coasting transfers, and no gravity assists.
+* No multi-revolution Lambert branch, no porkchop departure search, and no
+  gravity assists. The coast is zero-rev, prograde, and short-way only.
 * No stationkeeping drift.
 * No N-body perturbations.
 * No save/load.
@@ -522,12 +547,15 @@ deferred until the presentation code settles.
 # Extension points
 
 * **Fuel model:** charge `PlanArc.DeltaVMps` against a budget, grow the dry mass,
-  and re-plan when the budget cannot pay.
-* **Transfer-conic capture:** replace the capture quintic with a coasting arc
-  plus a periapsis burn, so arrivals on the giants are lower and cheaper instead
-  of parked high by the gravity ceiling.
-* **Lambert coasting:** a second planner for the burn-and-coast regime, sharing
-  the field and integrator.
+  and re-plan when the budget cannot pay. With fuel modelled, the cheap `Coast`
+  becomes the obvious default and the burn–coast–burn profile the expensive one.
+* **Porkchop search:** sample departure and arrival dates against
+  `LambertSolver.SolveShortWay` and show the time/cost heat map, so the coast
+  profiles pick a launch window instead of planning "leave now".
+* **Multi-rev coasts:** extend `OrbitMath.SolveKepler` and `ConicArc` to several
+  revolutions, then add the multi-rev Lambert branch and the long-way flag.
+* **Fixed-thrust spiral:** a continuous low-thrust cruise that does not coast on
+  a Lambert conic, for freighters.
 * **Manual override:** a thrust path that suspends the plan without cancelling
   it, so the player can hand-fly and then resume or re-plan.
 * **Save/load:** persist Julian date, ship state, fuel, and contract state; the

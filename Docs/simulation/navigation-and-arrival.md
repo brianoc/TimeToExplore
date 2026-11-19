@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # The problem
@@ -32,20 +32,21 @@ The navigation computer has four layers, in increasing fidelity:
 4. **Execution and correction.** Fly the plan with an autopilot, re-solve
    periodically, and hand control to the player for arrival.
 
-**The trajectory solve exists for the torch case.** `TripPlanner` builds a
-complete plan, `Autopilot` flies it, and the EditMode suite checks that the ship
-arrives on the parking orbit and stays there. In the scene, `FlightSession` owns
-the plan and advances the ship each frame, so pressing **Go To** flies it for
-real ([The flight session](../technical/flight-session.md)). The porkchop search
-is not implemented: Go To plans "leave now" and takes the first feasible trip.
+**The trajectory solve exists for every profile.** `TripPlanner` builds a complete
+plan, `Autopilot` flies it, and the EditMode suite checks that the ship arrives on
+the parking orbit and stays there. In the scene, `FlightSession` owns the plan and
+advances the ship each frame, so plotting a route and pressing **Begin flight**
+flies it for real ([The flight session](../technical/flight-session.md)). The
+porkchop search is not implemented: a plan is "leave now" at the first feasible
+trip.
 A **transfer-conic arrival** is implemented as an opt-in planner style: it
 coasts the inbound leg and captures impulsively at periapsis
 ([ADR-014](../decisions/adr-014-keplerian-coast.md)). A **Lambert coast cruise**
-(`CruiseStyle.Coast`) is the unpowered first stage of the burn–coast–burn
-profile: the powered middle is replaced by the zero-revolution prograde conic
-that reaches the target's sphere of influence on time. The fixed burns that
-bookend it have landed as `CruiseStyle.BurnCoastBurn`, so the planner can emit
-the whole five-arc profile; the nav computer's `PROFILE` buttons choose it.
+(`CruiseStyle.Coast`) replaces the powered middle with the zero-revolution
+prograde conic that reaches the target's sphere of influence on time. The fixed
+burns that bookend it landed as `CruiseStyle.BurnCoastBurn`, so the planner emits
+the whole five-arc profile; the nav computer's `PROFILE` buttons choose Powered,
+Coast, or Burn-coast-burn.
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
@@ -139,11 +140,13 @@ to Mars at 200 days: 14 km/s in total (6.0 km/s break, 3.9 km/s handover,
 2,345 km/s over 4.4 days. The flight arrives 0.1 m and 0.0000 m/s from the
 reference state and holds the conic parking orbit.
 
-The fourth recipe is a **burn–coast–burn** trip that mixes all four ingredients:
-a quintic departure, a fixed burn, a Lambert coast, a brake, and the conic or
-hybrid capture. [Burn–coast–burn trips](burn-coast-burn.md) sets out the profile,
-the speed/delta-v trade, and the first cut. The existing three arrival styles are
-fixed recipes; this one is built from the same arcs and the same capture chain.
+The third cruise profile is a **burn–coast–burn** trip that mixes all four
+ingredients: a quintic departure, a fixed burn, a Lambert coast, a brake, and the
+conic or hybrid capture. [Burn–coast–burn trips](burn-coast-burn.md) sets out the
+profile, the speed/delta-v trade, and how it shipped. The three arrival styles
+stay fixed capture recipes; this profile is a separate crossing built from the
+same arcs and the same capture chain, chosen by the `PROFILE` row rather than the
+`ARRIVAL` row.
 
 A **burn–coast–burn cruise** (`CruiseStyle.BurnCoastBurn`, default
 `CruiseStyle.Powered`) inserts the two finite burns into the coast skeleton. The
@@ -167,8 +170,9 @@ Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.7-day
 quintic break, a 78-minute departure burn of 13.7 km/s, an 84-day coast, a
 3.1-hour brake of 19.2 km/s, and the 3.5 km/s conic capture, 50 km/s in total
 against the coast plan's 14 km/s at 200 days. The fastest plan the planner finds
-on its own is 57 days at 89 km/s. The flight arrives 0.1 m and 0.0001 m/s from
-the reference state and holds the parking orbit. The nav computer exposes the
+on its own is 57.44 days at 89 km/s, and the trip-time window ends at 152.57
+days. The flight arrives 0.1 m and 0.0001 m/s from the reference state and holds
+the parking orbit. The nav computer exposes the
 cruise as a `PROFILE` row beside the arrival buttons — **Powered** (the
 default), **Coast**, and **Burn-coast-burn** — and the existing burn-level
 slider is the level both fixed burns are planned at; no second level control was
@@ -176,12 +180,13 @@ added.
 
 ## The trip-time control
 
-The preview carries a trip-time slider whose range is the fastest feasible plan
-to three times that. Each value is a build at an explicit duration: the arcs,
-the arrival date, and the intercept all move, and the panel reports the new
-flight time, peak thrust, and delta-v. It is a **duration** control, not a
-throttle cap, because `MaxAccelerationMps2` also sets the parking-orbit radius;
-lowering it would silently move where the ship parks.
+The preview carries a trip-time slider whose range is the selected profile's
+fastest feasible plan to the slowest one the planner accepts. Each value is a
+build at an explicit duration: the arcs, the arrival date, and the intercept all
+move, and the panel reports the new flight time, peak thrust, and delta-v. It is
+a **duration** control, not a throttle cap, because `MaxAccelerationMps2` also
+sets the parking-orbit radius; lowering it would silently move where the ship
+parks.
 
 The three-times span is the **powered** plan's window. A coasting profile has a
 real upper bound: the prograde short-way Lambert transfer sweeps past 180° as the
@@ -190,10 +195,10 @@ would need an acceleration rather than a brake. Selecting **Coast** or
 **Burn-coast-burn** therefore resets the slider to that profile's own fastest
 plan and clamps the right end to the slowest duration the planner still accepts,
 found by probing inside the same span. At the epoch the burn–coast–burn window
-starts at its 57-day Mars plan, not at the torch plan's 4.4 days and not at an
-arbitrary three times the powered minimum. The slider's value line says what the
-drive is doing — `0.3 g burns · coast` or `coast · drive off` — instead of
-quoting a peak throttle for a plan that coasts.
+runs from **57.44 days to 152.57 days**, not from the torch plan's 4.4 days and
+not to an arbitrary three times the powered minimum. The slider's value line says
+what the drive is doing — `0.3 g burns · coast` or `coast · drive off` — instead
+of quoting a peak throttle for a plan that coasts.
 
 On the powered profile the control only lengthens the torch plan. Every
 implemented quintic plan already peaks at about 97% of the drive, so the left end
@@ -399,14 +404,18 @@ A hybrid plan is common: a high-thrust departure burn, a Lambert coast, and a
 high-thrust capture burn. The ship spends most of its delta-v at the two ends,
 where the Oberth effect makes it most effective.
 
-**Partly implemented.** A `ConicArc` and the state-vector propagator exist, and
-the conic arrival uses them for the planetocentric capture. The **Lambert
-cruise** — two positions and a time of flight for the heliocentric middle — is
-still missing, so a trip cannot yet coast across interplanetary space. The
-nav computer's trip-time slider is the first half of this choice (time against
-thrust and delta-v); the coast fraction is the second half. A shaped quintic
-with a flat middle would look like a coast but still command thrust, so it is
-not used.
+**Implemented.** `LambertSolver.SolveShortWay` in Core answers the zero-rev,
+prograde, short-way branch in universal variables, returning `v₁`, `v₂`, and the
+swept transfer angle; a geometry outside that branch (a long way, a plane
+through the ecliptic pole, or a 180° transfer whose classic `A` term vanishes) is
+returned as `HasSolution == false` rather than thrown. `CruiseStyle.Coast` uses
+it to choose the heliocentric `ConicArc` between the departure and target
+spheres of influence, and `CruiseStyle.BurnCoastBurn` bookends the same coast
+with a prograde departure burn and a brake. The nav computer's `PROFILE` row is
+the player's half of the choice (Powered, Coast, or Burn-coast-burn); the
+trip-time slider is the speed control. A porkchop search is still absent: Go To
+plans "leave now". A shaped quintic with a flat middle would look like a coast
+but still command thrust, so it is not used.
 
 # Spheres of influence
 
@@ -487,8 +496,10 @@ planned:
 The conic style keeps the target's equatorial plane rather than choosing an
 approach plane. Its impulses are idealised as instantaneous; the hybrid style
 flies the long capture as a finite burn at the player's level and keeps only the
-terminal trim and circularisation impulsive, so the remaining fidelity step is a
-fixed-thrust *departure* and *cruise*, which needs the Lambert solve.
+terminal trim and circularisation impulsive. The fixed-thrust departure and
+cruise have landed as the `BurnCoastBurn` profile, so the remaining fidelity
+steps are attitude dynamics, the fuel budget, and an impulsive-capture margin —
+not a missing heliocentric coast.
 
 # Docking
 
@@ -603,8 +614,13 @@ The design wants failure to create stories, not reloads:
   It is cheaper and slower. A third style is the **hybrid**: one long fixed burn
   at a player-set level from 0 to 1 g, an impulse trim onto the exact transfer
   ellipse, and the conic circularisation. At 0 g it is the conic plan. The nav
-  computer exposes all three beside the trip-time slider, the level slider, and
-  the fixed-burn label, while the quintic capture stays the default.
+  computer exposes all three in the `ARRIVAL` row above the trip-time slider and
+  the level slider, while the quintic capture stays the default.
+* **Settled:** the crossing is a separate choice. The `PROFILE` row selects the
+  powered quintic (the default), the unpowered Lambert `Coast`, or the
+  `Burn-coast-burn` profile. Each profile's trip-time window is its own feasible
+  range; the coasting profiles' right-hand end is the slowest duration the
+  planner accepts, not `3 × minimum`.
 * How forgiving is the capture solver? The plan is exact, but a real missed burn
   is fatal; a game needs a margin and a clear warning. The planner currently
   reports infeasibility rather than flying a bad plan.

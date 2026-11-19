@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # One command
@@ -90,16 +90,19 @@ because Unity test assemblies cannot reference the predefined
 | `ShipIntegratorTests` | orbit stability, Kepler agreement, kinematic thrust, the brachistochrone table, step-size independence, collision, step cap |
 | `TripPlannerTests` | arc chain and phases, exact arrival, seam continuity, flight-time envelope, Venus, Jupiter at the ceiling, the Moon, LEO departure, determinism, no mutation, the default quintic arrival style, the fixed-thrust style's default 0.3 g level, its clamp to the drive and the control range, and the conic parking radius, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
 | `FlightExecutionTests` | plan, fly, and arrive at Mars and Jupiter in stable orbits; feedback from a perturbed start; Mars back to Earth; the orrery is untouched |
-| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the hybrid arrival stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the `[minimum, 3 × minimum]` trip-time window, retiming without moving the ship, clamping, and Begin keeping the chosen time), and the idle coast that keeps the ship moving with the clock |
+| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the hybrid arrival stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the powered `[minimum, 3 × minimum]` trip-time window and its clamp, retiming without moving the ship, and Begin keeping the chosen time), and the idle coast that keeps the ship moving with the clock |
 | `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
 | `PlanPathTests` | arc boundary walking, the flip point's sign change, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the conic flip staying in the powered arc, the periapsis and circularisation as plan boundaries, the hybrid arcs meeting the same flatness tolerance, and one finite burn with the trim and circularisation as the two impulses |
 | `RouteColourTests` | exactly three path types, one distinct colour each, solid for a quintic or fixed burn and dashed for a conic, distinct same-hue shades inside a run of one type, and the real quintic, conic, and hybrid plans: three gold quintics, three shaded conics, and a red burn that restarts the conic run |
 | `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, a re-timed preview's flight time and later arrival, the conic Coast/Capture/Parking rows and the impulsive `Burns` row, the hybrid `Burns` row reading the fixed and trim delta-v at the chosen g level, status labels, countdown formatting |
 | `KeplerPropagatorTests` | universal-variable propagation against the elements path on circular and eccentric ellipses, the hyperbolic periapsis and its analytic speed, forward/backward round trip, energy and angular momentum over 40 steps, state ↔ conic elements, a circular conic arc, and its two-body reference acceleration |
+| `LambertSolverTests` | the zero-rev prograde short-way solve: propagating `v₁` onto `r₂`, a 90° circular quarter turn, a Hohmann-like transfer against the vis-viva speeds, a high-energy hyperbolic transfer, the short-way branch returned while the long way is refused, the 180° guard returning no solution instead of throwing, degenerate arguments throwing, and an epoch Earth→Mars coast landing at Mars |
 | `TransferConicTests` | the entry at the sphere of influence, an inbound coast to a low periapsis, the capture plane and prograde direction, the retrograde periapsis and prograde apoapsis burns, the conic parking radius below the gravity ceiling, and invalid geometries reported rather than built |
 | `ConicTripPlannerTests` | the conic arc chain, lower parking and cheaper capture than the quintic, seam continuity with velocity steps at the burns, end-to-end conic flights to Mars, Earth, Venus, Jupiter, and Saturn with a stable lower orbit, and the capture cost across all five targets |
+| `CoastTripPlannerTests` | the coast chain — quintic break, heliocentric conic, conic capture — with the drive off on the middle arc, the departure retargeted to the Lambert `v₁`, the flown arrival and three-orbit hold, the orders-of-magnitude delta-v drop, the planner finding a coast time on its own, the style switch leaving the ship at t₀, a rejected long transfer with its reason, and the handover to the hybrid capture |
 | `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
 | `FiniteBurnTripPlannerTests` | the six-arc hybrid plan with one finite burn between the conic coasts, the trim and circularisation impulses, seam steps of exactly the burn level, end-to-end flights to Mars, Earth, Venus, Jupiter, and Saturn with stable parking orbits, every level from 0.3 to 1.0 g reaching an exact parking orbit, zero level reproducing the conic plan, the cheaper-than-quintic capture across all five targets, the Jupiter parking radius below the quintic ceiling, and the finite/trim split reaching the plan |
+| `BurnCoastBurnTripPlannerTests` | the five-arc profile — quintic break, prograde finite burn, Lambert coast, brake, capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the brake spending the coast plan's handover, continuous position and velocity at every seam, the departure burn staying outside the sphere of influence, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing needing an acceleration rejected, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
@@ -202,6 +205,32 @@ a smaller trim. The hybrid capture is 4.57 km/s at Mars, 4.80 at Venus, 4.92 at
 Earth, 12.06 at Saturn, and 18.44 at Jupiter, against the pure impulse model's
 3.53, 4.13, 4.28, 10.66, and 17.40. The difference is the finite-burn loss; the
 hybrid pays it instead of raising the parking radius.
+
+The burn–coast–burn profile has these anchors at the epoch, from Gateway at
+0.3 g with the conic capture:
+
+| Quantity | Value |
+|---|---|
+| Trip-time window | 57.44–152.57 days |
+| Fastest plan | 57.44 days, 89 km/s, departure burn 28.6, brake 36.2 |
+| 90-day plan, total | 50 km/s |
+| 90-day quintic break | 4.73 days, 13.4 km/s, 0.06 m/s² peak |
+| 90-day departure burn | 78 min, 13.7 km/s, 2.94 m/s² |
+| 90-day Lambert coast | 83.7 days, 0.06 km/s, 0.0005 m/s² peak |
+| 90-day brake | 3.1 h, 19.2 km/s, 2.94 m/s² |
+| 90-day conic capture | 1.36 days, 3.53 km/s (impulse) |
+| Seam error | under 1 cm and 10⁻⁵ m/s |
+| Arrival error | 0.1 m and 0.0001 m/s |
+| Venus at 11.66 days | 268 km/s (departure 71, brake 61) |
+| Jupiter at 230.6 days | 116 km/s (departure 40, brake 53) |
+| `0 g` | exactly `CruiseStyle.Coast` |
+
+The departure burn's delta-v is level-independent (it spends the coast's
+departure speed above escape); its duration is `1/level`, so 13.7 km/s is
+7.8 hours at 0.05 g, 78 minutes at 0.3 g, and 24 minutes at 1 g. A crossing whose
+coast arrives slower than the target's frame needs an acceleration rather than a
+brake and is rejected with that reason; a trip time whose transfer sweeps 180° or
+more is rejected with the transfer angle.
 
 The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the

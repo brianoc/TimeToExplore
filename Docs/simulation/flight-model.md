@@ -1,10 +1,10 @@
 ---
 type: Design Document
 title: Flight model
-description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the two travel regimes.
+description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
 ---
 
 # The one big assumption
@@ -107,10 +107,10 @@ warp.
 
 ## The plan
 
-A **Go To** plan is three arcs — departure, cruise, capture — each a quintic
-curve matching position, velocity, and acceleration at both ends. The commanded
-thrust is the curve's acceleration minus the gravity the ship will feel there,
-so the curve *is* the trajectory rather than a target the dynamics fight.
+A **powered Go To plan** is three arcs — departure, cruise, capture — each a
+quintic curve matching position, velocity, and acceleration at both ends. The
+commanded thrust is the curve's acceleration minus the gravity the ship will feel
+there, so the curve *is* the trajectory rather than a target the dynamics fight.
 Endpoint accelerations are the local gravity, so the thrust is zero at the seams
 and at the end of the plan. See
 [ADR-006](../decisions/adr-006-quintic-plan.md) and
@@ -235,7 +235,7 @@ better than a centimetre and 10⁻⁵ m/s, the flight arrives 0.1 m and 0.0001 m
 from the reference state, and the parking orbit holds. At `0 g` the style is
 exactly the coast plan: five arcs and the handover impulse.
 
-The fastest plan the planner finds on its own is 57 days at 89 km/s, with the
+The fastest plan the planner finds on its own is 57.44 days at 89 km/s, with the
 departure burn at 28.6 km/s and the brake at 36.2 km/s. Faster crossings are
 throttle-limited by the quintic break that has to reach the burn's start, and a
 coast that arrives slower than the target's frame is rejected: it would need an
@@ -254,8 +254,8 @@ historical window to three times that minimum. **Coast** and
 sweeps past 180°, and a coast that arrives slower than the target's frame would
 need an acceleration — so their right-hand end is the slowest duration the
 planner still accepts, probed inside the same three-times span. At the epoch the
-burn–coast–burn window begins at its 57-day Mars plan, not at the torch plan's
-4.4 days.
+burn–coast–burn window runs from **57.44 days to 152.57 days** to Mars, so it
+begins at the profile's own fastest plan, not at the torch plan's 4.4 days.
 
 The slider is one honest axis with two costs on it:
 
@@ -347,7 +347,7 @@ weeks-long trip and survives only as a tuning option in the data. The flight
 model is written so acceleration is a data value; changing it changes all
 travel times without touching the code.
 
-# Two travel regimes
+# Travel regimes
 
 The player should have a real choice, not a single optimal burn.
 
@@ -371,11 +371,11 @@ A middle option is a **low-thrust spiral**: continuous milligee acceleration,
 efficient but slow. It is a good fit for automated freighters and gives the
 world a background traffic pattern that is not player-controlled.
 
-The navigation computer should present all three with time, delta-v, and arrival
-date, so the choice is informed. See
+The navigation computer should present every profile with time, delta-v, and
+arrival date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
-**Implemented so far:** the torch plan and its trip-time control, plus the conic
+**Implemented:** the torch plan and its trip-time control, plus the conic
 **arrival** (a coasting hyperbola and an impulsive Oberth capture), the hybrid
 fixed-thrust variant (one finite burn at a player-set level, an impulse trim, and
 the conic circularisation), and the **burn–coast–burn cruise** (a quintic break,
