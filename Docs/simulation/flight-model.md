@@ -213,7 +213,11 @@ cheaper. That trade is why the style is a choice, not a replacement.
 The same epoch and ship, with `CruiseStyle.BurnCoastBurn` at 0.3 g and the conic
 capture. The departure burn is about the Sun and the brake is about the Sun as
 well: at these speeds the steady burns span tens of thousands of kilometres,
-well outside the planets' spheres of influence. The measured plan at 90 days:
+well outside the planets' spheres of influence. Those are the shipped two-body
+numbers; the agreed handover integrates each burn through the summed field and
+may start it inside the handover band
+([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+The measured plan at 90 days:
 
 | Leg | Duration | Delta-v | Peak thrust |
 |---|---:|---:|---:|

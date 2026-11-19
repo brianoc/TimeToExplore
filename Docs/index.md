@@ -34,6 +34,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Flight model](/simulation/flight-model.md) — the 10 m/s² torch drive, travel times, the trip profiles, and the delta-v economy.
 * [Navigation and arrival](/simulation/navigation-and-arrival.md) — how the player plans an intercept, inserts into orbit, and docks.
 * [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the shipped burn-hard, coast-fast, brake-into-orbit profile, its pinned departure break, the true floor and trip-time window, the Lambert solver, and the four arc ingredients it mixes.
+* [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md) — why a fixed burn integrates the summed field, where it hands over to the shaped ends, and why the capture's entry speed becomes an output instead of a planted 5 km/s.
 
 # World
 

@@ -141,9 +141,13 @@ default, and `0 g` is exactly `CruiseStyle.Coast`.
 # The pinned break
 
 The break's end state is a design decision: the point where the departure burn
-starts, on the clearance sphere `1.02 × SOI`, at the local escape speed along
-the escape ray. The break's only job is to leave the parking orbit and reach
-escape; the burn supplies everything above it. The old chain solved the coast's
+starts, on the handover sphere at the local escape speed along the escape ray.
+The clearance sphere `1.02 × SOI` is that sphere's **ceiling**; the agreed
+handover may sit lower, inside the band between the powered-leg floor and the
+ceiling, and the burn is then integrated through the summed field
+([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+The break's only job is to leave the parking orbit and reach escape; the burn
+supplies everything above it. The old chain solved the coast's
 start and integrated the burn backwards, so at fast trip times the burn began
 4.7 SOI out at 32 km/s and the break was fitted to that hard backwards solve.
 
@@ -342,10 +346,13 @@ plan's fourth step.
   and the next follow-up, not part of the first flyable profile.
 - **Optimal control.** A shooting or indirect solver that minimises propellant
   remains the eventual answer ([ADR-006](/decisions/adr-006-quintic-plan.md)).
-- **Burning across a sphere of influence.** A long burn that crosses the SOI
-  needs a reference-body handover. The first cut breaks orbit with the quintic
-  and starts the steady burn outside; a level or trip time that would force a
-  crossing is rejected.
+- **Burning across a sphere of influence.** *No longer excluded.* The first cut
+  refused a burn that crossed the SOI because each two-body model stops at the
+  boundary and the reference-body handover would sit where both models are about
+  half wrong. The agreed design integrates a fixed burn through the summed field
+  and lets one arc cross; splitting the burn at the SOI is the option that is
+  refused. See
+  [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 
 # Settled choices
 
@@ -357,10 +364,13 @@ plan's fourth step.
   The coasting profiles' right-hand end is probed from what the planner accepts,
   not taken as three times the minimum: a long short-way transfer sweeps past
   180°, and a slow coast would need an acceleration rather than a brake.
-- **The pinned break and the escape ray.** The break ends at `1.02 × SOI` at
-  the local escape speed along the escape ray, and the departure burn holds
-  that ray. A velocity-following burn cannot close the seam at fast trip times,
-  so the ray, not the heliocentric velocity, sets the burn's attitude.
+- **The pinned break and the escape ray.** The break ends at the handover sphere
+  — bounded above by the clearance sphere `1.02 × SOI` — at the local escape
+  speed along the escape ray, and the departure burn holds that ray. A
+  velocity-following burn cannot close the seam at fast trip times, so the ray,
+  not the heliocentric velocity, sets the burn's attitude. The band and the
+  full-field integration are in
+  [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 - **Brake and capture split.** The brake spends only the coast's handover and
   hands the capture chain its entry state with no impulse; the split is not
   optimised. The brake's thrust direction follows the change the chain needs

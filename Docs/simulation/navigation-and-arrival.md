@@ -170,7 +170,11 @@ instantaneous velocity can only change the speed; the direction opposes the
 arrival velocity, and a trip time whose coast arrives slower than the target's
 frame — which would need an acceleration rather than a brake — is rejected. The
 departure burn begins outside the departure sphere of influence and never
-crosses it. At `0 g` the style is exactly `CruiseStyle.Coast`.
+crosses it in the shipped build; the agreed handover replaces that rule with a
+band and allows one burn arc to cross the boundary, because a full-field burn
+integrates the summed gravity field
+([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+At `0 g` the style is exactly `CruiseStyle.Coast`.
 
 Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.79-day
 quintic break (9.0 km/s, 0.03 m/s² peak), a 78-minute departure burn of

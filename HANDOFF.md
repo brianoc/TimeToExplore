@@ -1,8 +1,10 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Nothing built yet. The design was agreed in conversation; step 1 records it in
-the bundle. Screenshots are waived for this plan.
+Step 1 is done: the design is recorded in
+[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
+Step 2, the full-field finite burn in `FiniteBurnArc`, is next. Screenshots are
+waived for this plan.
 
 ## Why
 
@@ -16,7 +18,11 @@ is a *speed* problem, not an arc-boundary problem: braking early makes the fall
 longer, and the architecture below is what makes a hot entry and a deep brake
 representable.
 
-## Design agreed (to be recorded in step 1)
+## Design agreed (recorded in step 1)
+
+The reasoning and the numbers are in
+[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
+this list is the caretaker's short form.
 
 1. **Full-field burns, not patched burns.** Fixed burns integrate the summed
    gravity field; the reference body becomes a label. One burn arc may cross an
@@ -42,10 +48,10 @@ search input or a certified build.
 
 ## Steps (one sub-agent per step, one commit each)
 
-1. **Record the design.** New concept under `Docs/simulation/` (or extend
-   [Burn–coast–burn trips](/simulation/burn-coast-burn.md) and
-   [Navigation and arrival](/simulation/navigation-and-arrival.md)), linked from
-   the index, with the Uranus numbers and the decisions above. Docs only.
+1. **Record the design.** **Done** — the new concept is
+   [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md),
+   linked from the index, with the Uranus numbers and the decisions above; the
+   two existing concepts and the flight model carry pointers. Docs only.
 2. **Full-field finite burn.** Let `FiniteBurnArc` integrate the summed field;
    keep the reference body as a label. Tests: a burn crossing an SOI closes; the
    existing two-body cases are unchanged where they should be.
@@ -72,8 +78,9 @@ search input or a certified build.
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result: `tools/check.sh --fast` passed (2026-11-19) after the handoff and
-  log entry; no code or tests changed.
+- Last result: `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0
+  warnings, 0 errors; `tools/check.sh --fast` passed (2026-11-19) after step 1's
+  docs-only commit. No code or tests changed.
 
 ## Traps
 
