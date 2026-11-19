@@ -113,7 +113,7 @@ because Unity test assemblies cannot reference the predefined
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
-| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the quintic preview as one *Quintic arc* row, stacking above the flight panel, listing *Conic arc* and *Fixed burn* with the hybrid, collapsing its three conic arcs into one row, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and retiming through its `onValueChanged`, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider from 0 to 1 g rebuilding the preview at 0.5 g and degenerating to the conic plan at 0 g, the cruise-profile row defaulting to Powered and rebuilding the preview as the burn–coast–burn plan (its own 57-day window, the shared level control driving both burns, no `% burn` on a coast) or as the unpowered coast, the legend gaining the fixed-burn row for the profile and losing it again on Coast and Powered, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
+| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the quintic preview as one *Quintic arc* row, stacking above the flight panel, listing *Conic arc* and *Fixed burn* with the hybrid, collapsing its three conic arcs into one row, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and retiming through its `onValueChanged`, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider from 0 to 1 g rebuilding the preview at 0.5 g and degenerating to the conic plan at 0 g, the cruise-profile row defaulting to Powered and rebuilding the preview as the burn–coast–burn plan (its own 8.03–24.09 day window, the shared level control driving both burns, no `% burn` on a coast) or as the unpowered coast, the legend gaining the fixed-burn row for the profile and losing it again on Coast and Powered, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
 The suite deliberately tests the shipped catalogue as well as the maths, so a
 bad regeneration fails before Unity opens a scene. Each class carries a
@@ -211,18 +211,21 @@ The burn–coast–burn profile has these anchors at the epoch, from Gateway at
 
 | Quantity | Value |
 |---|---|
-| Trip-time window | 57.44–152.57 days |
-| Fastest plan | 57.44 days, 89 km/s, departure burn 28.6, brake 36.2 |
-| 90-day plan, total | 50 km/s |
-| 90-day quintic break | 4.73 days, 13.4 km/s, 0.06 m/s² peak |
+| Trip-time window (Mars) | 8.03–24.09 days |
+| True floor, Mars at 0.3 g | 8.03 days, peak 5.27 m/s², 1,170 km/s |
+| True floor, Mercury at 1 g | 3.46 days, peak 9.70 m/s², 1,763 km/s |
+| Just below the Mercury floor | 3.43 days refused: the departure break needs 10.2 m/s², above the 10.0 m/s² drive |
+| Just below the Mars floor | 7.80 days refused at 58.1 m/s²; 8.00 days leaves the brake 7,493 km short of the entry |
+| 90-day Mars plan, total | 45 km/s (direct build, outside the nav window) |
+| 90-day quintic break | 4.79 days, 9.0 km/s, 0.03 m/s² peak |
 | 90-day departure burn | 78 min, 13.7 km/s, 2.94 m/s² |
-| 90-day Lambert coast | 83.7 days, 0.06 km/s, 0.0005 m/s² peak |
-| 90-day brake | 3.1 h, 19.2 km/s, 2.94 m/s² |
+| 90-day Lambert coast | 83.7 days, 0.05 km/s, 0.0005 m/s² peak |
+| 90-day brake | 1.8 h, 19.1 km/s, 2.94 m/s² |
 | 90-day conic capture | 1.36 days, 3.53 km/s (impulse) |
-| Seam error | under 1 cm and 10⁻⁵ m/s |
+| Seam error | under a millimetre and 10⁻⁵ m/s on the tested trips; the floor gate is 1 km and 1 m/s |
 | Arrival error | 0.1 m and 0.0001 m/s |
-| Venus at 11.66 days | 268 km/s (departure 71, brake 61) |
-| Jupiter at 230.6 days | 116 km/s (departure 40, brake 53) |
+| Venus at 11.66 days | 183 km/s (departure 72, brake 58) |
+| Jupiter at 230.6 days | 119 km/s (departure 40, brake 53) |
 | `0 g` | exactly `CruiseStyle.Coast` |
 
 The departure burn's delta-v is level-independent (it spends the coast's
@@ -230,7 +233,13 @@ departure speed above escape); its duration is `1/level`, so 13.7 km/s is
 7.8 hours at 0.05 g, 78 minutes at 0.3 g, and 24 minutes at 1 g. A crossing whose
 coast arrives slower than the target's frame needs an acceleration rather than a
 brake and is rejected with that reason; a trip time whose transfer sweeps 180° or
-more is rejected with the transfer angle.
+more is rejected with the transfer angle. A plan over the drive carries an
+`InfeasibleReason` naming the arc and the peak it needs. The 90-day anchors are
+direct `PlanAtDuration` builds: after the pin the nav slider's Mars window is
+8.03–24.09 days, so 90 days is not reachable from the control. They are measured
+at the exact epoch: the long-trip solver is date-fragile, and a one-second shift
+can drop the Mars 90-day or Jupiter 230.6-day build into the same non-convergence
+hole as the known 60-day Mercury case.
 
 The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the

@@ -49,11 +49,12 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
   blending ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)). At 0 g it is
   the conic plan.
 * A **Lambert coast cruise** and the **burn–coast–burn** profile: a zero-rev
-  prograde `LambertSolver`, a heliocentric `ConicArc` coast, and a prograde
-  departure finite burn plus a brake placed backwards from the capture chain's
-  entry state. The nav computer's `PROFILE` row selects Powered (the default),
-  Coast, or Burn-coast-burn, with the trip-time slider as that profile's speed
-  control ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)).
+  prograde `LambertSolver`, a heliocentric `ConicArc` coast, a pinned departure
+  break at `1.02 × SOI` at escape speed, a forward departure burn, and a brake
+  reverse-placed from the capture chain's entry state. The nav computer's
+  `PROFILE` row selects Powered (the default), Coast, or Burn-coast-burn, with
+  the trip-time slider as that profile's speed control
+  ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)).
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
@@ -293,23 +294,34 @@ torch-ship fiction uses is flyable. The design is
   `ConicArc` chosen by the Lambert solve, with the quintic departure retargeted
   to `v₁` and the conic/hybrid capture chain at the far end.
 * `CruiseStyle.BurnCoastBurn` adds a prograde departure finite burn and a brake,
-  both about the Sun. The chain is solved backwards from the capture chain's
-  entry state with `FiniteBurnArc.SimulateBackward`, so every seam is continuous
-  and the arrival is exact. The brake spends the handover the coast skeleton
-  would have made an impulse, so there is no impulse at the target's sphere of
-  influence; its thrust direction is the change the chain needs, because a burn
-  along the velocity can only change the speed. `0 g` is exactly the coast plan.
+  both about the Sun. The quintic break ends on the departure clearance sphere
+  (`1.02 × SOI`) at the local escape speed along the escape ray, and the
+  departure burn starts there and holds that ray; its angles, its duration, and
+  the coast's start are solved forward. The brake is still built backwards from
+  the capture chain's entry state with `FiniteBurnArc.SimulateBackward`, so every
+  seam is continuous and the arrival is exact. The brake spends the handover the
+  coast skeleton would have made an impulse, so there is no impulse at the
+  target's sphere of influence; its thrust direction is the change the chain
+  needs, because a burn along the velocity can only change the speed. `0 g` is
+  exactly the coast plan.
 * The nav computer's `PROFILE` row selects Powered (the default), Coast, or
   Burn-coast-burn. The trip-time slider is the profile's speed control: the
   powered window stays `3 × minimum`, while a coasting profile's right-hand end
   is the slowest duration the planner accepts, probed because a long short-way
   transfer sweeps past 180° and a slow coast would need an acceleration rather
-  than a brake. At the epoch the burn–coast–burn window is 57.44–152.57 days.
-* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 50 km/s in
-  total (a 13.7 km/s departure burn in 78 minutes, a 19.2 km/s brake in 3.1
-  hours, and the 83.7-day coast), against the cheap coast's 14 km/s at 200 days
-  and the torch plan's 2,345 km/s at 4.4 days. Seams close under a centimetre and
-  10⁻⁵ m/s; the flight arrives 0.1 m and 0.0001 m/s from the reference state.
+  than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
+  the chain closing, so at the epoch the Mars window is **8.03–24.09 days** and
+  the Mercury fast end is 3.46 days at 1 g. A 90-day Mars plan is a direct
+  `PlanAtDuration` build outside that window.
+* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 45 km/s in
+  total (a 4.79-day break at 9.0 km/s, a 13.7 km/s departure burn in 78 minutes,
+  an 83.7-day coast, a 19.1 km/s brake in 1.8 hours, and the 3.5 km/s conic
+  capture), against the cheap coast's 14 km/s at 200 days and the torch plan's
+  2,345 km/s at 4.4 days. Seams close under a millimetre and 10⁻⁵ m/s; the
+  flight arrives 0.1 m and 0.0001 m/s from the reference state. The true floors
+  are 3.46 days to Mercury at 1 g (1,763 km/s) and 8.03 days to Mars at 0.3 g
+  (1,170 km/s), and an over-thrust plan carries an `InfeasibleReason` naming the
+  arc and the peak it needs.
 
 # Immediate next tasks
 

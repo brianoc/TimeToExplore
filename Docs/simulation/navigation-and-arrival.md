@@ -150,33 +150,41 @@ same arcs and the same capture chain, chosen by the `PROFILE` row rather than th
 
 A **burn–coast–burn cruise** (`CruiseStyle.BurnCoastBurn`, default
 `CruiseStyle.Powered`) inserts the two finite burns into the coast skeleton. The
-departure burn is prograde about the Sun; it spends the excess of the coast's
-departure speed over the local escape speed, so the quintic breaks orbit and the
-burn supplies everything above escape. The brake is a fixed-thrust burn whose
-direction is the change the chain needs rather than the velocity direction; it
-spends the handover the coast plan would have made an impulse, so the
-capture chain is handed its entry state with **no impulse at the target's sphere
-of influence**. Both burns are placed by integrating them backwards from the
-state the next arc must begin at, so every seam is continuous in position and
+quintic **break** ends on the departure clearance sphere, `1.02 × SOI`, at the
+local escape speed along the escape ray, and the departure burn starts there.
+The burn holds that ray — its prograde direction in the departure body's frame —
+and its two ray angles, its duration, and the coast's start are one forward
+solve against the Lambert coast; the burn's speed and the coast's departure
+speed set its delta-v, so the level still scales its duration as `1/level`. The
+old chain placed the burn by integrating it backwards from the coast's start, so
+at fast trip times it began 4.7 SOI out at 32 km/s and the break had to be fitted
+to that; the pin removes that backwards departure solve. The brake is a
+fixed-thrust burn whose direction is the change the chain needs rather than the
+velocity direction; it is still integrated backwards from the state the capture
+chain must begin at, and it spends the handover the coast plan would have made
+an impulse, so the capture chain is handed its entry state with **no impulse at
+the target's sphere of influence**. Every seam is continuous in position and
 velocity, and the plan arrives on the parking orbit exactly. The brake's thrust
 direction is fixed along the change the chain needs, because a burn along the
 instantaneous velocity can only change the speed; the direction opposes the
 arrival velocity, and a trip time whose coast arrives slower than the target's
 frame — which would need an acceleration rather than a brake — is rejected. The
 departure burn begins outside the departure sphere of influence and never
-crosses it: a level long enough to force a crossing is an infeasible trip, not a
-reference-body handover. At `0 g` the style is exactly `CruiseStyle.Coast`.
-Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.7-day
-quintic break, a 78-minute departure burn of 13.7 km/s, an 84-day coast, a
-3.1-hour brake of 19.2 km/s, and the 3.5 km/s conic capture, 50 km/s in total
-against the coast plan's 14 km/s at 200 days. The fastest plan the planner finds
-on its own is 57.44 days at 89 km/s, and the trip-time window ends at 152.57
-days. The flight arrives 0.1 m and 0.0001 m/s from the reference state and holds
-the parking orbit. The nav computer exposes the
-cruise as a `PROFILE` row beside the arrival buttons — **Powered** (the
-default), **Coast**, and **Burn-coast-burn** — and the existing burn-level
-slider is the level both fixed burns are planned at; no second level control was
-added.
+crosses it. At `0 g` the style is exactly `CruiseStyle.Coast`.
+
+Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.79-day
+quintic break (9.0 km/s, 0.03 m/s² peak), a 78-minute departure burn of
+13.7 km/s, an 83.7-day coast, a 1.8-hour brake of 19.1 km/s, and the 3.5 km/s
+conic capture, 45 km/s in total against the coast plan's 14 km/s at 200 days.
+The profile's true floor at the epoch is **8.03 days** to Mars at 0.3 g
+(1,170 km/s) and **3.46 days** to Mercury at 1 g (1,763 km/s); the Mars
+trip-time window ends at **24.09 days**, three times that floor, so the 90-day
+plan above is a direct `PlanAtDuration` build outside the nav computer's window.
+The 8-day Mercury flight arrives 0.05 m and 4.4 × 10⁻⁵ m/s from the reference
+state and holds the parking orbit. The nav computer exposes the cruise as a
+`PROFILE` row beside the arrival buttons — **Powered** (the default), **Coast**,
+and **Burn-coast-burn** — and the existing burn-level slider is the level both
+fixed burns are planned at; no second level control was added.
 
 ## The trip-time control
 
@@ -195,8 +203,11 @@ would need an acceleration rather than a brake. Selecting **Coast** or
 **Burn-coast-burn** therefore resets the slider to that profile's own fastest
 plan and clamps the right end to the slowest duration the planner still accepts,
 found by probing inside the same span. At the epoch the burn–coast–burn window
-runs from **57.44 days to 152.57 days**, not from the torch plan's 4.4 days and
-not to an arbitrary three times the powered minimum. The slider's value line says
+runs from **8.03 days to 24.09 days** to Mars, not from the torch plan's 4.4 days
+and not to an arbitrary three times the powered minimum. The right-hand end is
+exactly three times the true floor, so a 90-day Mars build is outside the
+control's reach; it can only be built directly with `PlanAtDuration`. The
+slider's value line says
 what the drive is doing — `0.3 g burns · coast` or `coast · drive off` — instead
 of quoting a peak throttle for a plan that coasts.
 

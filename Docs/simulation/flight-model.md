@@ -217,31 +217,37 @@ well outside the planets' spheres of influence. The measured plan at 90 days:
 
 | Leg | Duration | Delta-v | Peak thrust |
 |---|---:|---:|---:|
-| Quintic break | 4.73 d | 13.4 km/s | 0.06 m/s² |
+| Quintic break | 4.79 d | 9.0 km/s | 0.03 m/s² |
 | Departure burn (prograde) | 78 min | 13.7 km/s | 2.94 m/s² |
-| Lambert coast | 83.7 d | 0.06 km/s | 0.0005 m/s² |
-| Brake (fixed thrust) | 3.1 h | 19.2 km/s | 2.94 m/s² |
+| Lambert coast | 83.7 d | 0.05 km/s | 0.0005 m/s² |
+| Brake (fixed thrust) | 1.8 h | 19.1 km/s | 2.94 m/s² |
 | Conic capture | 1.36 d | 3.53 km/s (impulse) | 0 |
 
-The total is 50 km/s against the coast plan's 14 km/s at 200 days: the burns buy
-the speed. The burns are sized from velocity changes, not from a time share. The
+The total is 45 km/s against the coast plan's 14 km/s at 200 days: the burns buy
+the speed. The break now ends on the departure clearance sphere (`1.02 × SOI`)
+at the local escape speed, and the departure burn starts there and holds the
+escape ray. The burns are sized from velocity changes, not from a time share. The
 departure burn spends the coast's departure speed above the local escape speed,
 so its delta-v is the same at every level — 13.7 km/s here — while its duration
 scales inversely: 7.8 hours at 0.05 g, 78 minutes at 0.3 g, 24 minutes at 1 g.
 The brake spends the handover the coast plan leaves as an impulse at the
-target's sphere of influence (19.2 km/s here against 19.2 km/s), so the capture
+target's sphere of influence (19.1 km/s here), so the capture
 chain is handed its entry state with no impulse. Every seam is continuous to
-better than a centimetre and 10⁻⁵ m/s, the flight arrives 0.1 m and 0.0001 m/s
+better than a millimetre and 10⁻⁵ m/s, the flight arrives 0.1 m and 0.0001 m/s
 from the reference state, and the parking orbit holds. At `0 g` the style is
 exactly the coast plan: five arcs and the handover impulse.
 
-The fastest plan the planner finds on its own is 57.44 days at 89 km/s, with the
-departure burn at 28.6 km/s and the brake at 36.2 km/s. Faster crossings are
-throttle-limited by the quintic break that has to reach the burn's start, and a
-coast that arrives slower than the target's frame is rejected: it would need an
-acceleration, not a brake. Venus at 11.66 days spends 268 km/s (departure 71,
-brake 61); Jupiter at 230.6 days spends 116 km/s (departure 40, brake 53) after
-its 87-day inbound coast.
+The profile's true floors at the epoch are **3.46 days** to Mercury at 1 g
+(peak 9.70 m/s², 1,763 km/s) and **8.03 days** to Mars at 0.3 g (peak
+5.27 m/s², 1,170 km/s); the Mars trip-time window ends at **24.09 days**, three
+times the floor, so the 90-day plan above is a direct `PlanAtDuration` build
+outside the nav computer's window. Faster crossings are limited by the pinned
+break reaching the drive's 10 m/s², and a coast that arrives slower than the
+target's frame is rejected: it would need an acceleration, not a brake. Venus at
+11.66 days spends 183 km/s (departure 72, brake 58); Jupiter at 230.6 days
+spends 119 km/s (departure 40, brake 53) after its 87-day inbound coast. A plan
+the drive cannot fly carries an `InfeasibleReason` naming the arc and the peak it
+needs.
 
 ## Tuning the trip in the nav computer
 
@@ -254,8 +260,10 @@ historical window to three times that minimum. **Coast** and
 sweeps past 180°, and a coast that arrives slower than the target's frame would
 need an acceleration — so their right-hand end is the slowest duration the
 planner still accepts, probed inside the same three-times span. At the epoch the
-burn–coast–burn window runs from **57.44 days to 152.57 days** to Mars, so it
-begins at the profile's own fastest plan, not at the torch plan's 4.4 days.
+burn–coast–burn window runs from **8.03 days to 24.09 days** to Mars, so it
+begins at the profile's true floor (8.03 days at 0.3 g), not at the torch plan's
+4.4 days, and it ends at three times that floor. A 90-day Mars plan exists as a
+direct `PlanAtDuration` build but the slider cannot reach it.
 
 The slider is one honest axis with two costs on it:
 

@@ -133,8 +133,10 @@ The measured window at the epoch is **8.03 to 24.09 days** for the
 Gateway→Mars burn–coast–burn profile at 0.3 g, against the powered plan's
 4.4 days and the cheap coast's 200+. At 1 g the fast end is **3.46 days** to
 Mercury. The right-hand end is the three-times cap: with the break gentle, the
-fast end moved from 57.44 days to 8.03 and the cap is feasible. `Powered` is
-still the default, and `0 g` is exactly `CruiseStyle.Coast`.
+fast end moved to 8.03 days and the cap is feasible. The 90-day Mars
+plan in the table below is still a valid direct build, but it is outside this
+window, so the nav computer's slider cannot ask for it. `Powered` is still the
+default, and `0 g` is exactly `CruiseStyle.Coast`.
 
 # The pinned break
 
@@ -176,6 +178,11 @@ capture:
 | Mercury | 12.32 | 0.823 | 1.35 | 61.6 | 0.207 | 173.2 | 10.834 | 0.168 | 141.0 | 379.3 | yes |
 | Mercury | 12.3 | 0.822 | 1.35 | 61.7 | 0.207 | 173.5 | 10.815 | 0.168 | 141.2 | 379.9 | yes |
 | Mars | 90 | 4.787 | 0.033 | 9.0 | 0.016 | 13.7 | 83.815 | 0.023 | 19.1 | 45.4 | yes |
+
+The Mars row is a direct build at 90 days; after the pin the nav computer's Mars
+window is 8.03–24.09 days, so the slider cannot reach 90 days. At 0.3 g the
+90-day build costs 45.4 km/s with the same gentle break (4.79 d, 9.0 km/s,
+0.03 m/s²), a 78-minute departure burn, an 83.7-day coast, and a 1.8-hour brake.
 
 The 8-day trip now closes at 1 g: the break's peak is 3.02 m/s² and the plan's
 9.70 m/s² peak is the two fixed burns at the commanded level. The break ends at

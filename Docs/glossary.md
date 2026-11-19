@@ -171,6 +171,11 @@ spheres of influence: `CruiseStyle.Powered` (the default powered quintic),
 brake, and capture). The nav computer exposes it in the `PROFILE` row; an arrival
 style is the separate capture choice. `0 g` is exactly the `Coast` profile.
 
+**Break** — the quintic departure arc that leaves the parking orbit and reaches
+the departure body's clearance sphere (`1.02 × SOI`) at the local escape speed
+along the escape ray. The departure burn starts there and holds the ray; the
+break's duration is solved against the drive's limit.
+
 **Brake** — the finite burn at the end of a burn–coast–burn crossing that spends
 the handover the unpowered coast would have made an impulse. Its thrust direction
 is the change the chain needs, not anti-velocity.

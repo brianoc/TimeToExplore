@@ -147,7 +147,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `IArcPath` | `Scripts/Simulation/IArcPath.cs` | The arc contract: position, velocity, acceleration, and the parameter/time mappings |
 | `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends; linear in time |
 | `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Keplerian coast around any body, linear in true anomaly, re-added to that body's ephemeris: the planetocentric capture and the heliocentric Lambert cruise |
-| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, the radius-crossing solver step, an optional fixed thrust direction, and `SimulateBackward` for the reverse-placed burns |
+| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, the radius-crossing solver step, an optional fixed thrust direction, and `SimulateBackward` for the reverse-placed brake |
 | `TransferConic` | `Scripts/Simulation/TransferConic.cs` | The arrival hyperbola, periapsis and apoapsis burns, transfer ellipse, and circular state |
 | `HybridCapture` | `Scripts/Simulation/HybridCapture.cs` | The fixed capture burn, its injection radius and trim, the transfer ellipse, and the split |
 | `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive arc polyline with a scale-free chord tolerance |
@@ -155,7 +155,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the coast's Lambert stitching and reverse-placed burns, and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the coast's Lambert stitching, the reverse-placed brake, the true floor search, and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
@@ -164,8 +164,11 @@ The planner crosses in one of three profiles: the powered quintic (`Powered`, th
 default), the zero-revolution prograde Lambert conic chosen by
 `LambertSolver.SolveShortWay` (`Coast`), or the same coast bookended by a
 prograde departure finite burn and a brake (`BurnCoastBurn`). The burn–coast–burn
-chain is built backwards from the capture chain's entry state with
-`FiniteBurnArc.SimulateBackward`, so every seam is continuous and the arrival is
+break ends on the departure clearance sphere (`1.02 × SOI`) at the local escape
+speed along the escape ray, and the departure burn starts there and holds the
+ray; its angles, its duration, and the coast's start are solved forward, while
+the brake is still built backwards from the capture chain's entry state with
+`FiniteBurnArc.SimulateBackward`. Every seam is continuous and the arrival is
 exact; the brake's thrust direction is the change the chain needs, not the
 instantaneous velocity. `CruiseStyle` and `CaptureStyle` are independent: the
 powered profile can pair with any of the three arrival styles, while a coasting
@@ -456,9 +459,11 @@ policy is what keeps it there.
 Planning a preview is a discrete cost, not a per-frame one. A coasting profile's
 trip-time window costs up to six extra `PlanAtDuration` builds at plot time, to
 probe the slowest duration the Lambert solve still accepts; each drag of the
-slider is one build, not a new minimum solve. The burn–coast–burn search adds
-its reverse integrations and up to six brake passes on top of the conic
-planner's pass.
+slider is one build, not a new minimum solve. The burn–coast–burn plot is the
+expensive one: the true-floor search grows, steps back, and bisects, so one plot
+costs tens of builds rather than one, and each build settles the reverse brake
+and the forward departure over up to twelve passes. A slider drag is still a
+single build.
 
 The orbit lines are the first thing to optimise: updating 30 × 161 positions per
 frame is unnecessary when the camera has not moved and the parent has barely

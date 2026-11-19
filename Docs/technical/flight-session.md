@@ -112,7 +112,9 @@ flight time in seconds. For the powered plan the maximum is three times the
 minimum; for a coasting profile it is the slowest duration the planner still
 accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
-burn–coast–burn window is 57.44 to 152.57 days. A change calls
+burn–coast–burn window is **8.03 to 24.09 days**, from the profile's true floor
+of 8.03 days at 0.3 g; the Mercury floor at 1 g is 3.46 days. A 90-day Mars build
+is outside that window. A change calls
 `FlightSession.SetPreviewDuration`, which rebuilds the plan from the stored
 departure state with `TripPlanner.PlanAtDuration`: one build, no new minimum
 solve, no ship movement, and no camera move. The preview stays pinned to
@@ -266,7 +268,7 @@ replaced by a `DRIVE` summary in the same space:
 DRIVE
   Departure burn  13.7 km/s · 1.3 h · 0.3 g
   Coast           drive off · 83.7 d
-  Brake           19.2 km/s · 3.1 h · 0.3 g
+  Brake           19.1 km/s · 1.8 h · 0.3 g
   Capture         3.5 km/s · 1.4 d
 ```
 
@@ -376,7 +378,8 @@ and arrival without moving the ship, and Begin keeps the chosen time.
 `SolarSystemHudTests` covers the profile control and the coasting window: the
 `PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
 burn–coast–burn slider ends at the slowest duration the planner accepts rather
-than at three times its minimum (57.44–152.57 days at the epoch).
+than at three times its minimum (8.03–24.09 days at the epoch for Gateway→Mars,
+from the 8.03-day true floor).
 `TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
 and lower delta-v at twice the minimum, and an infeasible report below it.
 `CoastTripPlannerTests` and `BurnCoastBurnTripPlannerTests` cover the two Lambert
