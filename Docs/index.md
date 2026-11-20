@@ -13,7 +13,7 @@ bundle-relative paths that stay valid when a document moves.
 
 # Every session
 
-* [Working agreement](/working-agreement.md) — update the docs as changes happen; add tests for every new feature or piece of work; keep the live handoff current while a plan is in progress and clear it when done; finish with screenshots, or a short video when motion matters, in the chat.
+* [Working agreement](/working-agreement.md) — do all work in a linked worktree and keep `main` for merges and human testing; update the docs as changes happen; add tests for every new feature or piece of work; keep the live handoff current while a plan is in progress and clear it when done; finish with screenshots, or a short video when motion matters, in the chat.
 
 # Start here
 

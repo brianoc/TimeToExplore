@@ -1,17 +1,20 @@
 ---
 type: Reference
 title: Working in a worktree
-description: "One agent, one branch, one worktree: setup, verification, merge hotspots, and cleanup."
+description: "Rule 1 in practice: one agent, one branch, one worktree, with setup, verification, merge hotspots, and cleanup."
 tags: [technical, process, git, worktrees, agents]
-status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+status: active
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # Working in a worktree
 
 `main` belongs to the person testing the game. Agents work in a linked git
 worktree on their own branch, so nothing an agent edits, imports, or generates
-shows up in the checkout with the open editor.
+shows up in the checkout with the open editor. This is rule 1 of
+[the working agreement](/working-agreement.md), not advice: starting a task in
+the main checkout is the violation, and the fix is a worktree before the first
+edit rather than a revert afterwards.
 
 ## One agent, one branch, one worktree
 
@@ -19,7 +22,8 @@ shows up in the checkout with the open editor.
   under `~/.local/share/opencode/worktree/<hash>/<name>` and checks out the
   commit it was created from, detached; make a branch immediately.
 - Name the branch for the work (`work/<slug>`) rather than the agent, so the
-  branch still means something when it merges.
+  branch still means something when it merges. The tool may suggest a branch
+  named for the session; rename it before the first commit.
 - Never check out `main` in a worktree: the main checkout has it, and git
   refuses. Rebase onto `main` when you need what landed there.
 - Do not force-close or interfere with an editor running in another checkout,

@@ -1,11 +1,12 @@
 # Agent Instructions — Time to Explore
 
 **Every session:** read [the working agreement](Docs/working-agreement.md)
-first. Four rules: update the docs as changes happen, add tests for every new
-feature or piece of work, keep `HANDOFF.md` live only while a plan is in
-progress — clear it when the plan is done — and finish with screenshots of the
-result, or a short video when motion or interaction is what changed, in the
-chat.
+first. The rules, in short: do all work in a linked git worktree and leave
+`main` for merges and human testing; update the docs as changes happen; add
+tests for every new feature or piece of work; keep `HANDOFF.md` live only while
+a plan is in progress — clear it when the plan is done; and finish with
+screenshots of the result, or a short video when motion or interaction is what
+changed, in the chat.
 
 ## Project shape
 

@@ -1,7 +1,9 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1–4 are done. The design is recorded in
+Steps 1–4 are done. **This plan stays on `main` as the transition to working
+agreement rule 1** (work in a worktree): its steps were committed here before
+the rule existed, and the next plan starts in a worktree, not this one. The design is recorded in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 `FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
 ends, every fixed burn is gated on body clearance, and the burn–coast–burn's
