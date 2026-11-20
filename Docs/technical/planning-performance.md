@@ -252,7 +252,7 @@ capture, `TTE_FLOOR=1`, Debug build, the same sources as the suite:
 
 | Case | `Plan()` | Floor | Peak | Direct builds below the floor |
 |---|---:|---:|---:|---|
-| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s |
+| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s. On the merged tree the .NET search returns **30.55886 d**, 2,299.29 km/s, seven arcs, and the editor **33.65372 d**, 2,070.02 km/s, eight arcs |
 | Uranus, 0.3 g | **59.2 s** | **41.57095 d**, 1,756.59 km/s | 2.942 m/s² | 41.36309 and 40.94738 d close (4.8 s each, 1,767.17 and 1,788.76 km/s); 41.1552 d stalls at 3.039 × 10⁻⁵ m/s |
 | Mars, 0.3 g | **27.5 s** | **6.73715 d**, 1,172.48 km/s | 5.137 m/s² | 6.7035 d misses the brake chain by 6,182.2 m / 0.6 m/s, 6.6698 by 1,651.5 m / 0.2, 6.6361 by 9,254.9 m / 0.9; at 6.535 d the break needs 14.2 m/s² |
 | Mercury, 1 g | **7.8 s** | **3.21610 d**, 1,765.52 km/s | 9.700 m/s² | 3.1839 d needs a 10.3 m/s² break, rising to 275.0 m/s² at 3.0875 d |
@@ -283,11 +283,13 @@ The window takes its right-hand end from that floor. `MaximumPreviewSeconds` is
 101.99307 d was accepted: seven arcs, 661.35 km/s, a 9.105 h departure burn and a
 9.185 h brake, `PlanAtDuration` 2.7 s (the 36 s harness run around it also
 reflies both burns under the six alternative steering laws, so that is the
-report, not the build). Step 7 re-measured the floor, so the window is now
-**34.16–102.48 d** at 1 g and **40.71–122.14 d** at 0.3 g. A direct build at the
-new 1 g maximum (102.48123 d) is accepted with seven arcs, 658.19 km/s, a
-9.062 h departure burn and a 9.141 h brake, in 0.39 s. The slider's right end
-never asks for a refused plan.
+report, not the build). The approach leg and the first-plot work re-measured
+the floor, so the window is **33.65–100.96 d** at 1 g and **33.60–100.81 d** at
+0.3 g. Direct builds at both maxima are accepted, eight arcs, 668.12 km/s at 1 g
+and 674.01 at 0.3 g. The
+slider's right end never asks for a refused plan; the current floors and the
+re-measurement are in
+[the post-close re-measure](#post-close-re-measure-step-4b-merged-2026-11-20).
 
 ## Step 7: the levers measured (2026-11-20)
 
@@ -339,16 +341,18 @@ changes which certified plan the near-floor basin first closes at:
 | Uranus, 1 g | 33.99769 → **34.16041 d** | 22.0 → **3.62 s** |
 | Uranus, 0.3 g | 41.57095 → **40.71332 d** | 18.7 → **0.79 s** |
 
-At 1 g the new floor is 0.16 d (0.5%) **more** conservative; at 0.3 g it is 0.86 d
-shorter and 1,801.17 km/s instead of 1,756.59, because a shorter trip carries
-more speed. These are re-measured anchors, not errors: the floor is the first
-duration the certified full-field build closes at, and the basin was already
-noisy. `Plan()` is now 2.6–6× faster at Mars, Mercury and Uranus 1 g, and 24× at
+At step 7 the 1 g floor was 0.16 d (0.5%) **more** conservative and the 0.3 g
+floor 0.86 d shorter at 1,801.17 km/s. The first-plot work and the approach leg
+then re-measured them: on the merged tree the .NET floors are **30.55886 d** and
+**40.71332 d**, and the editor's are **33.65372 d** and **33.60438 d** (see
+[the post-close re-measure](#post-close-re-measure-step-4b-merged-2026-11-20)).
+These are re-measured anchors, not errors: the floor is the first duration the
+certified full-field build closes at, and the basin is noisy. `Plan()` is now 2.6–6× faster at Mars, Mercury and Uranus 1 g, and 24× at
 Uranus 0.3 g partly because its floor moved.
 
 **At step 7 the 0.3 g floor was a needle**, and that mattered for the slider.
-Its plan was certified as feasible at 40.71332 d, and the 1 g floor at 34.16041 d
-rebuilt normally from a direct request. The 0.3 g one did not: a cold
+Its .NET plan was certified as feasible at 40.71332 d, and the 1 g floor at
+34.16041 d rebuilt normally from a direct request. The 0.3 g one did not: a cold
 `PlanAtDuration(40.71332 d)` was refused with *"the departure burn cannot be
 placed at this trip time"*, 1.039 × 10⁻⁵ m/s short — 4% over
 `DepartureSolveToleranceMps` — because the search's 0.2% retry found a feasible
@@ -356,6 +360,10 @@ point only about **40 ms** wide inside a hole that runs to 40.9 d. The returned
 plan was still a certified full-field plan and its seams were inside the gate,
 but a rebuild at its own duration stalled. The background retime used to rebuild
 a floor request and would have published that refusal; it now hands the window's
+stored floor plan to the publisher, mirroring `SetPreviewDuration`'s reuse, so a
+drag to the left end is free and cannot refuse. Step 1's certified brake now
+closes that rebuild (5.1 m / 6.5 × 10⁻⁴ m/s), but the cache reuse still keeps
+the drag off the search. The rest of the window keeps the
 stored floor plan to the publisher, mirroring `SetPreviewDuration`'s reuse, so a
 drag to the left end is free and cannot refuse. Step 1's certified brake now
 closes that rebuild (5.1 m / 6.5 × 10⁻⁴ m/s), but the cache reuse still keeps
@@ -540,7 +548,8 @@ follows, 13.341–40.024 d. It is a re-measured, certified floor, not an error: 
 plan is rebuilt full-field, every arc has its measured clearance and delta-v, and
 every seam is inside the 1 km / 1 m/s gate. The .NET Jupiter floor is unchanged
 at 13.33520 d, so the runtime divergence the plan already records is still there;
-Mars (6.73715 d), Mercury (3.21610 d), and Uranus (33.60438 / 31.25256) did not
+Mars (6.73715 d), Mercury (3.21610 d), and Uranus (33.60438 / 31.25256 at that
+step; the 1 g floor is re-measured on the merged tree) did not
 move. The six fixed-duration Δv anchors are unchanged to four decimals.
 
 The hybrid capture is threaded through the probe too: a probe's injection burn
@@ -647,9 +656,11 @@ measured, and their seams are inside the 1 km / 1 m/s gate (the Jupiter 13.07211
 plan: 93.35 m / 8.0 × 10⁻³ m/s in .NET; the flight suite asserts the editor's
 floor plans through the same gate).
 
-The six fixed-duration Δv anchors are **identical to four decimals** — Mars 90 d
-44.3564 km/s, Mercury 8 d 557.0380, Uranus 400 d 182.3393, Mars 20 d 270.8500,
-Mars 10 d 607.8259, Uranus 35 d 1984.4479 — because every one of them converges
+The six fixed-duration Δv anchors **do not move with the retry or the cheaper
+build** — on the merged tree they are Mars 90 d 44.3543 km/s, Mercury 8 d
+557.0380, Uranus 400 d 182.3124, Mars 20 d 270.8500, Mars 10 d 607.8259, and
+Uranus 35 d 1984.4479, the approach-leg values to four decimals — because every
+one of them converges
 well before the twelve-pass cap. The window's right end is still a feasible
 build at 3 × the floor (39.216 d at Jupiter, 20.191 d at Mars): the retry
 changes the floor, not the window rule, and `FlightSession` reuses the stored
@@ -678,25 +689,26 @@ conic capture), the same measurement the plan opened with:
 
 | Case | Original | Final | Floor | Window |
 |---|---:|---:|---:|---|
-| Uranus 0.3 g (default) | 27.3 s | **1.865 s** | 33.60438 d | 33.60–100.81 d |
-| Uranus 1 g | 2.57 s | **1.341 s** | 31.25256 d | 31.25–93.76 d |
-| Mars 0.3 g | 13.5 s | **3.445 s** | 6.73042 d | 6.73–20.19 d |
-| Mercury 1 g | 4.17 s | **2.520 s** | 3.21610 d | 3.22–9.65 d |
-| Jupiter 0.3 g | 33.6 s | **3.193 s** | 13.07211 d | 13.07–39.22 d |
+| Uranus 0.3 g (default) | 27.3 s | **1.80 s** | 33.60438 d | 33.60–100.81 d |
+| Uranus 1 g | 2.57 s | **1.28 s** | 33.65372 d | 33.65–100.96 d |
+| Mars 0.3 g | 13.5 s | **2.99 s** | 6.73042 d | 6.73–20.19 d |
+| Mercury 1 g | 4.17 s | **2.29 s** | 3.21610 d | 3.22–9.65 d |
+| Jupiter 0.3 g | 33.6 s | **3.03 s** | 13.07211 d | 13.07–39.22 d |
 
-The goal was a certified first plot in roughly 3 s in the editor at both levels.
-Four cases are within ~0.2 s of it; Mars is 0.45 s over. .NET's `Plan()` on the
-same tip is 0.23–0.49 s, so the editor's remaining gap is per-build cost, not
+The goal was a certified first plot in roughly 3 s in the editor at both levels,
+and the merged tree meets it: the five cases are 1.28–3.03 s (a second run gave
+1.98, 1.30, 3.02, 2.29, and 3.05 s). .NET's `Plan()` on the
+same tree is 0.21–0.38 s, so the editor's remaining gap is per-build cost, not
 search shape.
 
 ### What the remaining time is
 
-Mars and Jupiter are ~3.2–3.45 s because they are now **one certified build plus
+Mars and Jupiter are ~3.0 s because they are now **one certified build plus
 the window build**, paid at the editor's per-build price; the search in front of
 them is fast probes that cost milliseconds. Mars alone pays a **pin retry**, and
 that makes its certified build cost about twice a converged one: the first
 twelve outer passes are repeated by the twenty-four-pass retry, roughly **0.4 s**
-of its 3.445 s.
+of its 3.0 s.
 
 That duplicated work is the last known lever. **Resuming the brake/departure pin
 in place from its twelfth-pass state, instead of rebuilding the burn at
@@ -709,7 +721,7 @@ Jupiter 13.34149 → 13.07211 d) without moving a tolerance or a gate.
 
 The .NET harness and the editor disagree on which near-floor point is the floor
 at the giant planets: Uranus 0.3 g **40.71 d .NET against 33.60 d in the
-editor**, Uranus 1 g 30.56 against 31.25, and Jupiter **13.335 against 13.072**.
+editor**, Uranus 1 g 30.56 against 33.65, and Jupiter **13.335 against 13.072**.
 Both numbers are **certified full-field plans**: each is rebuilt with the summed
 field, every arc carries its measured clearance and delta-v, and every seam is
 inside the 1 km / 1 m/s gate. The near-floor basin is a scatter rather than a
@@ -723,6 +735,48 @@ number is the one that ships**, which is why the anchors in
 figures stay as the harness's own measurement and as evidence that both points
 are certified. Whatever the runtime, a reported floor is a certified full-field
 plan, never a probe's answer.
+## Post-close re-measure (step 4b merged, 2026-11-20)
+
+The **planetocentric approach leg** landed after the first-plot plan and was
+merged on top of it. It changes the arrival the near-floor basin first closes
+at, and the first-plot work changes which certified duration the search reaches,
+so the floors were re-measured on the merged tree. Measured at the epoch from
+Gateway with the conic capture, medians in the warm Release .NET harness and
+first `Plot()` in the editor's warm test project:
+
+| Case | .NET `Plan()` | Editor first plot | Editor floor | Editor window |
+|---|---:|---:|---:|---:|
+| Uranus, 0.3 g | **0.208 s** | **1.80–1.98 s** | **33.60438 d** | 33.60–100.81 d |
+| Uranus, 1 g | **0.213 s** | **1.28–1.30 s** | **33.65372 d** | 33.65–100.96 d |
+| Mars, 0.3 g | **0.384 s** | **2.99–3.02 s** | **6.73042 d** | 6.73–20.19 d |
+| Mercury, 1 g | **0.241 s** | **2.29 s** | **3.21610 d** | 3.22–9.65 d |
+| Jupiter, 0.3 g | **0.214 s** | **3.03–3.05 s** | **13.07211 d** | 13.07–39.22 d |
+
+The .NET floors are **30.55886 d** (Uranus 1 g), **40.71332 d** (Uranus 0.3 g),
+**6.73042 d** (Mars 0.3 g), **3.21610 d** (Mercury 1 g), and **13.33520 d**
+(Jupiter 0.3 g), all seven-arc trips with no approach: their brakes start outside
+the ceiling. The editor's 1 g floor is the one floor plan whose brake starts
+inside it, so it carries the approach arc and eight arcs. The near-floor basin
+is still needle-shaped; the returned duration is a certified plan, not a smooth
+boundary, so the background retime keeps reusing the window's stored floor plan.
+
+Direct builds at both Uranus maxima are accepted: eight arcs, **668.12 km/s** at
+1 g and **674.01** at 0.3 g, so the slider's right end is feasible. The
+fixed-duration plans are re-measured against the approach-leg values, not the
+pre-approach ones: **Uranus 400 d at 1 g is 182.3124 km/s** (break 4.048,
+departure burn 90.17, brake 81.39, capture 0.001 + 0.010, with a 7.544-day
+approach from the 52,795,223.9 km ceiling to 368,111.4 km), **Mars 90 d is
+44.3543** (a 6.032-hour approach from 588,785.9 km to 92,922.5 km), Mercury 8 d
+is 557.0380, Mars 20 d 270.8500, Mars 10 d 607.8259, and Uranus 35 d 1984.4479.
+Every one is identical to four decimals to main's approach-leg value, so the
+cheap build moved no fixed-duration answer.
+
+The merged approach leaves Mercury and Mars alone and moves a Uranus floor only
+where the brake starts inside the ceiling. The **flight suite** on the merged
+tree (`tools/check.sh --tests flight`) passes; the exact run is reported in the
+merge's log entry. The tables above are the current anchors; the earlier
+sections record how each measurement was reached.
+
 
 # Where it lives
 

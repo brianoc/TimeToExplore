@@ -115,13 +115,15 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 burn–coast–burn window is **6.73 to 20.19 days**, from the profile's true floor
 of 6.73042 days at 0.3 g; the Mercury window is 3.22 to 9.65 days, Jupiter's is
 13.07–39.22 days at 0.3 g, and Uranus's is **33.60–100.81 days** at 0.3 g and
-**31.25–93.76 days** at 1 g. A 90-day Mars build is outside that window, and the
-window's right end is three times its floor by the existing rule, so the slider
-never asks for a refused plan. The first selection is the cost: the editor's
-first `Plot()` (planner plus window) is **1.87 s at Uranus 0.3 g, 1.34 s at
-1 g, 3.45 s at Mars 0.3 g, 2.52 s at Mercury 1 g, and 3.19 s at Jupiter 0.3 g**
-in the warm test project, against 27.3, 2.57, 13.5, 4.2, and 33.6 s when the
-first-plot plan started. .NET's `Plan()` is 0.23–0.49 s for the same cases.
+**33.65–100.96 days** at 1 g. A 90-day Mars build is outside that window, and
+the window's right end is three times its floor by the existing rule, so the
+slider never asks for a refused plan; direct builds at both Uranus maxima are
+feasible (eight arcs, **668.12 km/s** at 1 g and **674.01** at 0.3 g). The first
+selection is the cost: the editor's first `Plot()` (planner plus window) is
+**1.80 s at Uranus 0.3 g, 1.28 s at 1 g, 2.99 s at Mars 0.3 g, 2.29 s at
+Mercury 1 g, and 3.03 s at Jupiter 0.3 g** in the warm test project, against
+27.3, 2.57, 13.5, 4.17, and 33.6 s when the first-plot plan started. .NET's
+`Plan()` is 0.21–0.38 s for the same cases.
 Every case now certifies on its **first** certificate with no continuation
 probes, so the remaining time is the editor's per-build price, not a search
 ([planning

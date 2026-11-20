@@ -317,7 +317,7 @@ torch-ship fiction uses is flyable. The design is
   than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
   the chain closing, so at the epoch the Mars window is **6.73–20.19 days** and
   the Mercury fast end is 3.21610 days at 1 g; Jupiter's is 13.07–39.22 and
-  Uranus's 33.60–100.81 at 0.3 g and 31.25–93.76 at 1 g. A 90-day Mars plan is a
+  Uranus's 33.60–100.81 at 0.3 g and 33.65–100.96 at 1 g. A 90-day Mars plan is a
   direct `PlanAtDuration` build outside that window. The floor plan and window are
   cached per date, target, level, cruise and arrival style, and moving the
   slider retimes on a latest-wins background worker; every published preview is
