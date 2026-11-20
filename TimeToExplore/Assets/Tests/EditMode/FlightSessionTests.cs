@@ -489,6 +489,31 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(back.FlightTimeSeconds, Is.EqualTo(minimum).Within(1e-3));
         }
 
+        /// <summary>
+        /// The slider's background path reuses the floor too. A drag to the left
+        /// end asks for the duration the window already solved, so the worker
+        /// must not rebuild it: a cold build is the profile's most expensive
+        /// call, and on a near-floor needle it can refuse the very duration the
+        /// window advertises.
+        /// </summary>
+        [Test]
+        public void ABackgroundRetimeToTheFloorReusesTheCachedFloorPlan()
+        {
+            TrajectoryPlan floor = _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            _session.SetPreviewDuration(2.0 * minimum);
+
+            Assert.That(_session.RequestPreviewDuration(minimum), Is.True);
+            Assert.That(_session.TryApplyCompletedRetime(out TrajectoryPlan published),
+                Is.True, "a request that lands on the floor is answered from the window");
+
+            Assert.That(published, Is.SameAs(floor),
+                "the floor is the plan the window already solved; the worker must " +
+                "not pay for a second certified build");
+            Assert.That(_session.Preview, Is.SameAs(floor));
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN);
+        }
+
         [Test]
         public void ThePreviewDurationIsClampedToItsWindow()
         {

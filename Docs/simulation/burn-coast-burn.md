@@ -4,7 +4,7 @@ title: Burn–coast–burn trips
 description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # The trip
@@ -211,14 +211,14 @@ the case that motivated the change:
 | Coast | 277.3 days | 392.3 days |
 | Total | 242.1 km/s | **182.3 km/s** |
 | Brake start radius | 51.96 million km (1.004 SOI) | **366,505 km (0.0071 SOI)** |
-| Profile floor | 150.73 days | **34.00 days** |
+| Profile floor | 150.73 days | **34.16 days** |
 
 At 0.3 g the same comparison is a 1.3-hour fall against 117.13 days, 79.7 km/s of
 brake, 180.8 km/s in total, a brake start 1,159,005 km out (0.0224 SOI), and a
-floor of **41.57 days** against 160.47. The brake starts deep inside the target's
+floor of **40.71 days** against 160.47. The brake starts deep inside the target's
 sphere on a long trip because the coast, not the brake, flies most of the
-approach; at the fast floor the brake itself spans it (28.5 hours of 995 km/s
-from 51.07 million km, 0.987 SOI). That is the measurement the next decision
+approach; at the fast floor the brake itself spans it (28.4 hours of 990 km/s
+from 50.55 million km, 0.976 SOI). That is the measurement the next decision
 rests on, and it is in
 [the binding question](/simulation/powered-leg-floor.md#the-binding-question-where-the-coast-ends).
 
@@ -276,11 +276,11 @@ Mars 90 days, and floors of 3.22 and 6.74 days. The seams close to under a metre
 and 3.7 × 10⁻⁴ m/s, and the Mars 90-day flight arrives 0.08 m and 7 × 10⁻⁵ m/s
 from the reference state.
 
-The cost is planning time, not delta-v: each full-field step re-prepares the
-field over the catalogue, so a certified build is about an order of magnitude
-more work than the two-body build it replaced
-([planning performance](/technical/planning-performance.md), step 7 of the plan,
-owns the remedy).
+The cost is planning time, not delta-v: a full-field step evaluates the summed
+field over the catalogue, and the active set refreshes every eighth step, so a
+certified build is still several times the two-body build it replaced
+([planning performance](/technical/planning-performance.md); step 7 measured the
+2.2–3.7× cut from the cadence and the looser pin).
 
 # The burns are gated on body clearance
 
@@ -385,8 +385,16 @@ Measured at the epoch (2026-11-15) from Gateway, conic capture:
 |---|---|---:|---:|---:|---|---|
 | Mercury | 1 g | **3.22 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Mars | 0.3 g | **6.74 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
-| Uranus | 1 g | **34.00 d** | 9.70 m/s² | 2,047 km/s | 32.0 d | the break cannot be placed (1.3 × 10⁻⁵ m/s short); 33.0 d builds directly at 2,114 km/s, so the returned floor is about 3% conservative here |
-| Uranus | 0.3 g | **41.57 d** | 2.94 m/s² | 1,757 km/s | 40.95 d | the pinned departure solve stalls 1.1 × 10⁻⁵ m/s short of the coast |
+| Uranus | 1 g | **34.16 d** | 9.70 m/s² | 2,037 km/s | 33.83 d | refused by the pinned-departure stall (33.6577 d builds directly at 2,070 km/s), so the returned floor is about 0.50 d conservative |
+| Uranus | 0.3 g | **40.71 d** | 2.94 m/s² | 1,801 km/s | 40.90 d | a needle: 40.30 d builds directly at 1,824 km/s and 40.95 d at 1,789, while 40.5–40.9 d stall and the returned plan does not rebuild cold |
+
+The Uranus 0.3 g basin is a set of **needles**, not a boundary: the search's 0.2%
+retry found a certified 40.71332 d plan inside a hole that runs to about 40.9 d,
+so a direct build at that exact duration is refused a few tens of milliseconds
+away. The plan is a real full-field plan (worst seam 3.07 m and 1.7 × 10⁻⁴ m/s)
+and the cached floor is what the slider returns; [planning
+performance](/technical/planning-performance.md#step-7-the-levers-measured-2026-11-20)
+records the needle and the cache reuse that keeps the background retime off it.
 
 The floor search also requires the chain to be **closed**: a plan whose peak
 fits but whose brake misses the capture entry is not flyable. The near-floor
@@ -395,16 +403,16 @@ plan that fits the peak can end the brake hundreds of thousands of kilometres
 from the entry; the planner reports that as a trip time too short for the
 profile instead of handing it to the autopilot. The gate is a kilometre of
 position and a metre per second of velocity: the 8- and 12-day trips close to
-centimetres, the 6.74 d Mars floor's worst seam is 665 m, and a broken brake
-misses by thousands of kilometres. The 8.03 d flight arrived 0.1 m and 10⁻⁴ m/s
-from the reference parking state.
+centimetres, the 6.74 d Mars floor's worst seam is 666 m (and the Mercury floor's
+196 m), and a broken brake misses by thousands of kilometres. The 8.03 d flight
+arrived 0.1 m and 10⁻⁴ m/s from the reference parking state.
 
-The pinned solve itself now stops on the brake's own physical mismatch (1e-7 m/s
+The pinned solve itself now stops on the brake's own physical mismatch (1e-6 m/s
 at the brake's start) rather than the old `required.SqrMagnitude > 1e-18`, which
 a real brake can never satisfy. The fixed 12-pass outer loop and the three
 settle passes became a convergence loop plus up to three settles only while the
 fixed point is still drifting; the final brake and arcs still close to better
-than a centimetre and 1e-5 m/s on the tested trips. The Newton Jacobian is
+than a few metres and 2 × 10⁻⁴ m/s on the tested trips. The Newton Jacobian is
 reused for one iteration, and the coast's propagator correction gets sixteen
 iterations so the long, low-level burns still close.
 

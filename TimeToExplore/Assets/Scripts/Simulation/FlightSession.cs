@@ -379,6 +379,32 @@ namespace TimeToExplore.Simulation
 
             double duration = Math.Clamp(seconds, PreviewMinimumSeconds,
                 PreviewMaximumSeconds);
+
+            // A request that lands on the floor is the plan the window already
+            // solved. Hand it to the publisher directly instead of queueing a
+            // build that would reproduce it: the build is the profile's most
+            // expensive call, and on a near-floor needle the cold rebuild can
+            // refuse the very duration the window advertises. The generation
+            // bump discards any older request still in flight.
+            if (TryGetCachedWindow(Preview.TargetId, _previewDeparture.JulianDate,
+                    out PreviewWindow floorWindow)
+                && Math.Abs(duration - floorWindow.Plan.FlightTimeSeconds)
+                   <= 1e-9 * Math.Max(1.0, duration))
+            {
+                lock (_retimeLock)
+                {
+                    if (_retimeStop) return false;
+
+                    _retimeGeneration++;
+                    _pendingRetime = null;
+                    _completedRetime = floorWindow.Plan;
+                    _completedRetimeGeneration = _retimeGeneration;
+                    _requestedPreviewSeconds = duration;
+                }
+
+                return true;
+            }
+
             var request = new RetimeRequest(_previewDeparture, Preview.TargetId, duration,
                 CruiseProfile, ArrivalStyle, _planner);
 

@@ -112,9 +112,13 @@ namespace TimeToExplore.Simulation
 
         /// <summary>Velocity mismatch, in m/s, at the brake's start that ends
         /// the pinned brake/departure fixed point. The mismatch is integrated
-        /// over the brake, so 1e-7 m/s is under a centimetre of entry position
-        /// even on the fastest, longest brake.</summary>
-        private const double BrakeConvergenceMps = 1e-7;
+        /// over the brake, so 1e-6 m/s is at most about 0.3 m of entry position
+        /// over the longest measured brake (82.7 h at the Uranus 0.3 g floor),
+        /// far inside the 1 km chain gate. The fixed point's own interpolation
+        /// resolution stalls at about 6.6e-7 m/s, so a 1e-7 target never
+        /// converges and the loop runs its twelve-pass cap; 1e-6 reaches the
+        /// same plan in eight passes.</summary>
+        private const double BrakeConvergenceMps = 1e-6;
 
         /// <summary>Change in the brake's duration that ends the fixed point.</summary>
         private const double BrakeDurationToleranceSeconds = 1e-6;

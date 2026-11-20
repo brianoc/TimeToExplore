@@ -42,6 +42,16 @@ namespace TimeToExplore.Simulation
 
         private const double TargetStepSeconds = 4.0;
 
+        /// <summary>RK4 steps between summed-field active-set refreshes. A
+        /// refresh evaluates the whole catalogue's ephemeris, which is the
+        /// expensive part of a full-field step; the set only has to stay a
+        /// superset of the bodies that matter, and a burn closes a small
+        /// fraction of the distance to any new body in eight steps. At the
+        /// sample counts the planner uses that is 32–480 s of burn between
+        /// refreshes. <see cref="AccelerationAt"/> still prepares per query, so
+        /// the reported acceleration is exact.</summary>
+        private const int PrepareEverySteps = 8;
+
         private readonly SolarSystemModel _model;
         private readonly BodyRuntime _centre;
         private readonly IGravityField _gravity;
@@ -83,9 +93,9 @@ namespace TimeToExplore.Simulation
         public bool UsesFullField => _gravity != null;
 
         /// <summary>The summed field this arc integrates, or null for the
-        /// two-body model. The arc prepares this field at every query and every
-        /// RK4 step, so a caller must not rely on a prepared set it did not ask
-        /// for last.</summary>
+        /// two-body model. The arc prepares this field at every query and at
+        /// the first RK4 step and every eighth step after it, so a caller must
+        /// not rely on a prepared set it did not ask for last.</summary>
         public IGravityField Gravity => _gravity;
 
         /// <summary>The local state at the end of the burn.</summary>
@@ -148,7 +158,7 @@ namespace TimeToExplore.Simulation
 
                 for (int i = 0; i < count; i++)
                 {
-                    StepFull(model, gravity, centre, startJulianDate, i * step,
+                    StepFull(model, gravity, centre, startJulianDate, i, i * step,
                         accelerationMps2, retrograde, fallback, direction, directed,
                         ref position, ref velocity, step);
 
@@ -241,7 +251,7 @@ namespace TimeToExplore.Simulation
             double step = durationSeconds / count;
             for (int i = 0; i < count; i++)
             {
-                StepFull(model, gravity, centre, startJulianDate, i * step,
+                StepFull(model, gravity, centre, startJulianDate, i, i * step,
                     accelerationMps2, retrograde, fallback, Vector3d.Zero, false,
                     ref position, ref velocity, step);
 
@@ -356,7 +366,7 @@ namespace TimeToExplore.Simulation
                 Vector3d previousPosition = position;
                 Vector3d previousVelocity = velocity;
 
-                StepFull(model, gravity, centre, startJulianDate, i * step,
+                StepFull(model, gravity, centre, startJulianDate, i, i * step,
                     accelerationMps2, retrograde, fallback, Vector3d.Zero, false,
                     ref position, ref velocity, step);
 
@@ -467,7 +477,7 @@ namespace TimeToExplore.Simulation
                 // A negative step means the step's start is the later date:
                 // the state begins at the end of the burn and walks back.
                 double elapsed = durationSeconds + i * step;
-                StepFull(model, gravity, centre, startJulianDate, elapsed,
+                StepFull(model, gravity, centre, startJulianDate, i, elapsed,
                     accelerationMps2, retrograde, fallback, fixedDirection, directed,
                     ref position, ref velocity, step);
             }
@@ -645,13 +655,16 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// One RK4 step of the summed-field burn in absolute coordinates. The
-        /// field is prepared once per step, at the step's start, and that active
-        /// set is evaluated at the four stage times — the integrator's own
-        /// pattern. A burn that leaves a body's vicinity therefore reselects the
-        /// set every step, so the set stays a superset of the bodies that matter.
+        /// field is prepared at the first step and every
+        /// <see cref="PrepareEverySteps"/>th step after it, at the step's start,
+        /// and that active set is evaluated at the four stage times. A burn
+        /// that leaves a body's vicinity therefore reselects the set often
+        /// enough to stay a superset of the bodies that matter; the refreshes
+        /// are the arc's cost, so eight steps is the measured trade against
+        /// preparing every step.
         /// </summary>
         private static void StepFull(SolarSystemModel model, IGravityField gravity,
-            BodyRuntime centre, double startJulianDate, double elapsedSeconds,
+            BodyRuntime centre, double startJulianDate, int stepIndex, double elapsedSeconds,
             double accelerationMps2, bool retrograde, Vector3d fallbackDirection,
             Vector3d fixedDirection, bool directed,
             ref Vector3d position, ref Vector3d velocity, double h)
@@ -659,7 +672,8 @@ namespace TimeToExplore.Simulation
             double julianDate = startJulianDate + elapsedSeconds / JulianDate.SecondsPerDay;
             double halfDays = 0.5 * h / JulianDate.SecondsPerDay;
 
-            gravity.Prepare(position, julianDate);
+            if (stepIndex % PrepareEverySteps == 0)
+                gravity.Prepare(position, julianDate);
 
             Vector3d k1Position = velocity;
             Vector3d k1Velocity = FullAcceleration(model, gravity, centre, julianDate,

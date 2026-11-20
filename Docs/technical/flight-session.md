@@ -114,24 +114,30 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
 burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
 of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
-build is outside that window. At Uranus the window is **34.00 to 101.99 days** at
-1 g, and its right-hand end is a feasible direct build (seven arcs,
-661.35 km/s), so the slider cannot ask for a refused plan. The first selection
-there is the cost: the first `Plan()` is about **71 s in the .NET harness**
-at 1 g and 59 s at 0.3 g, and the editor is several times slower, so a first
-Uranus preview freezes the UI for minutes until step 7. The floor plan and the
-window are cached per departure date, target, burn level, cruise style, and
-arrival style, so plotting the same route again at the same date reuses both; a
-changed departure date, or a place/teleport, drops the cache.
+build is outside that window. At Uranus the window is **34.16 to 102.48 days** at
+1 g (40.71–122.14 d at 0.3 g), and its right-hand end is a feasible direct build
+(seven arcs, 658.19 km/s), so the slider's right end is not a refusal. The first
+selection there is the cost: after step 7 the first `Plan()` is about **3.6 s in
+the .NET harness** at 1 g and 0.8 s at 0.3 g, against 22.0 and 18.7 s in the same
+Release harness (71 and 59 s in the Debug harness step 6 used), and the editor
+runs the same work several times slower, so the first Uranus preview is a pause
+of order ten seconds rather than the multi-minute freeze it was. The floor
+plan and the window are cached per departure date, target, burn level, cruise
+style, and arrival style, so plotting the same route again at the same date
+reuses both; a changed departure date, or a place/teleport, drops the cache.
 
 The slider does **not** block the frame. Moving the handle calls
 `FlightSession.RequestPreviewDuration`, which enqueues the newest duration for
 one background worker; the worker rebuilds the plan from the stored departure
 state with `TripPlanner.PlanAtDuration`, using its own `TripPlanner` and
 `GravityField` because the flight simulation's field keeps a prepared active set
-and stays on the main thread. A plan that finishes after a newer request arrived
-is discarded and the newest request is built next, so a drag never queues work
-behind stale plans. The preview stays pinned to `PreviewJulianDate`, and the
+and stays on the main thread. A request that lands on the window's floor is the
+plan the window already solved, so it is handed to the publisher directly
+instead of being rebuilt — a cold build is the profile's most expensive call,
+and near a floor needle it can refuse the very duration the window advertises. A
+plan that finishes after a newer request arrived is discarded and the newest
+request is built next, so a drag never queues work behind stale plans. The
+preview stays pinned to `PreviewJulianDate`, and the
 published preview — path, flip, arrival marker and ghost, panel flight time,
 peak thrust, and delta-v — stays on screen until the HUD's frame calls
 `SolarSystemBootstrap.ApplyRetimeIfReady`, which hands the finished plan back on
