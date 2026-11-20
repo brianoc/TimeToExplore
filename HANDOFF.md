@@ -1,14 +1,15 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1–4 are done. **This plan stays on `main` as the transition to working
-agreement rule 1** (work in a worktree): its steps were committed here before
-the rule existed, and the next plan starts in a worktree, not this one. The design is recorded in
+Steps 1–5 are done; step 6 is next. Step 5 landed in the `work/steering-law`
+worktree and merges to `main` when green, per working-agreement rule 1. The
+design is recorded in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 `FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
-ends, every fixed burn is gated on body clearance, and the burn–coast–burn's
-capture chain now enters at the **arrival handover floor**. Step 5, the steering
-experiment, is next. Screenshots are waived for this plan.
+ends, every fixed burn is gated on body clearance, the burn–coast–burn's capture
+chain enters at the **arrival handover floor**, and both fixed burns keep the
+**fixed inertial direction** because the steering measurement found nothing for a
+tracking or segmented law to win. Screenshots are waived for this plan.
 
 ## Why
 
@@ -31,8 +32,8 @@ this list is the caretaker's short form.
    the floor `sqrt(μ / (κ a_drive))` at the parking ceiling's `κ = 0.4` clamped
    up to `R + 100 km`, the ceiling `1.02 × SOI`, validity, and the reason when it
    is empty. **Departure = the ceiling** (unchanged plan) and **arrival = the
-   floor** (flown in step 4). An interior solved radius waits on the steering
-   measurement.
+   floor** (flown in step 4). An interior solved radius is still open: step 5
+   settled the steering law, not the radius rule.
 3. **Quintic ends stay.** The break and the conic/hybrid capture keep their
    jobs; only the handover radius and the field changed.
 4. **The capture chain takes an entry radius.** *Implemented in step 4, radius
@@ -40,13 +41,16 @@ this list is the caretaker's short form.
    the coast profile and the powered conic arrival keep the sphere. The **entry
    speed is still the per-plan `EntrySpeedMps`** (5 km/s default); the
    brake-produced residual is the next decision and needs the step-4 numbers.
-5. **Steering starts simple.** A fixed inertial direction, subdivided into a few
-   segments if needed. Measure the Δv penalty against a local-prograde law
-   before paying for a shooting solve.
+5. **Steering starts simple.** *Implemented and settled.* **Both fixed burns
+   keep the fixed inertial direction**, measured at the epoch against a local
+   prograde/retrograde law, 1–128 fixed segments, and a pursuit law. The
+   departure burn is prograde by construction; the brake's seam is exact with the
+   fixed direction and every alternative leaves 3.1–17.6 km/s or more. Numbers
+   in [the concept](/simulation/powered-leg-floor.md#steering-starts-simple).
 
-Open questions: the entry-speed rule, the approach model (see Traps), the
-steering law, whether an interior solved radius is worth it, and whether the
-handover radius should be a search input or a certified build.
+Open questions: the entry-speed rule, the approach model (see Traps), whether an
+interior solved radius is worth it, and whether the handover radius should be a
+search input or a certified build.
 
 ## Steps (one sub-agent per step, one commit each)
 
@@ -67,13 +71,27 @@ handover radius should be a search input or a certified build.
    spans the sphere instead (28.5 h of 995 km/s from 51.07 million km). That
    measurement is the next decision's input; the concept records it under "The
    binding question".
-5. **Steering experiment.** Fixed direction versus a few fixed segments versus
-   local prograde. Record the Δv penalty at the epoch at 0.3 g and 1 g, and pick
-   one in the concept. *Next.*
+5. **Steering experiment.** **Done** — the fixed inertial direction stays at
+   both ends. Four plans at the epoch (Uranus 400 d at 1 g and 0.3 g, Mars 90 d
+   at 0.3 g, Mercury 8 d at 1 g): each burn's held direction was recovered from
+   `AccelerationAt − GravityField`, then the same start state, duration and
+   acceleration were re-flown at 2,048+ RK4 steps through the full field with the
+   plan's direction, local prograde/retrograde, 1–128 segments, and a pursuit
+   law. The fixed law reproduces the plan end state to 0.000 km and 0.000 km/s,
+   so the harness and the planner integrate the same field. The departure burn is
+   the escape ray, 0.00° from the frame's prograde at every sample, and a local
+   law reproduces it to 0.003 km/s. The brakes turn 30–78° of tracking and the
+   held direction ends 39.7–87.6° off retrograde; the local-retrograde seam is
+   **17.6 / 13.3 / 3.1 / 6.0 km/s**, and re-aiming makes it worse: 15.3 at one
+   segment, 22.2 at two, 34.0 at eight and 39.0 at 128 on Uranus 1 g, while
+   pursuit reaches 6.1 / 11.0 / 0.14 / 0.006. The 16.85% cosine loss at Uranus
+   1 g is 13.68 km/s
+   of thrust across the track — the turn the brake exists to make, not a
+   spendable penalty. The concept records the whole table and the decision.
 6. **Slider and window.** The trip-time window's left end moved (Mars
    6.74–20.21 days, Mercury 3.22–9.65); the HUD copy and the window cache hold in
    the tests, and step 6 should re-check the copy and the floor search's
-   conservative bracket (see Traps).
+   conservative bracket (see Traps). *Next.*
 7. **Performance.** Full-field probes are slower and less smooth; measure
    `Plan()` and one slider retime before and after. Close out the docs and clear
    this file.
@@ -94,16 +112,27 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result (2026-11-20, after step 4): `tools/check.sh --tests flight` —
-  passed, 249 tests, 0 failed, 606 s; `tools/check.sh --tests
-  flight,presentation,smoke` on the final tree — passed, 389 tests, 0 failed,
-  1005 s; `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0 warnings,
-  0 errors. (Step 3's run was 245 tests, 0 failed, 405 s.)
+- Last result (2026-11-20, after step 5): `.venv/bin/python
+  tools/validate_okf.py` — 41 concepts, 0 warnings, 0 errors; `tools/check.sh
+  --fast` — passed. No Unity suite: step 5 changed docs only. (Step 4's code run:
+  `tools/check.sh --tests flight` — passed, 249 tests, 0 failed, 606 s;
+  `tools/check.sh --tests flight,presentation,smoke` on the final tree — passed,
+  389 tests, 0 failed, 1005 s. Step 3's run was 245 tests, 0 failed, 405 s.)
 
 ## Traps
 
 - Do not split burns at the SOI. That is the patched option and it puts the
   seam where the models disagree most.
+- **Do not replace the brake's fixed direction with local steering.** Flown over
+  the solved burn's own start state, duration and acceleration, a local
+  prograde/retrograde law leaves **17.6 km/s** of seam at Uranus 1 g, 13.3 at
+  0.3 g, 3.1 at Mars and 6.0 at Mercury, and a pursuit law leaves 6.1 / 11.0 /
+  0.14 / 0.006; neither closes the chain. Re-aiming every few segments is
+  monotonically worse (15.3 at one, 22.2 at two, 29.2 at four, 34.0 at eight,
+  39.0 at 128 on Uranus 1 g), because the schedule follows the velocity as it
+  turns instead of the chord the seam needs. The fixed direction is exact and its
+  spend is `a·T`, so segmenting pays twelve pin passes for a worse seam. The
+  reasoning is in [the concept](/simulation/powered-leg-floor.md#steering-starts-simple).
 - Do not "fix" the fall by braking sooner; it lengthens the coast. The win is a
   hotter entry and a deeper brake.
 - **The approach model is now the open problem.** On a long trip the coast ends

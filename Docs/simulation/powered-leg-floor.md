@@ -4,7 +4,7 @@ title: Full-field burns and the powered-leg floor
 description: Fixed burns integrate the summed gravity field and hand over to the shaped ends inside a band, so a capture can enter hot and deep instead of falling in from the sphere of influence at a planted 5 km/s.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # The problem
@@ -428,20 +428,173 @@ the global value is not the lever: it moves every plan at once.
 The burns need an attitude law, because a full-field arc is no longer "prograde
 about one body". The first law is a **fixed inertial direction**, which is the
 honest model of a real burn: the ship holds one attitude instead of tracking its
-velocity. A long burn may be subdivided into a few fixed-direction segments if
-one is too crude; each segment is still a fixed inertial direction, not a control
-law.
+velocity. The alternative is a **local-prograde law** — thrust along the
+instantaneous velocity or the local frame's prograde — which is natural on a
+two-body arc but not obviously cheaper when the field is summed and the burn
+crosses a boundary. A long burn could be subdivided into a few fixed-direction
+segments if one were too crude; each segment is still a fixed inertial direction,
+not a control law. A shooting solve is the last resort, not the first.
 
-The alternative is a **local-prograde law** — thrust along the instantaneous
-velocity or the local frame's prograde — which is natural on a two-body arc but
-not obviously cheaper when the field is summed and the burn crosses a boundary.
-The penalty of the fixed direction must be measured against the local-prograde
-law before any more expensive law is considered. A shooting solve is the last
-resort, not the first.
+Measured at the epoch, the fixed direction is the right law at both ends. It is
+exact where it is used, and neither a tracking law nor segmenting recovers
+anything. The texture already existed — the brake holds a fixed direction along
+the change the chain needs, and the departure burn holds the escape ray — and
+the measurement now says keeping it is not a compromise.
 
-The texture already exists: the brake holds a fixed direction along the change
-the chain needs, and the departure burn holds the escape ray. Starting simple
-means keeping that and measuring it, not replacing it.
+## What was measured
+
+Four burn–coast–burn plans were built at the epoch (2026-11-15) from Gateway with
+the conic capture: Uranus at 400 days and 1 g and at 0.3 g, Mars at 90 days and
+0.3 g, and Mercury at 8 days and 1 g. For each finite-burn arc — the departure
+burn and the brake — the held thrust direction was recovered from the arc itself
+as `AccelerationAt(mid)` minus `GravityField.AccelerationAt` at the same state
+and date, so the measurement reads the attitude the planner actually built rather
+than a re-derived one. The **attitude frame** is the departure body (Earth) for
+the departure burn and the target for the brake: the tracking direction is the
+body-relative velocity, negated for the brake. Each burn was sampled at 400
+points for the angle between the held direction and the tracking direction, the
+mean cosine across the burn, and the rotation of the tracking direction.
+
+Each alternative law was then flown from the plan's own start state, for the same
+duration at the same acceleration, through the full summed field with RK4 at
+2,048 steps or better, preparing the field once per step as `FiniteBurnArc`
+does. The laws were:
+
+* **fixed** — the plan's own recovered direction, which must reproduce the
+  plan's end state;
+* **local prograde or retrograde** — along the instantaneous body-relative
+  velocity, negated for the brake;
+* **N fixed segments**, from one up to 128 — each segment holds the body-relative
+  velocity direction sampled from the plan's own burn at that segment's start,
+  which is what a few attitude updates during the burn would give;
+* **pursuit** — along the remaining velocity-to-go in the frame,
+  `v_end − v(t)` with both body-relative, an optimistic local law that knows
+  where the burn must finish.
+
+Holding the duration and acceleration fixed is what makes the answer a **seam
+error**: it is the state each law leaves where the chain needs the plan's, and
+closing that difference needs at least that much impulse. The fixed law
+reproduced every burn's end state to 0.000 km and 0.000 km/s, so the harness and
+the planner integrate the same field and the same thrust; that check is what
+makes the other rows readable.
+
+## The departure burn is already prograde
+
+The departure burn holds the escape ray, and the escape ray **is** the departure
+frame's prograde. The burn starts on the clearance sphere at the local escape
+speed along the ray, and both the thrust and the body's gravity are radial, so
+the body-relative velocity stays on the ray for the whole burn. Measured:
+
+| Case | Burn | Δv | Radius from Earth | Tracking rotation | Held vs tracking |
+|---|---:|---:|---:|---:|---:|
+| Uranus, 1 g, 400 d | 2.582 h | 90.17 km/s | 943,144 → 1,370,818 km | 0.00° | 0.00° → 0.00° |
+| Uranus, 0.3 g, 400 d | 8.524 h | 90.28 km/s | 943,144 → 2,356,578 km | 0.00° | 0.00° → 0.00° |
+| Mars, 0.3 g, 90 d | 1.267 h | 13.42 km/s | 943,144 → 977,932 km | 0.00° | 0.00° → 0.00° |
+| Mercury, 1 g, 8 d | 7.158 h | 249.96 km/s | 943,144 → 4,187,405 km | 0.00° | 0.00° → 0.00° |
+
+Every case has a mean cosine of 1.000000, so the cosine loss is zero and the
+13.4–250.0 km/s the burn spends is all along the tracking direction. A
+local-prograde law flown over the same burns reproduces the end state to
+**0.003 km/s** at worst (Uranus 0.3 g and Mercury), and its position drifts by at
+most 39 km over a burn that ends one to four million kilometres from Earth,
+which is the summed field's tidal residual pulling the relative velocity a
+fraction of a degree off the ray. Segments are the same: 2, 4 and 8 of them are
+all within 0.001 km/s of the fixed law, because there is nothing to track that
+the ray does not already track. **The departure burn costs nothing to hold
+fixed, and segmenting it buys nothing.**
+
+## The brake is where the laws differ
+
+The brake is the hard case: it is a change in direction as well as in speed, and
+the tracking direction rotates through 30–78° over the burn.
+
+| Case | Burn | Δv | Radius from target | Rotation | Held vs retrograde | Mean cos | Cosine loss |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Uranus, 1 g, 400 d | 2.325 h | 81.20 km/s | 366,505 → 38,643 km | 78.27° | 9.65° → 87.58° | 0.831505 | 16.85% = 13.68 km/s |
+| Uranus, 0.3 g, 400 d | 7.530 h | 79.75 km/s | 1,159,005 → 70,167 km | 75.32° | 7.18° → 82.40° | 0.884338 | 11.57% = 9.22 km/s |
+| Mars, 0.3 g, 90 d | 1.747 h | 18.51 km/s | 92,790 → 6,033 km | 30.35° | 9.40° → 39.72° | 0.939318 | 6.07% = 1.12 km/s |
+| Mercury, 1 g, 8 d | 6.108 h | 213.30 km/s | 2,378,950 → 2,806 km | 68.13° | 1.50° → 69.64° | 0.979441 | 2.06% = 4.39 km/s |
+
+The seam each law leaves, against the plan's burn end state, in km/s:
+
+| Law | Uranus 1 g | Uranus 0.3 g | Mars 0.3 g | Mercury 1 g |
+|---|---:|---:|---:|---:|
+| fixed (the plan) | 0.000 | 0.000 | 0.000 | 0.000 |
+| local retrograde | 17.598 | 13.272 | 3.060 | 6.012 |
+| pursuit | 6.149 | 11.012 | 0.143 | 0.006 |
+| 1 fixed segment | 15.325 | 12.176 | 2.979 | 6.018 |
+| 2 fixed segments | 22.164 | 17.063 | 3.978 | 8.731 |
+| 4 fixed segments | 29.197 | 22.282 | 4.759 | 11.851 |
+| 8 fixed segments | 34.044 | 26.447 | 5.249 | 15.099 |
+| 128 fixed segments | 39.031 | 31.115 | 5.766 | 22.768 |
+
+and the same table in kilometres:
+
+| Law | Uranus 1 g | Uranus 0.3 g | Mars 0.3 g | Mercury 1 g |
+|---|---:|---:|---:|---:|
+| fixed (the plan) | 0.000 | 0.000 | 0.000 | 0.000 |
+| local retrograde | 60,999 | 143,781 | 9,531 | 61,508 |
+| pursuit | 25,268 | 61,064 | 1,104 | 3,890 |
+| 1 fixed segment | 58,628 | 140,363 | 9,473 | 61,661 |
+| 2 fixed segments | 72,965 | 173,387 | 11,056 | 76,737 |
+| 4 fixed segments | 85,091 | 202,210 | 12,272 | 90,419 |
+| 8 fixed segments | 93,301 | 222,458 | 13,070 | 101,033 |
+| 128 fixed segments | 103,352 | 247,833 | 13,997 | 116,695 |
+
+**The cosine loss is not spendable.** At Uranus 1 g the held direction is 16.85%
+off the local retrograde on average, which is 13.68 km/s of the 81.20 km/s the
+brake spends. That sounds like a penalty and is not: the brake's job is to remove
+the velocity the coast arrives with **and** to turn it into the velocity the
+capture chain needs, and the perpendicular component is the turn. A burn aligned
+with the retrograde velocity can only remove speed; it leaves the direction
+change undone, and the 17.6 km/s seam the local-retrograde law leaves is exactly
+that undone change. So the loss is the work, not the waste, and tracking the
+velocity cannot recover it.
+
+**Re-aiming makes the seam worse, and more segments make it worse still.** One
+segment holds the velocity direction at the burn's start and leaves 15.3 km/s at
+Uranus 1 g; two leave 22.2, four 29.2, eight 34.0 and 128 leave 39.0, and the
+growth is monotone at every case, in velocity and in position. The angle column
+shows why: the tracking direction turns 78.27° over the burn, so a schedule
+sampled from the plan's own path walks the thrust off the chord a step at a
+time, and the more of that schedule it replays the further off it walks. The
+closed-loop **local** law is better than a heavy schedule (17.6 km/s) only
+because it follows its own velocity instead of the plan's, and it is still worse
+than holding one direction. The **pursuit** law is the best of the local
+family, because it aims at the chord instead of at the instantaneous velocity,
+which is why it is nearly exact at Mercury (6 m/s, where the brake starts 1.50°
+off retrograde and the field contributes little over the burn). It is still not
+exact where the field does real work: 6.1 km/s at Uranus 1 g and 11.0 at 0.3 g,
+where it aims at the velocity the burn has left to find and ignores that the
+field is also delivering part of it. The planner's fixed point already accounts
+for that.
+
+## The decision: keep the fixed inertial direction
+
+Both burns keep the fixed direction, at every level and target measured.
+
+* **It is exact at the seam by construction.** The direction is solved, not
+  chosen: the brake's is the change the chain needs and the departure burn's is
+  the escape ray. Its penalty against any other law is therefore zero, and every
+  alternative has a positive one — 17.6 / 13.3 / 3.1 / 6.0 km/s for the local
+  retrograde and 6.1 / 11.0 / 0.14 / 0.006 for pursuit.
+* **A segmenting solve is a shooting solve with no measured prize.** It would
+  re-aim every segment, pay the brake's twelve pin passes for it, and reach a
+  seam that is already zero. One segment is 15.3 km/s at Uranus 1 g and more
+  segments are worse at every count. Do not pay for it.
+* **The spend is `a·T`, and nothing here shortens `T`.** A fixed-magnitude burn's
+  delta-v is its acceleration times its duration; changing the attitude changes
+  neither. Only a shorter brake would spend less, and it would hand the residual
+  speed to the capture chain — that is [the entry-speed
+  question](#entry-speed-is-an-output), not the steering law.
+* **The departure burn is prograde by construction.** The escape ray is the
+  departure frame's velocity direction at every sample, so there is nothing for
+  a tracking law or a segment to improve.
+
+Revisit this only on evidence: a burn whose fixed direction cannot be solved to
+the seam gate is the one case that would justify a segmenting solve, and then
+its segments should aim at the chord the burn must close, not at the local
+velocity.
 
 # What this changes
 
@@ -479,14 +632,18 @@ means keeping that and measuring it, not replacing it.
   heliocentric conic is a poor model. A planetocentric approach leg, a hotter
   entry, or a full-field coast are the candidates; the measurement is in
   [the binding question](#the-binding-question-where-the-coast-ends).
-* **The steering law.** Fixed direction, a few fixed segments, or local prograde?
-  The delta-v penalty of the simple law is unmeasured; the choice waits on a
-  measurement at the epoch at 0.3 g and 1 g.
+* **The steering law.** *Settled 2026-11-20:* both fixed burns hold the **fixed
+  inertial direction**. Measured at the epoch at 0.3 g and 1 g, the direction is
+  exact at the seam, the local retrograde leaves 3.1–17.6 km/s and pursuit leaves
+  up to 11.0, and 2, 4 and 8 segments are monotonically worse. The departure
+  burn's escape ray is the departure frame's prograde by construction. The
+  measurement is in [steering starts simple](#steering-starts-simple).
 * **Band versus solved radius.** *Settled for this plan:* the departure endpoint
   is the ceiling and the arrival endpoint is the floor (or the parking radius
   where the floor is deeper), with the floor clamped to the body clearance.
   *Still open:* whether that rule should give way to an interior solved radius,
-  if the steering measurement shows the rule costs real delta-v or time.
+  if a measurement of the radius rule shows it costs real delta-v or time. The
+  steering measurement does not bear on it.
 * **Search input or certified build.** Is the handover radius a free variable the
   floor search explores, or a value computed from the band and then certified
   with the full field like a chosen duration? The floor search is already noisy
