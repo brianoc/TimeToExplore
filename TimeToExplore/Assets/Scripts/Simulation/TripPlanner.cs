@@ -175,6 +175,21 @@ namespace TimeToExplore.Simulation
         /// fixed point needs the full twelve to reach the one-kilometre gate.</summary>
         private const int FastProbeOuterPasses = 12;
 
+        /// <summary>Outer brake/departure passes a certified build may run. Most
+        /// builds converge in a handful; the near-floor fixed point plateaus at
+        /// about 1e-4 m/s — its own interpolation resolution, above
+        /// <see cref="BrakeConvergenceMps"/> — and runs this cap.</summary>
+        private const int DefaultOuterPasses = 12;
+
+        /// <summary>Outer passes a certified build retries with when the
+        /// twelve-pass cap leaves the brake unsettled and the chain gate refuses
+        /// the plan. At the near-floor basin the pin is still converging at pass
+        /// twelve (Jupiter 0.3 g at 13.07211 d: a 0.137 m/s brake residual reads
+        /// as a 28 km chain miss), and the extra passes settle it to metres. The
+        /// retry changes no tolerance and no gate: it only gives the same fixed
+        /// point the passes it needs. A converged build never pays for it.</summary>
+        private const int RetryOuterPasses = 24;
+
         /// <summary>Change in the solved departure ray and burn duration that
         /// ends the pinned fixed point.</summary>
         private const double RayDirectionTolerance = 1e-10;
@@ -763,7 +778,25 @@ namespace TimeToExplore.Simulation
             if (CruiseStyle == CruiseStyle.Coast)
                 return BuildCoast(ship, target, totalSeconds, fast, null, probe);
             if (CruiseStyle == CruiseStyle.BurnCoastBurn)
-                return BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe);
+            {
+                BuildResult result = BuildBurnCoastBurn(ship, target, totalSeconds,
+                    fast, probe);
+                if (!fast && !probe && !result.Plan.IsFeasible && result.PinStalled)
+                {
+                    // The near-floor brake/departure fixed point can stop at its
+                    // default pass cap with a residual the chain gate reads as a
+                    // position miss. Give the same fixed point the longer cap
+                    // once; the tolerances and the gate are unchanged, so this is
+                    // a solver retry, not a relaxed answer.
+                    Trace?.Invoke($"pin retry at {totalSeconds / SecondsPerDay:F5} d: " +
+                                  $"{DefaultOuterPasses} -> {RetryOuterPasses} passes, " +
+                                  $"after {result.Plan.InfeasibleReason}");
+                    result = BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe,
+                        RetryOuterPasses);
+                }
+
+                return result;
+            }
 
             return ArrivalStyle == CaptureStyle.Conic || ArrivalStyle == CaptureStyle.FiniteBurn
                 ? BuildConic(ship, target, totalSeconds)
@@ -1407,7 +1440,8 @@ namespace TimeToExplore.Simulation
         /// time is rejected.
         /// </summary>
         private BuildResult BuildBurnCoastBurn(ShipState ship, BodyRuntime target,
-            double totalSeconds, bool fast = false, bool probe = false)
+            double totalSeconds, bool fast = false, bool probe = false,
+            int outerPassesLimit = DefaultOuterPasses)
         {
             double acceleration = FixedBurnAccelerationMps2;
             if (!(acceleration > 0.0))
@@ -1585,8 +1619,9 @@ namespace TimeToExplore.Simulation
             double previousBurnSeconds = double.NaN;
             Vector3d previousRay = Vector3d.Zero;
             double brakeMismatch = double.PositiveInfinity;
+            bool pinSettled = false;
 
-            int outerPasses = fast ? FastProbeOuterPasses : 12;
+            int outerPasses = fast ? FastProbeOuterPasses : outerPassesLimit;
             for (int pass = 0; pass < outerPasses; pass++)
             {
                 _model.ComputeState(_model.Sun, entryJd,
@@ -1666,7 +1701,10 @@ namespace TimeToExplore.Simulation
                 brakeSeconds = nextBrakeSeconds;
                 brakeDirection = nextBrakeDirection;
                 if (converged)
+                {
+                    pinSettled = true;
                     break;
+                }
             }
 
             // Settle the break and the departure against the brake the loop
@@ -1847,8 +1885,12 @@ namespace TimeToExplore.Simulation
             if (worst <= 1.0 / ThrustMargin
                 && !BurnChainIsClosed(arcs, out string seamReason))
             {
+                // A chain miss after an unsettled pin is a solver artefact, not a
+                // verdict on the trip time: the certified build retries the same
+                // fixed point with the longer pass cap once (see Build).
                 return StretchedPlan(ship, target, totalSeconds,
-                    "burn-coast-burn: " + seamReason);
+                    "burn-coast-burn: " + seamReason,
+                    pinStalled: !fast && !probe && !pinSettled);
             }
 
             double actualSeconds = (parkingEndJd - t0) * SecondsPerDay;
@@ -2856,11 +2898,11 @@ namespace TimeToExplore.Simulation
         /// time that squeezes the arcs is retried longer instead of being reported
         /// as a geometry failure.</summary>
         private BuildResult StretchedPlan(ShipState ship, BodyRuntime target,
-            double totalSeconds, string reason)
+            double totalSeconds, string reason, bool pinStalled = false)
         {
             BuildResult result = InfeasiblePlan(ship, target, totalSeconds, reason);
             return new BuildResult(result.Plan, Math.Max(totalSeconds * 1.5,
-                totalSeconds + MinimumCoastSeconds));
+                totalSeconds + MinimumCoastSeconds), pinStalled);
         }
 
         private BuildResult InfeasiblePlan(ShipState ship, BodyRuntime target,
@@ -3098,14 +3140,22 @@ namespace TimeToExplore.Simulation
 
         private readonly struct BuildResult
         {
-            public BuildResult(TrajectoryPlan plan, double requiredSeconds)
+            public BuildResult(TrajectoryPlan plan, double requiredSeconds,
+                bool pinStalled = false)
             {
                 Plan = plan;
                 RequiredSeconds = requiredSeconds;
+                PinStalled = pinStalled;
             }
 
             public TrajectoryPlan Plan { get; }
             public double RequiredSeconds { get; }
+
+            /// <summary>True when a certified burn–coast–burn build refused at
+            /// the chain gate after its outer brake/departure fixed point ran its
+            /// pass cap without converging. The build retries once with the
+            /// longer cap; a probe never sets this.</summary>
+            public bool PinStalled { get; }
         }
 
         /// <summary>A floor search's bracket: the last rejected request, the

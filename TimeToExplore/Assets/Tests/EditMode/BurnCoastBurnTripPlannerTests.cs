@@ -1041,8 +1041,9 @@ namespace TimeToExplore.Tests.EditMode
         /// seam closes inside the 1 km / 1 m/s gate. The probe quality the search
         /// uses reports an infinite clearance and no measured delta-v on a
         /// coasted arc, so the two are distinguishable. Mars at 0.3 g is the case
-        /// where the certificate refuses the fast answer and the continuation
-        /// search runs; Uranus and Jupiter are the unchanged low-cost cases.
+        /// where the certificate refuses the fast answer and the stalled pin is
+        /// retried; Uranus is an unchanged low-cost case, and Jupiter's editor
+        /// floor takes the same retry.
         /// </summary>
         [TestCase("uranus", 0.3)]
         [TestCase("mars", 0.3)]
@@ -1090,15 +1091,23 @@ namespace TimeToExplore.Tests.EditMode
             _planner.Trace = probes.Add;
             TrajectoryPlan fastest = _planner.Plan(ship, "mars");
 
-            // The fast floor is optimistic here, so the continuation search runs.
-            // The certificate it has just spent is the search's seeded low end
-            // and must be reported [cached], not rebuilt: a certified build is
-            // the profile's most expensive call.
-            bool reusedCertification = false;
+            // The fast floor is optimistic here. The certificate refuses it at the
+            // chain gate because the brake/departure fixed point hits its
+            // twelve-pass cap with a 2 km residual; the certified build retries
+            // that same fixed point at twenty-four passes and certifies the same
+            // duration. No tolerance and no gate moves, and the continuation
+            // search is not needed.
+            int retries = 0;
+            bool continued = false;
             foreach (string probe in probes)
-                if (probe.EndsWith("[cached]")) reusedCertification = true;
-            Assert.That(reusedCertification, Is.True,
-                "the full-field retry rebuilt the duration it had just certified");
+            {
+                if (probe.StartsWith("pin retry")) retries++;
+                if (probe.StartsWith("floor probe")) continued = true;
+            }
+            Assert.That(retries, Is.EqualTo(1),
+                "the stalled pin was retried exactly once");
+            Assert.That(continued, Is.False,
+                "the retry certified the fast answer, so no probe continuation ran");
 
             TestContext.WriteLine($"mars floor: {fastest}, " +
                                   $"peak {fastest.PeakThrustMps2:F3} m/s²");
@@ -1112,8 +1121,8 @@ namespace TimeToExplore.Tests.EditMode
                     $"{(left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps - right.Path.VelocityAt(0.0)).Magnitude:E2} m/s");
             }
             Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
-            Assert.That(fastest.FlightTimeDays, Is.LessThan(7.5),
-                "the true floor is below the old 8.03 d one, because the fall is minutes");
+            Assert.That(fastest.FlightTimeDays, Is.LessThan(6.735),
+                "the retry settles the brake at 6.73042 d, below the old 6.73715 d");
             Assert.That(fastest.FlightTimeDays, Is.GreaterThan(6.0));
             AssertChainCloses(fastest);
 

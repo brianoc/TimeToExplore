@@ -418,6 +418,26 @@ plan records is still there. The moved plan is certified and every seam is
 inside the gate; the measurement and the probe/certificate boundary are in
 [step 2](/technical/planning-performance.md#step-2-the-searches-probes-are-cheap-and-the-answer-is-certified-2026-11-20).
 
+**Step 3 re-measured the floors once more, because the brake pin's pass cap was
+holding them up.** A certified build whose outer brake/departure fixed point
+runs its twelve-pass cap with the mismatch still falling refuses at the chain
+gate on a residual that the trip time does not deserve (Jupiter 0.3 g at
+13.07211 d: 0.137 m/s at pass 11 reads as a 28,069.5 m miss). The certified
+build now retries that same fixed point once at **24 passes** when the pin
+stalled and the chain gate refused; no tolerance, no gate, and no search rule
+moved, and a build that converges never pays it
+([the retry](/technical/planning-performance.md#the-fix-one-solver-retry-inside-the-certified-build)).
+The floors that move are the ones whose certificate was such a refusal: the
+editor's Jupiter floor is **13.34149 → 13.07211 d** (2,270.99 km/s, peak
+9.700 m/s², worst seam 93.35 m / 8.0 × 10⁻³ m/s in .NET) with the window
+**13.072–39.216 d**, and Mars at 0.3 g is **6.73715 → 6.73042 d** (1,171.61
+km/s, seams 9.8 m / 2.5 × 10⁻² m/s) with the window **6.730–20.191 d**, in both
+runtimes. Uranus (33.60438 d at 0.3 g, 31.25256 d at 1 g), Mercury (3.21610 d),
+and the .NET Jupiter floor (13.33520 d) are unchanged, because their
+certificates are accepted at twelve passes. All moved plans are certified and
+every seam is inside the 1 km / 1 m/s gate; the six fixed-duration Δv anchors
+did not move.
+
 **A hotter entry shortens the fall but grows the capture.** Sweeping the
 per-plan entry speed at Uranus 1 g and 400 days, at the floor:
 

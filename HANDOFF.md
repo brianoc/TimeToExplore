@@ -136,6 +136,45 @@ it is re-measured and certified, every arc has finite clearance and measured
 delta-v, and every seam is inside the 1 km / 1 m/s gate. The six fixed-duration
 Δv anchors are unchanged to four decimals.
 
+## Step 3 result (2026-11-20)
+
+Done on this branch. The user's question was why the editor's Jupiter was slow.
+The answer is that the editor ran a **different search**, not the same work
+slower: its fast high was **13.07211 d** and the certificate **refused** it at
+the chain gate (*the brake does not close on the capture entry*, 28,069.5 m /
+1.0 m/s), so the full-field continuation spent **14 probes (+1 cached)** and a
+second certificate before accepting 13.34149 d — 34 builds, 9.55 s. .NET's fast
+high is 13.33520 d and certifies at once in 0.24 s.
+
+The refusal was the outer brake/departure fixed point running its **twelve-pass
+cap** with the mismatch still falling ~3× a pass (0.425 → **0.137 m/s at pass
+11**), which is the 28 km the gate reads. The 128-sample departure solve had
+converged (no 512 fallback), the peak was 4.6 m/s², and a duration nudge does not
+help (+0.2% / +0.5% / 13.2 d still miss by 2.4 / 2.0 / 1.5 km at twelve passes).
+
+The fix is one **solver retry inside the certified build**: `Build`'s certified
+burn–coast–burn path rebuilds once at `RetryOuterPasses = 24` when the plan
+refused at the chain gate after its pin ran `DefaultOuterPasses = 12` without
+converging (`BuildResult.PinStalled`). No tolerance, gate, screen, or search
+rule moved; a converged build never pays it; a probe never retries. The same
+duration then certifies (peak 9.700 m/s², 2,270.99 km/s, worst seam 93.35 m /
+8.0 × 10⁻³ m/s).
+
+.NET `Plan()` (median of three) and the editor's first `Plot()`:
+
+| Case | .NET before → after | Editor before → after | Editor floor after |
+|---|---:|---:|---:|
+| Uranus 0.3 g | 0.230 → **0.226 s** | 1.713 → **1.87 s** | 33.60438 d |
+| Uranus 1 g | 0.239 → **0.233 s** | 1.232 → **1.25 s** | 31.25256 d |
+| Mars 0.3 g | 0.778 → **0.464 s** | 4.558 → **3.25 s** | **6.73042 d**, window 6.730–20.191 |
+| Mercury 1 g | 0.267 → **0.261 s** | 2.356 → **2.42 s** | 3.21610 d |
+| Jupiter 0.3 g | 0.240 → **0.231 s** | **9.552 → 3.07 s** | **13.07211 d**, window 13.072–39.216 |
+
+Uranus and Mercury take the identical path to step 2, so their spread is noise.
+The six fixed-duration Δv anchors are unchanged to four decimals in both
+runtimes. Step 3's floor/window table is now the current one; step 4 re-brackets
+the search and re-measures the floors again.
+
 ## Steps
 
 - [x] **Step 0** — plan recorded, handoff live.
@@ -146,39 +185,32 @@ delta-v, and every seam is inside the 1 km / 1 m/s gate. The six fixed-duration
       `tools/check.sh --tests flight` passed.
 - [x] **Step 2 — cheap search probes.** Done: a full-field probe quality
       (summed-field burns, solve 64, no fallback, brake 512, cheap measurement),
-      the answer rebuilt and certified before it leaves `Plan()` (at most three
-      certificates), a refused certificate continuing upward at `candidate ×
-      1.2` with the 0.2% retry and a free `[cached]` low, and a test proving the
-      returned floor is certified, not a probe. Jupiter 14.56 → **9.55 s** editor;
-      Mars 4.01 → 4.56 s (the continuation's second certificate and five probes;
-      step 3 removes that); Jupiter's editor floor moved to 13.34149 d. Six Δv
-      anchors unchanged. `tools/check.sh --tests flight` passed.
-- [ ] **Step 3 — why the editor's Jupiter is slow.** The user asked for this.
-      Jupiter 0.3 g is **9.55 s** in the editor against **0.24 s** .NET — a 40×
-      editor ratio where Mars and Uranus are ~5.5×. The build is not the cause:
-      a Jupiter certified build at its floor is 0.187 s .NET (12 pin passes) and
-      the window end 40.02 d is 0.065 s, so ~9.55 s means about nine builds:
-      multiple certificates and/or a full probe search. Trace the editor's
-      Jupiter path (fast high, each `certify` line and reason, each `floor
-      probe`, the window build), compare it with the .NET trace, and classify
-      the fast-high refusal: a departure stall at ~1.1 × 10⁻⁵ m/s, a chain gate,
-      or a peak over the drive. Then take the cheapest robust fix — a
-      certificate nudge, a solver retry inside the certified build, or handing
-      the probe count to step 4 — and re-measure Jupiter and Uranus 0.3 g.
-      Floors may move; the answer must stay certified. **This is next.**
+      the answer rebuilt and certified before it leaves `Plan()`, a refused
+      certificate continuing upward at `candidate × 1.2` with a free `[cached]`
+      low, and a test proving the returned floor is certified. `tools/check.sh
+      --tests flight` passed.
+- [x] **Step 3 — why the editor's Jupiter is slow.** Done: traced the editor's
+      Jupiter 0.3 g plan — 18 fast probes at 13.07211 d, a chain-gate refusal
+      after the **twelve-pass pin cap** (0.137 m/s at pass 11 → 28 km), 14
+      full-field probes and a second certificate, 34 builds. Fixed with **one
+      certified-build solver retry at 24 passes** when the pin stalled and the
+      chain refused; no tolerance or gate moved. Jupiter editor **9.55 → 3.07 s**
+      (floor 13.07211 d, window 13.072–39.216), Mars **4.56 → 3.25 s** (floor
+      6.73042 d); .NET Mars floor 6.73042 d. Six Δv anchors unchanged.
+      `tools/check.sh --tests flight` passed.
 - [ ] **Step 4 — a bracket for the scatter.** Replace the 15%-walk +
       0.05%-bisection with coarse growth and a 1% bisection (~7 probes). Floors
       and windows are **re-measured and become the new anchors**; this is the
       only place the answer legitimately moves (up to ~0.4 d at Uranus), and it
-      removes the .NET-vs-Mono floor divergence.
+      removes the .NET-vs-Mono floor divergence. **This is next.**
 - [ ] **Step 5 — editor measurement and close-out.** Timed first plots for the
       five cases in the warm test project, docs (planning performance,
       floors/windows, testing anchors), log, handoff cleared.
 
 ## Verification
 
-Last result on this branch (step 2): `tools/check.sh --tests flight` passed the
-flight category in **151 s**, 0 failed; `.venv/bin/python tools/validate_okf.py`
+Last result on this branch (step 3): `tools/check.sh --tests flight` passed the
+flight category in **133 s**, 0 failed; `.venv/bin/python tools/validate_okf.py`
 clean (41 concepts, 0 warnings, 0 errors, the same check `check.sh` runs first).
 
 ```bash
@@ -206,9 +238,13 @@ small `UnityEngine` shim and loads the shipped catalogue; `Program.cs` has
   with a cheaper build it collapsed the Uranus floor to 16.21 d with 5,087 km/s
   plans. Floors may be re-measured; accuracy may not move outside the gate.
 - The brake pin's 1e-6 m/s stop is inconsistent with the departure solve's
-  1e-5; a near-floor build whose brake oscillates at ~1.1e-5 runs its 12-pass
-  cap. Step 1 may stop the pin when it stops improving, but it must not change
-  a converged plan.
+  1e-5; a near-floor build whose brake plateaus above it runs its pass cap. That
+  cap is now `DefaultOuterPasses = 12`, and a **chain-gate refusal after a stalled
+  pin** retries once at `RetryOuterPasses = 24` (`BuildResult.PinStalled`, in
+  `Build`'s certified burn–coast–burn branch). This is not a loosened tolerance:
+  the same fixed point gets more passes, and the gate still decides. Do not make
+  the retry unconditional — that cost Uranus 0.3 g ~1.1 s and Mercury ~0.7 s in
+  the editor, for no floor move — and do not give a probe a retry.
 - A coarse departure solve leaves the reported burn and the coast from the same
   start but different sample counts; re-solve the coast from the **reported**
   burn's end or the position seam breaks. The 128-sample solve also stalls just
@@ -220,19 +256,23 @@ small `UnityEngine` shim and loads the shipped catalogue; `Program.cs` has
   certified 128-sample solve converges where 512 stalled; Uranus 0.3 g stays
   40.71332 d and is still conservative (direct certified builds close at 40.5,
   40.0, and 39.0 d, but the fast probes refuse them). Step 2 moved the **editor's**
-  Jupiter floor to **13.34149 d** (13.27662 before) because Mono refuses its fast
-  high and the probe continuation certifies a different scatter point; the .NET
-  floor stays 13.33520 d. Step 3 owns the bracket and the windows; do not treat
-  the step-7 or step-1 floor tables as current.
+  Jupiter floor to 13.34149 d; step 3's pin retry certifies the editor's fast high
+  at **13.07211 d** (window 13.072–39.216) and moves Mars 0.3 g to **6.73042 d**
+  (window 6.730–20.191) in both runtimes, while the .NET Jupiter floor stays
+  13.33520 d. Step 4 owns the bracket and re-measures the floors again; do not
+  treat the step-7, step-1, or step-2 floor tables as current.
 - **The certificate is the authority.** `PlanBurnCoastBurnMinimum` must rebuild
   the selected duration with the default (certified) build before returning; a
   probe plan has an infinite clearance and zero coast delta-v and is never an
   answer. The continuation is bounded at `MaxFloorCertificates = 3`; after that
-  the last refusal is reported with its reason, not the last probe.
+  the last refusal is reported with its reason, not the last probe. After step 3
+  no measured case reaches the continuation: Mars and the editor's Jupiter are
+  certified by the pin retry. Do not delete the continuation — Mars 1 g still
+  uses it in .NET — but do not re-add a test that requires it in Mono.
 - A full-field probe is **not** the fast probe: it keeps `burnGravity = _gravity`,
   solves at 64 samples, has no fallback, keeps the 512-sample brake, and skips
   the settle passes. Do not give it the fast probe's loose stops to chase time
-  (the measured cost is the pin passes) and do not trim the brake: step 3 owns
+  (the measured cost is the pin passes) and do not trim the brake: step 4 owns
   the probe count.
 - The probe's 64-sample solve can stall in Mono at a duration close to the floor
   (Uranus 0.3 g at 1.1 × its floor refused at 1.877 × 10⁻⁵ m/s), so a test that

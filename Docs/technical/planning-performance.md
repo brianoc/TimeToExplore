@@ -543,12 +543,119 @@ measurement is the cheap one. `BuildProbeAtDuration` is a diagnostic the tests
 use to show a probe's infinite clearance and zero coast delta-v; `Plan` never
 returns it.
 
+## Step 3: why the editor's Jupiter was slow (2026-11-20)
+
+The user asked why Jupiter was still slow. At step 2 its first `Plot()` was
+**9.55 s** in the editor against **0.24 s** .NET — a 40× ratio where Mars and
+Uranus were ~5.5× — so the editor was not merely doing the same work slower. It
+was doing a **different search**.
+
+The trace below is a throwaway timing test on the warm Unity test project (epoch,
+Gateway departure, conic capture, 0.3 g) against the Release .NET harness's
+`probe plan jupiter 0.3 1`:
+
+| | .NET | Editor |
+|---|---|---|
+| fast probes | 17 | **18** |
+| fast high | **13.33520 d**, certifies at 12 passes | **13.07211 d** |
+| certificate at the fast high | accepted | **refused**: *the brake does not close on the capture entry* (28,069.5 m, 1.0 m/s) |
+| full-field probes (continuation) | 0 | **14 (+1 cached)** |
+| second certificate | — | 13.34149 d, accepted |
+| builds in `Plan()` | 18 | **34** |
+| `Plan()` | 0.24 s | **9.55 s** |
+
+The 9.55 s is the step-2 measurement; the traced run itself was 10.13 s on the
+same code, which is the run the per-build timings below come from.
+
+The editor's own per-build timings make the split unambiguous: the fast search
+is **0.48 s** (18 probes at 20–40 ms), the refused twelve-pass certificate is
+**1.07 s**, the fourteen full-field probes are **~5.7 s** (0.4–0.7 s each), the
+second certificate is ~0.4 s, and the window build is 0.36 s. **The
+continuation is the cost**, and it runs because Mono's fast probe accepts
+13.07211 d where .NET's refuses it. That is the step-2 runtime divergence, seen
+from the other side.
+
+### The refusal is the brake pin's pass cap
+
+The fast high is **not** a departure-solve stall and **not** a peak over the
+drive:
+
+* The certified build's **128-sample departure solve converges** at 13.07211 d;
+  the 512-sample fallback never runs.
+* The plan's peak is **4.6 m/s²** at the certificate, far inside the 9.81 m/s²
+  drive; the drive is not the issue.
+* The outer brake/departure fixed point runs its **twelve-pass
+  `DefaultOuterPasses` cap** with the mismatch still falling about 3× a pass:
+  7.29 × 10³ → 39.3 → 12.7 → 4.09 → 1.32 → 0.425 → **0.137 m/s at pass 11**.
+  That residual, integrated over the ~356,000 s brake, is the **28 km** the
+  chain gate reports. The pin needs about six more passes to reach metres.
+
+The same duration with the cap doubled **certifies**: seven arcs, 2,270.99 km/s,
+peak 9.700 m/s² (98.9% of the drive), worst seam **93.35 m / 8.0 × 10⁻³ m/s**
+(.NET). A duration nudge is not the fix: direct certified builds at +0.2%
+(13.09826 d), +0.5% (13.13747 d), and 13.2 d still miss the chain by 2,421 m,
+1,959 m, and 1,520 m at twelve passes, so neither of the fast search's 0.2%
+rungs would certify. Near the floor the chain is limited by the pin's
+unconverged state, not by the trip time.
+
+### The fix: one solver retry inside the certified build
+
+`Build`'s **certified** burn–coast–burn path retries the build **once** at
+`RetryOuterPasses = 24` when the plan refuses at the chain gate after its pin ran
+the twelve-pass cap without converging (`BuildResult.PinStalled`). It is a
+solver retry, not a relaxed answer: no tolerance, no gate, no search rule, and
+no probe changes. A build that converges never pays it, and a probe never
+retries. The trace line is `pin retry at … d: 12 -> 24 passes, after …`.
+
+Warm Release .NET harness, `Plan()` (medians of three):
+
+| Case | `Plan()` before → after | Floor before → after | Search |
+|---|---:|---:|---|
+| Uranus, 0.3 g | 0.230 → **0.226 s** | 40.71332 d (both) | certificate accepted |
+| Uranus, 1 g | 0.239 → **0.233 s** | 30.55886 d (both) | certificate accepted |
+| Mars, 0.3 g | 0.778 → **0.464 s** | 6.73715 → **6.73042 d** | refusal → pin retry → certificate |
+| Mercury, 1 g | 0.267 → **0.261 s** | 3.21610 d (both) | certificate accepted |
+| Jupiter, 0.3 g | 0.240 → **0.231 s** | 13.33520 d (both) | certificate accepted |
+
+Editor first `Plot()` in the warm test project (planner plus window; two runs
+per case, the first shown):
+
+| Case | Before → after | Floor after | Window after |
+|---|---:|---:|---|
+| Uranus, 0.3 g | 1.713 → **1.87 s** | 33.60438 d | 33.604–100.813 d |
+| Uranus, 1 g | 1.232 → **1.25 s** | 31.25256 d | 31.253–93.758 d |
+| Mars, 0.3 g | 4.558 → **3.25 s** | **6.73042 d** | 6.730–20.191 d |
+| Mercury, 1 g | 2.356 → **2.42 s** | 3.21610 d | 3.216–9.648 d |
+| Jupiter, 0.3 g | **9.552 → 3.07 s** | **13.07211 d** | 13.072–39.216 d |
+
+Uranus and Mercury take the identical path to step 2, so their small differences
+are run-to-run spread (a second run gave 1.75, 1.29, and 2.44 s). Jupiter is
+**3.1× faster** and Mars **1.4×**, and every case is now under ~3.3 s in the
+editor. The editor's Jupiter floor moves **13.34149 → 13.07211 d** because the
+retry certifies the fast search's own high — the same duration .NET would refuse
+without the retry, and the reason the two runtimes still disagree on which
+scatter point is the floor. The .NET Jupiter floor stays 13.33520 d; the .NET
+Mars floor moves to **6.73042 d**, the same re-measured duration as the editor's.
+Both new floors are certified plans with every arc's clearance and delta-v
+measured, and their seams are inside the 1 km / 1 m/s gate (the Jupiter 13.07211
+plan: 93.35 m / 8.0 × 10⁻³ m/s in .NET; the flight suite asserts the editor's
+floor plans through the same gate).
+
+The six fixed-duration Δv anchors are **identical to four decimals** — Mars 90 d
+44.3564 km/s, Mercury 8 d 557.0380, Uranus 400 d 182.3393, Mars 20 d 270.8500,
+Mars 10 d 607.8259, Uranus 35 d 1984.4479 — because every one of them converges
+well before the twelve-pass cap. The window's right end is still a feasible
+build at 3 × the floor (39.216 d at Jupiter, 20.191 d at Mars): the retry
+changes the floor, not the window rule, and `FlightSession` reuses the stored
+floor plan for a request at the floor's own duration.
+
 # Where it lives
 
 | Concern | Code |
 |---|---|
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
 | Full-field probe, certificate, and the continuation | `TripPlanner.Build(..., probe: true)`, `ProbeDepartureSamples`, `MaxFloorCertificates`, `PlanBurnCoastBurnMinimum`'s certificate loop, `BuildProbeAtDuration` (diagnostic) |
+| The certified pin's pass cap and its retry | `TripPlanner.DefaultOuterPasses`, `RetryOuterPasses`, `Build`'s certified burn–coast–burn branch, `BuildResult.PinStalled` |
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
