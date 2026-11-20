@@ -374,7 +374,8 @@ enters at the row's entry radius, with the same 5 km/s.
 The trend is the one the design predicted, and it is bigger than the fall alone:
 the 104-day Uranus fall is gone, and because the coast absorbs the time the
 profile used to spend falling, the floor moves fourfold at Uranus (150.73 → 34.16
-days at 1 g at step 7, 30.56 after step 1) and the 400-day plan is *cheaper* as
+days at 1 g at step 7, **31.25 in the editor** after the first-plot plan; the
+.NET harness reads 30.56 on the same code) and the 400-day plan is *cheaper* as
 well as shorter (242 → 182
 km/s). A slower profile pays by carrying speed longer: the 400-day coast is 392
 days at 1 g and the burn and brake are 90.2 and 81.2 km/s against 118.8 and
@@ -403,8 +404,8 @@ rebuild at the floor closes at 0.4 m / 1.0 × 10⁻³ m/s — and the 1 g window
 becomes **30.56–91.68 d** (a direct build at the maximum is 736.02 km/s). At
 0.3 g the returned floor stays 40.71332 d; the certified build now also closes
 at 40.5, 40.0, and 39.0 d directly (inside the gate) while the fast probes still
-refuse them, so the search is conservative there. Step 3 re-anchors the floors
-and windows; step 4 re-measures the editor
+refuse them, so the search is conservative there. Step 3 re-anchored the floors
+and windows, and the first-plot plan's close-out records them as final
 ([step 1](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)).
 
 **Step 2 changed the search, not the physics, but one editor floor moved.** The
@@ -438,6 +439,29 @@ certificates are accepted at twelve passes. All moved plans are certified and
 every seam is inside the 1 km / 1 m/s gate; the six fixed-duration Δv anchors
 did not move.
 
+**Step 4 closed the first-plot plan with the final floors and windows.** The
+editor is the runtime that ships, so its first `Plot()` measurements are the
+anchors the docs carry: **Uranus 0.3 g 33.60438 d** (window 33.60–100.81 d),
+**Uranus 1 g 31.25256 d** (31.25–93.76 d), **Mars 0.3 g 6.73042 d**
+(6.73–20.19 d), **Mercury 1 g 3.21610 d** (3.22–9.65 d), and **Jupiter 0.3 g
+13.07211 d** (13.07–39.22 d). Every one is a certified full-field plan: the
+returned duration is rebuilt with the summed field, every arc has its measured
+clearance and delta-v, and every seam is inside the 1 km / 1 m/s gate. Each of
+the five now certifies on its **first** certificate with no continuation probes,
+so the floor is a single certified build rather than the end of a search; the
+measurements are in [step 4 of planning
+performance](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20).
+
+**The runtimes disagree near the needles, and both are right.** The .NET harness
+measures **40.71332 d** at Uranus 0.3 g, **30.55886 d** at Uranus 1 g, and
+**13.33520 d** at Jupiter, against the editor's 33.60438, 31.25256, and 13.07211.
+This is a **property of the near-floor scatter, not a bug**: feasibility there
+is decided by whether the departure Newton stalls and by how many passes the
+brake pin needs, so a last-bit libm difference between Mono and .NET selects a
+different point of a noisy basin. Each reported floor is still a certified
+full-field plan inside the gate, and the editor's is the one that ships; the
+.NET number is the harness's own measurement, not a competing answer.
+
 **A hotter entry shortens the fall but grows the capture.** Sweeping the
 per-plan entry speed at Uranus 1 g and 400 days, at the floor:
 
@@ -467,12 +491,13 @@ the **long** trips hand the coast a final leg inside the target's sphere, and th
   gap**, not a seam: the measurement reports it, and the next decision owns it.
   At 0.3 g the same plan's brake is 7.5 h and starts 1,159,005 km out — 0.0224
   spheres, 0.0043 m/s². Mars at 90 d is 0.16 spheres (92,790 km).
-* **Fast trips.** At Uranus's 1 g floor (30.56 d) the brake is 28.4 h of 990 km/s
+* **Fast trips.** At Uranus's 1 g floor (30.56 d in the .NET harness; 31.25 in
+  the editor) the brake is 28.4 h of 990 km/s
   and starts **50.55 million km** out — 0.976 spheres — so the brake itself
   spans the sphere-to-floor gap. Mercury's floor (3.22 d) puts the brake's start
-  at 31.05 million km, **276 spheres** out; Mars's floor (6.74 d) at 48.30
-  million km, **83.7 spheres** out. At the fast end the coast ends well outside
-  the target and the brake is the long crossing.
+  at 31.05 million km, **276 spheres** out; Mars's floor (6.737 d as measured)
+  at 48.30 million km, **83.7 spheres** out. At the fast end the coast ends
+  well outside the target and the brake is the long crossing.
 
 The brake is never *wrong* about the field: every fixed burn integrates the
 summed field, so the 28.5-hour Uranus brake feels Uranus. What the measurement
@@ -705,8 +730,8 @@ velocity.
   than the chain's own periapsis); the coast and the powered conic/hybrid arrival
   keep the sphere of influence. Measured at the epoch, the Uranus fall at 1 g
   drops from 117.13 days to 31 minutes and the profile's floor from 150.73 to
-  30.56 days (34.16 at step 7; step 1's cheaper build re-measured it lower at
-  1 g and left 0.3 g at 40.71).
+  **31.25 d in the editor** (33.60 at 0.3 g; the .NET harness measures 30.56 and
+  40.71 because the near-floor scatter picks a different certified point).
 * The global `EntrySpeedMps` is still the profile's entry condition, now per plan
   through `FlightSession`; making the brake produce the residual entry speed is
   the next decision.

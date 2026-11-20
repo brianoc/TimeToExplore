@@ -112,19 +112,21 @@ flight time in seconds. For the powered plan the maximum is three times the
 minimum; for a coasting profile it is the slowest duration the planner still
 accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
-burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
-of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
-build is outside that window. At Uranus the window is **30.56 to 91.68 days** at
-1 g (40.71–122.14 d at 0.3 g), and its right-hand end is a feasible direct build
-(seven arcs, 736.02 km/s at 1 g and 554.63 at 0.3 g), so the slider's right end
-is not a refusal. The first selection there is the cost: after step 1 the first
-`Plan()` is about **0.22 s in the .NET harness** at 1 g and 0.21 s at 0.3 g
-(3.1 and 0.5 s after step 7; the probe path is unchanged and the certified builds
-are cheaper), against 22.0 and 18.7 s before step 7 in the same Release harness
-(71 and 59 s in the Debug harness step 6 used), and the editor runs the same work
-several times slower, so the first Uranus preview is a short pause rather than
-the multi-minute freeze it was. The floors and the window's ends are re-measured
-on the editor at step 4. The floor
+burn–coast–burn window is **6.73 to 20.19 days**, from the profile's true floor
+of 6.73042 days at 0.3 g; the Mercury window is 3.22 to 9.65 days, Jupiter's is
+13.07–39.22 days at 0.3 g, and Uranus's is **33.60–100.81 days** at 0.3 g and
+**31.25–93.76 days** at 1 g. A 90-day Mars build is outside that window, and the
+window's right end is three times its floor by the existing rule, so the slider
+never asks for a refused plan. The first selection is the cost: the editor's
+first `Plot()` (planner plus window) is **1.87 s at Uranus 0.3 g, 1.34 s at
+1 g, 3.45 s at Mars 0.3 g, 2.52 s at Mercury 1 g, and 3.19 s at Jupiter 0.3 g**
+in the warm test project, against 27.3, 2.57, 13.5, 4.2, and 33.6 s when the
+first-plot plan started. .NET's `Plan()` is 0.23–0.49 s for the same cases.
+Every case now certifies on its **first** certificate with no continuation
+probes, so the remaining time is the editor's per-build price, not a search
+([planning
+performance](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20)).
+The floor
 plan and the window are cached per departure date, target, burn level, cruise
 style, and arrival style, so plotting the same route again at the same date
 reuses both; a changed departure date, or a place/teleport, drops the cache.
@@ -425,8 +427,8 @@ new work. `SolarSystemHudTests` covers the profile control and the coasting
 window: the
 `PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
 burn–coast–burn slider ends at the slowest duration the planner accepts rather
-than at three times its minimum (6.74–20.21 days at the epoch for Gateway→Mars,
-from the 6.74-day true floor).
+than at three times its minimum (6.73–20.19 days at the epoch for Gateway→Mars,
+from the 6.73042-day true floor).
 `TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
 and lower delta-v at twice the minimum, and an infeasible report below it.
 `CoastTripPlannerTests` and `BurnCoastBurnTripPlannerTests` cover the two Lambert

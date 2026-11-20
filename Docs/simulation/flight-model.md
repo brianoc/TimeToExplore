@@ -240,11 +240,17 @@ Every seam is continuous to under a metre and 3.7 × 10⁻⁴ m/s, the flight ar
 0.1 m and 0.0001 m/s from the reference state, and the parking orbit holds. At
 `0 g` the style is exactly the coast plan: five arcs and the handover impulse.
 
-The profile's true floors at the epoch are **3.22 days** to Mercury at 1 g
-(peak 9.70 m/s², 1,766 km/s) and **6.74 days** to Mars at 0.3 g (peak
-5.14 m/s², 1,172 km/s); the Mars trip-time window ends at **20.21 days**, three
-times the floor, so the 90-day plan above is a direct `PlanAtDuration` build
-outside the nav computer's window. Faster crossings are limited by the pinned
+The profile's true floors at the epoch are **3.21610 days** to Mercury at 1 g
+(peak 9.70 m/s², 1,766 km/s) and **6.73042 days** to Mars at 0.3 g
+(5.14 m/s², 1,171.6 km/s); the Mars trip-time window ends at **20.19 days**,
+three times the floor, so the 90-day plan above is a direct `PlanAtDuration`
+build outside the nav computer's window. Jupiter at 0.3 g floors at
+**13.07211 days** (window 13.07–39.22) and Uranus at **33.60 days** at 0.3 g and
+**31.25 days** at 1 g (windows 33.60–100.81 and 31.25–93.76). The .NET harness
+selects a different certified point at the giants (Uranus 40.71 and 30.56,
+Jupiter 13.33520); the editor's is the one that ships
+([the divergence](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)).
+Faster crossings are limited by the pinned
 break reaching the drive's 10 m/s². The capture enters at the arrival handover
 floor rather than the sphere of influence, so the inbound fall is minutes; that
 is what moved the floors down from 3.46 and 8.03 days. The slow end is bounded
@@ -293,10 +299,10 @@ historical window to three times that minimum. **Coast** and
 sweeps past 180°, and a coast that arrives slower than the target's frame would
 need an acceleration — so their right-hand end is the slowest duration the
 planner still accepts, probed inside the same three-times span. At the epoch the
-burn–coast–burn window runs from **6.74 days to 20.21 days** to Mars, so it
-begins at the profile's true floor (6.74 days at 0.3 g), not at the torch plan's
-4.4 days, and it ends at three times that floor. A 90-day Mars plan exists as a
-direct `PlanAtDuration` build but the slider cannot reach it.
+burn–coast–burn window runs from **6.73 days to 20.19 days** to Mars, so it
+begins at the profile's true floor (6.73042 days at 0.3 g), not at the torch
+plan's 4.4 days, and it ends at three times that floor. A 90-day Mars plan exists
+as a direct `PlanAtDuration` build but the slider cannot reach it.
 
 The slider is one honest axis with two costs on it:
 

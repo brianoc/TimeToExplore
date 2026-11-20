@@ -30,10 +30,11 @@ tools/check.sh --reset            # drop the warm test project first
 
 The Unity tests carry one category each: `core`, `flight`, `presentation`, or
 `smoke`. `--tests` narrows the Unity gate to the categories named; the fast
-gates still run. A `core` or `presentation` run is a few seconds, the flight
-category is about ten minutes, and the whole suite about seventeen. The
-burn–coast–burn plan is the expensive part: its fixed burns integrate the summed
-field, and a full-field build is fifteen seconds in the editor.
+gates still run. A `core` or `presentation` run is a few seconds and the flight
+category is the bulk of a full run, which takes about **three minutes** on the
+warm project (187 s measured on the first-plot branch). The burn–coast–burn plan
+is still the expensive part — its fixed burns integrate the summed field — but a
+certified build is no longer fifteen seconds in the editor.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -52,9 +53,11 @@ hangs are the known failure: batch Unity can finish the tests, write
 `results.xml`, and then retry DNS lookups forever. `check.sh` still reads the
 results that were written, so a hang at the end does not throw away a completed
 run. The log is `.cache/test-project/unity.log`. The stall window is **twenty
-minutes** because Unity writes no per-test progress to the log: a full EditMode
-run is one silent stretch of about fifteen minutes, so the old eight-minute
-window killed healthy runs. The time budget still stops a real hang. For any
+minutes** because Unity writes no per-test progress to the log. It was set when
+a full EditMode run was one silent stretch of about fifteen minutes and the
+eight-minute window killed healthy runs; the suite now finishes in about three,
+so the window is deliberately generous rather than tight. The time budget still
+stops a real hang. For any
 other batch run, such as a capture helper or a scene builder, use the same
 wrapper:
 
@@ -62,9 +65,10 @@ wrapper:
 python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
 ```
 
-A full run takes about seventeen minutes with the warm project; the `flight`
-category alone is about ten. `--fast` is the loop to use while editing docs,
-Python tools, or catalogue data. The Unity suite is the gate for any C# change.
+A full run takes about three minutes with the warm project (187 s measured on
+the first-plot branch); the `flight` category is the bulk of it. `--fast` is the
+loop to use while editing docs, Python tools, or catalogue data. The Unity suite
+is the gate for any C# change.
 
 # Unity EditMode suite
 
@@ -119,7 +123,7 @@ because Unity test assemblies cannot reference the predefined
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents, held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
-| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the quintic preview as one *Quintic arc* row, stacking above the flight panel, listing *Conic arc* and *Fixed burn* with the hybrid, collapsing its three conic arcs into one row, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and requesting a retime through its `onValueChanged` while the handle and label keep the player's ask and the finished plan is published on the main thread, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider from 0 to 1 g rebuilding the preview at 0.5 g and degenerating to the conic plan at 0 g, the cruise-profile row defaulting to Powered and rebuilding the preview as the burn–coast–burn plan (its own 6.74–20.21 day window, the shared level control driving both burns, no `% burn` on a coast) or as the unpowered coast, the legend gaining the fixed-burn row for the profile and losing it again on Coast and Powered, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
+| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the quintic preview as one *Quintic arc* row, stacking above the flight panel, listing *Conic arc* and *Fixed burn* with the hybrid, collapsing its three conic arcs into one row, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and requesting a retime through its `onValueChanged` while the handle and label keep the player's ask and the finished plan is published on the main thread, the arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the quintic arcs), the third `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider from 0 to 1 g rebuilding the preview at 0.5 g and degenerating to the conic plan at 0 g, the cruise-profile row defaulting to Powered and rebuilding the preview as the burn–coast–burn plan (its own 6.73–20.19 day window, the shared level control driving both burns, no `% burn` on a coast) or as the unpowered coast, the legend gaining the fixed-burn row for the profile and losing it again on Coast and Powered, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
 The suite deliberately tests the shipped catalogue as well as the maths, so a
 bad regeneration fails before Unity opens a scene. Each class carries a
@@ -217,16 +221,22 @@ Earth, 12.06 at Saturn, and 18.44 at Jupiter, against the pure impulse model's
 hybrid pays it instead of raising the parking radius.
 
 The burn–coast–burn profile has these anchors at the epoch, from Gateway at
-0.3 g with the conic capture:
+0.3 g with the conic capture (floors and windows are the editor's, the runtime
+that ships; the .NET harness can select a different certified point near the
+giants' floor — see [planning
+performance](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)):
 
 | Quantity | Value |
 |---|---|
-| Trip-time window (Mars) | 6.74–20.21 days |
+| Trip-time window (Mars) | 6.73–20.19 days |
 | Trip-time window (Mercury) | 3.22–9.65 days |
-| True floor, Mars at 0.3 g | 6.74 days, peak 5.14 m/s², 1,172 km/s |
-| True floor, Mercury at 1 g | 3.22 days, peak 9.70 m/s², 1,766 km/s |
-| True floor, Uranus at 1 g | 30.56 days, peak 9.70 m/s², 2,299 km/s |
-| True floor, Uranus at 0.3 g | 40.71 days, peak 2.94 m/s², 1,801 km/s |
+| Trip-time window (Uranus) | 33.60–100.81 days at 0.3 g, 31.25–93.76 days at 1 g |
+| Trip-time window (Jupiter) | 13.07–39.22 days at 0.3 g |
+| True floor, Mars at 0.3 g | 6.73042 days, 1,171.61 km/s |
+| True floor, Mercury at 1 g | 3.21610 days, peak 9.70 m/s², 1,766 km/s |
+| True floor, Uranus at 1 g | 31.25 days (editor; .NET 30.56), peak 9.70 m/s² |
+| True floor, Uranus at 0.3 g | 33.60 days (editor; .NET 40.71), peak 2.94 m/s² |
+| True floor, Jupiter at 0.3 g | 13.07211 days (editor; .NET 13.33520), 2,270.99 km/s |
 | Just below the Mercury floor | 3.19 days refused: the departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Just below the Mars floor | 6.60 days refused at 10.03 m/s²; 6.70 days leaves the brake 8,073 m and 0.8 m/s short of the entry |
 | 90-day Mars plan, total | 44.4 km/s (direct build, outside the nav window) |
@@ -314,9 +324,17 @@ selection — floor, window probes, retime — is 1.5 s at Mercury and 0.93 s at
 Mars; a repeat selection at the same date/target/level/style is under 0.1 ms.
 The floor search probes a fast model (fixed burns at their commanded
 acceleration, the break against its own body, a 128-sample burn, a loose pinned
-fixed point) and rebuilds and certifies the chosen duration with the full field;
-the near-floor basin still costs about twenty probes, which is the remaining
-cost in `Plan()`. The fast peak against the full field is +0.18% at 8 d Mercury,
+fixed point) and rebuilds and certifies the chosen duration with the full field.
+Since step 3 every measured case certifies its **first** candidate, so the
+common path is one certified build plus the window build and not a full-field
+continuation: the .NET trace is `fast`, `probe 0`, `full 0`, `cert 1` in all
+five cases, and Mars's is the same certificate with one `pin retry` (12 → 24
+passes) inside its build
+([step 4](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20)).
+The remaining cost is therefore the editor's per-build price: Mars and Jupiter
+are ~3.2–3.45 s, and the other cases 1.3–2.5 s, in the warm test project.
+
+The fast peak against the full field is +0.18% at 8 d Mercury,
 +0.41% at 12.3 d, +4.5% on the 90-day Mars break, and +0.05% at the Mercury
 floor; the 5% screen decides near the limit, so the fast number never becomes a
 reported peak. The search-input work left the plans and floors alone; the
@@ -332,16 +350,16 @@ not a boundary. The conservatism is a cost shield, not a wrong answer: do not
 loosen `DepartureSolveToleranceMps` or widen the gate. Step 7 measured the trade
 and kept the shield ([planning
 performance](/technical/planning-performance.md#step-7-the-levers-measured-2026-11-20)).
-Step 1's cheaper build re-measured the returned floors. Uranus 0.3 g stays
-**40.71 d** and the search is still conservative there — the fast probes refuse
-40.5–39.0 d while the certified build now closes them, and a cold rebuild at
-40.71332 d closes at 5.1 m / 6.5 × 10⁻⁴ m/s. **Uranus 1 g moves from 34.16 to
-30.56 d** (2,299 km/s), because the certified build's 128-sample departure
-solve converges where the 512-sample one stalled at about 1.1 × 10⁻⁵ m/s, so
-the cost shield no longer refuses that probe. The plan is certified: the worst
-seam is 6.7 m / 8.4 × 10⁻⁴ m/s and a cold rebuild at 30.55886 d closes at 0.4 m
-/ 1.0 × 10⁻³ m/s. The window follows, **30.56–91.68 d** at 1 g. The basin has
-not been re-swept, so step 3 re-anchors the bracket.
+Step 1's cheaper build re-measured the returned floors, and the first-plot
+plan's close-out records the final ones. Uranus 0.3 g is **40.71 d in .NET and
+33.60 d in the editor**. In .NET the search is still conservative there — the
+fast probes refuse the durations below its floor while the certified build
+closes 40.5, 40.0, and 39.0 d directly — so the returned floor is not the
+shortest plan that closes. Uranus 1 g is **31.25 d in the editor (30.56 in
+.NET)** and rebuilds cold; the window follows, **31.25–93.76 d**. Both numbers
+are certified plans and the difference is the near-floor scatter, not an error.
+The basin has not been re-swept; a coarser bracket was measured at step 4 and
+dropped because the continuation it was meant to remove no longer runs.
 
 Those timings are the two-body-burn profile. Since the certified plan's fixed
 burns integrate the summed field, the same work in a .NET harness before step 7
@@ -381,7 +399,7 @@ than a brake (the branch is still in the solver, but after the floor entry a
 coast's own geometry: 305 days is refused at 179.4°); a trip time whose transfer
 sweeps 180° or more is rejected with the transfer angle. A plan over the drive carries an
 `InfeasibleReason` naming the arc and the peak it needs. The 90-day anchors are
-direct `PlanAtDuration` builds: the nav slider's Mars window is 6.74–20.21
+direct `PlanAtDuration` builds: the nav slider's Mars window is 6.73–20.19
 days, so 90 days is not reachable from the control. They are measured
 at the exact epoch: the long-trip solver is date-fragile, and a one-second shift
 can drop the Mars 90-day or Jupiter 230.6-day build into the same non-convergence

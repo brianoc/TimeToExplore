@@ -133,10 +133,12 @@ profile.
    window is that profile's own feasible range; the existing burn-level slider
    is the level both burns are planned at.
 
-The measured window at the epoch is **6.74 to 20.21 days** for the
+The measured window at the epoch is **6.73 to 20.19 days** for the
 Gateway→Mars burn–coast–burn profile at 0.3 g, against the powered plan's
-4.4 days and the cheap coast's 200+. At 1 g the fast end is **3.22 days** to
-Mercury (window 3.22–9.65 days). The window moved when the capture started
+4.4 days and the cheap coast's 200+. At 1 g the fast end is **3.21610 days** to
+Mercury (window 3.22–9.65 days); Jupiter at 0.3 g is **13.07–39.22 days** and
+Uranus is **33.60–100.81 days** at 0.3 g and **31.25–93.76 days** at 1 g. The
+window moved when the capture started
 entering at the handover floor: the old fast ends were 8.03 and 3.46 days, set
 by the capture's 1.32-day and 6.1-hour falls. The right-hand end is the
 three-times cap, and both ends build. The 90-day Mars
@@ -211,12 +213,12 @@ the case that motivated the change:
 | Coast | 277.3 days | 392.3 days |
 | Total | 242.1 km/s | **182.3 km/s** |
 | Brake start radius | 51.96 million km (1.004 SOI) | **366,505 km (0.0071 SOI)** |
-| Profile floor | 150.73 days | **30.56 days** |
+| Profile floor | 150.73 days | **31.25 days** (editor; 30.56 .NET) |
 
 At 0.3 g the same comparison is a 1.3-hour fall against 117.13 days, 79.7 km/s of
 brake, 180.8 km/s in total, a brake start 1,159,005 km out (0.0224 SOI), and a
-floor of **40.71 days** against 160.47 (unchanged by step 1; the 1 g floor is the
-one its cheaper solve moved). The brake starts deep inside the target's
+floor of **33.60 days in the editor (40.71 in .NET)** against 160.47. The brake
+starts deep inside the target's
 sphere on a long trip because the coast, not the brake, flies most of the
 approach; at the fast floor the brake itself spans it (28.4 hours of 990 km/s
 from 50.55 million km, 0.976 SOI). That is the measurement the next decision
@@ -371,31 +373,49 @@ walking down in 15% steps to the first refused request, then bisecting to 0.05%
 (or 30 s, whichever is larger), growing up to twelve 20% steps when the estimate
 lands below the floor. A refused probe is retried 0.2% higher, because the
 near-floor chain has narrow non-convergence holes; that retry is the search's
-real resolution. The floors measured after the change are **3.216 d** to Mercury
-at 1 g and **6.737 d** to Mars at 0.3 g — the capture's fall is minutes now, so
-the fast end moved from 3.46 and 8.03 days. The near-floor basin is noisy, so the
-search still pays about twenty probes; that is the remaining cost in `Plan()` and
-the trap for the slider step. The estimate is also shorter now (the capture no
-longer contributes months), so the growth loop was widened from five steps to
-twelve; at Uranus 0.3 g the five-step growth stopped at 40.3 days and declared
-the trip infeasible while 40.95 days built.
+real resolution. Since step 3 the certified build retries a stalled brake pin,
+so the fast answer certifies on the planner's **first** certificate in every
+measured case: the .NET trace is `fast`, `probe 0`, `full 0`, `cert 1`, and Mars
+pays one `pin retry` (12 → 24 passes) inside its certificate. The near-floor
+basin is still noisy, but the search no longer spends a full-field continuation
+on it; the remaining cost is the certified build itself, which is why the editor
+is ~3.2–3.45 s at Mars and Jupiter and the .NET harness 0.23–0.49 s. The
+coarser growth and 1% bisection the plan held in reserve were measured against
+that and dropped, because they would move floors and save nothing
+([step 4](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20)).
+The estimate is also shorter now (the capture no longer contributes months), so
+the growth loop was widened from five steps to twelve; at Uranus 0.3 g the
+five-step growth stopped at 40.3 days and declared the trip infeasible while
+40.95 days built.
 
-Measured at the epoch (2026-11-15) from Gateway, conic capture:
+Measured at the epoch (2026-11-15) from Gateway, conic capture. The floor is a
+certified full-field plan; the editor's number is the one that ships:
 
 | Target | Level | True floor | Peak | Total Δv | Just below | Why the shorter trip is refused |
 |---|---|---:|---:|---:|---|---|
-| Mercury | 1 g | **3.22 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
-| Mars | 0.3 g | **6.74 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
-| Uranus | 1 g | **30.56 d** | 9.70 m/s² | 2,299 km/s | not re-swept | step 1 re-measured the floor (34.16041 → 30.55886 d): the 128-sample certified solve converges where 512 stalled, and the plan is certified (6.7 m / 8.4 × 10⁻⁴ m/s) |
-| Uranus | 0.3 g | **40.71 d** | 2.94 m/s² | 1,801 km/s | not re-swept | step 1 leaves the floor unchanged; the certified build closes 40.5, 40.0, and 39.0 d directly while the fast probes refuse them, so the search is conservative |
+| Mercury | 1 g | **3.21610 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
+| Mars | 0.3 g | **6.73042 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
+| Jupiter | 0.3 g | **13.07 d** in the editor (13.33520 .NET) | 9.70 m/s² | 2,271 km/s | not re-swept | the editor's fast high certifies after one pin retry; the .NET basin selects a different needle |
+| Uranus | 1 g | **31.25 d** in the editor (30.56 .NET) | 9.70 m/s² | 2,299 km/s (.NET floor) | not re-swept | step 1 re-measured the floor lower; the 128-sample certified solve converges where 512 stalled, and both points are certified |
+| Uranus | 0.3 g | **33.60 d** in the editor (40.71 .NET) | 2.94 m/s² | 1,801 km/s (.NET floor) | not re-swept | the basin is needles; in .NET the certified build closes 40.5, 40.0, and 39.0 d directly while the fast probes refuse them, so the search is conservative |
 
-The Uranus 0.3 g basin is a set of **needles**, not a boundary, and step 1 left
-the returned floor at **40.71332 d**. The search's fast probes still refuse the
-durations below it; the certified build now closes at 40.5, 40.0, and 39.0 d
-directly (worst seams 17.6 m / 1.7 × 10⁻³ m/s or better) as well as at the floor
-itself (5.1 m / 6.5 × 10⁻⁴ m/s), so the search is conservative here. Step 3
-re-anchors the bracket. The 1 g floor is now 30.55886 d and rebuilds cold at
-0.4 m / 1.0 × 10⁻³ m/s. [Planning
+The runtime difference at the giants is the near-floor scatter, not a defect: a
+duration's feasibility is set by whether the departure Newton stalls and how
+many passes the brake pin needs, so a last-bit libm difference selects a
+different certified point. The editor's windows are **33.60–100.81 d** (Uranus
+0.3 g), **31.25–93.76 d** (Uranus 1 g), **6.73–20.19 d** (Mars 0.3 g),
+**3.22–9.65 d** (Mercury 1 g), and **13.07–39.22 d** (Jupiter 0.3 g); the
+divergence's measurement is in [planning
+performance](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug).
+
+The Uranus 0.3 g basin is a set of **needles**, not a boundary. In the .NET
+harness the returned floor is **40.71332 d** and the search is conservative: the
+fast probes refuse the durations below it while the certified build closes 40.5,
+40.0, and 39.0 d directly (worst seams 17.6 m / 1.7 × 10⁻³ m/s or better) and
+the floor itself closes at 5.1 m / 6.5 × 10⁻⁴ m/s. The editor's scatter selects
+**33.60438 d**, also certified; the two are the same basin read through
+different libm last bits. The 1 g floor rebuilds cold at 0.4 m / 1.0 × 10⁻³ m/s
+in .NET. [Planning
 performance](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)
 records the re-measurement and the cache reuse that keeps the background retime
 off it.
@@ -407,8 +427,9 @@ plan that fits the peak can end the brake hundreds of thousands of kilometres
 from the entry; the planner reports that as a trip time too short for the
 profile instead of handing it to the autopilot. The gate is a kilometre of
 position and a metre per second of velocity: the 8- and 12-day trips close to
-centimetres, the 6.74 d Mars floor's worst seam is 666 m (and the Mercury floor's
-196 m), and a broken brake misses by thousands of kilometres. The 8.03 d flight
+centimetres, the 6.73042 d Mars floor's worst seam is 9.8 m and 2.5 × 10⁻² m/s
+(and the Mercury floor's 196 m), and a broken brake misses by thousands of
+kilometres. The 8.03 d flight
 arrived 0.1 m and 10⁻⁴ m/s from the reference parking state.
 
 The pinned solve itself now stops on the brake's own physical mismatch (1e-6 m/s

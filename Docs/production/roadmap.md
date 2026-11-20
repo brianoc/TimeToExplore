@@ -315,9 +315,10 @@ torch-ship fiction uses is flyable. The design is
   is the slowest duration the planner accepts, probed because a long short-way
   transfer sweeps past 180° and a slow coast would need an acceleration rather
   than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
-  the chain closing, so at the epoch the Mars window is **6.74–20.21 days** and
-  the Mercury fast end is 3.22 days at 1 g. A 90-day Mars plan is a direct
-  `PlanAtDuration` build outside that window. The floor plan and window are
+  the chain closing, so at the epoch the Mars window is **6.73–20.19 days** and
+  the Mercury fast end is 3.21610 days at 1 g; Jupiter's is 13.07–39.22 and
+  Uranus's 33.60–100.81 at 0.3 g and 31.25–93.76 at 1 g. A 90-day Mars plan is a
+  direct `PlanAtDuration` build outside that window. The floor plan and window are
   cached per date, target, level, cruise and arrival style, and moving the
   slider retimes on a latest-wins background worker; every published preview is
   the full-field build, never the fast search estimate
@@ -328,8 +329,8 @@ torch-ship fiction uses is flyable. The design is
   capture into a 6,033 km entry), against the cheap coast's 14 km/s at 200 days
   and the torch plan's 2,345 km/s at 4.4 days. Seams close under a metre and
   3.7 × 10⁻⁴ m/s; the flight arrives 0.1 m and 0.0001 m/s from the reference
-  state. The true floors are 3.22 days to Mercury at 1 g (1,766 km/s) and
-  6.74 days to Mars at 0.3 g (1,172 km/s), and an over-thrust plan carries an
+  state. The true floors are 3.21610 days to Mercury at 1 g (1,766 km/s) and
+  6.73042 days to Mars at 0.3 g (1,171.6 km/s), and an over-thrust plan carries an
   `InfeasibleReason` naming the arc and the peak it needs.
 
 # Immediate next tasks

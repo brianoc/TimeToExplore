@@ -168,9 +168,11 @@ radius)` — not the sphere of influence: the brake ends there and the chain's
 inbound fall starts there. Measured at the epoch from Gateway to Uranus at 1 g
 and 400 days, the chain enters at 38,643 km and falls for 31 minutes, against
 117.13 days from the 51.76 million km sphere, and the profile's floor drops from
-150.73 to **30.56 days** (34.16 at step 7; step 1's cheaper certified solve
-converges where the 512-sample one stalled, so the re-measured floor is lower at
-1 g). The **coast** profile has no brake to hand over and
+150.73 to **31.25 days in the editor** and **30.56 days in the .NET harness** on
+this branch. Both are certified plans; the difference is the near-floor scatter
+([the runtime
+divergence](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)).
+The **coast** profile has no brake to hand over and
 keeps its sphere-of-influence entry
 ([the chain's entry radius](/simulation/powered-leg-floor.md#the-chains-entry-radius)).
 Every seam is continuous in position and velocity, and the plan arrives on the
@@ -192,9 +194,9 @@ Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.84-day
 quintic break (8.8 km/s, 0.03 m/s² peak), a 76-minute departure burn of
 13.4 km/s, an 85.0-day coast, a 1.7-hour brake of 18.5 km/s, and the 3.5 km/s
 conic capture, 44.4 km/s in total against the coast plan's 14 km/s at 200 days.
-The profile's true floor at the epoch is **6.74 days** to Mars at 0.3 g
-(1,172 km/s) and **3.22 days** to Mercury at 1 g (1,766 km/s); the Mars
-trip-time window ends at **20.21 days**, three times that floor, so the 90-day
+The profile's true floor at the epoch is **6.73042 days** to Mars at 0.3 g
+(1,171.6 km/s) and **3.21610 days** to Mercury at 1 g (1,766 km/s); the Mars
+trip-time window ends at **20.19 days**, three times that floor, so the 90-day
 plan above is a direct `PlanAtDuration` build outside the nav computer's window.
 The capture enters at 6,033 km (the Mars 0.3 g floor) and falls for 13.6
 minutes.
@@ -221,7 +223,7 @@ would need an acceleration rather than a brake. Selecting **Coast** or
 **Burn-coast-burn** therefore resets the slider to that profile's own fastest
 plan and clamps the right end to the slowest duration the planner still accepts,
 found by probing inside the same span. At the epoch the burn–coast–burn window
-runs from **6.74 days to 20.21 days** to Mars, not from the torch plan's 4.4 days
+runs from **6.73 days to 20.19 days** to Mars, not from the torch plan's 4.4 days
 and not to an arbitrary three times the powered minimum. The right-hand end is
 exactly three times the true floor, so a 90-day Mars build is outside the
 control's reach; it can only be built directly with `PlanAtDuration`. The

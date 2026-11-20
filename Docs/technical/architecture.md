@@ -474,8 +474,12 @@ build, not a new minimum solve. The burn–coast–burn plot is the
 expensive one: the true-floor search probes a fast model — fixed burns at their
 commanded acceleration, the break against its own body, a 128-sample burn and a
 loose pinned fixed point — and rebuilds and certifies the chosen duration with
-the full field at 512 samples, so one plot still costs about twenty probes but
-each is much cheaper than a full build. A certified build's fixed burns
+the full field at 512 samples. In the common path that certificate accepts the
+first candidate, so one plot spends a handful of fast probes — milliseconds
+each — plus one certified build and the window build, not a full-field
+continuation; the certified build is the cost
+([Planning performance](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20)).
+A certified build's fixed burns
 integrate the summed field one RK4 step at a time and refresh the active set
 every eighth step; a refresh evaluates the whole catalogue's ephemeris, and the
 cadence cut a build by 2.2–3.7×

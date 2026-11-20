@@ -84,7 +84,11 @@ search's real resolution. The candidate is rebuilt at certified quality with the
 full field before it leaves the planner; if the certificate refuses, the search
 continues above it and at most three certificates are spent before the last
 refusal is reported with its reason. The closure gate is unchanged: 1 km of
-position and 1 m/s of velocity.
+position and 1 m/s of velocity. The bracket bounds the scatter, but the common
+path no longer pays a continuation: after step 3 every measured case certifies
+on its first certificate with **zero** full-field probes, so the bracket's width
+buys no time
+([step 4](#step-4-the-bracket-was-not-needed-2026-11-20)).
 
 `FlightSession.WindowFor` caches the floor plan and the trip-time window per
 `(departure date, target, burn level, cruise style, arrival style)`. A repeat
@@ -457,8 +461,10 @@ returned plan is certified — `IsFeasibleAt` holds, the worst seam is **6.7 m /
 1.0 × 10⁻³ m/s — and the window follows: **30.56–91.68 d** at 1 g and
 **40.71–122.14 d** at 0.3 g. A direct build at the new 1 g maximum (91.67658 d)
 is accepted with seven arcs and 736.02 km/s. Every fixed-duration anchor is
-unchanged. Step 3 re-measures the floors and windows as anchors; step 4
-re-measures the editor.
+unchanged. Step 3 re-measured the floors and windows as anchors, and the
+first-plot plan's close-out records them as final; its last step measured the
+bracket and dropped it
+([the bracket was not needed](#step-4-the-bracket-was-not-needed-2026-11-20)).
 
 ## Step 2: the search's probes are cheap and the answer is certified (2026-11-20)
 
@@ -648,6 +654,75 @@ well before the twelve-pass cap. The window's right end is still a feasible
 build at 3 × the floor (39.216 d at Jupiter, 20.191 d at Mars): the retry
 changes the floor, not the window rule, and `FlightSession` reuses the stored
 floor plan for a request at the floor's own duration.
+
+## Step 4: the bracket was not needed (2026-11-20)
+
+The plan's last step was to replace the 15% walk-down and 0.05% bisection with
+coarse growth and a 1% bisection, so that ~7 probes replace ~14. Its premise was
+the step-2 trace, where the editor's Jupiter certificate refused and **14
+full-field continuation probes** dominated `Plan()`. Step 3 removed that
+continuation — the certified build retries a stalled pin and the same duration
+then certifies — so the probe count a coarser bracket would remove no longer
+exists. The step is **measured and dropped**, not implemented: the search and
+its bracket are unchanged.
+
+The evidence is the .NET harness's trace, identical in all five cases:
+`fast`, `probe 0`, `full 0`, `cert 1`. One certified build, **zero full-field
+probes**, one certificate. Mars is the one exception, and it is inside its
+certified build: a `pin retry` (12 → 24 passes) and still one certificate. No
+measured case reaches the continuation, so nothing is left for a bracket to
+save.
+
+Final editor first `Plot()` on the warm test project (epoch 2026-11-15, Gateway,
+conic capture), the same measurement the plan opened with:
+
+| Case | Original | Final | Floor | Window |
+|---|---:|---:|---:|---|
+| Uranus 0.3 g (default) | 27.3 s | **1.865 s** | 33.60438 d | 33.60–100.81 d |
+| Uranus 1 g | 2.57 s | **1.341 s** | 31.25256 d | 31.25–93.76 d |
+| Mars 0.3 g | 13.5 s | **3.445 s** | 6.73042 d | 6.73–20.19 d |
+| Mercury 1 g | 4.17 s | **2.520 s** | 3.21610 d | 3.22–9.65 d |
+| Jupiter 0.3 g | 33.6 s | **3.193 s** | 13.07211 d | 13.07–39.22 d |
+
+The goal was a certified first plot in roughly 3 s in the editor at both levels.
+Four cases are within ~0.2 s of it; Mars is 0.45 s over. .NET's `Plan()` on the
+same tip is 0.23–0.49 s, so the editor's remaining gap is per-build cost, not
+search shape.
+
+### What the remaining time is
+
+Mars and Jupiter are ~3.2–3.45 s because they are now **one certified build plus
+the window build**, paid at the editor's per-build price; the search in front of
+them is fast probes that cost milliseconds. Mars alone pays a **pin retry**, and
+that makes its certified build cost about twice a converged one: the first
+twelve outer passes are repeated by the twenty-four-pass retry, roughly **0.4 s**
+of its 3.445 s.
+
+That duplicated work is the last known lever. **Resuming the brake/departure pin
+in place from its twelfth-pass state, instead of rebuilding the burn at
+twenty-four passes, would remove the twelve repeated passes.** It is an
+unmeasured opportunity, not work in this plan: the retry runs only when the pin
+stalled, and it is what certifies the current floors (Mars 6.73715 → 6.73042 d,
+Jupiter 13.34149 → 13.07211 d) without moving a tolerance or a gate.
+
+### The runtime divergence is a property, not a bug
+
+The .NET harness and the editor disagree on which near-floor point is the floor
+at the giant planets: Uranus 0.3 g **40.71 d .NET against 33.60 d in the
+editor**, Uranus 1 g 30.56 against 31.25, and Jupiter **13.335 against 13.072**.
+Both numbers are **certified full-field plans**: each is rebuilt with the summed
+field, every arc carries its measured clearance and delta-v, and every seam is
+inside the 1 km / 1 m/s gate. The near-floor basin is a scatter rather than a
+boundary — a duration's feasibility is decided by whether the departure Newton
+stalls and by how many passes the brake pin needs — so a last-bit libm difference
+between Mono and .NET selects a different needle.
+
+That is a characteristic of the basin, not a defect to reconcile. **The editor's
+number is the one that ships**, which is why the anchors in
+[testing](/technical/testing.md) and the profile docs are its numbers; the .NET
+figures stay as the harness's own measurement and as evidence that both points
+are certified. Whatever the runtime, a reported floor is a certified full-field
+plan, never a probe's answer.
 
 # Where it lives
 
