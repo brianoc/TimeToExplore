@@ -349,16 +349,14 @@ That is worse than conservative. The faster build makes the cost shield cheaper,
 but the acceptance needs a residual-scaled rule before it is safe, and it is not
 part of this step.
 
-In the Unity suite, `tools/check.sh --tests flight,presentation,smoke` passed
-**394 tests with 0 failed in 379 s** on the warm test project; the same run on a
-cold cache (393 tests, before the retime reuse test was added) was **405 s**,
-against the recorded **1005 s** at step 4 (389 tests) and **908 s** at step 5
-(393 tests). The flight category alone was **242 s** for 251 tests, against the
-recorded **606 s**. The burn-level change, the old burn–coast–burn stretch, is
-now **58.4 s** (123 s at step 5, 166 s before its trim), the Mars floor test
-**18.8 s** (68 s), the Mercury floor 10.4 s, and the longest test anywhere is
-59.3 s (the HUD's cruise-profile control), so no multi-minute silent stretch is
-left.
+In the Unity suite, `tools/check.sh --tests flight,presentation,smoke` passed in
+**379 s** on the warm test project; the same run on a cold cache was **405 s**,
+against the recorded **1005 s** at step 4 and **908 s** at step 5. The flight
+category alone took **242 s** against the recorded **606 s**. The burn-level
+change, the old burn–coast–burn stretch, is now **58.4 s** (123 s at step 5, 166 s
+before its trim), the Mars floor test **18.8 s** (68 s), the Mercury floor 10.4 s,
+and the longest test anywhere is 59.3 s (the HUD's cruise-profile control), so no
+multi-minute silent stretch is left.
 
 # Where it lives
 
