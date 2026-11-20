@@ -160,31 +160,40 @@ the main thread kept its 10 ms cadence.
 
 ## The full-field burns
 
-The reported plan's fixed burns integrate the summed field, and that is the new
-cost floor. Measured at the epoch in a .NET harness over the same sources, with
-the two-body build it replaced in brackets: a 90-day Mars build **0.47 s**
-(0.05 s), the Mercury 8-day build 1.1 s, `Plan()` at the Mars floor **2.0 s**
-(0.5 s) and at the Mercury floor 2.4 s, and a slider retime 0.7–1.4 s. The editor
-runs the same work several times slower: in the Unity suite the burn–coast–burn
-class is a **3-minute** silent stretch, the near-limit screen sweep (four Mercury
-builds) is ~100 s, the Mars floor test 69 s, and the whole flight category about
-10 minutes, which is why the guard watches for eight minutes of log silence.
-Almost all of it is `GravityField.Prepare`: a full-field burn step re-selects the
-active set once per RK4 step, and that evaluates the whole catalogue's ephemeris,
-so a step costs about fifty times a two-body step. The plans, floors, seams, and
-window did not move ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
-A cheaper prepare rule is the obvious lever for the performance step; it must be
-measured against the per-step rule.
+The reported plan's fixed burns integrate the summed field, and that was the new
+cost floor at step 2. Measured then at the epoch in a .NET harness over the same
+sources, with the two-body build it replaced in brackets: a 90-day Mars build
+**0.47 s** (0.05 s), the Mercury 8-day build 1.1 s, `Plan()` at the Mars floor
+**2.0 s** (0.5 s) and at the Mercury floor 2.4 s, and a slider retime 0.7–1.4 s.
+Almost all of it was `GravityField.Prepare`: a full-field burn step re-selected
+the active set at every RK4 step, and that evaluates the whole catalogue's
+ephemeris. Step 7 measured the cost on builds rather than on steps and cut it by
+both levers — the refresh now runs every eighth step and the certified brake pin
+stops at 1e-6 m/s — so a fixed-duration build is **2.2–3.7× faster** and a floor
+search 2.6–6× faster; the tables are in
+[step 7](#step-7-the-levers-measured-2026-11-20). The step-2 plans, floors,
+seams, and window did not move ([full-field burns and the powered-leg
+floor](/simulation/powered-leg-floor.md)); the step-7 cadence later moved the
+Uranus floor by 0.16 d at 1 g and 0.86 d at 0.3 g because it changes the
+certified plan the near-floor basin first closes at.
+
+The editor runs the same work several times slower than the harness. In the
+Unity suite before step 7 the burn–coast–burn class was a **3-minute** silent
+stretch, the near-limit screen sweep (four Mercury builds) ~100 s, the Mars floor
+test 69 s, and the whole flight category about 10 minutes, which is why the guard
+watches a **twenty-minute** window of log silence. Step 7's after-run is recorded
+below.
 
 ## One burn–coast–burn build, measured (2026-11-20)
 
 An editor harness on the warm test project, Mars at 0.3 g, Gateway departure,
 burn–coast–burn cruise with a conic capture, put hard numbers on the shape of
-the cost. A full-field build runs the pinned brake/departure fixed point to
-twelve passes (the certified tolerances are 1e-7 m/s and 1e-6 s), and each pass
-interpolates the brake at 2,048 samples and the departure burn at 512. That is
-about **1.2 s per pass, ~15 s per build**. A floor search pays for a bracket of
-those builds, so a floor plot was **72 s** and a burn-level change **80 s**.
+the cost. A full-field build ran the pinned brake/departure fixed point to its
+twelve-pass cap (the certified tolerances were then 1e-7 m/s and 1e-6 s), and
+each pass interpolates the brake at 2,048 samples and the departure burn at 512.
+That is about **1.2 s per pass, ~15 s per build**. A floor search pays for a
+bracket of those builds, so a floor plot was **72 s** and a burn-level change
+**80 s**.
 
 Two builds in that path were redundant and are gone:
 
@@ -212,22 +221,26 @@ switching to the automatic count would not change any of them. Cutting the cost
 means a coarser brake step or a looser pin tolerance, and both change certified
 numbers: that is the performance step's decision, not a trim.
 
-## The Uranus floor and its conservative bracket (2026-11-20)
+## The Uranus floor and its conservative bracket (measured before step 7)
 
 The floor search's bracket is conservative at the giant planets for a cost
-reason, not a physical one. Measured at the epoch (2026-11-15) from Gateway in
-the .NET harness — burn–coast–burn cruise, conic capture, `TTE_FLOOR=1`, Debug
-build, the same sources as the suite:
+reason, not a physical one. The table below is what **step 6** measured, before
+step 7 changed the refresh cadence; the current floors are in
+[step 7](#step-7-the-levers-measured-2026-11-20). Measured at the epoch
+(2026-11-15) from Gateway in the .NET harness — burn–coast–burn cruise, conic
+capture, `TTE_FLOOR=1`, Debug build, the same sources as the suite:
 
 | Case | `Plan()` | Floor | Peak | Direct builds below the floor |
 |---|---:|---:|---:|---|
-| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s. The planetocentric arrival leg moves it to **33.89968 d**, 2,053.82 km/s, eight arcs |
+| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s. After step 7's cadence and the approach leg together the search returns **33.72 d**, 2,065.6 km/s, eight arcs |
 | Uranus, 0.3 g | **59.2 s** | **41.57095 d**, 1,756.59 km/s | 2.942 m/s² | 41.36309 and 40.94738 d close (4.8 s each, 1,767.17 and 1,788.76 km/s); 41.1552 d stalls at 3.039 × 10⁻⁵ m/s |
 | Mars, 0.3 g | **27.5 s** | **6.73715 d**, 1,172.48 km/s | 5.137 m/s² | 6.7035 d misses the brake chain by 6,182.2 m / 0.6 m/s, 6.6698 by 1,651.5 m / 0.2, 6.6361 by 9,254.9 m / 0.9; at 6.535 d the break needs 14.2 m/s² |
 | Mercury, 1 g | **7.8 s** | **3.21610 d**, 1,765.52 km/s | 9.700 m/s² | 3.1839 d needs a 10.3 m/s² break, rising to 275.0 m/s² at 3.0875 d |
 
-The Uranus gap is **0.51 d (1.5%)** at 1 g — 34.00 against 33.49 d — and
-**0.62 d (1.5%)** at 0.3 g, 41.57 against 40.95 d. The lower probes are not
+At step 6 the Uranus gap was **0.51 d (1.5%)** at 1 g — 34.00 against 33.49 d
+— and **0.62 d (1.5%)** at 0.3 g, 41.57 against 40.95 d; step 7 re-measured both
+floors and the 33.49 d probe now stalls, so the current numbers are in
+[step 7](#step-7-the-levers-measured-2026-11-20). The lower probes were not
 infeasible trips: they are a **pinned-departure stall**. The damped Newton in
 `TrySolvePinnedDeparture` cannot improve at the finite-difference resolution, so
 the residual stops just above `DepartureSolveToleranceMps = 1e-5` — measured
@@ -246,17 +259,133 @@ probes cheaply. The conservative floor is not a purely wrong answer, and
 tightening it is step 7's trade, not a free fix.
 
 The window takes its right-hand end from that floor. `MaximumPreviewSeconds` is
-3 × the floor, so Uranus at 1 g offered **34.00–101.99 d** before the arrival leg
-and offers **33.90–101.70 d** after it. A direct build at the old maximum
-(101.99307 d) was accepted: **seven arcs, 661.35 km/s**, a **9.105 h**
-departure burn and a **9.185 h** brake. The post-approach build at 101.69 d is
-**eight arcs and 661.3 km/s**, and its brake also starts inside the ceiling. Its
-`PlanAtDuration` is **2.7 s**; the
-36 s harness run around it also reflies both burns under the six alternative
-steering laws, so that is the report, not the build. The slider's right end
-never asks for a refused plan. All timings here are .NET-harness numbers; the
-editor runs this work several times slower, so a first Uranus preview is a
-multi-minute freeze until step 7.
+3 × the floor. At step 6 that was 34.00–101.99 d at 1 g, and a direct build at
+101.99307 d was accepted: seven arcs, 661.35 km/s, a 9.105 h departure burn and a
+9.185 h brake, `PlanAtDuration` 2.7 s (the 36 s harness run around it also
+reflies both burns under the six alternative steering laws, so that is the
+report, not the build). Step 7 and the approach leg re-measured the floor, so the window is
+**33.72–101.16 d** at 1 g and **42.54–127.62 d** at 0.3 g. Direct builds at both
+maxima are accepted, eight arcs, 666.80 km/s at 1 g and 530.62 at 0.3 g. The
+slider's right end never asks for a refused plan; the current floors and the
+re-measurement are in
+[the post-close re-measure](#post-close-re-measure-step-4b-merged-2026-11-20).
+
+## Step 7: the levers measured (2026-11-20)
+
+Full-field probes made a first Uranus selection a multi-minute freeze, so step 7
+was allowed to trim the burn's cost. Two levers were taken and the third was
+measured and rejected:
+
+* **The active set refreshes every eighth RK4 step** — a private
+  `FiniteBurnArc.PrepareEverySteps = 8`. `StepFull` prepares at step 0 and every
+  eighth step after it and evaluates that set at the four stage times;
+  `AccelerationAt` still prepares per query, so the reported acceleration stays
+  exact. Eight steps is 32–480 s of burn depending on the arc's sample step.
+* **The brake pin stops at 1e-6 m/s** instead of 1e-7. The fixed point's own
+  interpolation resolution stalls at about 6.6 × 10⁻⁷ m/s: on the Mars 90-day
+  build at 1e-7 the loop never converges and runs its twelve-pass cap, and at
+  1e-6 it converges at **pass 8** with the same 6.62 × 10⁻⁷ m/s mismatch. The
+  loose stop bounds the brake's start error at about 0.3 m over the longest
+  measured brake (82.7 h), far inside the 1 km gate.
+* **A coarser brake step was rejected**: the 4 s target step already clamps at
+  2,048 samples for every measured brake, so it changes no hot case.
+
+Fixed-duration plans are **identical to four decimals** with both levers on, at
+the epoch from Gateway, conic capture (Release .NET, medians of three runs):
+
+| Plan | Δv before → after | Wall before → after |
+|---|---|---:|
+| Mars 90 d, 0.3 g | 44.3564 km/s (both) | 1.10 → **0.31 s** |
+| Mercury 8 d, 1 g | 557.0380 (both) | 1.54 → **0.43 s** |
+| Uranus 400 d, 1 g | 182.3393 (both) | 0.98 → **0.40 s** |
+| Mars 20 d, 0.3 g | 270.8500 (both) | 1.35 → **0.38 s** |
+| Mars 10 d, 0.3 g | 607.8259 (both) | 1.57 → **0.42 s** |
+| Uranus 35 d, 1 g | 1984.4479 (both) | 1.41 → **0.63 s** |
+
+The seams stay small. On the Uranus 35-day plan the worst seam after the change
+is **0.293 m / 4.2 × 10⁻⁵ m/s** (Capture→Coast) against 4.1 × 10⁻³ m /
+1.7 × 10⁻⁶ before, and the 40.71332-day floor plan's worst is **3.07 m /
+1.7 × 10⁻⁴ m/s**; both are orders inside the 1 km / 1 m/s chain gate. The
+independent-RK4 accuracy check is unchanged: the 80,000 s SOI-crossing burn
+against the 20,000-step integration is still **4.12 × 10⁻⁴ m and 6.69 × 10⁻⁹
+m/s**, and `FiniteBurnTests.ABurnCrossingTheSphereOfInfluenceCloses` passes.
+
+`Plan()` — the floor search — moved only at Uranus, because the coarser refresh
+changes which certified plan the near-floor basin first closes at:
+
+| Case | Floor before → after | Wall before → after |
+|---|---|---:|
+| Mars, 0.3 g | 6.73715 d (both) | 8.64 → **2.47 s** |
+| Mercury, 1 g | 3.21610 d (both) | 2.67 → **1.02 s** |
+| Uranus, 1 g | 33.99769 → **34.16041 d** | 22.0 → **3.62 s** |
+| Uranus, 0.3 g | 41.57095 → **40.71332 d** | 18.7 → **0.79 s** |
+
+At step 7 the 1 g floor was 0.16 d (0.5%) **more** conservative and the 0.3 g
+floor 0.86 d shorter at 1,801.17 km/s. The approach leg then moved them again:
+the current floors are **33.72 d** and **42.54 d** (see
+[the post-close re-measure](#post-close-re-measure-step-4b-merged-2026-11-20)).
+These are re-measured anchors, not errors: the floor is the first duration the
+certified full-field build closes at, and the basin is noisy. `Plan()` is now 2.6–6× faster at Mars, Mercury and Uranus 1 g, and 24× at
+Uranus 0.3 g partly because its floor moved.
+
+The 0.3 g floor is a **needle**, and that matters for the slider. At step 7 its
+plan was certified at 40.71332 d while a cold `PlanAtDuration(40.71332 d)` was
+refused, 1.039 × 10⁻⁵ m/s short — 4% over `DepartureSolveToleranceMps` — because
+the search's 0.2% retry found a feasible point only about **40 ms** wide inside
+a hole. After the approach leg the returned floor is **42.54 d**; the basin is
+still needle-shaped, so a cold rebuild at the returned duration can refuse even
+though the plan is certified. The returned plan's seams are inside the gate. The background retime used to rebuild a
+floor request and would have published that refusal; it now hands the window's
+stored floor plan to the publisher, mirroring `SetPreviewDuration`'s reuse, so a
+drag to the left end is free and cannot refuse. The rest of the window keeps the
+pre-existing holes (at 0.3 g, 41.6–41.8 d was refused before step 7 too); the
+window's right end is a feasible build at both levels.
+
+**The stalled-departure acceptance stays rejected.** Combining this step with
+step 6's `best × coastSeconds ≤ 250 m` acceptance collapsed the Uranus floor to
+**16.21 d** at 1 g and **25.52 d** at 0.3 g, admitting **5,087 km/s** and
+**3,635 km/s** plans: a short coast lets a large residual pass a position budget.
+That is worse than conservative. The faster build makes the cost shield cheaper,
+but the acceptance needs a residual-scaled rule before it is safe, and it is not
+part of this step.
+
+In the Unity suite, `tools/check.sh --tests flight,presentation,smoke` passed in
+**379 s** on the warm test project; the same run on a cold cache was **405 s**,
+against the recorded **1005 s** at step 4 and **908 s** at step 5. The flight
+category alone took **242 s** against the recorded **606 s**. The burn-level
+change, the old burn–coast–burn stretch, is now **58.4 s** (123 s at step 5, 166 s
+before its trim), the Mars floor test **18.8 s** (68 s), the Mercury floor 10.4 s,
+and the longest test anywhere is 59.3 s (the HUD's cruise-profile control), so no
+multi-minute silent stretch is left.
+
+## Post-close re-measure (step 4b merged, 2026-11-20)
+
+The **planetocentric approach leg** landed after the plan closed and was merged
+on top of step 7. It changes the arrival the near-floor basin first closes at,
+so the floors moved again. On the combined build, measured at the epoch from
+Gateway with the conic capture:
+
+| Case | Current floor | Total Δv | Window |
+|---|---:|---:|---|
+| Uranus, 1 g | **33.72 d** | 2,065.6 km/s | 33.72–101.16 d |
+| Uranus, 0.3 g | **42.54 d** | 1,708.9 km/s | 42.54–127.62 d |
+| Mars, 0.3 g | 6.74 d | 1,172 km/s | 6.74–20.21 d |
+| Mercury, 1 g | 3.22 d | 1,766 km/s | 3.22–9.65 d |
+
+Direct builds at both Uranus maxima are accepted: eight arcs, **666.80 km/s** at
+1 g and **530.62** at 0.3 g, so the slider's right end is feasible. The
+fixed-duration plans are unchanged to the printed precision — Uranus 400 d at
+1 g is **182.3 km/s** (break 4.05, departure burn 90.17, brake 81.39, capture
+6.37 and 0.32), with a 7.544-day approach from the ceiling to 368,111 km; Mars
+90 d is 44.4 and Mercury 8 d 557.0. The near-floor basin is still needle-shaped:
+the returned duration is a certified plan, not a smooth boundary, so the
+background retime keeps reusing the window's stored floor plan.
+
+The **flight suite** on the combined tree (`tools/check.sh --tests flight`)
+passed in **256 s**, faster than step 7's 242 s flight category plus its setup
+because the near-floor basin is different, and still well inside the old
+multi-minute freeze. The tables above are step 7's measurements **before** the
+approach leg; this section carries the current anchors.
 
 # Where it lives
 
@@ -280,9 +409,10 @@ two-body agreement where the third bodies are negligible, and the reference body
 being a label. `FlightSessionTests` covers the cache and the background retime,
 including latest-wins with a first build in flight, background equals
 synchronous, the previous preview staying published, a synchronous retime
-superseding an outstanding ask, a discard dropping one, and `Dispose` stopping
-the worker. `SolarSystemHudTests` and `BootstrapSmokeTests` pump the real
-handover through the frame loop. See
+superseding an outstanding ask, a discard dropping one, a retime to the floor
+reusing the window on both the synchronous and the background paths, and
+`Dispose` stopping the worker. `SolarSystemHudTests` and `BootstrapSmokeTests`
+pump the real handover through the frame loop. See
 [Testing and verification](/technical/testing.md#numerical-references-at-the-epoch).
 
 The design and the numbers for the profile are in

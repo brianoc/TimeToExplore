@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # Shape of the prototype
@@ -476,9 +476,9 @@ commanded acceleration, the break against its own body, a 128-sample burn and a
 loose pinned fixed point — and rebuilds and certifies the chosen duration with
 the full field at 512 samples, so one plot still costs about twenty probes but
 each is much cheaper than a full build. A certified build's fixed burns
-integrate the summed field one RK4 step at a time, and every step re-prepares the
-field over the catalogue; that is roughly an order of magnitude more work per
-burn than the two-body model, and it is the profile's remaining planning cost
+integrate the summed field one RK4 step at a time and refresh the active set
+every eighth step; a refresh evaluates the whole catalogue's ephemeris, and the
+cadence cut a build by 2.2–3.7×
 ([Full-field burns](/simulation/powered-leg-floor.md)). The break search inside
 each build is
 two-tier: it measures the quintic against the departure body alone as a search

@@ -116,23 +116,29 @@ Moon**, and moves the trim by at most **0.05 m/s**, against an injection margin
 of 5 km and a 100 km clearance. The capture arc that is reported, and the trim
 recomputed from it, are full-field.
 
-**The active set is refreshed every RK4 step.** `GravityField.AccelerationAt`
+**The active set is refreshed every eighth RK4 step.** `GravityField.AccelerationAt`
 evaluates the set selected by the last `Prepare`, so a burn that leaves one
 body's vicinity must re-prepare for the set to stay a superset of the bodies that
-matter. The arc calls `Prepare` once per step, at the step's start, and evaluates
-that set at the four stage times — the same pattern `ShipIntegrator` uses. That
-is the correct rule and the expensive one: a full-field step costs about **fifty
-times** a two-body step, because `Prepare` evaluates the whole catalogue's
-ephemeris. Measured at the epoch, in a .NET harness over the same sources: a
-90-day Mars build is **0.47 s** (0.05 s before), the Mercury 8-day build about a
-second,
-`Plan()` at the Mars floor **2.0 s** (0.5 s before) and at the Mercury floor
-2.4 s, and a slider retime 0.7–1.4 s. In the editor the same work is several
-times slower again: the burn–coast–burn class is the Unity suite's longest silent
-stretch at about **3 minutes**, the near-limit screen sweep (four Mercury builds)
-is ~100 s, and the Mars floor test 69 s. A cheaper prepare rule — for example
-re-selecting every few steps — is allowed if it is measured against this one, and
-is [step 7](/technical/planning-performance.md)'s to take.
+matter. The arc calls `Prepare` at the first step and every eighth step after it,
+at the step's start, and evaluates that selected set at the four stage times.
+Eight steps is **32–480 s of burn** depending on the arc's 4–60 s sample step,
+and over that span a burn closes only a small fraction of the distance to any new
+body, so the set stays a superset of the bodies that matter. `AccelerationAt`
+still prepares **per query**, so the reported acceleration — what the quintic
+endpoint matching, `Measure`, and the peak read — is exact. The accuracy check is
+unchanged: the 80,000 s SOI-crossing burn matches a 20,000-step RK4 that prepares
+every step to **0.41 mm and 6.7 × 10⁻⁹ m/s**, the same numbers as before the
+cadence, because the active set is stable over that burn.
+
+A refresh evaluates the whole catalogue's ephemeris, so it is the step's lever.
+The step-2 estimate of "about fifty times a two-body step" is superseded by the
+build-level measurement: the two step-7 levers together make a
+fixed-duration build **2.2–3.7× faster** (Mars 90 d at 0.3 g 1.10 → 0.31 s,
+Mercury 8 d at 1 g 1.54 → 0.43 s, Uranus 400 d 0.98 → 0.40 s, Mars 20 d 1.35 →
+0.38 s, Mars 10 d 1.57 → 0.42 s, Uranus 35 d 1.41 → 0.63 s). The other lever, a
+coarser brake step, was measured and rejected: the 4 s target step already clamps
+at 2,048 samples for every measured brake. The measurements are in
+[planning performance](/technical/planning-performance.md#step-7-the-levers-measured-2026-11-20).
 
 Also measured: the reported plans **did not move** at their stated precision. The
 reason is structural, not luck. A fixed-direction burn's delta-v is set by the
@@ -298,14 +304,17 @@ the coast's element-based propagation and the universal-variable propagator the
 Lambert correction uses; it is two hundred times inside the 1 km gate and the
 velocity seam is exact.
 
-**The floors barely moved.** Only Uranus at 1 g has its brake start inside the
-ceiling at its floor, where the leg is 23 minutes long; the other three floors
-are unchanged because their brakes span the sphere. Measured at the epoch:
+**The floors moved at Uranus, and not in one direction.** Only Uranus's floors
+have their brake start inside the ceiling, where the leg is minutes long; the
+approach changes which needle the near-floor search certifies first, so the 1 g
+floor falls by 0.44 d and the 0.3 g floor rises by 1.83 d. Mercury and Mars are
+unchanged because their brakes span the sphere. Measured at the epoch, after the
+approach leg merged on top of step 7:
 
-| Floor | Old | New | Window |
+| Floor | Before the leg | After | Window |
 |---|---:|---:|---|
-| Uranus, 1 g | 34.00 d | **33.90 d** | 33.90–101.70 d |
-| Uranus, 0.3 g | 41.57 d | 41.57 d | 41.57–124.71 d |
+| Uranus, 1 g | 34.16 d | **33.72 d** | 33.72–101.16 d |
+| Uranus, 0.3 g | 40.71 d | **42.54 d** | 42.54–127.62 d |
 | Mercury, 1 g | 3.22 d | 3.22 d | 3.22–9.65 d |
 | Mars, 0.3 g | 6.74 d | 6.74 d | 6.74–20.21 d |
 
@@ -447,19 +456,30 @@ enters at the row's entry radius, with the same 5 km/s.
 
 | Target, level, trip | Entry radius old → new | Inbound fall old → new | Capture Δv | Total old → new | Brake start radius | Brake Δv | Floor old → new |
 |---|---|---:|---:|---:|---:|---:|---|
-| Uranus, 1 g, 400 d | 51,760,023 km → 38,643 km | 117.13 d → 31 min | 6.37 km/s (both) | 242.1 → 182.3 km/s | 51.96 million km → **366,505 km** | 112.70 → 81.20 km/s | 150.73 d → **34.00 d** |
-| Uranus, 0.3 g, 400 d | 51,760,023 km → 70,168 km | 117.13 d → 1.3 h | 6.37 km/s (both) | 242.5 → 180.8 km/s | 52.45 million km → **1,159,005 km** | 112.83 → 79.75 km/s | 160.47 d → **41.57 d** |
+| Uranus, 1 g, 400 d | 51,760,023 km → 38,643 km | 117.13 d → 31 min | 6.37 km/s (both) | 242.1 → 182.3 km/s | 51.96 million km → **366,505 km** | 112.70 → 81.20 km/s | 150.73 d → **33.72 d** |
+| Uranus, 0.3 g, 400 d | 51,760,023 km → 70,168 km | 117.13 d → 1.3 h | 6.37 km/s (both) | 242.5 → 180.8 km/s | 52.45 million km → **1,159,005 km** | 112.83 → 79.75 km/s | 160.47 d → **42.54 d** |
 | Mercury, 1 g, 8 d | 112,410 km → 2,806 km | 6.09 h → 3.3 min | 3.50 km/s (both) | 569.9 → 557.0 km/s | 2.64 million km → 2.38 million km | 216.29 → 213.30 km/s | 3.46 d → **3.22 d** |
 | Mercury, 1 g, 12.3 d | 112,410 km → 2,806 km | 6.09 h → 3.3 min | 3.50 km/s (both) | 379.9 → 376.9 km/s | 1.21 million km → 1.07 million km | 141.17 → 142.29 km/s | — |
 | Mars, 0.3 g, 90 d | 577,241 km → 6,033 km | 1.3187 d → 13.6 min | 3.46 km/s (both) | 45.38 → 44.36 km/s | 658,870 km → **92,790 km** | 19.13 → 18.51 km/s | 8.03 d → **6.74 d** |
 
 The trend is the one the design predicted, and it is bigger than the fall alone:
 the 104-day Uranus fall is gone, and because the coast absorbs the time the
-profile used to spend falling, the floor moves fourfold at Uranus (150.73 → 34.00
+profile used to spend falling, the floor moves fourfold at Uranus (150.73 → 33.72
 days at 1 g) and the 400-day plan is *cheaper* as well as shorter (242 → 182
 km/s). A slower profile pays by carrying speed longer: the 400-day coast is 392
 days at 1 g and the burn and brake are 90.2 and 81.2 km/s against 118.8 and
 112.7.
+
+**The Uranus floors were re-measured.** Step 7's cheaper active-set cadence
+first moved them to **34.16041 d** at 1 g and **40.71332 d** at 0.3 g; the
+planetocentric approach leg then moved them again, because it changes the
+arrival the near-floor basin first closes at. The combined build returns
+**33.72 d** at 1 g (2,065.6 km/s) and **42.54 d** at 0.3 g (1,708.9 km/s). Mars
+(6.73715 d) and Mercury (3.21610 d) did not move. These are re-measured anchors,
+not errors: a floor is the first duration the certified full-field build closes
+at, and the basin is noisy. The 1 g floor is 0.28 d lower than step 6's 34.00 d
+and the 0.3 g floor 0.97 d higher than step 6's 41.57 d; both are certified
+plans, not boundaries.
 
 **A hotter entry shortens the fall but grows the capture.** Sweeping the
 per-plan entry speed at Uranus 1 g and 400 days, at the floor:
@@ -477,8 +497,8 @@ residual is the next decision rather than a number to plant.
 These numbers are the **floor entry's own measurement** (step 4). The approach
 leg moved the brake's start a few hundred kilometres outward at Uranus and left
 the entry radius, the fall and the capture's delta-v unchanged; the floors are now
-33.90 / 41.57 / 3.22 / 6.74 days (Uranus 1 g moved down by 0.1 day, the rest are
-unchanged), and the totals are 182.312 / 180.834 / 557.038 / 44.354 km/s. See
+33.72 / 42.54 / 3.22 / 6.74 days (the Uranus basin shifted in both directions;
+Mercury and Mars are unchanged), and the totals are 182.312 / 180.834 / 557.038 / 44.354 km/s. See
 [what the approach measured](#what-the-approach-measured).
 
 ## The binding question: where the coast ends — resolved
@@ -508,9 +528,8 @@ Mars (10,059 against 6,033) and Mercury (61,330 against 2,806). The brake
 therefore still spans the last part of the descent, and it is the brake, not the
 approach, that ends on the floor.
 
-* **Fast trips.** At Uranus's 1 g floor (33.90 d) the brake is 28.6 h of 998.5
-  km/s and starts **51.07 million km** out — 0.987 spheres — so the brake itself
-  spans the sphere-to-floor gap and the approach is 23 minutes long. Mercury's
+* **Fast trips.** At Uranus's 1 g floor the brake starts near the sphere and
+  spans the sphere-to-floor gap itself, so there is no planetocentric leg. Mercury's
   floor (3.22 d) puts the brake's start at 31.05 million km, **276 spheres** out;
   Mars's floor (6.74 d) at 48.30 million km, **83.7 spheres** out. At the fast end
   the coast ends outside the ceiling and the brake is the long crossing.
@@ -600,8 +619,8 @@ mean cosine across the burn, and the rotation of the tracking direction.
 
 Each alternative law was then flown from the plan's own start state, for the same
 duration at the same acceleration, through the full summed field with RK4 at
-2,048 steps or better, preparing the field once per step as `FiniteBurnArc`
-does. The laws were:
+2,048 steps or better, preparing the field at every step as the independent
+reference does. The laws were:
 
 * **fixed** — the plan's own recovered direction, which must reproduce the
   plan's end state;
@@ -724,7 +743,7 @@ Both burns keep the fixed direction, at every level and target measured.
   alternative has a positive one — 17.6 / 13.3 / 3.1 / 6.0 km/s for the local
   retrograde and 6.2 / 11.0 / 0.14 / 0.009 for pursuit.
 * **A segmenting solve is a shooting solve with no measured prize.** It would
-  re-aim every segment, pay the brake's twelve pin passes for it, and reach a
+  re-aim every segment, pay the brake's fixed point for it, and reach a
   seam that is already zero. One segment is 15.3 km/s at Uranus 1 g and more
   segments are worse at every count. Do not pay for it.
 * **The spend is `a·T`, and nothing here shortens `T`.** A fixed-magnitude burn's
@@ -760,7 +779,7 @@ velocity.
   than the chain's own periapsis); the coast and the powered conic/hybrid arrival
   keep the sphere of influence. Measured at the epoch, the Uranus fall at 1 g
   drops from 117.13 days to 31 minutes and the profile's floor from 150.73 to
-  34.00 days.
+  33.72 days.
 * The global `EntrySpeedMps` is still the profile's entry condition, now per plan
   through `FlightSession`; making the brake produce the residual entry speed is
   the next decision.

@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # One command
@@ -223,11 +223,11 @@ The burn–coast–burn profile has these anchors at the epoch, from Gateway at
 |---|---|
 | Trip-time window (Mars) | 6.74–20.21 days |
 | Trip-time window (Mercury) | 3.22–9.65 days |
-| Trip-time window (Uranus) | 33.90–101.70 days at 1 g, 41.57–124.71 at 0.3 g |
+| Trip-time window (Uranus) | 33.72–101.16 days at 1 g, 42.54–127.62 at 0.3 g |
 | True floor, Mars at 0.3 g | 6.74 days, peak 5.14 m/s², 1,172 km/s |
 | True floor, Mercury at 1 g | 3.22 days, peak 9.70 m/s², 1,766 km/s |
-| True floor, Uranus at 1 g | 33.90 days, peak 9.70 m/s², 2,054 km/s |
-| True floor, Uranus at 0.3 g | 41.57 days, peak 2.94 m/s², 1,757 km/s |
+| True floor, Uranus at 1 g | 33.72 days, peak 9.70 m/s², 2,066 km/s |
+| True floor, Uranus at 0.3 g | 42.54 days, peak 2.94 m/s², 1,709 km/s |
 | Just below the Mercury floor | 3.19 days refused: the departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Just below the Mars floor | 6.60 days refused at 10.03 m/s²; 6.70 days leaves the brake 8,073 m and 0.8 m/s short of the entry |
 | 90-day Mars plan, total | 44.4 km/s (direct build, outside the nav window) |
@@ -312,17 +312,25 @@ floor; the 5% screen decides near the limit, so the fast number never becomes a
 reported peak. The search-input work left the plans and floors alone; the
 arrival entry radius moved them afterwards, and the table above carries the new
 numbers. After that change a floor is a certified full-field plan, but the search
-can be conservative: at Uranus 1 g it returns 33.90 days while a direct build at
-33.0 days also closes, because the fast bracket's low end stops the full-field
-bisection. Re-probing below a fast bracket with the full field is [step 7's
-cost question](/technical/planning-performance.md) — do not widen the gate.
+is a set of **needles**, not a smooth boundary: at Uranus the search returns
+**33.72 days** at 1 g and **42.54 days** at 0.3 g, and a cold rebuild at the
+returned duration can refuse even though the plan is certified. That is a cost
+shield, not a wrong answer: do not loosen `DepartureSolveToleranceMps` or widen
+the gate. Step 7 measured the trade and kept the shield; the approach leg moved
+the floors again and the table above carries the current anchors ([planning
+performance](/technical/planning-performance.md#post-close-re-measure-step-4b-merged-2026-11-20)).
 
 Those timings are the two-body-burn profile. Since the certified plan's fixed
-burns integrate the summed field, the same work in a .NET harness is a **0.47 s**
-90-day Mars build, **1.1 s** at Mercury 8 d, and a **2.0–2.4 s** `Plan()` at the
-floors; the editor is several times slower again, which is why the flight
-category is about ten minutes ([full-field burns](/simulation/powered-leg-floor.md)). The burns
-were slower; the floors moved only when the arrival entry radius did.
+burns integrate the summed field, the same work in a .NET harness before step 7
+was a **0.47 s** 90-day Mars build, **1.1 s** at Mercury 8 d, and a **2.0–2.4 s**
+`Plan()` at the Mars and Mercury floors; the editor is several times slower
+again, which is why the flight category is about ten minutes
+([full-field burns](/simulation/powered-leg-floor.md)). Step 7's per-eighth-step
+active-set refresh and 1e-6 m/s pin cut the harness numbers to **0.31 s**,
+**0.43 s**, and **1.0–2.5 s**, with the Uranus 1 g floor at 3.6 s instead of
+71 s. The burns were slower; the Mars and Mercury floors moved only when the
+arrival entry radius did, and the Uranus floor moved again when the cheaper
+cadence changed the certified near-floor basin.
 
 The slider's retime runs off the main thread. On the same throwaway copy at the
 epoch, a synchronous `SetPreviewDuration` took 120 ms at 4.5 d and 97 ms at

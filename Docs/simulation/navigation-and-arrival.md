@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # The problem
@@ -178,7 +178,7 @@ radius)` — not the sphere of influence: the brake ends there and the chain's
 inbound fall starts there. Measured at the epoch from Gateway to Uranus at 1 g
 and 400 days, the chain enters at 38,643 km and falls for 31 minutes, against
 117.13 days from the 51.76 million km sphere, and the profile's floor drops from
-150.73 to **33.90 days**. The ballistic approach cannot reach the floor itself —
+150.73 to **33.72 days**. The ballistic approach cannot reach the floor itself —
 its periapsis is 84,354 km at that plan — so the brake still spans the last part
 of the descent
 ([the arrival leg](/simulation/powered-leg-floor.md#the-arrival-leg-a-planetocentric-approach)). The **coast** profile has no brake to hand over and
