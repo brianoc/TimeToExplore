@@ -351,6 +351,135 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void APointerGestureThatStartsOnAPanelNeverMovesTheCamera()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Orbit.YawDegrees = 0f;
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.IsMapSide, Is.True, "the test starts on the map side");
+
+            // A left press on the planning slider: the panel owns the whole drag,
+            // including the frames where the pointer leaves it.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f),
+                OverUi = true
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(160f, 100f),
+                Delta = new Vector2(6f, 0f),
+                OverUi = true
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(900f, 100f),
+                Delta = new Vector2(6f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "dragging a slider neither pans nor pans late, after leaving the panel");
+
+            // The right button gets the same treatment.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { LeftReleased = true }, true);
+            float yaw = _rig.Orbit.YawDegrees;
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                RightPressed = true,
+                Pointer = new Vector2(100f, 100f),
+                Delta = new Vector2(10f, 0f),
+                OverUi = true
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(160f, 100f),
+                Delta = new Vector2(10f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(yaw),
+                "a right drag that starts on a panel never orbits");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { RightReleased = true }, true);
+        }
+
+        [Test]
+        public void APressInTheWorldKeepsItsDragWhenItCrossesAPanel()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.IsMapSide, Is.True, "the test starts on the map side");
+
+            // The press landed in the world, so the camera owns the gesture.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(160f, 100f),
+                Delta = new Vector2(6f, 0f)
+            }, mapSide: true);
+            double panM = _rig.Map.PanOffsetM.Magnitude;
+            Assert.That(panM, Is.GreaterThan(0.0), "the press in the world pans");
+
+            // Crossing a panel mid-drag does not hand the gesture back.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(200f, 100f),
+                Delta = new Vector2(6f, 0f),
+                OverUi = true
+            }, mapSide: true);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.GreaterThan(panM),
+                "a world press keeps panning over a panel until the release");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { LeftReleased = true }, true);
+        }
+
+        [Test]
+        public void AnUnengagedPanIsCancelledIfThePointerTurnsOutToBeOnAPanel()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.IsMapSide, Is.True, "the test starts on the map side");
+
+            // The press frame reads the EventSystem one frame late and reports
+            // the world. The pan must not engage once the panel answers.
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                LeftPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(103f, 100f),
+                Delta = new Vector2(0.3f, 0f),
+                OverUi = true
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(160f, 100f),
+                Delta = new Vector2(6f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "a late panel answer cancels the pan before it engages");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { LeftReleased = true }, true);
+        }
+
+        [Test]
         public void ALeftDragOnTheMapClearsBothAutoFlags()
         {
             Vector3d shipM = _model.Get("gateway").PositionM;

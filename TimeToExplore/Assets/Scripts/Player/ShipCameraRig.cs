@@ -1,5 +1,6 @@
 using UnityEngine;
 using TimeToExplore.Core;
+using TimeToExplore.UI;
 
 namespace TimeToExplore.Player
 {
@@ -121,6 +122,8 @@ namespace TimeToExplore.Player
         private bool _panning;
         private bool _panEngaged;
         private bool _zoomPending;
+        private bool _uiOverLastFrame;
+        private bool _cursorCaptured;
         private Vector2 _panPressPointer;
 
         public void Initialise(Camera camera, SolarSystemModel model, float unitsPerMeter)
@@ -276,6 +279,13 @@ namespace TimeToExplore.Player
 
             /// <summary>The pointer in screen pixels, for the click slop.</summary>
             public Vector2 Pointer;
+
+            /// <summary>
+            /// True when the pointer is over a uGUI panel. Only a press edge
+            /// reads it: a gesture that begins on a panel belongs to the panel
+            /// until the button is released, even if the pointer leaves it.
+            /// </summary>
+            public bool OverUi;
         }
 
         /// <summary>
@@ -285,15 +295,21 @@ namespace TimeToExplore.Player
         /// it engages once the pointer leaves the click slop, and the release
         /// ends it. The slop also keeps a click from nudging the map, which at
         /// the map ceiling would move it by tens of millions of kilometres.
+        ///
+        /// A press over a HUD panel starts neither gesture: the panel owns the
+        /// pointer, so dragging a slider or a panel edge cannot pan the map or
+        /// orbit the camera underneath it. The ownership lasts until the button
+        /// is released, so pulling a slider past the panel's edge does not hand
+        /// the gesture back to the camera halfway through.
         /// </summary>
         public void ApplyDragInput(DragInput input, bool mapSide)
         {
-            if (input.RightPressed) _orbiting = true;
+            if (input.RightPressed) _orbiting = !input.OverUi;
             else if (input.RightReleased) _orbiting = false;
 
             if (input.LeftPressed)
             {
-                _panning = mapSide;
+                _panning = mapSide && !input.OverUi;
                 _panEngaged = false;
                 _panPressPointer = input.Pointer;
             }
@@ -304,9 +320,16 @@ namespace TimeToExplore.Player
             }
             if (!mapSide) _panning = false;
 
-            if (_panning && !_panEngaged &&
-                PlayerControls.ExceedsClickSlop(_panPressPointer, input.Pointer))
-                _panEngaged = true;
+            if (_panning && !_panEngaged)
+            {
+                // The EventSystem can answer for the previous frame, so a press
+                // reported as being in the world on its own frame is still
+                // cancelled if the pointer turns out to be on a panel before
+                // the pan engages.
+                if (input.OverUi) _panning = false;
+                else if (PlayerControls.ExceedsClickSlop(_panPressPointer, input.Pointer))
+                    _panEngaged = true;
+            }
 
             float x = input.Delta.x;
             float y = input.Delta.y;
@@ -329,15 +352,24 @@ namespace TimeToExplore.Player
         {
             bool mapSide = MapEnabled && MapView.UsesPan(blendWeight);
 
+            // A panel takes the pointer for the whole gesture. The EventSystem
+            // can trail by a frame, so a press counts as over the UI when either
+            // this frame or the previous one said so.
+            bool reportedOverUi = UiInput.PointerOverUi();
+            bool overUi = reportedOverUi || _uiOverLastFrame;
+            _uiOverLastFrame = reportedOverUi;
+
             // Only the orbit gesture captures the cursor: a map pan follows the
-            // visible pointer and must not hide it.
-            if (PlayerControls.RightDragStarted)
+            // visible pointer and must not hide it. A panel keeps both.
+            if (PlayerControls.RightDragStarted && !overUi)
             {
+                _cursorCaptured = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
-            else if (PlayerControls.RightDragEnded)
+            else if (PlayerControls.RightDragEnded && _cursorCaptured)
             {
+                _cursorCaptured = false;
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
             }
@@ -349,7 +381,8 @@ namespace TimeToExplore.Player
                 RightPressed = PlayerControls.RightDragStarted,
                 RightReleased = PlayerControls.RightDragEnded,
                 Delta = PlayerControls.DragDelta,
-                Pointer = PlayerControls.PointerPosition
+                Pointer = PlayerControls.PointerPosition,
+                OverUi = overUi
             }, mapSide);
 
             float scroll = PlayerControls.WheelSteps;

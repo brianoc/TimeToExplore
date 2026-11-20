@@ -167,8 +167,12 @@ so ADR-008 holds exactly there. The bend is recorded in
 
 **Map input.** Right-drag orbits at every zoom, local and map. Left-drag pans,
 but only while `w > 0.5`; in the local band there is nothing to pan, so the
-button is inert. A pan moves the look-at by the distance-scaled pixel size
-(`2 · d · tan(fov/2) / screenHeight` per pixel) so the content follows the
+button is inert. Neither gesture starts if the press lands on a HUD panel: the
+panel owns the pointer until the button is released, so the trip-time and
+burn-level sliders cannot move the camera beneath them, even when a drag carries
+past the panel's edge. A press that starts in the world keeps its gesture when
+the pointer crosses a panel. A pan moves the look-at by the distance-scaled pixel
+size (`2 · d · tan(fov/2) / screenHeight` per pixel) so the content follows the
 cursor at any zoom; the offset is in double-precision metres, capped at 60 AU.
 Selection shares the left button: a press that stays inside the 4 px click slop
 selects its body on release, while a press that moves further is a pan and
@@ -248,12 +252,12 @@ second mapping.
 | Input | Action |
 |---|---|
 | Left click a body | Select it and open the details screen (release inside the 4 px slop) |
-| Left mouse drag | Pan the map (`w > 0.5`); inert in the local band |
+| Left mouse drag | Pan the map (`w > 0.5`); inert in the local band, and inert when the press began on a panel |
 | **Plot route …** button | Plan the route and draw the preview without flying |
 | **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
-| Right mouse drag | Orbit the camera around the ship, at every zoom |
+| Right mouse drag | Orbit the camera around the ship, at every zoom, unless the press began on a panel |
 | Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km), eased to the requested distance |
 | `Tab` | Cycle planet/station targets without opening the screen |
 
@@ -285,6 +289,9 @@ second mapping.
 * the distance-scaled pan (content follows the cursor), the 60 AU cap through
   the rig, the exponential ease home, and the near plane at both ends of the
   blend;
+* panel-owned gestures: a press over the HUD starts neither a pan nor an orbit
+  and stays the panel's after the pointer leaves it, a world press keeps its
+  drag across a panel, and a late panel answer cancels a pan before it engages;
 * the neighbourhood marker aid: full inside the SOI, monotonic to true scale at
   3×, restored in full by the map, widened by the camera distance, disabled
   when no local scale is supplied, and still overridden by `T`;
