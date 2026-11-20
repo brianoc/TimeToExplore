@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background retime.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # The problem
@@ -211,6 +211,49 @@ brake is 6–29 h (Mercury floor 6.2 h, Mars floor 1 day, Uranus 28.5 h), so
 switching to the automatic count would not change any of them. Cutting the cost
 means a coarser brake step or a looser pin tolerance, and both change certified
 numbers: that is the performance step's decision, not a trim.
+
+## The Uranus floor and its conservative bracket (2026-11-20)
+
+The floor search's bracket is conservative at the giant planets for a cost
+reason, not a physical one. Measured at the epoch (2026-11-15) from Gateway in
+the .NET harness — burn–coast–burn cruise, conic capture, `TTE_FLOOR=1`, Debug
+build, the same sources as the suite:
+
+| Case | `Plan()` | Floor | Peak | Direct builds below the floor |
+|---|---:|---:|---:|---|
+| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s |
+| Uranus, 0.3 g | **59.2 s** | **41.57095 d**, 1,756.59 km/s | 2.942 m/s² | 41.36309 and 40.94738 d close (4.8 s each, 1,767.17 and 1,788.76 km/s); 41.1552 d stalls at 3.039 × 10⁻⁵ m/s |
+| Mars, 0.3 g | **27.5 s** | **6.73715 d**, 1,172.48 km/s | 5.137 m/s² | 6.7035 d misses the brake chain by 6,182.2 m / 0.6 m/s, 6.6698 by 1,651.5 m / 0.2, 6.6361 by 9,254.9 m / 0.9; at 6.535 d the break needs 14.2 m/s² |
+| Mercury, 1 g | **7.8 s** | **3.21610 d**, 1,765.52 km/s | 9.700 m/s² | 3.1839 d needs a 10.3 m/s² break, rising to 275.0 m/s² at 3.0875 d |
+
+The Uranus gap is **0.51 d (1.5%)** at 1 g — 34.00 against 33.49 d — and
+**0.62 d (1.5%)** at 0.3 g, 41.57 against 40.95 d. The lower probes are not
+infeasible trips: they are a **pinned-departure stall**. The damped Newton in
+`TrySolvePinnedDeparture` cannot improve at the finite-difference resolution, so
+the residual stops just above `DepartureSolveToleranceMps = 1e-5` — measured
+1.0–3.2 × 10⁻⁵ m/s — and the solve refuses with *"the departure burn cannot be
+placed at this trip time"*, leaving the degenerate 176,855 m/s² peak a failed
+skeleton reports. Mars and Mercury have no such hole: their low probes fail
+honestly on the brake chain or on a break over the drive.
+
+A prototype accepted a stalled solve when `best × coastSeconds ≤ 250 m`, a
+quarter of the chain's 1 km gate. It closed the Uranus holes — 33.66 and 33.83 d
+became feasible — but each formerly-stalled near-floor build then cost about
+**110 s** (the brake and departure burn are **28.8 h** at 2,048 samples), and a
+floor search would spend minutes more building feasible plans below the
+conservative floor. The hole is therefore a **cost shield**: it rejects those
+probes cheaply. The conservative floor is not a purely wrong answer, and
+tightening it is step 7's trade, not a free fix.
+
+The window takes its right-hand end from that floor. `MaximumPreviewSeconds` is
+3 × the floor, so Uranus at 1 g offers **34.00–101.99 d**. A direct build at the
+maximum (101.99307 d) is accepted: **seven arcs, 661.35 km/s**, a **9.105 h**
+departure burn and a **9.185 h** brake. Its `PlanAtDuration` is **2.7 s**; the
+36 s harness run around it also reflies both burns under the six alternative
+steering laws, so that is the report, not the build. The slider's right end
+never asks for a refused plan. All timings here are .NET-harness numbers; the
+editor runs this work several times slower, so a first Uranus preview is a
+multi-minute freeze until step 7.
 
 # Where it lives
 

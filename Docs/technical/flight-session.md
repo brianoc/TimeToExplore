@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -114,10 +114,15 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
 burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
 of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
-build is outside that window. The floor plan and the window are cached per departure
-date, target, burn level, cruise style, and arrival style, so plotting the same
-route again at the same date reuses both; a changed departure date, or a
-place/teleport, drops the cache.
+build is outside that window. At Uranus the window is **34.00 to 101.99 days** at
+1 g, and its right-hand end is a feasible direct build (seven arcs,
+661.35 km/s), so the slider cannot ask for a refused plan. The first selection
+there is the cost: the first `Plan()` is about **71 s in the .NET harness**
+at 1 g and 59 s at 0.3 g, and the editor is several times slower, so a first
+Uranus preview freezes the UI for minutes until step 7. The floor plan and the
+window are cached per departure date, target, burn level, cruise style, and
+arrival style, so plotting the same route again at the same date reuses both; a
+changed departure date, or a place/teleport, drops the cache.
 
 The slider does **not** block the frame. Moving the handle calls
 `FlightSession.RequestPreviewDuration`, which enqueues the newest duration for

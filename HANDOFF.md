@@ -1,9 +1,9 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1–5 are done; step 6 is next. Step 5 landed in the `work/steering-law`
-worktree and merges to `main` when green, per working-agreement rule 1. The
-design is recorded in
+Steps 1–6 are done; step 7 is next. Steps 5 and 6 were done in the
+`work/steering-law` and `work/slider-window` worktrees and merge to `main` with
+this handoff, per working-agreement rule 1. The design is recorded in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 `FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
 ends, every fixed burn is gated on body clearance, the burn–coast–burn's capture
@@ -88,11 +88,20 @@ search input or a certified build.
    1 g is 13.68 km/s
    of thrust across the track — the turn the brake exists to make, not a
    spendable penalty. The concept records the whole table and the decision.
-6. **Slider and window.** The trip-time window's left end moved (Mars
-   6.74–20.21 days, Mercury 3.22–9.65); the HUD copy and the window cache hold in
-   the tests, and step 6 should re-check the copy and the floor search's
-   conservative bracket (see Traps). *Next.*
-7. **Performance.** Full-field probes are slower and less smooth; measure
+6. **Slider and window.** **Done** — re-checked after the floor move: the HUD
+   copy and the window cache hold. The `TRIP TIME ×scale` label, the value line,
+   and the report rows all derive from the preview, no user-facing string carries
+   a floor or window number, and `WindowFor` keys on departure date, target,
+   level, cruise, and arrival and drops the cache on a date change; the
+   presentation and smoke suites pin the slider range and the profile's own
+   window. The floor search's conservative bracket is measured: Uranus 1 g
+   returns 34.00 d where a direct **33.49 d** build closes (0.51 d, 1.5%), and
+   33.66–33.83 d stall in the pinned-departure solve at 1.0–3.2 × 10⁻⁵ m/s.
+   Accepting the stalled solve closed them but cost ~110 s per near-floor build,
+   so the conservatism is a **cost shield**, not a wrong answer; step 7 owns the
+   trade. The Uranus window's maximum (101.99 d) is feasible. Numbers in
+   [planning performance](/technical/planning-performance.md#the-uranus-floor-and-its-conservative-bracket-2026-11-20).
+7. **Performance.** *Next.* Full-field probes are slower and less smooth; measure
    `Plan()` and one slider retime before and after. Close out the docs and clear
    this file.
 
@@ -112,12 +121,15 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result (2026-11-20, after step 5): `.venv/bin/python
+- Last result (2026-11-20, after step 6): `.venv/bin/python
   tools/validate_okf.py` — 41 concepts, 0 warnings, 0 errors; `tools/check.sh
-  --fast` — passed. No Unity suite: step 5 changed docs only. (Step 4's code run:
-  `tools/check.sh --tests flight` — passed, 249 tests, 0 failed, 606 s;
-  `tools/check.sh --tests flight,presentation,smoke` on the final tree — passed,
-  389 tests, 0 failed, 1005 s. Step 3's run was 245 tests, 0 failed, 405 s.)
+  --fast` — passed; `tools/check.sh --tests presentation,smoke` — passed, 143
+  tests, 0 failed, 379 s. Step 6 changed docs only but ran the presentation and
+  smoke suites as the evidence that the HUD copy and the window cache hold.
+  (Step 4's code run: `tools/check.sh --tests flight` — passed, 249 tests, 0
+  failed, 606 s; `tools/check.sh --tests flight,presentation,smoke` on the final
+  tree — passed, 389 tests, 0 failed, 1005 s. Step 3's run was 245 tests, 0
+  failed, 405 s.)
 
 ## Traps
 
@@ -151,14 +163,30 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
   it noisier and slower. Certify the chosen build as the current profile does.
   **The estimate got shorter**, because the capture no longer contributes
   months, so the growth loop now runs to twelve 20% steps; five stopped below the
-  Uranus 0.3 g floor and reported the trip infeasible. The search can still be
-  conservative: Uranus 1 g returns 34.00 days while a direct 33.0-day build
-  closes, because the fast bracket's low end stops the full-field bisection.
-  Re-probing below a fast bracket is step 7's cost question. **Uranus is now a
-  reachable target**, and its floor search grows from the capture-only estimate
-  (13.5 d) to 34–42 d, so a first selection there is a dozen full-field builds:
-  a few seconds in a .NET harness and plausibly a minute in the editor. Step 6
-  should measure it before shipping a Uranus preview.
+  Uranus 0.3 g floor and reported the trip infeasible. The search is
+  conservative by **0.51 d (1.5%)** at Uranus 1 g — 34.00 d returned against a
+  direct **33.49 d** that closes — and by **0.62 d** at 0.3 g (41.57 against
+  40.95). The gap is a **pinned-departure stall**, not a physical refusal: the
+  damped Newton cannot improve at the finite-difference resolution, so the
+  residual stops at 1.0–3.2 × 10⁻⁵ m/s just above
+  `DepartureSolveToleranceMps = 1e-5` and `TrySolvePinnedDeparture` refuses.
+  Accepting a stalled solve (`best × coast ≤ 250 m`) closed 33.66 and 33.83 d
+  but made each formerly-stalled near-floor build **~110 s** — the brake and
+  burn are 28.8 h at 2,048 samples — so the conservatism is a **cost shield**,
+  not a wrong answer. Step 7 owns the trade. Mars and Mercury fail honestly below their floors (a
+  brake miss or a break over the drive), with no stall hole. **Uranus is now a
+  reachable target**, and its first selection is the cost: the first `Plan()` is
+  **~71 s in the .NET harness** at 1 g and ~59 s at 0.3 g, not a few seconds,
+  and the editor is several times slower, so a first Uranus preview freezes the
+  UI for minutes until step 7. The window's right end is 3 × the floor,
+  **101.99 d** at 1 g, and a direct build there is accepted (seven arcs,
+  661.35 km/s, a 9.105 h departure burn and a 9.185 h brake, **2.7 s**).
+- **The HUD copy and the window cache hold** after the floor move (step 6): the
+  `TRIP TIME ×scale` label, the value line, and the report rows derive from the
+  preview, and `WindowFor`/`TryGetCachedWindow` key on departure date, target,
+  level, cruise, and arrival with a date change dropping the cache. Do not
+  reintroduce a floor or window number as a UI literal; the tests pin the
+  profile's own window.
 - **`Measure` samples uniformly in time now**, with a geometric refinement at a
   conic's ends. A conic is linear in true anomaly, so the old anomaly grid put a
   long transfer's whole final approach in one bin and over-reported the Uranus
