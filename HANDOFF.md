@@ -153,12 +153,25 @@ delta-v, and every seam is inside the 1 km / 1 m/s gate. The six fixed-duration
       Mars 4.01 → 4.56 s (the continuation's second certificate and five probes;
       step 3 removes that); Jupiter's editor floor moved to 13.34149 d. Six Δv
       anchors unchanged. `tools/check.sh --tests flight` passed.
-- [ ] **Step 3 — a bracket for the scatter.** Replace the 15%-walk +
+- [ ] **Step 3 — why the editor's Jupiter is slow.** The user asked for this.
+      Jupiter 0.3 g is **9.55 s** in the editor against **0.24 s** .NET — a 40×
+      editor ratio where Mars and Uranus are ~5.5×. The build is not the cause:
+      a Jupiter certified build at its floor is 0.187 s .NET (12 pin passes) and
+      the window end 40.02 d is 0.065 s, so ~9.55 s means about nine builds:
+      multiple certificates and/or a full probe search. Trace the editor's
+      Jupiter path (fast high, each `certify` line and reason, each `floor
+      probe`, the window build), compare it with the .NET trace, and classify
+      the fast-high refusal: a departure stall at ~1.1 × 10⁻⁵ m/s, a chain gate,
+      or a peak over the drive. Then take the cheapest robust fix — a
+      certificate nudge, a solver retry inside the certified build, or handing
+      the probe count to step 4 — and re-measure Jupiter and Uranus 0.3 g.
+      Floors may move; the answer must stay certified. **This is next.**
+- [ ] **Step 4 — a bracket for the scatter.** Replace the 15%-walk +
       0.05%-bisection with coarse growth and a 1% bisection (~7 probes). Floors
       and windows are **re-measured and become the new anchors**; this is the
       only place the answer legitimately moves (up to ~0.4 d at Uranus), and it
-      removes the .NET-vs-Mono floor divergence. **This is next.**
-- [ ] **Step 4 — editor measurement and close-out.** Timed first plots for the
+      removes the .NET-vs-Mono floor divergence.
+- [ ] **Step 5 — editor measurement and close-out.** Timed first plots for the
       five cases in the warm test project, docs (planning performance,
       floors/windows, testing anchors), log, handoff cleared.
 
