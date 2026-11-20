@@ -387,9 +387,17 @@ namespace TimeToExplore.Simulation
                 return Reported(certified);
 
             // The fast model was optimistic. Finish the search with full-field
-            // builds, seeded with the fast bracket so it stays a few probes.
+            // builds, seeded with the fast bracket so it stays a few probes. The
+            // certificate above already answered the seeded high, so hand it to
+            // the search instead of building the same duration twice: a
+            // full-field build is the profile's most expensive call.
+            var certifiedProbes = new Dictionary<double, BuildResult>
+            {
+                [fast.HighSeconds] = new BuildResult(certified, 0.0)
+            };
             FloorSearch full = SearchFloor(ship, target, estimateSeconds,
-                fast: false, seedLow: fast.LowSeconds, seedHigh: fast.HighSeconds);
+                fast: false, seedLow: fast.LowSeconds, seedHigh: fast.HighSeconds,
+                certifiedProbes);
             return Reported(full.Plan ?? full.LastPlan);
         }
 
@@ -397,9 +405,13 @@ namespace TimeToExplore.Simulation
         /// selects the probe model; the final call is full-field. A feasible
         /// high and a rejected low are established with direct probes, then the
         /// bracket is bisected to a tolerance. The 0.2% retry keeps a near-floor
-        /// non-convergence from becoming the advertised floor.</summary>
+        /// non-convergence from becoming the advertised floor.
+        /// <paramref name="tried"/> carries builds this call has already paid
+        /// for, keyed by the requested duration, so a duration the caller
+        /// certified before the search is never built again.</summary>
         private FloorSearch SearchFloor(ShipState ship, BodyRuntime target,
-            double estimateSeconds, bool fast, double seedLow, double seedHigh)
+            double estimateSeconds, bool fast, double seedLow, double seedHigh,
+            Dictionary<double, BuildResult> tried = null)
         {
             double low = 0.0;
             double high = 0.0;
@@ -410,7 +422,17 @@ namespace TimeToExplore.Simulation
 
             FloorProbe Probe(double seconds)
             {
-                BuildResult result = Build(ship, target, seconds, fast);
+                bool reused = false;
+                if (tried == null || !tried.TryGetValue(seconds, out BuildResult result))
+                {
+                    result = Build(ship, target, seconds, fast);
+                    if (tried != null) tried[seconds] = result;
+                }
+                else
+                {
+                    reused = true;
+                }
+
                 lastPlan = result.Plan;
                 lastRequest = seconds;
                 bool feasible = IsFeasibleAt(result.Plan, seconds);
@@ -418,7 +440,8 @@ namespace TimeToExplore.Simulation
                               $"{seconds / SecondsPerDay:F5} d: feasible {feasible}, " +
                               $"time {result.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
                               $"peak {result.Plan.PeakThrustMps2:F3}, " +
-                              $"reason {result.Plan.InfeasibleReason}");
+                              $"reason {result.Plan.InfeasibleReason}" +
+                              (reused ? " [cached]" : ""));
                 return new FloorProbe(result.Plan, feasible);
             }
 

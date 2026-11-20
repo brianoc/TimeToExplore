@@ -31,9 +31,9 @@ tools/check.sh --reset            # drop the warm test project first
 The Unity tests carry one category each: `core`, `flight`, `presentation`, or
 `smoke`. `--tests` narrows the Unity gate to the categories named; the fast
 gates still run. A `core` or `presentation` run is a few seconds, the flight
-matrix is about six minutes, and the whole suite about nine. The burn–coast–burn
-plan is the expensive part: its fixed burns integrate the summed field, and a
-plan build is a few seconds in the editor.
+category is about ten minutes, and the whole suite about seventeen. The
+burn–coast–burn plan is the expensive part: its fixed burns integrate the summed
+field, and a full-field build is fifteen seconds in the editor.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -51,10 +51,10 @@ cloud-endpoint lookup, or starts shutting down and does not finish. Shutdown
 hangs are the known failure: batch Unity can finish the tests, write
 `results.xml`, and then retry DNS lookups forever. `check.sh` still reads the
 results that were written, so a hang at the end does not throw away a completed
-run. The log is `.cache/test-project/unity.log`. The stall window is long
-because the runner writes nothing between test classes: the burn–coast–burn
-class is one silent stretch of about four minutes now that its burns integrate
-the summed field ([Full-field burns](/simulation/powered-leg-floor.md)). For any
+run. The log is `.cache/test-project/unity.log`. The stall window is **twenty
+minutes** because Unity writes no per-test progress to the log: a full EditMode
+run is one silent stretch of about fifteen minutes, so the old eight-minute
+window killed healthy runs. The time budget still stops a real hang. For any
 other batch run, such as a capture helper or a scene builder, use the same
 wrapper:
 
@@ -62,9 +62,9 @@ wrapper:
 python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
 ```
 
-A full run takes about nine minutes with the warm project. `--fast` is the loop
-to use while editing docs, Python tools, or catalogue data. The Unity suite is
-the gate for any C# change.
+A full run takes about seventeen minutes with the warm project; the `flight`
+category alone is about ten. `--fast` is the loop to use while editing docs,
+Python tools, or catalogue data. The Unity suite is the gate for any C# change.
 
 # Unity EditMode suite
 
@@ -315,8 +315,8 @@ cost question](/technical/planning-performance.md) — do not widen the gate.
 Those timings are the two-body-burn profile. Since the certified plan's fixed
 burns integrate the summed field, the same work in a .NET harness is a **0.47 s**
 90-day Mars build, **1.1 s** at Mercury 8 d, and a **2.0–2.4 s** `Plan()` at the
-floors; the editor is several times slower again, which is why the suite is about
-nine minutes ([full-field burns](/simulation/powered-leg-floor.md)). The burns
+floors; the editor is several times slower again, which is why the flight
+category is about ten minutes ([full-field burns](/simulation/powered-leg-floor.md)). The burns
 were slower; the floors moved only when the arrival entry radius did.
 
 The slider's retime runs off the main thread. On the same throwaway copy at the

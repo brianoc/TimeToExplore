@@ -472,6 +472,24 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void RetimingBackToTheFloorReusesTheCachedFloorPlan()
+        {
+            TrajectoryPlan floor = _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+
+            TrajectoryPlan slower = _session.SetPreviewDuration(2.0 * minimum);
+            Assert.That(slower, Is.Not.SameAs(floor), "a longer trip is a new build");
+
+            TrajectoryPlan back = _session.SetPreviewDuration(minimum);
+
+            Assert.That(back, Is.SameAs(floor),
+                "the floor is the plan the window already solved; a retime to it must " +
+                "not pay for a second certified build");
+            Assert.That(_session.Preview, Is.SameAs(floor));
+            Assert.That(back.FlightTimeSeconds, Is.EqualTo(minimum).Within(1e-3));
+        }
+
+        [Test]
         public void ThePreviewDurationIsClampedToItsWindow()
         {
             _session.Plot("mars", _epoch);

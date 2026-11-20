@@ -68,7 +68,9 @@ one initial state, so every sample needs the catalogue's ephemeris. It is slower
 and the floor search's near-minimum basin is already noisy. The established
 pattern — search with the fast model, rebuild and certify the reported plan with
 the full field — is what keeps this affordable, and the plan that is reported and
-flown remains the full-field one.
+flown remains the full-field one. The size of that cost in the editor, and the
+redundant builds the floor search and the retime used to repeat, are measured in
+[planning performance](/technical/planning-performance.md#one-burncoastburn-build-measured-2026-11-20).
 
 ## What is implemented
 
@@ -119,8 +121,8 @@ second,
 `Plan()` at the Mars floor **2.0 s** (0.5 s before) and at the Mercury floor
 2.4 s, and a slider retime 0.7–1.4 s. In the editor the same work is several
 times slower again: the burn–coast–burn class is the Unity suite's longest silent
-stretch at about **4 minutes**, the near-limit screen sweep (four Mercury builds)
-is 80 s, and the Mars floor test 34 s. A cheaper prepare rule — for example
+stretch at about **3 minutes**, the near-limit screen sweep (four Mercury builds)
+is ~100 s, and the Mars floor test 69 s. A cheaper prepare rule — for example
 re-selecting every few steps — is allowed if it is measured against this one, and
 is [step 7](/technical/planning-performance.md)'s to take.
 

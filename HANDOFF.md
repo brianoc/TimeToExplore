@@ -78,6 +78,16 @@ handover radius should be a search input or a certified build.
    `Plan()` and one slider retime before and after. Close out the docs and clear
    this file.
 
+The **cost trim done before step 5** (2026-11-20, worktree) removed two
+redundant full-field builds: the full-field retry no longer rebuilds the
+duration the certification just built, and a synchronous retime that lands on
+the floor returns the window's stored plan. The burn-level case went 173 → 121 s
+and the Mars floor test 84 → 69 s with the plan unchanged. A brake-sample trim
+was measured and rejected: the 4 s step already caps at 2,048 for every brake
+over 2.3 h, and the measured brakes are 6–29 h. The remaining cost — twelve pin
+passes at 2,048 brake samples — is step 7's to decide. Measurements in
+[planning performance](/technical/planning-performance.md#one-burncoastburn-build-measured-2026-11-20).
+
 ## Verification
 
 - `tools/check.sh --tests flight` for each Simulation/TripPlanner step.
@@ -144,9 +154,15 @@ handover radius should be a search input or a certified build.
   and Proteus. Do not "fix" this by moving the ceiling.
 - **Full-field burns are the suite's cost now.** A full-field step is ~50× a
   two-body step: a 90-day Mars build is 0.47 s in a .NET harness and the
-  editor's burn–coast–burn class is a ~4-minute silent stretch of the Unity log.
-  The guard's stall window is eight minutes and the suite about nine; do not read
-  that as a hang. Step 7 owns the remedy.
+  editor's burn–coast–burn class is a ~3-minute silent stretch of the Unity log.
+  Unity writes no per-test progress, so a full run is one silent stretch of
+  about fifteen minutes: the guard's stall window is now **twenty minutes**, and
+  an eight-minute window kills a healthy suite. The flight category is about
+  ten. Do not read either as a hang. A build is ~1.2 s per pin pass and the certified
+  fixed point runs twelve, so a floor search is tens of seconds. Step 7 owns the
+  remaining remedy (a cheaper prepare rule, a coarser brake step, or a looser
+  pin tolerance); do not trim the brake samples expecting a win, because the
+  4 s target step already caps at 2,048 for these brakes.
 - A **body-relative position** on a full-field arc carries the catalogue's
   Julian-date quantisation (0.2–0.9 m at 1.5 AU). Compare inertial states in
   tests, or use a metre-scale tolerance.

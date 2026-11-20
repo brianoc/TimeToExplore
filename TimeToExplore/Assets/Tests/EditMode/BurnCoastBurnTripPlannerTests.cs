@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -977,7 +978,19 @@ namespace TimeToExplore.Tests.EditMode
         {
             _planner.BurnLevelG = 0.3;
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            var probes = new List<string>();
+            _planner.Trace = probes.Add;
             TrajectoryPlan fastest = _planner.Plan(ship, "mars");
+
+            // The fast floor is optimistic here, so the full-field retry runs.
+            // Its seeded high is the duration the certification just built, and
+            // a full-field build is the most expensive call in the profile: the
+            // retry must reuse it rather than pay for the same duration twice.
+            bool reusedCertification = false;
+            foreach (string probe in probes)
+                if (probe.EndsWith("[cached]")) reusedCertification = true;
+            Assert.That(reusedCertification, Is.True,
+                "the full-field retry rebuilt the duration it had just certified");
 
             TestContext.WriteLine($"mars floor: {fastest}, " +
                                   $"peak {fastest.PeakThrustMps2:F3} m/s²");

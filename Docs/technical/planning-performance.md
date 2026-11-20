@@ -166,24 +166,60 @@ the two-body build it replaced in brackets: a 90-day Mars build **0.47 s**
 (0.05 s), the Mercury 8-day build 1.1 s, `Plan()` at the Mars floor **2.0 s**
 (0.5 s) and at the Mercury floor 2.4 s, and a slider retime 0.7–1.4 s. The editor
 runs the same work several times slower: in the Unity suite the burn–coast–burn
-class is a **4-minute** silent stretch, the near-limit screen sweep (four Mercury
-builds) is 80 s, the Mars floor test 34 s, and the whole suite about 9 minutes,
-which is why the guard watches for eight minutes of log silence. Almost all of it
-is `GravityField.Prepare`: a full-field burn step re-selects the active set once
-per RK4 step, and that evaluates the whole catalogue's ephemeris, so a step costs
-about fifty times a two-body step. The plans, floors, seams, and window did not
-move ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+class is a **3-minute** silent stretch, the near-limit screen sweep (four Mercury
+builds) is ~100 s, the Mars floor test 69 s, and the whole flight category about
+10 minutes, which is why the guard watches for eight minutes of log silence.
+Almost all of it is `GravityField.Prepare`: a full-field burn step re-selects the
+active set once per RK4 step, and that evaluates the whole catalogue's ephemeris,
+so a step costs about fifty times a two-body step. The plans, floors, seams, and
+window did not move ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
 A cheaper prepare rule is the obvious lever for the performance step; it must be
 measured against the per-step rule.
+
+## One burn–coast–burn build, measured (2026-11-20)
+
+An editor harness on the warm test project, Mars at 0.3 g, Gateway departure,
+burn–coast–burn cruise with a conic capture, put hard numbers on the shape of
+the cost. A full-field build runs the pinned brake/departure fixed point to
+twelve passes (the certified tolerances are 1e-7 m/s and 1e-6 s), and each pass
+interpolates the brake at 2,048 samples and the departure burn at 512. That is
+about **1.2 s per pass, ~15 s per build**. A floor search pays for a bracket of
+those builds, so a floor plot was **72 s** and a burn-level change **80 s**.
+
+Two builds in that path were redundant and are gone:
+
+* **The certification the retry repeated.** When the fast floor is optimistic,
+  the planner certifies the fast high with one full-field build and then starts
+  the full-field search, whose first act was probing that same duration again.
+  `SearchFloor` now takes a `tried` map seeded with the certificate (and its own
+  probes), so the seeded high is logged with `[cached]` instead of rebuilt. The
+  Mars floor test fell from 84 s to **69 s**.
+* **A retime that lands on the floor.** `SetPreviewDuration` clamped to
+  `PreviewMinimumSeconds` and rebuilt the floor plan that `WindowFor` had already
+  solved and stored. It now returns the cached window's plan when the requested
+  duration is that plan's duration; a request anywhere else still builds. The
+  burn-level case's floor retime fell from 15 s to under 0.1 s.
+
+The same case end to end: **173 s to 121 s** (plot 72 → 56, burn-level change
+80 → 64, floor retime 15 → 0), with the floor plan unchanged at 6.737 d, the same
+seven arcs, and the same 4.95 m/s² peak.
+
+The **brake sample count is not a free trim.** `BuildBurnCoastBurn` asks for
+`FiniteBurnArc.MaximumSamples` (2,048), and the automatic count at the 4 s target
+step also clamps to 2,048 for any brake longer than 2 h 17 min. Every measured
+brake is 6–29 h (Mercury floor 6.2 h, Mars floor 1 day, Uranus 28.5 h), so
+switching to the automatic count would not change any of them. Cutting the cost
+means a coarser brake step or a looser pin tolerance, and both change certified
+numbers: that is the performance step's decision, not a trim.
 
 # Where it lives
 
 | Concern | Code |
 |---|---|
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
-| Floor search | `TripPlanner.SearchFloor`, `FastProbeBurnSamples`, `FastProbeOuterPasses` |
+| Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `AppendHybridCapture` |
-| Cache | `FlightSession.WindowFor` |
+| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
 | Retime | `FlightSession.RequestPreviewDuration`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `PendingPreviewSeconds`, `RetimeLoop`, `BuildRetime`, `StartRetimeWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 

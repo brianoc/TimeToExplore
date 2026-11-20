@@ -327,6 +327,12 @@ namespace TimeToExplore.Simulation
         /// The value is clamped to the preview's feasible window; the departure
         /// state and displayed date stay pinned, which keeps a drag stable while
         /// the clock runs.
+        ///
+        /// A request that lands on the floor is the plan the window already
+        /// holds, so it is returned as it is. A full-field build is the
+        /// profile's most expensive call, and a caller asking for the floor
+        /// after a level change (or dragging the handle to the left end of a
+        /// window it just solved) would otherwise pay for the floor twice.
         /// </summary>
         public TrajectoryPlan SetPreviewDuration(double seconds)
         {
@@ -337,6 +343,16 @@ namespace TimeToExplore.Simulation
             CancelRetime();
             double minimum = PreviewMinimumSeconds;
             double duration = Math.Clamp(seconds, minimum, PreviewMaximumSeconds);
+
+            if (TryGetCachedWindow(Preview.TargetId, _previewDeparture.JulianDate,
+                    out PreviewWindow window)
+                && Math.Abs(duration - window.Plan.FlightTimeSeconds)
+                   <= 1e-9 * Math.Max(1.0, duration))
+            {
+                Preview = window.Plan;
+                return Preview;
+            }
+
             Preview = _planner.PlanAtDuration(_previewDeparture, Preview.TargetId, duration);
             return Preview;
         }
@@ -719,6 +735,23 @@ namespace TimeToExplore.Simulation
             if (_windows.Count >= MaxCachedWindows) _windows.Clear();
             _windows[key] = window;
             return window;
+        }
+
+        /// <summary>
+        /// Look up a window this session already solved, without solving one. A
+        /// retime to the floor uses this to return the floor plan the window
+        /// holds instead of rebuilding it. A miss is cheap and means the caller
+        /// must build.
+        /// </summary>
+        private bool TryGetCachedWindow(string targetId, double julianDate,
+            out PreviewWindow window)
+        {
+            window = default;
+            if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate) return false;
+
+            var key = new WindowKey(julianDate, targetId, BurnLevelG, CruiseProfile,
+                ArrivalStyle);
+            return _windows.TryGetValue(key, out window);
         }
 
         /// <summary>Drop every cached preview window. Called when the ship's

@@ -222,10 +222,13 @@ UNITY_ARGS=(
 )
 [[ -n "$CATEGORIES" ]] && UNITY_ARGS+=(-testCategory "$CATEGORIES")
 
+# Unity writes no per-test progress to the log, so the whole EditMode run is one
+# silent stretch (about twelve minutes for a full suite on a warm project). The
+# window must cover it; the time budget still bounds a real hang.
 set +e
 "$PYTHON" tools/unity_guard.py \
     --log "$UNITY_LOG" \
-    --stall-seconds 480 \
+    --stall-seconds 1200 \
     --timeout-seconds 1800 \
     --shutdown-grace 20 \
     -- "$UNITY_BIN" "${UNITY_ARGS[@]}"
