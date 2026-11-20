@@ -161,19 +161,111 @@ attitude law remain describable. Inside the band the radius is chosen by a rule;
 solving for the best radius inside the band is deferred until measurement shows
 the rule costs something (see the open questions).
 
-The band is not the same radius at both ends, and it is **asymmetric between
-departure and arrival**:
+`HandoverBand.For(body, a_drive)` is that pair of radii and the rule that reads
+them: it returns the floor, the ceiling, whether the band is valid, and why not.
+It is asked for `TripPlanner.FixedBurnAccelerationMps2` — the player's level,
+capped by the drive — so the floor moves with the level.
 
-* at **departure** the handover is where the quintic break ends at the local
-  escape speed along the escape ray, and the departure burn starts there. The
-  break's job is escape, so its natural end is the outer part of the band;
-* at **arrival** the handover is where the brake ends and the capture chain is
-  handed its entry state. The fall shortens as that radius comes in, so the
-  arrival wants the inner part of the band.
+# The endpoints
 
-How far each end sits, and whether the same `κ` and ceiling apply to both, is
-open below. What is settled is that a single fixed clearance sphere no longer
-defines the handover.
+The band says where the handover **may** sit. Each end of the trip takes one of
+its edges. That choice is a caretaker decision for this plan, not a solved
+optimum:
+
+* **Departure: the ceiling.** The break's job is escape, so it ends on
+  `1.02 × SOI` at the local escape speed along the escape ray, and the departure
+  burn starts there and moves outward. This is the value the profile already
+  used — the same double, now read from the band — so the departure plan does
+  not move.
+* **Arrival: the floor.** The brake ends at the deepest radius where local
+  gravity is still 40% of the drive, and the capture chain is handed its entry
+  state there. The fall shortens as the radius comes in, which is the point of
+  the change. The chain still enters at the target's sphere of influence today;
+  connecting the arrival endpoint to it, and to the residual entry speed, is the
+  next step of the plan in `HANDOFF.md`.
+
+An **interior** solved radius is still open. If the steering measurement shows
+that the rule costs real delta-v or time, the radius becomes a variable inside
+the band. Nothing here solves for one.
+
+## The floor is clamped to the body
+
+The gravity floor is inside the body on several body and level pairs, so the
+effective floor is
+
+```text
+r_floor = max( sqrt(μ / (0.4 a_drive)) , R + 100 km )
+```
+
+The 100 km is `HybridCapture.MinimumClearanceAltitudeM`, the altitude the hybrid
+capture's burn and transfer already keep. It is well below the 300 km parking
+altitude, so the clamp binds only where the gravity floor is deep.
+
+Measured at the epoch at the planner's commanded acceleration (9.70 m/s² at 1 g,
+2.941995 m/s² at 0.3 g):
+
+| Body | 0.3 g floor | 1 g floor | Gravity floor at 1 g | Radius |
+|---|---:|---:|---:|---:|
+| Mercury | 4,326.9 km | **2,539.7 km** (clamped) | 2,382.9 km | 2,439.7 km |
+| Mars | 6,032.7 km | **3,489.5 km** (clamped) | 3,322.4 km | 3,389.5 km |
+| Moon | 2,041.6 km | **1,837.4 km** (clamped) | 1,124.3 km | 1,737.4 km |
+| Earth | 18,404.2 km | 10,135.7 km | 10,135.7 km | 6,371.0 km |
+| Jupiter | 328,106.1 km | 180,696.3 km | 180,696.3 km | 69,911.0 km |
+
+Halving the level multiplies an unclamped floor by `sqrt(2)`. A clamped floor does
+not move at all until the level falls far enough for the gravity floor to clear
+the surface.
+
+**A floor below the capture chain's periapsis does not bind.** At 1 g Mercury's
+clamped floor is 2,539.7 km against a conic periapsis of 2,561.7 km, and Mars's is
+3,489.5 km against 3,559.0 km; several small moons are the same, because their
+`1.05 R` periapsis is above their `R + 100 km` clearance. The floor is a **lower
+bound** on where the handover may sit, not a promise that the chain can be handed
+the state there: where the chain's own entry needs a deeper or higher radius — a
+periapsis, or a parking orbit the chain must start outside — that radius governs,
+and the arrival endpoint is the larger of the band floor and what the chain
+needs. At the giants the floor is far **above** the parking radius (Uranus at
+0.3 g: 70,167.5 km against a 29,166 km conic parking radius), which is the normal
+arrival case: the handover is high, and the capture falls in from it.
+
+## The band can be empty
+
+If the clamped floor exceeds the ceiling, the handover does not exist at that
+level. The planner refuses the trip with the numbers instead of building a chain
+with no band:
+
+* **Phobos and Deimos** have spheres of influence *inside* their own surfaces in
+  the catalogue — 7.2 km against an 11.3 km radius, and 8.1 km against 6.2 km — so
+  their bands are empty at every level. The reason reads *"the handover band at
+  Phobos is empty at 9.70 m/s²: the floor is 111.3 km (the 0.4 km gravity floor is
+  inside the body, so it is clamped up to the 111.3 km surface clearance), above
+  the 7.4 km ceiling (1.02 × the 7.2 km sphere of influence) by 103.9 km"*. Both
+  were already unreachable through the conic chain, which refuses an entry sphere
+  smaller than the periapsis; the refusal is now specific and comes before any
+  coast is built.
+* **Proteus** at Neptune is the same case by a smaller margin: a 310.0 km floor
+  against a 280.1 km ceiling.
+* No planet and no ordinary moon has an empty band at 0.3 g or 1 g.
+
+# The body-clearance gate
+
+The old rule was that the departure burn stay outside the departure sphere of
+influence. That rule is **gone**. A burn may cross a sphere — it integrates the
+summed field — but it may not cut a body.
+
+`TripPlanner.FixedBurnClearsBody` samples a fixed arc against a body's ephemeris
+and returns the closest radius from its centre. The plan's gate holds the
+departure burn clear of the departure body, and the arrival burns — the brake,
+then the hybrid capture's injection burn — clear of the target, by
+`HybridCapture.MinimumClearanceAltitudeM` (100 km above the surface, the same
+clearance the hybrid capture keeps). A rejection names the arc, the body, and how
+close it came. Measured at the epoch: a 3-hour burn at 1 g started 1.5 Earth
+spheres out and pushed straight at the planet crosses the 924,651 km sphere and
+still clears the planet by 821,258 km, and is **accepted**; a 30-second burn
+60 km up, thrusting at the surface, grazes to 6,422.3 km (51.3 km altitude)
+against a 6,471 km clearance and is **refused**. The 90-day Mars build's departure
+burn starts on the ceiling and climbs, so it still stays outside the sphere; that
+is a consequence of the pinned endpoint, not the rule.
 
 # The shaped ends stay
 
@@ -238,7 +330,12 @@ means keeping that and measuring it, not replacing it.
   `FiniteBurnArc` now integrates the one arc through the boundary; the fast
   probes keep the two-body burn.
 * The `1.02 × SOI` clearance sphere becomes the **ceiling** of the handover band,
-  not the definition of the handover radius.
+  not the definition of the handover radius; the departure endpoint is that
+  ceiling, so the departure plan is unchanged.
+* The rule that the departure burn stay outside the sphere of influence becomes
+  a **body-clearance** gate: every fixed burn must keep 100 km above the body it
+  works near, and a burn that crosses a sphere while clearing both bodies is
+  valid.
 * The global `EntrySpeedMps` stops being the profile's entry condition; the entry
   radius and the residual entry speed are per plan.
 * The coast, the quintic, the capture chain, and the `0 g` identity are
@@ -249,13 +346,11 @@ means keeping that and measuring it, not replacing it.
 * **The steering law.** Fixed direction, a few fixed segments, or local prograde?
   The delta-v penalty of the simple law is unmeasured; the choice waits on a
   measurement at the epoch at 0.3 g and 1 g.
-* **Band versus solved radius.** The band says where the handover may sit; a rule
-  picks a radius inside it. Solving for the radius — as a search or a shooting
-  variable — is deferred unless measurement shows the rule costs real delta-v or
-  time.
-* **The departure/arrival asymmetry.** The two ends want different radii; how far
-  each sits, whether the same `κ` and ceiling apply at both, and whether the
-  departure should also move inward for the Oberth benefit are not settled.
+* **Band versus solved radius.** *Settled for this plan:* the departure endpoint
+  is the ceiling and the arrival endpoint is the floor, with the floor clamped to
+  the body clearance. *Still open:* whether that rule should give way to an
+  interior solved radius, if the steering measurement shows the rule costs real
+  delta-v or time.
 * **Search input or certified build.** Is the handover radius a free variable the
   floor search explores, or a value computed from the band and then certified
   with the full field like a chosen duration? The floor search is already noisy

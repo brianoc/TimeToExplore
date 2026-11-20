@@ -157,7 +157,8 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TrajectoryPlan` | `Scripts/Simulation/TrajectoryPlan.cs` | The arc chain, its summary, impulses, and the sampled path |
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
+| `HandoverBand` | `Scripts/Simulation/HandoverBand.cs` | The handover floor (`0.4` of the drive, clamped to the body clearance), the `1.02 × SOI` ceiling, the two endpoints, and the empty-band reason |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview synchronously or on a latest-wins background worker with its own planner and field, publishing the finished plan on the main thread; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
@@ -166,8 +167,8 @@ The planner crosses in one of three profiles: the powered quintic (`Powered`, th
 default), the zero-revolution prograde Lambert conic chosen by
 `LambertSolver.SolveShortWay` (`Coast`), or the same coast bookended by a
 prograde departure finite burn and a brake (`BurnCoastBurn`). The burn–coast–burn
-break ends on the departure clearance sphere (`1.02 × SOI`) at the local escape
-speed along the escape ray, and the departure burn starts there and holds the
+break ends on the departure handover band's ceiling (`1.02 × SOI`) at the local
+escape speed along the escape ray, and the departure burn starts there and holds the
 ray; its angles, its duration, and the coast's start are solved forward, while
 the brake is still built backwards from the capture chain's entry state with
 `FiniteBurnArc.SimulateBackward`. Every seam is continuous and the arrival is

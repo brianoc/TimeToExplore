@@ -169,10 +169,10 @@ direction is fixed along the change the chain needs, because a burn along the
 instantaneous velocity can only change the speed; the direction opposes the
 arrival velocity, and a trip time whose coast arrives slower than the target's
 frame — which would need an acceleration rather than a brake — is rejected. The
-departure burn begins outside the departure sphere of influence and never
-crosses it in the shipped build; the agreed handover replaces that rule with a
-band and allows one burn arc to cross the boundary, because a full-field burn
-integrates the summed gravity field
+departure burn begins on the departure handover band's ceiling, `1.02 × SOI`, and
+every fixed burn is now gated on **body clearance**, not on the sphere of
+influence: a burn that crosses the boundary while clearing both bodies is valid,
+because a full-field burn integrates the summed gravity field
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
 At `0 g` the style is exactly `CruiseStyle.Coast`.
 

@@ -183,9 +183,15 @@ brake, and capture). The nav computer exposes it in the `PROFILE` row; an arriva
 style is the separate capture choice. `0 g` is exactly the `Coast` profile.
 
 **Break** — the quintic departure arc that leaves the parking orbit and reaches
-the departure body's clearance sphere (`1.02 × SOI`) at the local escape speed
-along the escape ray. The departure burn starts there and holds the ray; the
-break's duration is solved against the drive's limit.
+the departure body's handover ceiling (`1.02 × SOI`, the band's ceiling) at the
+local escape speed along the escape ray. The departure burn starts there and holds
+the ray; the break's duration is solved against the drive's limit.
+
+**Handover band** — the radial band a fixed burn hands over to a shaped end
+inside: the floor `sqrt(μ / (0.4 a_drive))` clamped to the body clearance, and the
+ceiling `1.02 × SOI`. The departure endpoint is the ceiling and the arrival
+endpoint the floor; a band whose floor passes its ceiling is empty and the trip is
+refused.
 
 **Brake** — the finite burn at the end of a burn–coast–burn crossing that spends
 the handover the unpowered coast would have made an impulse. Its thrust direction

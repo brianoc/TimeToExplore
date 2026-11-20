@@ -87,11 +87,6 @@ namespace TimeToExplore.Simulation
         /// arc is treated as a seam rather than a flight phase.</summary>
         public const double MinimumArcSeconds = 1.0;
 
-        /// <summary>How far outside a departure sphere of influence the steady
-        /// burn must begin, as a multiple of the boundary. The margin keeps the
-        /// whole burn clear while the departure body moves under it.</summary>
-        private const double DepartureBurnClearance = 1.02;
-
         /// <summary>Shortest coast the burn–coast–burn profile will leave between
         /// its two burns. A trip time that cannot fit one is stretched.</summary>
         private const double MinimumCoastSeconds = 3_600.0;
@@ -1198,12 +1193,12 @@ namespace TimeToExplore.Simulation
         /// opened out from its pinned start, so every seam is continuous in
         /// position and velocity and the arrival is exact.
         ///
-        /// The break ends where the departure burn begins: on the clearance sphere
-        /// <see cref="DepartureBurnClearance"/> times the departure sphere of
-        /// influence, along the outbound escape ray, at the local escape speed
-        /// along that ray. That is a design decision, not a derived state: the
-        /// break's only job is to leave the parking orbit and reach escape, and the
-        /// burn supplies everything above it
+        /// The break ends where the departure burn begins: on the departure
+        /// handover band's ceiling, <see cref="HandoverBand.CeilingSoiFraction"/>
+        /// times the departure sphere of influence, along the outbound escape ray,
+        /// at the local escape speed along that ray. That is a design decision, not
+        /// a derived state: the break's only job is to leave the parking orbit and
+        /// reach escape, and the burn supplies everything above it
         /// ([Burn–coast–burn trips](../simulation/burn-coast-burn.md)). The ray is
         /// the outbound asymptote the crossing needs, not the ship's own relative
         /// velocity: a station's orbital direction has no relation to the transfer,
@@ -1259,14 +1254,39 @@ namespace TimeToExplore.Simulation
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi)
                 return BuildQuintic(ship, target, totalSeconds);
 
-            BodyRuntime departureBody = FindDepartureBody(ship, target, t0,
-                out double departureSoi);
+            // The arrival endpoint is the band's floor. The capture chain still
+            // enters at the target's sphere of influence in this step, so the
+            // floor is validated here and flown in the step that gives the chain
+            // its entry radius.
+            HandoverBand arrivalBand = HandoverBand.For(target, acceleration);
+            if (!arrivalBand.IsValid)
+            {
+                return InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-coast-burn: " + arrivalBand.InvalidReason);
+            }
+
+            BodyRuntime departureBody = FindDepartureBody(ship, target, t0);
             if (departureBody == null)
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
                     "burn-coast-burn: the ship is not inside a departure sphere of " +
                     "influence to break out of");
             }
+
+            // The departure endpoint is the band's ceiling: the break's job is
+            // escape, and the burn starts there and moves outward. The ceiling is
+            // the same clearance sphere the profile has always used, so the
+            // departure plan does not move.
+            HandoverBand departureBand = HandoverBand.For(departureBody, acceleration);
+            if (!departureBand.IsValid)
+            {
+                return InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-coast-burn: " + departureBand.InvalidReason);
+            }
+
+            Trace?.Invoke($"handover band: departure {departureBand.DepartureRadiusM / 1000.0:F0} km " +
+                          $"(ceiling), arrival {arrivalBand.ArrivalRadiusM / 1000.0:F0} km " +
+                          $"(floor), ceiling {arrivalBand.CeilingRadiusM / 1000.0:F0} km");
 
             // The coast skeleton supplies the capture chain, the handover the
             // brake spends, and a first guess at the outbound direction and the
@@ -1319,7 +1339,7 @@ namespace TimeToExplore.Simulation
             Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
             Vector3d entryVelocity = targetVelocityAtEntry + chain.EntryLocalVelocityMps;
 
-            double clearanceRadius = departureSoi * DepartureBurnClearance;
+            double clearanceRadius = departureBand.DepartureRadiusM;
             double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
 
             _model.ComputeState(departureBody, referenceCruise.StartJulianDate,
@@ -1572,13 +1592,6 @@ namespace TimeToExplore.Simulation
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
                 burnStartJd, coastStartJd, departureBurn, fast));
 
-            if (!DepartureBurnStaysOutside(arcs, departureBody, departureSoi))
-            {
-                return StretchedPlan(ship, target, totalSeconds,
-                    "burn-coast-burn: the departure finite burn would cross the departure " +
-                    "sphere of influence; the level is too low for this trip time");
-            }
-
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, coastStartJd,
                 brakeStartFinalJd, coast, Vector3d.Zero, fast));
 
@@ -1608,6 +1621,13 @@ namespace TimeToExplore.Simulation
                 AppendConicCapture(arcs, target, entryJd, chain, Vector3d.Zero,
                     out parkingEndJd, out parking, fast);
             }
+
+            // Every fixed burn must clear the body it is working near. The old
+            // rule was that the departure burn stay outside the departure sphere
+            // of influence; a burn may now cross a sphere of influence, because
+            // it integrates the summed field, but it may not cut a body.
+            if (!FixedBurnsClearBodies(arcs, departureBody, target, out string clearanceReason))
+                return StretchedPlan(ship, target, totalSeconds, clearanceReason);
 
             double limit = MaxAccelerationMps2 * ThrustMargin;
             double worst = 1.0;
@@ -2310,36 +2330,76 @@ namespace TimeToExplore.Simulation
             return true;
         }
 
-        private bool DepartureBurnStaysOutside(List<PlanArc> arcs, BodyRuntime departureBody,
-            double soiM)
+        /// <summary>
+        /// Whether one fixed burn clears the body it is working near by
+        /// <see cref="HandoverBand.MinimumClearanceAltitudeM"/>. The closest
+        /// sampled radius from the body's centre is returned whether or not it
+        /// clears, so a rejection can name how close the arc came. The sphere of
+        /// influence is not consulted: a burn may cross it.
+        /// </summary>
+        public bool FixedBurnClearsBody(PlanArc arc, BodyRuntime body, out double closestRadiusM)
         {
+            if (arc == null) throw new ArgumentNullException(nameof(arc));
+            if (body == null) throw new ArgumentNullException(nameof(body));
+
+            closestRadiusM = double.PositiveInfinity;
             int samples = Math.Max(8, ArcSamples);
+            for (int sample = 0; sample <= samples; sample++)
+            {
+                double u = (double)sample / samples;
+                double julianDate = arc.StartJulianDate
+                                    + arc.Path.SecondsAt(u) / SecondsPerDay;
+                _model.ComputeState(body, julianDate, out Vector3d bodyPosition, out _);
+                double radius = Vector3d.Distance(arc.Path.PositionAt(u), bodyPosition);
+                if (radius < closestRadiusM) closestRadiusM = radius;
+            }
+
+            double required = body.RadiusM + HandoverBand.MinimumClearanceAltitudeM;
+            return closestRadiusM >= required * (1.0 - 1e-9);
+        }
+
+        /// <summary>
+        /// The body-clearance gate on a plan's fixed burns: the departure burn is
+        /// held clear of the departure body, and the arrival burns — the brake,
+        /// then the hybrid capture's injection burn — are held clear of the
+        /// target. The reason names the arc and how close it came.
+        /// </summary>
+        private bool FixedBurnsClearBodies(List<PlanArc> arcs, BodyRuntime departureBody,
+            BodyRuntime target, out string reason)
+        {
+            reason = null;
+            int arrivalBurns = 0;
+
             foreach (PlanArc arc in arcs)
             {
                 if (!arc.IsFiniteBurn) continue;
 
-                for (int sample = 0; sample <= samples; sample++)
-                {
-                    double u = (double)sample / samples;
-                    double julianDate = arc.StartJulianDate
-                                        + arc.Path.SecondsAt(u) / SecondsPerDay;
-                    _model.ComputeState(departureBody, julianDate,
-                        out Vector3d departurePosition, out _);
-                    if (Vector3d.Distance(arc.Path.PositionAt(u), departurePosition)
-                        < soiM * (1.0 - 1e-6))
-                    {
-                        return false;
-                    }
-                }
+                bool arrival = arc.Phase == FlightPhase.Capture;
+                if (arrival) arrivalBurns++;
+                BodyRuntime near = arrival ? target : departureBody;
+
+                if (FixedBurnClearsBody(arc, near, out double closest)) continue;
+
+                // The profile's arrival burns are the brake first and the
+                // hybrid capture's injection burn second.
+                string name = arrival
+                    ? (arrivalBurns == 1 ? "brake" : "capture")
+                    : "departure";
+                double required = near.RadiusM + HandoverBand.MinimumClearanceAltitudeM;
+                reason = $"burn-coast-burn: the {name} fixed burn passes " +
+                         $"{closest / 1000.0:F0} km from {near.Name}'s centre, inside the " +
+                         $"{required / 1000.0:F0} km body clearance " +
+                         $"({near.RadiusM / 1000.0:F0} km radius + " +
+                         $"{HandoverBand.MinimumClearanceAltitudeM / 1000.0:F0} km)";
+                return false;
             }
 
             return true;
         }
 
         private BodyRuntime FindDepartureBody(ShipState ship, BodyRuntime target,
-            double julianDate, out double soiM)
+            double julianDate)
         {
-            soiM = 0.0;
             foreach (BodyRuntime planet in _model.Sun.Children)
             {
                 if (planet == target || planet == target.Parent) continue;
@@ -2349,10 +2409,7 @@ namespace TimeToExplore.Simulation
 
                 _model.ComputeState(planet, julianDate, out Vector3d planetPosition, out _);
                 if (Vector3d.Distance(ship.PositionM, planetPosition) < soi)
-                {
-                    soiM = soi;
                     return planet;
-                }
             }
 
             return null;

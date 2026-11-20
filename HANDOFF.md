@@ -1,10 +1,12 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1 and 2 are done. The design is recorded in
-[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md),
-and `FiniteBurnArc` now integrates the summed field. Step 3, the handover band,
-is next. Screenshots are waived for this plan.
+Steps 1–3 are done. The design is recorded in
+[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
+`FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
+ends, and every fixed burn is gated on body clearance. Step 4, the capture entry
+radius and the residual entry speed, is next. Screenshots are waived for this
+plan.
 
 ## Why
 
@@ -27,11 +29,12 @@ this list is the caretaker's short form.
 1. **Full-field burns, not patched burns.** *Implemented.* Fixed burns integrate
    the summed gravity field; the reference body is a label. One burn arc may
    cross an SOI; it is never split there.
-2. **Handover band.** The burn hands over to the shaped ends between a hard
-   floor and a hard ceiling: floor `sqrt(μ / (κ a_drive))` with the parking
-   ceiling's `κ = 0.4`, ceiling the current `1.02 × SOI`. Asymmetric between
-   departure and arrival. Solved only inside the band, and only if measurement
-   says it matters.
+2. **Handover band.** *Implemented.* `HandoverBand.For(body, a_drive)` returns
+   the floor `sqrt(μ / (κ a_drive))` at the parking ceiling's `κ = 0.4` clamped
+   up to `R + 100 km`, the ceiling `1.02 × SOI`, validity, and the reason when it
+   is empty. Endpoints are decided for this plan: **departure = the ceiling**
+   (unchanged plan) and **arrival = the floor** (flown in step 4); an interior
+   solved radius waits on the steering measurement.
 3. **Quintic ends stay.** The break and the conic/hybrid capture keep their
    jobs; only the handover radius and the field change.
 4. **Entry speed becomes an output.** The capture chain gains an entry radius;
@@ -43,9 +46,9 @@ this list is the caretaker's short form.
    the escape ray and handover change are fixed inertial directions, and
    prograde/retrograde follow the reference-relative velocity.)
 
-Open questions: the steering law above, the band-versus-solved radius rule, the
-asymmetry between the two ends, and whether the handover radius should be a
-search input or a certified build.
+Open questions: the steering law above, whether an interior solved radius is worth
+it, and whether the handover radius should be a search input or a certified build.
+The departure/arrival asymmetry is settled for this plan (ceiling and floor).
 
 ## Steps (one sub-agent per step, one commit each)
 
@@ -59,12 +62,21 @@ search input or a certified build.
    where the third bodies are negligible, the reference body as a label, and the
    plan's burns carrying the field. The plans and floors did not move; the cost
    did (see Traps).
-3. **Handover band and endpoints.** Floor and ceiling radii, asymmetric
-   departure/arrival, and the clearance gate replacing "the burn stays outside
-   the departure SOI" with "the burn clears the body". Tests: scaling per body
-   and level, no surface crossing.
+3. **Handover band and endpoints.** **Done** — `HandoverBand` computes the floor
+   (`0.4` of the drive, clamped to `R + 100 km`), the ceiling (`1.02 × SOI`), and
+   the empty-band reason; the departure endpoint is the ceiling (the plan is
+   unchanged) and the arrival endpoint is the floor, validated but not yet flown.
+   `DepartureBurnStaysOutside` became `FixedBurnClearsBody`: every fixed burn
+   keeps 100 km above the body it works near, and the SOI is not consulted.
+   Tests: floor scaling, ceiling per body, the clamp on every accepted body,
+   Phobos/Deimos/Proteus empty and refused, and the gate accepting an SOI-crossing
+   burn while refusing a surface graze. New `HandoverBandTests`.
 4. **Capture entry radius and entry speed.** Build the capture chain from an
-   arbitrary handover radius; let the brake set the residual entry speed. Tests:
+   arbitrary handover radius — the arrival endpoint is
+   `max(band floor, what the chain needs)`, because the clamped floor sits below
+   the conic periapsis at 1 g on Mercury, Mars, and several small moons; the
+   concern is already recorded in Traps. Let the brake set the residual entry
+   speed. Tests:
    the Uranus fall shortens as the entry gets hotter, the capture Δv grows as
    predicted, seams stay closed.
 5. **Steering experiment.** Fixed direction versus a few fixed segments versus
@@ -82,10 +94,11 @@ search input or a certified build.
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result (2026-11-19, after step 2): `tools/check.sh --tests flight` —
-  passed, 239 tests, 0 failed, 403 s; `tools/check.sh --tests
-  presentation,smoke` — passed, 140 tests, 0 failed, 159 s;
-  `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0 warnings, 0 errors.
+- Last result (2026-11-19, after step 3): `tools/check.sh --tests flight` —
+  passed, 245 tests, 0 failed, 405 s; `.venv/bin/python tools/validate_okf.py` —
+  40 concepts, 0 warnings, 0 errors. (The step 2 run was 239 tests, 403 s, and
+  `presentation,smoke` 140 tests, 159 s; step 3 touched no UI, so that suite was
+  not re-run.)
 
 ## Traps
 
@@ -98,8 +111,25 @@ search input or a certified build.
 - The floor search is already noisy near the minimum; a full-field probe makes
   it noisier and slower. Certify the chosen build as the current profile does.
 - The existing anchors (Mercury 3.46 d, Mars 8.03 d, the seam tolerances) will
-  move when the handover changes. Re-measure them; do not preserve them blindly.
-- `DepartureBurnStaysOutside` becomes a body-clearance gate, not an SOI gate.
+  move when the handover changes. Step 3 changed the rule and left them alone
+  (measured: 569.9 / 379.9 / 45.4 km/s, floors 3.46 and 8.03 d); step 4 is the one
+  that will move them. Re-measure them; do not preserve them blindly.
+- **The arrival floor does not bind below the capture chain.** At 1 g the clamped
+  floor is *under* the conic periapsis on Mercury (2,539.7 km against 2,561.7) and
+  Mars (3,489.5 against 3,559.0), and on several small moons whose `1.05 R`
+  periapsis beats `R + 100 km`. The floor is a lower bound on the handover, not a
+  promise the chain can start there: step 4's arrival endpoint must be
+  `max(floor, what the chain needs)`, or the chain is handed an entry inside its
+  own periapsis.
+- **Three catalogue moons have an empty band at every level**: Phobos and Deimos
+  (their spheres of influence are inside their own surfaces: 7.2 km against an
+  11.3 km radius) and Proteus (a 310.0 km floor against a 280.1 km ceiling). They
+  were already unreachable through the conic chain's "the sphere of influence is
+  smaller than the periapsis"; the refusal now comes first and names the numbers.
+  Do not "fix" this by moving the ceiling.
+- **The floor is clamped, so it is not `1/sqrt(a)` everywhere.** Only an unclamped
+  floor scales; Mercury and Mars at 1 g sit on the `R + 100 km` clearance and do
+  not move until the level falls far enough.
 - **Full-field burns are the suite's cost now.** One `Prepare` per RK4 step
   evaluates the whole catalogue, so a full-field step is ~50× a two-body step:
   a 90-day Mars build is 0.47 s in a .NET harness and the editor's

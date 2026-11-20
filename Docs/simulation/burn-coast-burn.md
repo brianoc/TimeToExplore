@@ -142,13 +142,15 @@ default, and `0 g` is exactly `CruiseStyle.Coast`.
 # The pinned break
 
 The break's end state is a design decision: the point where the departure burn
-starts, on the handover sphere at the local escape speed along the escape ray.
-The clearance sphere `1.02 × SOI` is that sphere's **ceiling**; the agreed
-handover may sit lower, inside the band between the powered-leg floor and the
-ceiling, and the burn is then integrated through the summed field
+starts, on the handover band's **ceiling** at the local escape speed along the
+escape ray. The ceiling is `1.02 × SOI`, the clearance sphere the profile always
+used; a burn may now start lower inside the band, because it is integrated through
+the summed field
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
-The break's only job is to leave the parking orbit and reach escape; the burn
-supplies everything above it. The old chain solved the coast's
+For this plan the departure endpoint *is* the ceiling — the break's only job is to
+leave the parking orbit and reach escape, and the burn supplies everything above
+it — so the departure plan did not move when the constant became the band's
+ceiling. The old chain solved the coast's
 start and integrated the burn backwards, so at fast trip times the burn began
 4.7 SOI out at 32 km/s and the break was fitted to that hard backwards solve.
 
@@ -242,6 +244,25 @@ field over the catalogue, so a certified build is about an order of magnitude
 more work than the two-body build it replaced
 ([planning performance](/technical/planning-performance.md), step 7 of the plan,
 owns the remedy).
+
+# The burns are gated on body clearance
+
+The profile used to refuse a departure burn that crossed the departure sphere of
+influence. That rule is gone: crossing a sphere is a supported case now, because
+the burn integrates the summed field. What replaces it is a **body clearance**
+gate. `TripPlanner.FixedBurnClearsBody` samples a fixed arc against a body and
+returns the closest radius from its centre; the plan holds the departure burn
+clear of the departure body, and the brake and the hybrid capture's injection
+burn clear of the target, by 100 km above the surface — the same clearance the
+hybrid capture keeps. A violation names the arc, the body, and how close it came.
+Measured at the epoch: a 3-hour 1 g burn started 1.5 Earth spheres out and pushed
+straight at the planet crosses the 924,651 km sphere while clearing the planet by
+821,258 km, and is accepted; a 30-second burn 60 km up, thrusting at the surface,
+grazes to 6,422.3 km (51.3 km altitude) against a 6,471 km clearance, and is
+refused. The 90-day Mars
+build's departure burn starts on the ceiling and climbs, so it still stays outside
+the sphere — a consequence of the pinned endpoint, not the rule
+([the handover band](/simulation/powered-leg-floor.md#the-body-clearance-gate)).
 
 # The break search
 
@@ -405,11 +426,13 @@ plan's fourth step.
   The coasting profiles' right-hand end is probed from what the planner accepts,
   not taken as three times the minimum: a long short-way transfer sweeps past
   180°, and a slow coast would need an acceleration rather than a brake.
-- **The pinned break and the escape ray.** The break ends at the handover sphere
-  — bounded above by the clearance sphere `1.02 × SOI` — at the local escape
-  speed along the escape ray, and the departure burn holds that ray. A
-  velocity-following burn cannot close the seam at fast trip times, so the ray,
-  not the heliocentric velocity, sets the burn's attitude. The band and the
+- **The pinned break and the escape ray.** The break ends at the handover band's
+  ceiling — `1.02 × SOI` — at the local escape speed along the escape ray, and the
+  departure burn holds that ray. That is the departure endpoint for this plan: the
+  break's job is escape, and the burn starts at the clearance sphere and moves
+  outward, so the profile's departure numbers did not move. A velocity-following
+  burn cannot close the seam at fast trip times, so the ray, not the heliocentric
+  velocity, sets the burn's attitude. The band, the arrival endpoint, and the
   full-field integration are in
   [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 - **Brake and capture split.** The brake spends only the coast's handover and

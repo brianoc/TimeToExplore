@@ -20,8 +20,9 @@ namespace TimeToExplore.Tests.EditMode
     {
         private const double TripDays = 90.0;
 
-        /// <summary>The clearance the profile pins its break to, as a multiple of
-        /// the departure body's sphere of influence.</summary>
+        /// <summary>The clearance the profile pins its break to — the handover
+        /// band's ceiling — as a multiple of the departure body's sphere of
+        /// influence.</summary>
         private const double ClearanceSoi = 1.02;
 
         private SolarSystemModel _model;
@@ -254,33 +255,44 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        /// <summary>
+        /// Every fixed burn in the plan clears the body it is working near by the
+        /// named minimum altitude. The rule is body clearance, not the sphere of
+        /// influence: a burn may cross the sphere (it integrates the summed
+        /// field, and one of the tests in <c>HandoverBandTests</c> flies such an
+        /// arc), but it may not cut a body. This build's departure burn starts on
+        /// the band's ceiling and climbs, so it also happens to stay outside the
+        /// sphere — a consequence of the pinned endpoint, not the gate.
+        /// </summary>
         [Test]
-        public void TheDepartureBurnNeverCrossesTheDepartureSphereOfInfluence()
+        public void EveryFixedBurnClearsTheBodyItWorksNear()
         {
             TrajectoryPlan plan = PlanTo("mars");
-            PlanArc burn = plan.Arcs[1];
-            Assert.That(burn.IsFiniteBurn, Is.True);
-
             BodyRuntime earth = _model.Get("earth");
-            double soi = SphereOfInfluence.RadiusM(earth);
+            BodyRuntime mars = _model.Get("mars");
+            double earthSoi = SphereOfInfluence.RadiusM(earth);
 
-            int samples = 64;
-            double minimum = double.PositiveInfinity;
-            for (int i = 0; i <= samples; i++)
+            int burns = 0;
+            foreach (PlanArc arc in plan.Arcs)
             {
-                double u = (double)i / samples;
-                double julianDate = burn.StartJulianDate
-                                    + burn.Path.SecondsAt(u) / JulianDate.SecondsPerDay;
-                _model.ComputeState(earth, julianDate,
-                    out Vector3d earthPosition, out _);
-                double distance = Vector3d.Distance(burn.Path.PositionAt(u), earthPosition);
-                if (distance < minimum) minimum = distance;
+                if (!arc.IsFiniteBurn) continue;
+                burns++;
+                BodyRuntime near = arc.Phase == FlightPhase.Capture ? mars : earth;
+                bool clears = _planner.FixedBurnClearsBody(arc, near, out double closest);
+                double required = near.RadiusM + HandoverBand.MinimumClearanceAltitudeM;
+                TestContext.WriteLine($"{arc.Phase} burn: closest {closest / 1000.0:N0} km from " +
+                                      $"{near.Id}, clearance {required / 1000.0:N0} km, " +
+                                      $"clears {clears}");
+
+                Assert.That(clears, Is.True, $"{arc.Phase} burn clears {near.Id}");
+                Assert.That(closest, Is.GreaterThanOrEqualTo(required));
+
+                if (near == earth)
+                    Assert.That(closest, Is.GreaterThanOrEqualTo(earthSoi),
+                        "this build's departure burn starts on the ceiling and climbs");
             }
 
-            TestContext.WriteLine($"departure burn closest approach {minimum / 1000.0:N0} km " +
-                                  $"against the {soi / 1000.0:N0} km sphere");
-            Assert.That(minimum, Is.GreaterThanOrEqualTo(soi),
-                "the steady burn starts outside the sphere and stays there");
+            Assert.That(burns, Is.EqualTo(2), "the departure burn and the brake");
         }
 
         [Test]
