@@ -1,15 +1,17 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1–6 are done; step 7 is next. Steps 5 and 6 were done in the
-`work/steering-law` and `work/slider-window` worktrees and merge to `main` with
-this handoff, per working-agreement rule 1. The design is recorded in
+Steps 1–6 and step 4b are done; step 7 is next. Step 4b (the planetocentric
+approach leg) was done in the `work/approach-leg` worktree and merges to `main`
+with this handoff, per working-agreement rule 1. The design is recorded in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 `FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
 ends, every fixed burn is gated on body clearance, the burn–coast–burn's capture
-chain enters at the **arrival handover floor**, and both fixed burns keep the
-**fixed inertial direction** because the steering measurement found nothing for a
-tracking or segmented law to win. Screenshots are waived for this plan.
+chain enters at the **arrival handover floor**, the arrival carries a
+**planetocentric approach from the handover ceiling** so a Sun-only conic no
+longer describes the deep part of the final approach, and both fixed burns keep
+the **fixed inertial direction** because the steering measurement found nothing
+for a tracking or segmented law to win. Screenshots are waived for this plan.
 
 ## Why
 
@@ -48,9 +50,18 @@ this list is the caretaker's short form.
    fixed direction and every alternative leaves 3.1–17.6 km/s or more. Numbers
    in [the concept](/simulation/powered-leg-floor.md#steering-starts-simple).
 
-Open questions: the entry-speed rule, the approach model (see Traps), whether an
-interior solved radius is worth it, and whether the handover radius should be a
-search input or a certified build.
+4b. **The approach leg.** *Implemented.* The heliocentric coast ends on the
+   target's ceiling, a `ConicArc` about the target falls from there to the
+   brake's start, and the brake ends at the chain's entry on the floor. Measured
+   at the epoch, the leg is 27 m/s **cheaper** at Uranus 1 g and 400 days
+   (182.312 against 182.339 km/s) and 0.60 km/s cheaper at a 200-day Mars
+   crossing; it removes the 0.221 km/s of solar tide the deep coast commanded.
+   The floors barely move: Uranus 1 g 34.00 → 33.90 d, the other three
+   unchanged. Numbers in [the concept](/simulation/powered-leg-floor.md#what-the-approach-measured).
+
+Open questions: the entry-speed rule, whether an interior solved radius is worth
+it, and whether the handover radius should be a search input or a certified
+build.
 
 ## Steps (one sub-agent per step, one commit each)
 
@@ -69,22 +80,23 @@ search input or a certified build.
    coast's end / brake's start is **366,505 km (0.0071 SOI)** from Uranus on that
    plan and **1,159,005 km (0.0224 SOI)** at 0.3 g; at the fast floor the brake
    spans the sphere instead (28.5 h of 995 km/s from 51.07 million km). That
-   measurement is the next decision's input; the concept records it under "The
-   binding question".
+   measurement was step 4b's input; the approach leg now ends the coast on the
+   ceiling and the brake starts at 368,111 km (0.0071 SOI) at 1 g.
 5. **Steering experiment.** **Done** — the fixed inertial direction stays at
    both ends. Four plans at the epoch (Uranus 400 d at 1 g and 0.3 g, Mars 90 d
    at 0.3 g, Mercury 8 d at 1 g): each burn's held direction was recovered from
    `AccelerationAt − GravityField`, then the same start state, duration and
    acceleration were re-flown at 2,048+ RK4 steps through the full field with the
    plan's direction, local prograde/retrograde, 1–128 segments, and a pursuit
-   law. The fixed law reproduces the plan end state to 0.000 km and 0.000 km/s,
-   so the harness and the planner integrate the same field. The departure burn is
+   law. The fixed law reproduced the plan end state to 0.000 km and 0.000 km/s
+   (0.15 m on the re-run with the approach leg's brake), so the harness and the
+   planner integrate the same field. The departure burn is
    the escape ray, 0.00° from the frame's prograde at every sample, and a local
    law reproduces it to 0.003 km/s. The brakes turn 30–78° of tracking and the
    held direction ends 39.7–87.6° off retrograde; the local-retrograde seam is
    **17.6 / 13.3 / 3.1 / 6.0 km/s**, and re-aiming makes it worse: 15.3 at one
-   segment, 22.2 at two, 34.0 at eight and 39.0 at 128 on Uranus 1 g, while
-   pursuit reaches 6.1 / 11.0 / 0.14 / 0.006. The 16.85% cosine loss at Uranus
+   segment, 22.2 at two, 34.1 at eight and 39.1 at 128 on Uranus 1 g, while
+   pursuit reaches 6.2 / 11.0 / 0.14 / 0.009. The 16.80% cosine loss at Uranus
    1 g is 13.68 km/s
    of thrust across the track — the turn the brake exists to make, not a
    spendable penalty. The concept records the whole table and the decision.
@@ -99,7 +111,9 @@ search input or a certified build.
    33.66–33.83 d stall in the pinned-departure solve at 1.0–3.2 × 10⁻⁵ m/s.
    Accepting the stalled solve closed them but cost ~110 s per near-floor build,
    so the conservatism is a **cost shield**, not a wrong answer; step 7 owns the
-   trade. The Uranus window's maximum (101.99 d) is feasible. Numbers in
+   trade. The Uranus window's maximum (101.99 d) is feasible. After step 4b the
+   1 g floor is **33.90 d** and the window ends at **101.70 d**; only that floor
+   moved. Numbers in
    [planning performance](/technical/planning-performance.md#the-uranus-floor-and-its-conservative-bracket-2026-11-20).
 7. **Performance.** *Next.* Full-field probes are slower and less smooth; measure
    `Plan()` and one slider retime before and after. Close out the docs and clear
@@ -121,15 +135,16 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result (2026-11-20, after step 6): `.venv/bin/python
+- Last result (2026-11-20, after step 4b): `.venv/bin/python
   tools/validate_okf.py` — 41 concepts, 0 warnings, 0 errors; `tools/check.sh
-  --fast` — passed; `tools/check.sh --tests presentation,smoke` — passed, 143
-  tests, 0 failed, 379 s. Step 6 changed docs only but ran the presentation and
-  smoke suites as the evidence that the HUD copy and the window cache hold.
-  (Step 4's code run: `tools/check.sh --tests flight` — passed, 249 tests, 0
-  failed, 606 s; `tools/check.sh --tests flight,presentation,smoke` on the final
-  tree — passed, 389 tests, 0 failed, 1005 s. Step 3's run was 245 tests, 0
-  failed, 405 s.)
+  --tests flight` — passed, 0 failed, 620 s; `tools/check.sh --tests
+  presentation,smoke` — passed, 0 failed, 367 s (the plan's arc list and the
+  flight report changed, so both ran).
+  (Step 6's run: `tools/check.sh --tests presentation,smoke` — passed, 143
+  tests, 0 failed, 379 s; `tools/check.sh --fast` — passed. Step 4's code run:
+  `tools/check.sh --tests flight` — passed, 249 tests, 0 failed, 606 s;
+  `tools/check.sh --tests flight,presentation,smoke` on the final tree —
+  passed, 389 tests, 0 failed, 1005 s.)
 
 ## Traps
 
@@ -138,21 +153,43 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
 - **Do not replace the brake's fixed direction with local steering.** Flown over
   the solved burn's own start state, duration and acceleration, a local
   prograde/retrograde law leaves **17.6 km/s** of seam at Uranus 1 g, 13.3 at
-  0.3 g, 3.1 at Mars and 6.0 at Mercury, and a pursuit law leaves 6.1 / 11.0 /
-  0.14 / 0.006; neither closes the chain. Re-aiming every few segments is
-  monotonically worse (15.3 at one, 22.2 at two, 29.2 at four, 34.0 at eight,
-  39.0 at 128 on Uranus 1 g), because the schedule follows the velocity as it
+  0.3 g, 3.1 at Mars and 6.0 at Mercury, and a pursuit law leaves 6.2 / 11.0 /
+  0.14 / 0.009; neither closes the chain. Re-aiming every few segments is
+  monotonically worse (15.3 at one, 22.2 at two, 29.2 at four, 34.1 at eight,
+  39.1 at 128 on Uranus 1 g), because the schedule follows the velocity as it
   turns instead of the chord the seam needs. The fixed direction is exact and its
   spend is `a·T`, so segmenting pays twelve pin passes for a worse seam. The
   reasoning is in [the concept](/simulation/powered-leg-floor.md#steering-starts-simple).
 - Do not "fix" the fall by braking sooner; it lengthens the coast. The win is a
   hotter entry and a deeper brake.
-- **The approach model is now the open problem.** On a long trip the coast ends
-  deep inside the target's sphere — 0.0071 spheres at Uranus 1 g and 400 days,
-  where the target's gravity is 0.043 m/s² and a Sun-only conic is a poor model.
-  The seams close, so this is not a build failure: it is the model gap the
-  next decision (a planetocentric approach leg, a hotter residual entry, or a
-  full-field coast) has to settle. Do not "fix" it by widening the seam gate.
+- **The approach leg is settled, and it is not a route to the floor without a
+  brake.** The coast ends on the ceiling and a planetocentric `ConicArc` falls
+  from there to the brake's start. A ballistic conic from the ceiling does
+  **not** reach the band floor on any measured plan — its periapsis is 84,354 km
+  at Uranus 1 g (floor 38,643), 200,201 at 0.3 g (70,168), 10,059 at Mars 90 d
+  (6,033) and 61,330 at Mercury 8 d (2,806) — so the brake still spans the last
+  part of the descent. Do not "fix" that by lowering the entry radius, widening
+  the seam gate, or moving the floor. The approach is built **backwards from the
+  brake's own start state**: that is what makes approach→brake exact, and it is
+  why the fixed point's residual lives at the ceiling seam instead. It converges
+  super-linearly (1e-8 m/s in ten passes) once the brake has a real start; the
+  first pass must run **without** the leg or the brake is a second long, its
+  start is the chain's entry and the conic back out to the ceiling takes 119
+  days.
+- **The fast trips keep seven arcs on purpose.** Where the brake's start is
+  already outside the ceiling (Mercury 8 d: 2,378,950 km, 20.7 ceilings) there is
+  no planetocentric region to model. A conic about Mercury at twenty spheres
+  would be a worse model than the heliocentric coast. Do not force an approach
+  leg there.
+- **The coast → approach seam is metres, not millimetres.** Measured 4.38 m and
+  1 × 10⁻⁶ m/s at Uranus 1 g (0.53 m at 0.3 g, 2 × 10⁻⁶ m/s at Mars). The metres
+  are the difference between the coast's element-based propagation and the
+  universal-variable propagator `TryCorrectCoastDeparture` uses; both are correct
+  and the gate is 1 km. Do not tighten it by loosening the correction.
+- **The slow end got cheaper, not dearer.** A 200-day Mars crossing is
+  11.855 km/s against 12.458, because the old deep coast commanded 0.901 km/s of
+  solar tide to hold its heliocentric conic in Mars's well; the new approach is
+  27.3 h and the coast's correction 0.121. Do not "restore" the 12.46 anchor.
 - **The entry speed is still planted.** `EntrySpeedMps` is per plan through
   `FlightSession` but its default is 5 km/s and nothing produces a residual from
   the brake yet. A hotter entry shortens the fall but grows the periapsis burn
@@ -165,8 +202,8 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
   months, so the growth loop now runs to twelve 20% steps; five stopped below the
   Uranus 0.3 g floor and reported the trip infeasible. The search is
   conservative by **0.51 d (1.5%)** at Uranus 1 g — 34.00 d returned against a
-  direct **33.49 d** that closes — and by **0.62 d** at 0.3 g (41.57 against
-  40.95). The gap is a **pinned-departure stall**, not a physical refusal: the
+  direct **33.49 d** that closes (33.90 d after the approach leg) — and by
+  **0.62 d** at 0.3 g (41.57 against 40.95). The gap is a **pinned-departure stall**, not a physical refusal: the
   damped Newton cannot improve at the finite-difference resolution, so the
   residual stops at 1.0–3.2 × 10⁻⁵ m/s just above
   `DepartureSolveToleranceMps = 1e-5` and `TrySolvePinnedDeparture` refuses.
@@ -179,8 +216,8 @@ passes at 2,048 brake samples — is step 7's to decide. Measurements in
   **~71 s in the .NET harness** at 1 g and ~59 s at 0.3 g, not a few seconds,
   and the editor is several times slower, so a first Uranus preview freezes the
   UI for minutes until step 7. The window's right end is 3 × the floor,
-  **101.99 d** at 1 g, and a direct build there is accepted (seven arcs,
-  661.35 km/s, a 9.105 h departure burn and a 9.185 h brake, **2.7 s**).
+  **101.70 d** at 1 g after the approach leg (**101.99 d** before it), and a
+  direct build there is accepted (eight arcs, 661.3 km/s, **2.7 s**).
 - **The HUD copy and the window cache hold** after the floor move (step 6): the
   `TRIP TIME ×scale` label, the value line, and the report rows derive from the
   preview, and `WindowFor`/`TryGetCachedWindow` key on departure date, target,

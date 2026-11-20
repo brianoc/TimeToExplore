@@ -239,6 +239,8 @@ chain is handed its entry state with no impulse and falls in for 13.6 minutes.
 Every seam is continuous to under a metre and 3.7 × 10⁻⁴ m/s, the flight arrives
 0.1 m and 0.0001 m/s from the reference state, and the parking orbit holds. At
 `0 g` the style is exactly the coast plan: five arcs and the handover impulse.
+At non-zero level the arrival adds a planetocentric approach leg; on a fast trip,
+whose brake starts outside the target's ceiling, it is absent.
 
 The profile's true floors at the epoch are **3.22 days** to Mercury at 1 g
 (peak 9.70 m/s², 1,766 km/s) and **6.74 days** to Mars at 0.3 g (peak

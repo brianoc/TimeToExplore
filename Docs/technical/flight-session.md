@@ -114,9 +114,10 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
 burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
 of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
-build is outside that window. At Uranus the window is **34.00 to 101.99 days** at
-1 g, and its right-hand end is a feasible direct build (seven arcs,
-661.35 km/s), so the slider cannot ask for a refused plan. The first selection
+build is outside that window. At Uranus the window is **33.90 to 101.70 days** at
+1 g, and its right-hand end is a feasible direct build (eight arcs, the arrival
+carrying the planetocentric approach, 661.3 km/s), so the slider cannot ask for a
+refused plan. The first selection
 there is the cost: the first `Plan()` is about **71 s in the .NET harness**
 at 1 g and 59 s at 0.3 g, and the editor is several times slower, so a first
 Uranus preview freezes the UI for minutes until step 7. The floor plan and the

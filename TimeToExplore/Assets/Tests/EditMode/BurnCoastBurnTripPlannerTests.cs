@@ -9,12 +9,15 @@ namespace TimeToExplore.Tests.EditMode
     /// <summary>
     /// The burn–coast–burn cruise: a quintic break out of the departure sphere of
     /// influence, a prograde finite burn at the chosen level, a heliocentric
-    /// Lambert coast, a retrograde finite brake, and the existing conic or hybrid
-    /// capture. The break ends on the departure clearance sphere at the local
-    /// escape speed and the burn starts there; the burn's ray and duration, the
-    /// break's duration, and the coast are solved together so every seam is
-    /// continuous in position and velocity, and the brake spends the handover the
-    /// coast plan would have made an impulse. The torch cruise stays the default.
+    /// Lambert coast, a planetocentric approach about the target, a retrograde
+    /// finite brake, and the existing conic or hybrid capture. The break ends on
+    /// the departure clearance sphere at the local escape speed and the burn
+    /// starts there; the burn's ray and duration, the break's duration, and the
+    /// coast are solved together so every seam is continuous in position and
+    /// velocity. The coast ends on the target's handover ceiling and the approach
+    /// falls from there to the brake's start, so a Sun-only conic no longer
+    /// describes the deep part of the final approach; the brake spends the rest of
+    /// the handover. The torch cruise stays the default.
     /// </summary>
     [Category("flight")]
     public class BurnCoastBurnTripPlannerTests
@@ -86,13 +89,13 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheProfileIsAQuinticBreakAProgradeBurnACoastARetrogradeBrakeAndTheCapture()
+        public void TheProfileIsAQuinticBreakABurnACoastAnApproachABrakeAndTheCapture()
         {
             TrajectoryPlan plan = PlanTo("mars");
             PrintPlan(plan);
 
             Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
 
             // leave orbit
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
@@ -108,27 +111,33 @@ namespace TimeToExplore.Tests.EditMode
                 Is.GreaterThan(plan.Arcs[1].Path.VelocityAt(0.0).Magnitude),
                 "the departure burn builds speed");
 
-            // coast
+            // coast, about the Sun, ending on the target's handover ceiling
             Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Cruise));
             Assert.That(plan.Arcs[2].Path, Is.InstanceOf<ConicArc>());
             Assert.That(((ConicArc)plan.Arcs[2].Path).Centre, Is.SameAs(_model.Sun));
 
+            // the planetocentric approach, about the target
+            Assert.That(plan.Arcs[3].Phase, Is.EqualTo(FlightPhase.Approach));
+            Assert.That(plan.Arcs[3].IsCoast, Is.True);
+            Assert.That(((ConicArc)plan.Arcs[3].Path).Centre, Is.SameAs(_model.Get("mars")));
+            Assert.That(plan.Arcs[3].ReferenceBodyId, Is.EqualTo("mars"));
+
             // brake, retrograde about the Sun, shedding speed
-            Assert.That(plan.Arcs[3].Phase, Is.EqualTo(FlightPhase.Capture));
-            Assert.That(plan.Arcs[3].IsFiniteBurn, Is.True);
-            var brake = (FiniteBurnArc)plan.Arcs[3].Path;
+            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[4].IsFiniteBurn, Is.True);
+            var brake = (FiniteBurnArc)plan.Arcs[4].Path;
             Assert.That(brake.Centre, Is.SameAs(_model.Sun));
             Assert.That(brake.IsRetrograde, Is.True);
-            Assert.That(plan.Arcs[3].Path.VelocityAt(1.0).Magnitude,
-                Is.LessThan(plan.Arcs[3].Path.VelocityAt(0.0).Magnitude),
+            Assert.That(plan.Arcs[4].Path.VelocityAt(1.0).Magnitude,
+                Is.LessThan(plan.Arcs[4].Path.VelocityAt(0.0).Magnitude),
                 "the brake sheds speed");
 
             // enter orbit on the existing conic capture chain
-            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Coast));
-            Assert.That(plan.Arcs[4].IsCoast, Is.True);
-            Assert.That(plan.Arcs[5].Phase, Is.EqualTo(FlightPhase.Capture));
-            Assert.That(plan.Arcs[6].Phase, Is.EqualTo(FlightPhase.Parking));
-            Assert.That(plan.Arcs[6].EndJulianDate,
+            Assert.That(plan.Arcs[5].Phase, Is.EqualTo(FlightPhase.Coast));
+            Assert.That(plan.Arcs[5].IsCoast, Is.True);
+            Assert.That(plan.Arcs[6].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[7].Phase, Is.EqualTo(FlightPhase.Parking));
+            Assert.That(plan.Arcs[7].EndJulianDate,
                 Is.EqualTo(plan.ArrivalJulianDate).Within(1e-12));
         }
 
@@ -189,16 +198,26 @@ namespace TimeToExplore.Tests.EditMode
         public void TheHandoverAtTheArrivalFloorIsFlownNotImpulsive()
         {
             TrajectoryPlan plan = PlanTo("mars");
-            PlanArc inbound = plan.Arcs[4];
+            PlanArc inbound = null;
+            int chainStart = plan.Arcs.Count;
+            for (int i = 0; i < plan.Arcs.Count; i++)
+            {
+                if (plan.Arcs[i].Phase == FlightPhase.Coast
+                    && plan.Arcs[i].ReferenceBodyId == "mars")
+                {
+                    inbound = plan.Arcs[i];
+                    chainStart = i;
+                    break;
+                }
+            }
 
-            Assert.That(inbound.Phase, Is.EqualTo(FlightPhase.Coast));
-            Assert.That(inbound.ReferenceBodyId, Is.EqualTo("mars"));
+            Assert.That(inbound, Is.Not.Null);
             Assert.That(inbound.EntryImpulseMps, Is.EqualTo(0.0));
 
             // The only impulses left are the capture chain's own trim and
             // circularisation, which are not at the handover point.
             double chainImpulses = 0.0;
-            for (int i = 4; i < plan.Arcs.Count; i++)
+            for (int i = chainStart; i < plan.Arcs.Count; i++)
                 chainImpulses += plan.Arcs[i].EntryImpulseMps;
 
             TestContext.WriteLine($"chain impulses {chainImpulses / 1000.0:F2} km/s, " +
@@ -262,6 +281,166 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// The arrival leg is planetocentric from the handover ceiling down. At the
+        /// epoch from Gateway to Uranus at 1 g and 400 days the heliocentric coast
+        /// now ends on the 52,795,223.9 km ceiling (1.02 × the sphere) and a
+        /// 7.544-day conic about Uranus falls to the brake's start, which is
+        /// 368,111.4 km out. The approach is a free fall — no burn, and its own
+        /// third-body correction is 0.007 km/s against the old coast's 0.221 — and
+        /// it never reaches the 38,643.0 km floor: its periapsis is 84,354.2 km, so
+        /// the brake still spans the last part of the descent. Both seams close
+        /// inside the 1 km / 1 m/s gate.
+        /// </summary>
+        [Test]
+        public void TheArrivalLegIsAPlanetocentricApproachFromTheCeiling()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = _planner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "gateway"), "uranus",
+                400.0 * JulianDate.SecondsPerDay);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            PrintPlan(plan);
+
+            BodyRuntime uranus = _model.Get("uranus");
+            HandoverBand band = HandoverBand.For(uranus, _planner.FixedBurnAccelerationMps2);
+            double ceiling = band.CeilingRadiusM;
+
+            PlanArc coast = null;
+            PlanArc approach = null;
+            PlanArc brake = null;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Cruise && arc.IsCoast) coast = arc;
+                if (arc.Phase == FlightPhase.Approach) approach = arc;
+                if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn) brake = arc;
+            }
+
+            Assert.That(coast, Is.Not.Null);
+            Assert.That(approach, Is.Not.Null, "the slow approach has its own arc");
+            Assert.That(brake, Is.Not.Null);
+
+            // The coast's final radius is the ceiling, not the deep well.
+            _model.ComputeState(uranus, coast.EndJulianDate,
+                out Vector3d uranusAtCoastEnd, out Vector3d uranusVelocityAtCoastEnd);
+            double coastEndRadius = Vector3d.Distance(
+                coast.Path.PositionAt(1.0), uranusAtCoastEnd);
+            TestContext.WriteLine($"coast end {coastEndRadius / 1000.0:F1} km from Uranus, " +
+                                  $"ceiling {ceiling / 1000.0:F1} km, " +
+                                  $"approach {approach.DurationSeconds / 3600.0:F3} h, " +
+                                  $"coast third-body {coast.DeltaVMps / 1000.0:F4} km/s");
+
+            Assert.That(coastEndRadius, Is.EqualTo(ceiling).Within(10.0),
+                "the coast ends on the handover ceiling");
+            Assert.That(coastEndRadius, Is.EqualTo(52_795_223_900.0).Within(1_000.0),
+                "measured: 1.02 × Uranus's 51,760,023 km sphere");
+            Assert.That(coast.DeltaVMps / 1000.0, Is.LessThan(0.01),
+                "the coast's own third-body correction is the ceiling's, not the well's");
+
+            // The approach starts on the ceiling and ends where the brake begins.
+            _model.ComputeState(uranus, approach.StartJulianDate,
+                out Vector3d uranusAtStart, out Vector3d uranusVelocityAtStart);
+            _model.ComputeState(uranus, approach.EndJulianDate,
+                out Vector3d uranusAtEnd, out Vector3d uranusVelocityAtEnd);
+            Vector3d startPosition = approach.Path.PositionAt(0.0) - uranusAtStart;
+            Vector3d startVelocity = approach.Path.VelocityAt(0.0) - uranusVelocityAtStart;
+            Vector3d endPosition = approach.Path.PositionAt(1.0) - uranusAtEnd;
+            Assert.That(startPosition.Magnitude, Is.EqualTo(ceiling).Within(1.0),
+                "the approach's start radius is the ceiling");
+            Assert.That(endPosition.Magnitude,
+                Is.EqualTo(368_111_400.0).Within(5_000.0),
+                "measured: the brake starts 368,111.4 km out");
+
+            Assert.That(approach.IsCoast, Is.True, "the approach is a free fall");
+            Assert.That(approach.DeltaVMps / 1000.0, Is.LessThan(0.01),
+                "a conic needs no burn");
+            Assert.That(approach.PeakThrustMps2, Is.LessThan(0.1),
+                "only the third-body correction is commanded");
+
+            // It clears the body: its periapsis is far above the handover floor.
+            ConicElements elements = ConicElements.FromState(startPosition, startVelocity,
+                uranus.Gm);
+            TestContext.WriteLine($"approach e {elements.Eccentricity:F3}, " +
+                                  $"periapsis {elements.PeriapsisRadiusM / 1000.0:F1} km, " +
+                                  $"v {startVelocity.Magnitude / 1000.0:F3} -> " +
+                                  $"{(approach.Path.VelocityAt(1.0) - uranusVelocityAtEnd).Magnitude / 1000.0:F3} km/s");
+            Assert.That(elements.PeriapsisRadiusM, Is.GreaterThan(band.ArrivalRadiusM),
+                "the free fall's periapsis is above the floor: the brake spans the rest");
+            Assert.That(elements.PeriapsisRadiusM,
+                Is.GreaterThan(uranus.RadiusM + HandoverBand.MinimumClearanceAltitudeM),
+                "and well above the body");
+
+            // The two new seams are inside the gate, and the brake hands the chain
+            // its entry state as before.
+            int index = -1;
+            for (int i = 0; i < plan.Arcs.Count; i++)
+                if (plan.Arcs[i] == approach) index = i;
+
+            Assert.That(index, Is.GreaterThan(0));
+            Assert.That(plan.Arcs[index - 1].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(plan.Arcs[index + 1].Phase, Is.EqualTo(FlightPhase.Capture));
+
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                double step = Vector3d.Distance(
+                    plan.Arcs[i].Path.PositionAt(1.0), plan.Arcs[i + 1].Path.PositionAt(0.0));
+                double velocityStep = (plan.Arcs[i].Path.VelocityAt(1.0)
+                                       + plan.Arcs[i + 1].EntryImpulseVectorMps
+                                       - plan.Arcs[i + 1].Path.VelocityAt(0.0)).Magnitude;
+                Assert.That(step, Is.LessThan(1_000.0),
+                    $"seam {i} ({plan.Arcs[i].Phase}->{plan.Arcs[i + 1].Phase})");
+                Assert.That(velocityStep, Is.LessThan(1.0),
+                    $"seam {i} ({plan.Arcs[i].Phase}->{plan.Arcs[i + 1].Phase})");
+            }
+
+            AssertChainCloses(plan);
+        }
+
+        /// <summary>
+        /// The fast trips have no planetocentric leg to fly. At the epoch from
+        /// Gateway to Mercury at 1 g and 8 days the brake starts 2,378,950 km out —
+        /// 20.7 ceilings — and spans the sphere itself, so the coast runs to the
+        /// brake's start and the plan keeps its original seven arcs. A conic about
+        /// Mercury at 20 spheres would be a worse model than the heliocentric coast
+        /// it replaced.
+        /// </summary>
+        [Test]
+        public void TheFastTripsHaveNoApproachBecauseTheBrakeSpansTheSphere()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = PlanTo("mercury", 8.0);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            PrintPlan(plan);
+
+            BodyRuntime mercury = _model.Get("mercury");
+            HandoverBand band = HandoverBand.For(mercury, _planner.FixedBurnAccelerationMps2);
+
+            int approaches = 0;
+            PlanArc coast = null;
+            PlanArc brake = null;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Approach) approaches++;
+                if (arc.Phase == FlightPhase.Cruise && arc.IsCoast) coast = arc;
+                if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn) brake = arc;
+            }
+
+            Assert.That(approaches, Is.EqualTo(0), "no planetocentric leg on a fast trip");
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+
+            _model.ComputeState(mercury, coast.EndJulianDate, out Vector3d mercuryAtEnd, out _);
+            double coastEndRadius = Vector3d.Distance(coast.Path.PositionAt(1.0), mercuryAtEnd);
+            TestContext.WriteLine($"coast end {coastEndRadius / 1000.0:F1} km, " +
+                                  $"ceiling {band.CeilingRadiusM / 1000.0:F1} km");
+            Assert.That(coastEndRadius, Is.GreaterThan(band.CeilingRadiusM),
+                "the coast ends outside the ceiling here");
+            Assert.That(coastEndRadius, Is.EqualTo(2_378_949_700.0).Within(10_000_000.0),
+                "measured: the brake starts 2,378,950 km out");
+            Assert.That(Vector3d.Distance(brake.Path.PositionAt(0.0),
+                coast.Path.PositionAt(1.0)), Is.LessThan(1_000.0),
+                "and the coast runs straight to the brake's start");
+        }
+
+        /// <summary>
         /// The coast has no brake to hand over, so it keeps its sphere-of-
         /// influence entry and its anchors: at the epoch from Gateway to Mars at
         /// 200 days the entry is the 577,241 km sphere and the fall is 1.3187
@@ -297,7 +476,10 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan plan = PlanTo("mars");
             TrajectoryPlan coast = CoastTo("mars");
 
-            PlanArc brake = plan.Arcs[3];
+            PlanArc brake = null;
+            foreach (PlanArc arc in plan.Arcs)
+                if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn) brake = arc;
+            Assert.That(brake, Is.Not.Null);
             PlanArc coastHandover = null;
             foreach (PlanArc arc in coast.Arcs)
             {
@@ -337,9 +519,9 @@ namespace TimeToExplore.Tests.EditMode
                 TestContext.WriteLine($"seam {i} {left.Phase}->{right.Phase}: " +
                                       $"{positionStep:E2} m, {velocityStep:E2} m/s");
                 Assert.That(positionStep, Is.LessThan(0.1), $"seam {i}");
-                // The brake's start is the handover floor, deeper than the
-                // sphere, so its fixed point's residual is measured here:
-                // 1.8e-5 m/s on this trip, still four orders inside the gate.
+                // The ceiling seam carries the approach's fixed point and the
+                // brake's carries its own: measured worst 3.7e-5 m/s on this
+                // trip, four orders inside the gate.
                 Assert.That(velocityStep, Is.LessThan(1e-4), $"seam {i}");
             }
         }
@@ -449,10 +631,13 @@ namespace TimeToExplore.Tests.EditMode
         /// The slow crossing now closes. With the capture entering at the handover
         /// floor, the 1.32-day fall is minutes and the coast absorbs it, so the
         /// 200-day Mars build that used to be refused for needing an acceleration
-        /// is a 12.46 km/s plan (the brake is 2.52 km/s). The slow end is still
-        /// bounded — at 305 days the prograde short-way coast has no solution
-        /// (179.4 deg) — and the acceleration branch remains in the solver; it did
-        /// not trigger at Mars between 200 and 300 days after this change.
+        /// is a cheap plan: 11.86 km/s (the brake is 2.70 km/s), 0.60 km/s less
+        /// than the deep-coast build, because the final 27.3 hours are a
+        /// planetocentric approach instead of a Sun-only conic commanding 0.90 km/s
+        /// of solar tide. The slow end is still bounded — at 305 days the prograde
+        /// short-way coast has no solution (179.4 deg) — and the acceleration
+        /// branch remains in the solver; it did not trigger at Mars between 200 and
+        /// 300 days after this change.
         /// </summary>
         [Test]
         public void ASlowCrossingClosesCheaplyAndTheSlowEndIsTheCoast()
@@ -462,11 +647,16 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
             Assert.That(plan.FlightTimeDays, Is.EqualTo(200.0).Within(1e-3));
-            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(12.46).Within(0.5),
-                "measured: the 200-day crossing is cheap now the fall is minutes");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(11.86).Within(0.5),
+                "measured: the planetocentric approach makes the 200-day crossing cheaper");
             Assert.That(plan.CaptureEntryRadiusM,
                 Is.EqualTo(6_032_700.0).Within(1_000.0),
                 "and it enters at the Mars 0.3 g floor");
+            bool hasApproach = false;
+            foreach (PlanArc arc in plan.Arcs)
+                if (arc.Phase == FlightPhase.Approach) hasApproach = true;
+            Assert.That(hasApproach, Is.True,
+                "the slow approach is long enough to have its own arc");
 
             TrajectoryPlan refused = PlanTo("mars", 305.0);
             TestContext.WriteLine("reason: " + refused.InfeasibleReason);
@@ -501,7 +691,7 @@ namespace TimeToExplore.Tests.EditMode
             PrintPlan(plan);
 
             Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(9));
             Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
 
@@ -516,9 +706,21 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(burns, Is.EqualTo(3),
                 "the departure burn, the brake, and the capture burn");
-            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Coast));
-            Assert.That(plan.Arcs[4].ReferenceBodyId, Is.EqualTo("mars"));
-            Assert.That(plan.Arcs[4].EntryImpulseMps, Is.EqualTo(0.0),
+
+            // The first target-centred coast is the inbound leg; the transfer
+            // ellipse later in the chain is also a Coast arc.
+            PlanArc inbound = null;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Coast && arc.ReferenceBodyId == "mars")
+                {
+                    inbound = arc;
+                    break;
+                }
+            }
+
+            Assert.That(inbound, Is.Not.Null);
+            Assert.That(inbound.EntryImpulseMps, Is.EqualTo(0.0),
                 "the brake hands the capture chain its entry state");
         }
 

@@ -39,6 +39,14 @@ speed for the fall and makes the coast longer. The win is a **hotter entry and a
 deeper brake** — arrive at the target with more speed, at a radius closer in, and
 let the brake and the capture spend it where the Oberth effect makes it cheap.
 
+Two changes came out of that. The **handover floor** puts the chain's entry where
+the drive still dominates the field, so the fall is minutes rather than months
+([the handover band](#the-handover-band)); and the **planetocentric approach**
+takes the deep part of the final approach away from a Sun-only conic
+([the arrival leg](#the-arrival-leg-a-planetocentric-approach)). The entry
+*speed* is still a planted input ([entry speed is an
+output](#entry-speed-is-an-output)).
+
 # Full-field burns
 
 A fixed burn **was** planned in the two-body field of one body.
@@ -198,6 +206,109 @@ An **interior** solved radius is still open. If the steering measurement shows
 that the rule costs real delta-v or time, the radius becomes a variable inside
 the band. Nothing here solves for one.
 
+# The arrival leg: a planetocentric approach
+
+The brake ends at the floor, and the brake's start is whatever the coast's end
+used to be. On a long trip that end sat **deep inside the target's sphere** —
+0.0071 spheres at Uranus 1 g and 400 days — where a Sun-only conic is a poor
+model. The fix is a **planetocentric approach leg**: the arrival sequence is
+
+```text
+break → departure burn → heliocentric coast → approach conic → brake → capture chain
+quintic   fixed burn        Sun conic          target conic    fixed burn  conic chain
+```
+
+1. **The heliocentric coast ends on the target's ceiling**, `1.02 × SOI`. At
+   Uranus's ceiling — `5.28 × 10¹⁰ m` — the target's gravity is
+   `2.08 × 10⁻⁶ m/s²`, about **three and a half times** the Sun's tide across
+   the sphere (`5.9 × 10⁻⁷ m/s²`, `2 GM_sun r / a³` with
+   `a = 2.87 × 10¹² m`). That is the conventional sphere boundary and no more:
+   the body has only just become the larger term, so a Sun-only conic is fair
+   *outside* the ceiling and the planetocentric leg takes over *inside* it. It
+   is not a region where the target overwhelmingly dominates.
+2. **The approach is a `ConicArc` about the target**, from the ceiling to the
+   brake's start. Its entry state at the ceiling *is* the coast's arrival state
+   relative to the target, so the seam is a state, not a model change.
+3. **The brake is unchanged**: a full-field fixed burn whose start is the
+   approach's end and whose end is the chain's entry state at the floor.
+4. **The capture chain is unchanged**, entering at `max(band floor, conic
+   parking radius)` at the per-plan `EntrySpeedMps`.
+
+The approach is built **backwards from the brake's start**, because that is the
+state a forward brake must leave from. Propagating the brake's start state
+backwards along its target-centred two-body conic to the ceiling gives the
+approach's start state and its duration; the coast's Lambert target becomes that
+ceiling state, and the fixed point drives the coast's arrival velocity onto it.
+The approach's duration is therefore whatever the free fall takes — short at a
+fast arrival, long at a slow one — and it is not a solved or chosen quantity.
+
+**The approach does not reach the floor, and that is the honest answer.** A
+ballistic conic from the ceiling does not reach the band floor on any of the
+measured plans: the conic through the brake's own start has a periapsis of
+**84,354 km** at Uranus 1 g, **200,201 km** at 0.3 g and **10,059 km** at Mars
+90 days, against floors of 38,643, 70,168 and 6,033 km (and 61,330 km against
+2,806 km on the Mercury 8-day plan, whose brake starts outside the ceiling, so
+it has no leg). The arrival carries too much angular momentum to fall that far
+ballistically, so the brake still spans the last part of the descent — from
+368,111 km to 38,643 km at Uranus 1 g. What the approach does is remove the
+*heliocentric* model from the deep part of the final approach, not reach the
+floor without a burn.
+
+**The fast trips have no approach leg.** Where the brake's start is already
+outside the ceiling there is no planetocentric region for a conic to describe:
+at Mercury 8 days the brake starts 2,378,950 km out, 20.7 ceilings, and spans
+the sphere itself. Those plans keep their original seven arcs and their numbers
+are unchanged. A conic about Mercury at twenty spheres would be a worse model
+than the heliocentric coast it replaced.
+
+## What the approach measured
+
+At the epoch (2026-11-15), from Gateway, conic capture. Old is the deep
+heliocentric coast; new is the approach leg. The coast's end radius is measured
+from the target's centre.
+
+| Target, level, trip | Coast end radius old → new | Coast duration old → new | Approach | Brake start | Brake Δv | Total old → new |
+|---|---|---|---:|---|---:|---:|---:|
+| Uranus, 1 g, 400 d | 366,505 km (0.0071 SOI) → **52,795,224 km** (1.0000 ceiling) | 9,415.60 h → 9,234.54 h | — → **7.544 d**, 80.444 → 80.638 km/s | 366,505 → 368,111 km | 81.203 → 81.391 km/s | 182.339 → **182.312 km/s** |
+| Uranus, 0.3 g, 400 d | 1,159,005 km (0.0224 SOI) → 52,795,224 km | 9,403.68 h → 9,225.45 h | — → **7.426 d**, 80.498 → 80.559 | 1,159,005 → 1,160,664 km | 79.749 → 79.809 | 180.842 → 180.834 |
+| Mars, 0.3 g, 90 d | 92,790 km (0.161 SOI) → 588,786 km (1.0000) | 2,039.53 h → 2,033.50 h | — → **6.032 h**, 22.853 → 22.870 | 92,790 → 92,923 km | 18.506 → 18.522 | 44.356 → 44.354 |
+| Mercury, 1 g, 8 d | 2,378,950 km (20.75 ceilings) | 164.19 h | none | 2,378,950 km | 213.302 | 557.038 (unchanged) |
+
+The capture Δv is unchanged at 6.369 km/s (Uranus), 3.458 (Mars) and 3.498
+(Mercury): it is set by the entry speed and the periapsis radius, and the
+approach changes neither.
+
+**The approach leg is not more expensive; it is marginally cheaper.** A fixed
+burn's spend is `a·T`, so the brake's delta-v is the same to a few tenths of a
+percent, and the 7.5 days the approach covers are days the coast no longer
+flies. The small saving is the solar tide the old coast was commanding to hold
+its heliocentric conic deep in the well: **0.2214 → 0.0069 km/s** of reported
+third-body delta-v on the Uranus 1 g coast, 0.0727 → 0.0054 at 0.3 g, and
+0.0528 → 0.0340 at Mars 90 days. At the slow end the saving is real and larger:
+a 200-day Mars crossing was 12.458 km/s with a 0.901 km/s coast correction and is
+**11.855 km/s** with a 27.3-hour approach and a 0.121 km/s coast. The cost of the
+change is one more arc, one more seam, and the approach's own small third-body
+correction (under 0.01 km/s).
+
+**The seams close.** Coast → approach is **4.38 m and 1 × 10⁻⁶ m/s** at Uranus
+1 g (0.53 m at 0.3 g, 2 × 10⁻⁶ m/s at Mars), and approach → brake is
+**0.003 m** and 0.000 m/s — the approach is built from the brake's own start
+state, so that seam is structural. The larger 4.38 m is the difference between
+the coast's element-based propagation and the universal-variable propagator the
+Lambert correction uses; it is two hundred times inside the 1 km gate and the
+velocity seam is exact.
+
+**The floors barely moved.** Only Uranus at 1 g has its brake start inside the
+ceiling at its floor, where the leg is 23 minutes long; the other three floors
+are unchanged because their brakes span the sphere. Measured at the epoch:
+
+| Floor | Old | New | Window |
+|---|---:|---:|---|
+| Uranus, 1 g | 34.00 d | **33.90 d** | 33.90–101.70 d |
+| Uranus, 0.3 g | 41.57 d | 41.57 d | 41.57–124.71 d |
+| Mercury, 1 g | 3.22 d | 3.22 d | 3.22–9.65 d |
+| Mars, 0.3 g | 6.74 d | 6.74 d | 6.74–20.21 d |
+
 ## The chain's entry radius
 
 The capture chain takes a **handover radius**, not a sphere of influence. Which
@@ -317,15 +428,16 @@ is a consequence of the pinned endpoint, not the rule.
 
 # The shaped ends stay
 
-The break and the conic/hybrid capture keep their jobs. Only the handover radius
-and the field the burn is integrated in change.
+The break and the conic/hybrid capture keep their jobs. Only the handover radius,
+the field the burn is integrated in, and the arrival leg change.
 
 The break is still the quintic that leaves the parking orbit and ends on the
 handover at the local escape speed along the escape ray; the capture is still the
 conic or hybrid chain the profile already uses. The break's duration solve, the
 pinned fixed point, the escape-ray attitude, the brake's direction, the trim, the
-transfer ellipse, and the circularisation are unchanged. No new arc type is
-introduced, and `0 g` still selects `CruiseStyle.Coast` exactly.
+transfer ellipse, and the circularisation are unchanged. No new arc *type* is
+introduced — the approach is a `ConicArc` like the coast — and `0 g` still selects
+`CruiseStyle.Coast` exactly.
 
 # What the floor entry measured
 
@@ -362,36 +474,56 @@ So the entry speed is not free: the fall falls as the speed rises, but the
 periapsis burn grows faster than the brake shrinks. That is why the brake-produced
 residual is the next decision rather than a number to plant.
 
-## The binding question: where the coast ends
+These numbers are the **floor entry's own measurement** (step 4). The approach
+leg moved the brake's start a few hundred kilometres outward at Uranus and left
+the entry radius, the fall and the capture's delta-v unchanged; the floors are now
+33.90 / 41.57 / 3.22 / 6.74 days (Uranus 1 g moved down by 0.1 day, the rest are
+unchanged), and the totals are 182.312 / 180.834 / 557.038 / 44.354 km/s. See
+[what the approach measured](#what-the-approach-measured).
+
+## The binding question: where the coast ends — resolved
 
 The brake ends at the floor, and the brake's start is the coast's end. A fixed
 burn at `a` covers `Δv / a` seconds, so the distance it spans depends on the trip:
 the **long** trips hand the coast a final leg inside the target's sphere, and the
 **fast** ones make the brake span the sphere itself.
 
-* **Long trips.** At Uranus 1 g and 400 days the brake is 139.5 min of 81.2 km/s
-  and starts **366,505 km** from Uranus — **0.0071 × the sphere of influence**,
-  where Uranus's gravity is 0.043 m/s². The coast has ended deep inside the
-  target's well. The seams close (the worst is under 0.1 m and 2 × 10⁻⁵ m/s) and
-  the reported plan is continuous, but the last part of that coast is a
-  heliocentric conic in a region where the target dominates. That is a **model
-  gap**, not a seam: the measurement reports it, and the next decision owns it.
-  At 0.3 g the same plan's brake is 7.5 h and starts 1,159,005 km out — 0.0224
-  spheres, 0.0043 m/s². Mars at 90 d is 0.16 spheres (92,790 km).
-* **Fast trips.** At Uranus's 1 g floor (34.00 d) the brake is 28.5 h of 995 km/s
-  and starts **51.07 million km** out — 0.987 spheres — so the brake itself
-  spans the sphere-to-floor gap. Mercury's floor (3.22 d) puts the brake's start
-  at 31.05 million km, **276 spheres** out; Mars's floor (6.74 d) at 48.30
-  million km, **83.7 spheres** out. At the fast end the coast ends well outside
-  the target and the brake is the long crossing.
+This was the plan's open problem: at Uranus 1 g and 400 days the brake was
+139.5 min of 81.2 km/s and started **366,505 km** from Uranus — **0.0071 × the
+sphere**, where Uranus's gravity is 0.043 m/s² — so the last part of the coast was
+a heliocentric conic in a region where the target dominates. It is **resolved by
+[the planetocentric approach leg](#the-arrival-leg-a-planetocentric-approach)**:
+the coast now ends on the ceiling, a conic about the target covers the deep part,
+and the brake starts where that conic ends. The measured comparison is in
+[what the approach measured](#what-the-approach-measured): the leg is 7.54 days at
+Uranus 1 g and 400 days, costs 27 m/s *less* in total delta-v than the deep
+coast, and removes the 0.221 km/s of solar-tide correction the deep coast was
+commanding.
 
-The brake is never *wrong* about the field: every fixed burn integrates the
-summed field, so the 28.5-hour Uranus brake feels Uranus. What the measurement
-shows is the other side: a Sun-only coast cannot describe the final approach when
-it ends deep in the well, so a deep floor entry trades the chain's 104-day
-planetocentric fall for a heliocentric coast over the same region. The seams
-close either way; the models differ. The choice between a planetocentric approach
-leg, an entry-speed rule, or a full-field coast is the next decision.
+What remains true is the geometry that ruled out the simpler reading — the
+approach ending *at the floor* with no brake across it. A ballistic conic from the
+ceiling does not reach the floor on any measured plan: its periapsis is above the
+floor at Uranus (84,354 km against 38,643 at 1 g; 200,201 against 70,168 at 0.3 g),
+Mars (10,059 against 6,033) and Mercury (61,330 against 2,806). The brake
+therefore still spans the last part of the descent, and it is the brake, not the
+approach, that ends on the floor.
+
+* **Fast trips.** At Uranus's 1 g floor (33.90 d) the brake is 28.6 h of 998.5
+  km/s and starts **51.07 million km** out — 0.987 spheres — so the brake itself
+  spans the sphere-to-floor gap and the approach is 23 minutes long. Mercury's
+  floor (3.22 d) puts the brake's start at 31.05 million km, **276 spheres** out;
+  Mars's floor (6.74 d) at 48.30 million km, **83.7 spheres** out. At the fast end
+  the coast ends outside the ceiling and the brake is the long crossing.
+* **Long trips.** The approach absorbs the deep part: 7.54 days at Uranus 1 g and
+  400 days, 6.03 hours at Mars 90 days, 27.3 hours at Mars 200 days — and, as
+  designed, it is long exactly when the arrival is slow.
+
+The brake is never *wrong* about the field: every fixed burn integrates the summed
+field, so even the 28.6-hour Uranus brake feels Uranus. The approach leg fixes the
+other side of the model: the coast is now a Sun-only conic only where the Sun
+dominates, and the target's own conic describes the well. The remaining choice in
+this area is the entry speed, which is a [separate
+question](#entry-speed-is-an-output).
 
 # Entry speed is an output
 
@@ -401,6 +533,14 @@ ones where the current entry works. `FlightSession` already copies it per plan
 (the retime's request carries it), so a per-plan value is possible without moving
 the default; this step kept the default and the per-plan input exactly as they
 were.
+
+**The approach leg does not change that.** The planetocentric fall ends where the
+brake begins, and the brake still hands the capture chain its entry state at the
+per-plan `EntrySpeedMps` — 5 km/s by default. The residual is still *planted*, not
+produced: the approach is built from the brake's start and the coast, so no part
+of the solve measures the speed at which the ship would actually leave the brake.
+The measured tables above are what the residual decision needs; the approach leg
+removes the model gap, not the planted input.
 
 The capture chain now gains its **entry radius** — the handover radius — and the
 next decision is the **residual entry speed** at that radius. Making it an
@@ -445,7 +585,10 @@ the measurement now says keeping it is not a compromise.
 
 Four burn–coast–burn plans were built at the epoch (2026-11-15) from Gateway with
 the conic capture: Uranus at 400 days and 1 g and at 0.3 g, Mars at 90 days and
-0.3 g, and Mercury at 8 days and 1 g. For each finite-burn arc — the departure
+0.3 g, and Mercury at 8 days and 1 g. The measurement was **re-run after the
+approach leg landed** (2026-11-20) on the same four plans: the brake now starts
+where the planetocentric approach ends, so the brake rows below are the new
+ones, and the decision is unchanged. For each finite-burn arc — the departure
 burn and the brake — the held thrust direction was recovered from the arc itself
 as `AccelerationAt(mid)` minus `GravityField.AccelerationAt` at the same state
 and date, so the measurement reads the attitude the planner actually built rather
@@ -510,9 +653,9 @@ the tracking direction rotates through 30–78° over the burn.
 
 | Case | Burn | Δv | Radius from target | Rotation | Held vs retrograde | Mean cos | Cosine loss |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Uranus, 1 g, 400 d | 2.325 h | 81.20 km/s | 366,505 → 38,643 km | 78.27° | 9.65° → 87.58° | 0.831505 | 16.85% = 13.68 km/s |
-| Uranus, 0.3 g, 400 d | 7.530 h | 79.75 km/s | 1,159,005 → 70,167 km | 75.32° | 7.18° → 82.40° | 0.884338 | 11.57% = 9.22 km/s |
-| Mars, 0.3 g, 90 d | 1.747 h | 18.51 km/s | 92,790 → 6,033 km | 30.35° | 9.40° → 39.72° | 0.939318 | 6.07% = 1.12 km/s |
+| Uranus, 1 g, 400 d | 2.331 h | 81.39 km/s | 368,111 → 38,643 km | 78.25° | 9.62° → 87.54° | 0.831974 | 16.80% = 13.68 km/s |
+| Uranus, 0.3 g, 400 d | 7.535 h | 79.81 km/s | 1,160,664 → 70,167 km | 75.32° | 7.17° → 82.39° | 0.884438 | 11.56% = 9.22 km/s |
+| Mars, 0.3 g, 90 d | 1.749 h | 18.52 km/s | 92,923 → 6,033 km | 30.35° | 9.39° → 39.71° | 0.939394 | 6.06% = 1.12 km/s |
 | Mercury, 1 g, 8 d | 6.108 h | 213.30 km/s | 2,378,950 → 2,806 km | 68.13° | 1.50° → 69.64° | 0.979441 | 2.06% = 4.39 km/s |
 
 The seam each law leaves, against the plan's burn end state, in km/s:
@@ -520,29 +663,29 @@ The seam each law leaves, against the plan's burn end state, in km/s:
 | Law | Uranus 1 g | Uranus 0.3 g | Mars 0.3 g | Mercury 1 g |
 |---|---:|---:|---:|---:|
 | fixed (the plan) | 0.000 | 0.000 | 0.000 | 0.000 |
-| local retrograde | 17.598 | 13.272 | 3.060 | 6.012 |
-| pursuit | 6.149 | 11.012 | 0.143 | 0.006 |
-| 1 fixed segment | 15.325 | 12.176 | 2.979 | 6.018 |
-| 2 fixed segments | 22.164 | 17.063 | 3.978 | 8.731 |
-| 4 fixed segments | 29.197 | 22.282 | 4.759 | 11.851 |
-| 8 fixed segments | 34.044 | 26.447 | 5.249 | 15.099 |
-| 128 fixed segments | 39.031 | 31.115 | 5.766 | 22.768 |
+| local retrograde | 17.597 | 13.272 | 3.060 | 6.012 |
+| pursuit | 6.157 | 11.019 | 0.143 | 0.009 |
+| 1 fixed segment | 15.329 | 12.177 | 2.979 | 6.018 |
+| 2 fixed segments | 22.166 | 17.063 | 3.978 | 8.731 |
+| 4 fixed segments | 29.204 | 22.284 | 4.759 | 11.851 |
+| 8 fixed segments | 34.058 | 26.450 | 5.249 | 15.100 |
+| 128 fixed segments | 39.054 | 31.120 | 5.767 | 22.768 |
 
 and the same table in kilometres:
 
 | Law | Uranus 1 g | Uranus 0.3 g | Mars 0.3 g | Mercury 1 g |
 |---|---:|---:|---:|---:|
-| fixed (the plan) | 0.000 | 0.000 | 0.000 | 0.000 |
-| local retrograde | 60,999 | 143,781 | 9,531 | 61,508 |
-| pursuit | 25,268 | 61,064 | 1,104 | 3,890 |
-| 1 fixed segment | 58,628 | 140,363 | 9,473 | 61,661 |
-| 2 fixed segments | 72,965 | 173,387 | 11,056 | 76,737 |
-| 4 fixed segments | 85,091 | 202,210 | 12,272 | 90,419 |
-| 8 fixed segments | 93,301 | 222,458 | 13,070 | 101,033 |
-| 128 fixed segments | 103,352 | 247,833 | 13,997 | 116,695 |
+| fixed (the plan) | 0.150 | 0.140 | 0.250 | 0.060 |
+| local retrograde | 61,131 | 143,882 | 9,539 | 61,508 |
+| pursuit | 25,332 | 61,122 | 1,105 | 3,890 |
+| 1 fixed segment | 58,763 | 140,466 | 9,481 | 61,661 |
+| 2 fixed segments | 73,128 | 173,513 | 11,065 | 76,739 |
+| 4 fixed segments | 85,292 | 202,364 | 12,283 | 90,420 |
+| 8 fixed segments | 93,523 | 222,628 | 13,082 | 101,034 |
+| 128 fixed segments | 103,601 | 248,024 | 14,010 | 116,695 |
 
-**The cosine loss is not spendable.** At Uranus 1 g the held direction is 16.85%
-off the local retrograde on average, which is 13.68 km/s of the 81.20 km/s the
+**The cosine loss is not spendable.** At Uranus 1 g the held direction is 16.80%
+off the local retrograde on average, which is 13.68 km/s of the 81.39 km/s the
 brake spends. That sounds like a penalty and is not: the brake's job is to remove
 the velocity the coast arrives with **and** to turn it into the velocity the
 capture chain needs, and the perpendicular component is the turn. A burn aligned
@@ -555,16 +698,16 @@ velocity cannot recover it.
 segment holds the velocity direction at the burn's start and leaves 15.3 km/s at
 Uranus 1 g; two leave 22.2, four 29.2, eight 34.0 and 128 leave 39.0, and the
 growth is monotone at every case, in velocity and in position. The angle column
-shows why: the tracking direction turns 78.27° over the burn, so a schedule
+shows why: the tracking direction turns 78.25° over the burn, so a schedule
 sampled from the plan's own path walks the thrust off the chord a step at a
 time, and the more of that schedule it replays the further off it walks. The
 closed-loop **local** law is better than a heavy schedule (17.6 km/s) only
 because it follows its own velocity instead of the plan's, and it is still worse
 than holding one direction. The **pursuit** law is the best of the local
 family, because it aims at the chord instead of at the instantaneous velocity,
-which is why it is nearly exact at Mercury (6 m/s, where the brake starts 1.50°
+which is why it is nearly exact at Mercury (9 m/s, where the brake starts 1.50°
 off retrograde and the field contributes little over the burn). It is still not
-exact where the field does real work: 6.1 km/s at Uranus 1 g and 11.0 at 0.3 g,
+exact where the field does real work: 6.2 km/s at Uranus 1 g and 11.0 at 0.3 g,
 where it aims at the velocity the burn has left to find and ignores that the
 field is also delivering part of it. The planner's fixed point already accounts
 for that.
@@ -575,9 +718,11 @@ Both burns keep the fixed direction, at every level and target measured.
 
 * **It is exact at the seam by construction.** The direction is solved, not
   chosen: the brake's is the change the chain needs and the departure burn's is
-  the escape ray. Its penalty against any other law is therefore zero, and every
+  the escape ray. Its penalty against any other law is therefore zero — the
+  fixed law reproduces the plan's burn end state to 0.15 m and 0.00 m/s, which
+  is the reverse-flow integration's own round-off — and every
   alternative has a positive one — 17.6 / 13.3 / 3.1 / 6.0 km/s for the local
-  retrograde and 6.1 / 11.0 / 0.14 / 0.006 for pursuit.
+  retrograde and 6.2 / 11.0 / 0.14 / 0.009 for pursuit.
 * **A segmenting solve is a shooting solve with no measured prize.** It would
   re-aim every segment, pay the brake's twelve pin passes for it, and reach a
   seam that is already zero. One segment is 15.3 km/s at Uranus 1 g and more
@@ -619,25 +764,36 @@ velocity.
 * The global `EntrySpeedMps` is still the profile's entry condition, now per plan
   through `FlightSession`; making the brake produce the residual entry speed is
   the next decision.
-* The coast, the quintic, and the `0 g` identity are unchanged. The coast profile
-  keeps its sphere-of-influence entry and its anchors.
+* The arrival leg is **planetocentric from the target's handover ceiling down**.
+  The heliocentric coast ends on `1.02 × SOI`, a `ConicArc` about the target
+  covers the deep part of the final approach, and the brake starts where that
+  conic ends. The coast profile keeps its sphere-of-influence entry and its
+  anchors; the fast trips, whose brake starts outside the ceiling, keep their
+  original shape.
+* The coast, the quintic, and the `0 g` identity are unchanged.
 
 # Open questions
 
 * **The entry speed.** The entry *radius* is implemented. Whether the brake
   produces the residual entry speed, and from what rule, waits on the measured
   trade above: a hotter entry shortens the fall but grows the periapsis burn.
-* **The approach model.** A deep floor entry leaves the coast ending inside the
-  target's sphere — 0.007 spheres at Uranus 1 g and 400 days — where a
-  heliocentric conic is a poor model. A planetocentric approach leg, a hotter
-  entry, or a full-field coast are the candidates; the measurement is in
-  [the binding question](#the-binding-question-where-the-coast-ends).
+  The approach leg does not produce it either.
+* **The approach model.** *Settled 2026-11-20:* the arrival leg is a
+  planetocentric `ConicArc` from the ceiling to the brake's start, built backwards
+  from the brake's own start state. Measured at the epoch it is 7.54 days and
+  27 m/s cheaper at Uranus 1 g and 400 days, 2 m/s cheaper at Mars 90 days, and
+  0.60 km/s cheaper at Mars 200 days, and the floors barely move. The one thing it
+  cannot do is reach the band floor without a burn: the ballistic periapsis is
+  above the floor on every measured plan, so the brake still spans the last part
+  of the descent. The measurement and the numbers are in
+  [the arrival leg](#the-arrival-leg-a-planetocentric-approach).
 * **The steering law.** *Settled 2026-11-20:* both fixed burns hold the **fixed
-  inertial direction**. Measured at the epoch at 0.3 g and 1 g, the direction is
-  exact at the seam, the local retrograde leaves 3.1–17.6 km/s and pursuit leaves
-  up to 11.0, and 2, 4 and 8 segments are monotonically worse. The departure
-  burn's escape ray is the departure frame's prograde by construction. The
-  measurement is in [steering starts simple](#steering-starts-simple).
+  inertial direction**, re-measured with the approach leg's brake. Measured at
+  the epoch at 0.3 g and 1 g, the direction is exact at the seam, the local
+  retrograde leaves 3.1–17.6 km/s and pursuit leaves up to 11.0, and 2, 4 and 8
+  segments are monotonically worse. The departure burn's escape ray is the
+  departure frame's prograde by construction. The measurement is in
+  [steering starts simple](#steering-starts-simple).
 * **Band versus solved radius.** *Settled for this plan:* the departure endpoint
   is the ceiling and the arrival endpoint is the floor (or the parking radius
   where the floor is deeper), with the floor clamped to the body clearance.

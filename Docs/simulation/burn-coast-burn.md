@@ -50,18 +50,28 @@ trip time; Lambert returns the coast that fits it; the burns supply the speed.
 Thirty days to Mars is a fast coast. Two hundred and fifty-nine days is a slow,
 cheap one. Same solver, different input.
 
-# The five-arc profile
+# The six-arc profile
 
 ```text
-leave orbit      burn hard        coast           brake          enter orbit
-[ quintic ]  →  [ fixed burn ] → [ conic ]  →  [ fixed burn ] → [ capture ]
-    gold             red             blue            red          blue/gold
+leave orbit      burn hard        coast         approach        brake         enter orbit
+[ quintic ]  →  [ fixed burn ] → [ conic ]  →  [ conic ]   →  [ fixed burn ] →  [ capture ]
+    gold             red            blue          blue             red          blue/gold
 ```
 
 Every arc type already existed. The planner now emits this recipe as
 `TripPlanner.CruiseStyle.BurnCoastBurn`, and the nav computer's `PROFILE` row
 selects it. `CruiseStyle.Coast` is the same coast without the two burns, and it
 is reachable on its own.
+
+The **approach** is the planetocentric leg of the final approach: a `ConicArc`
+about the target from the handover band's ceiling (`1.02 × SOI`) down to where the
+brake begins. It exists because the brake's start is the coast's end, and on a
+long trip that end sits deep inside the target's sphere where a Sun-only conic is
+a poor model. Its entry state at the ceiling is the coast's arrival state, so the
+seam is a state and not a model change; its duration is the free fall's own, so it
+is hours at a fast arrival and days at a slow one. A fast trip, whose brake starts
+outside the ceiling, has no approach leg and keeps the five-arc shape
+([the arrival leg](/simulation/powered-leg-floor.md#the-arrival-leg-a-planetocentric-approach)).
 
 The capture is deliberately the conic or hybrid capture, not a quintic: a
 quintic capture cannot command less thrust than the parking orbit's own gravity,
@@ -115,19 +125,22 @@ profile.
    arrival handover floor instead; the split is deliberate and is in
    [the chain's entry radius](/simulation/powered-leg-floor.md#the-chains-entry-radius).
 3. **The burns.** `TripPlanner.CruiseStyle.BurnCoastBurn` is a quintic break →
-   departure burn → Lambert coast → brake → conic or hybrid capture. The break
-   ends on the departure clearance sphere (`1.02 × SOI`) at the local escape
-   speed along the escape ray, and the departure burn starts there. The burn
-   holds that ray — its prograde direction in the departure body's frame — and
-   its duration and the coast's start are solved together: the burn is
-   integrated forward through the summed gravity field, the Lambert coast from
-   its end to the brake's start, and the two ray angles and the duration are
-   driven until the burn's end velocity is the coast's departure velocity. The
-   brake spends the handover the coast skeleton would have made an impulse.
-   Every seam is continuous and the arrival is exact. The break's duration is
-   solved as well: it keeps the reference coast's departure share while that is
-   gentle enough for the drive, and lengthens it to the drive's limit when the
-   share is too short.
+   departure burn → Lambert coast → planetocentric approach → brake → conic or
+   hybrid capture. The break ends on the departure clearance sphere
+   (`1.02 × SOI`) at the local escape speed along the escape ray, and the
+   departure burn starts there. The burn holds that ray — its prograde direction
+   in the departure body's frame — and its duration and the coast's start are
+   solved together: the burn is integrated forward through the summed gravity
+   field, the Lambert coast from its end to the arrival handover, and the two ray
+   angles and the duration are driven until the burn's end velocity is the
+   coast's departure velocity. The coast ends on the target's handover ceiling
+   and the approach — a `ConicArc` about the target, built backwards from the
+   brake's own start state — covers the deep part of the final approach; the
+   brake then starts where the approach ends and spends the rest of the handover
+   the coast skeleton would have made an impulse. Every seam is continuous and
+   the arrival is exact. The break's duration is solved as well: it keeps the
+   reference coast's departure share while that is gentle enough for the drive,
+   and lengthens it to the drive's limit when the share is too short.
 4. **The control.** The nav computer's `PROFILE` row selects Powered, Coast, or
    Burn-coast-burn; the trip-time slider is the profile's speed control and its
    window is that profile's own feasible range; the existing burn-level slider
@@ -136,9 +149,12 @@ profile.
 The measured window at the epoch is **6.74 to 20.21 days** for the
 Gateway→Mars burn–coast–burn profile at 0.3 g, against the powered plan's
 4.4 days and the cheap coast's 200+. At 1 g the fast end is **3.22 days** to
-Mercury (window 3.22–9.65 days). The window moved when the capture started
-entering at the handover floor: the old fast ends were 8.03 and 3.46 days, set
-by the capture's 1.32-day and 6.1-hour falls. The right-hand end is the
+Mercury (window 3.22–9.65 days), and Uranus's window is **33.90–101.70 days**.
+The window moved when the capture started entering at the handover floor: the
+old fast ends were 8.03 and 3.46 days, set by the capture's 1.32-day and
+6.1-hour falls. The planetocentric approach leg left every window alone except
+Uranus at 1 g, where the brake starts inside the ceiling at the floor, so the
+floor moved from 34.00 to 33.90 days. The right-hand end is the
 three-times cap, and both ends build. The 90-day Mars
 plan in the table below is still a valid direct build, but it is outside this
 window, so the nav computer's slider cannot ask for it. `Powered` is still the
@@ -181,46 +197,52 @@ coast's departure speed still set its delta-v, so the level still scales its
 duration as `1/level`.
 
 Measured at the epoch (2026-11-15) from Gateway at 1 g (9.70 m/s²), conic
-capture, after the capture started entering at the **arrival handover floor**.
-The old totals in the last column are what the same build cost with the chain
-entering on the target's sphere of influence:
+capture, after the arrival leg became planetocentric. The old totals in the last
+column are what the same build cost with the chain entering on the target's
+sphere of influence:
 
-| Target | Days | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Burn (d) | Burn Δv (km/s) | Coast (d) | Brake (min) | Brake Δv (km/s) | Inbound fall | Total Δv (km/s) | Old total | Feasible |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Mercury | 8 | 0.569 | 2.85 | 90.2 | 0.298 | 250.0 | 6.841 | 366.5 | 213.3 | 3.3 min | 557.0 | 569.9 | yes |
-| Mercury | 6 | 0.438 | 4.84 | 118.1 | 0.394 | 329.8 | 4.787 | 497.6 | 289.6 | 3.3 min | 741.1 | 770.1 | yes |
-| Mercury | 12.3 | 0.837 | 1.30 | 60.5 | 0.203 | 170.5 | 11.053 | 244.5 | 142.3 | 3.3 min | 376.9 | 379.9 | yes |
-| Mars | 90 | 4.844 | 0.033 | 8.8 | 0.053 | 13.4 | 84.980 | 104.8 | 18.5 | 13.6 min | 44.4 | 45.4 | yes |
+| Target | Days | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Burn (d) | Burn Δv (km/s) | Coast (d) | Approach | Brake (min) | Brake Δv (km/s) | Inbound fall | Total Δv (km/s) | Old total | Feasible |
+|---|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---|
+| Mercury | 8 | 0.569 | 2.85 | 90.2 | 0.298 | 250.0 | 6.841 | — | 366.5 | 213.3 | 3.3 min | 557.0 | 569.9 | yes |
+| Mercury | 6 | 0.438 | 4.84 | 118.1 | 0.394 | 329.8 | 4.787 | — | 497.6 | 289.6 | 3.3 min | 741.1 | 770.1 | yes |
+| Mercury | 12.3 | 0.837 | 1.30 | 60.5 | 0.203 | 170.5 | 11.053 | — | 244.5 | 142.3 | 3.3 min | 376.9 | 379.9 | yes |
+| Mars | 90 | 4.844 | 0.033 | 8.8 | 0.053 | 13.4 | 84.729 | 6.03 h | 104.9 | 18.5 | 13.6 min | 44.4 | 45.4 | yes |
 
-The Mars row is at 0.3 g; its two burns are 76.0 and 104.8 minutes at that level.
+The Mars row is at 0.3 g; its two burns are 76.0 and 104.9 minutes at that level.
 The 90-day build is a direct `PlanAtDuration` outside the nav computer's window.
 The fall column is the capture chain's inbound coast, which used to be 6.09 hours
 at Mercury and 1.32 days at Mars: the brake now ends at the handover floor
 (2,805.7 km at Mercury, 6,032.7 km at Mars) instead of the sphere (112,410 km and
-577,241 km), and the chain's entry speed is unchanged at the planted 5 km/s.
+577,241 km), and the chain's entry speed is unchanged at the planted 5 km/s. The
+approach column is the planetocentric leg: it is absent on the fast Mercury
+trips, whose brakes start outside the ceiling, and 6.03 hours from the 588,786 km
+ceiling to 92,923 km on the 90-day Mars build.
 
 Measured at the epoch from Gateway at 1 g and 400 days to **Uranus**, which is
-the case that motivated the change:
+the case that motivated the change. The middle column is the sphere-of-influence
+entry the profile used before the floor; the right column is the floor entry with
+the planetocentric approach:
 
-| Quantity | Sphere-of-influence entry (before) | Handover-floor entry |
+| Quantity | Sphere-of-influence entry (before) | Floor entry, planetocentric approach |
 |---|---:|---:|
 | Capture entry radius | 51,760,023 km | **38,643 km** |
 | Inbound fall | 117.13 days | **31 min** |
 | Capture Δv (periapsis) | 6.37 km/s | 6.37 km/s |
-| Departure burn / brake | 118.8 / 112.7 km/s | **90.2 / 81.2 km/s** |
-| Coast | 277.3 days | 392.3 days |
+| Departure burn / brake | 118.8 / 112.7 km/s | **90.2 / 81.4 km/s** |
+| Coast | 277.3 days | 384.8 days |
+| Approach | — | **7.54 days, 52.8 million km → 368,111 km** |
 | Total | 242.1 km/s | **182.3 km/s** |
-| Brake start radius | 51.96 million km (1.004 SOI) | **366,505 km (0.0071 SOI)** |
-| Profile floor | 150.73 days | **34.00 days** |
+| Brake start radius | 51.96 million km (1.004 SOI) | **368,111 km (0.0071 SOI)** |
+| Profile floor | 150.73 days | **33.90 days** |
 
-At 0.3 g the same comparison is a 1.3-hour fall against 117.13 days, 79.7 km/s of
-brake, 180.8 km/s in total, a brake start 1,159,005 km out (0.0224 SOI), and a
-floor of **41.57 days** against 160.47. The brake starts deep inside the target's
-sphere on a long trip because the coast, not the brake, flies most of the
-approach; at the fast floor the brake itself spans it (28.5 hours of 995 km/s
-from 51.07 million km, 0.987 SOI). That is the measurement the next decision
-rests on, and it is in
-[the binding question](/simulation/powered-leg-floor.md#the-binding-question-where-the-coast-ends).
+At 0.3 g the same comparison is a 1.3-hour fall against 117.13 days, a 7.43-day
+approach from the ceiling to 1,160,664 km, 79.8 km/s of brake, 180.8 km/s in
+total, and a floor of **41.57 days** against 160.47. The brake starts 0.0071
+spheres out at 1 g and 0.0224 at 0.3 g because the approach, not the coast, now
+flies most of the deep approach; at the fast floor the brake itself spans the
+sphere (28.6 hours of 998.5 km/s from 51.07 million km, 0.987 SOI, with a
+23-minute approach). Those numbers are in
+[the arrival leg](/simulation/powered-leg-floor.md#the-arrival-leg-a-planetocentric-approach).
 
 The 8-day trip at Mercury closes with a break peak of 2.85 m/s²; the plan's
 9.70 m/s² peak is the two fixed burns at the commanded level. The break ends at
@@ -230,10 +252,13 @@ wider than before because the brake's fixed point now ends at the floor — and
 the 8-day flight arrives 0.05 m and 4.4 × 10⁻⁵ m/s from the reference state on
 the conic parking orbit.
 
-**A slow crossing closes now.** With the fall gone, a 200-day Mars build at 0.3 g
-that used to be refused for needing an acceleration is a **12.46 km/s** plan
-(2.52 km/s of brake) with the same 6,032.7 km entry. The slow end is set by the
-coast instead: at 305 days the prograde short-way Lambert transfer has no
+**A slow crossing closes now, and the approach makes it cheaper.** With the fall
+gone, a 200-day Mars build at 0.3 g that used to be refused for needing an
+acceleration is a **11.86 km/s** plan (2.70 km/s of brake) with the same
+6,032.7 km entry, 0.60 km/s less than the deep-coast build: its last 27.3 hours
+are a planetocentric approach, and the coast no longer commands 0.90 km/s of
+solar tide to hold a heliocentric conic deep in the well. The slow end is set by
+the coast instead: at 305 days the prograde short-way Lambert transfer has no
 solution (179.4°). The acceleration branch is still in the solver; it did not
 trigger at Mars between 200 and 300 days after this change.
 
@@ -372,7 +397,9 @@ lands below the floor. A refused probe is retried 0.2% higher, because the
 near-floor chain has narrow non-convergence holes; that retry is the search's
 real resolution. The floors measured after the change are **3.216 d** to Mercury
 at 1 g and **6.737 d** to Mars at 0.3 g — the capture's fall is minutes now, so
-the fast end moved from 3.46 and 8.03 days. The near-floor basin is noisy, so the
+the fast end moved from 3.46 and 8.03 days. The planetocentric approach leg
+leaves them alone, except Uranus at 1 g, where the brake starts just inside the
+ceiling at the floor: 34.00 → **33.90 d**. The near-floor basin is noisy, so the
 search still pays about twenty probes; that is the remaining cost in `Plan()` and
 the trap for the slider step. The estimate is also shorter now (the capture no
 longer contributes months), so the growth loop was widened from five steps to
@@ -385,7 +412,7 @@ Measured at the epoch (2026-11-15) from Gateway, conic capture:
 |---|---|---:|---:|---:|---|---|
 | Mercury | 1 g | **3.22 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Mars | 0.3 g | **6.74 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
-| Uranus | 1 g | **34.00 d** | 9.70 m/s² | 2,047 km/s | 32.0 d | the break cannot be placed (1.3 × 10⁻⁵ m/s short); 33.0 d builds directly at 2,114 km/s, so the returned floor is about 3% conservative here |
+| Uranus | 1 g | **33.90 d** | 9.70 m/s² | 2,054 km/s | 32.0 d | the break cannot be placed (1.3 × 10⁻⁵ m/s short); 33.0 d builds directly at 2,114 km/s, so the returned floor is about 2.7% conservative here |
 | Uranus | 0.3 g | **41.57 d** | 2.94 m/s² | 1,757 km/s | 40.95 d | the pinned departure solve stalls 1.1 × 10⁻⁵ m/s short of the coast |
 
 The floor search also requires the chain to be **closed**: a plan whose peak
@@ -434,7 +461,7 @@ coast, and the existing conic/hybrid capture. Landed as
 `TripPlanner.CruiseStyle.Coast`.
 
 **Stage B — the burns.** Add the departure fixed burn and the fixed-thrust
-brake, stitch the five arcs, and expose the burn level and the trip time.
+brake, stitch the arcs, and expose the burn level and the trip time.
 Landed as `TripPlanner.CruiseStyle.BurnCoastBurn`, with no impulse at the
 target's sphere of influence. Because a burn along the velocity can only change
 the speed, the brake's thrust direction is the change the chain needs and

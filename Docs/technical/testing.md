@@ -108,7 +108,7 @@ because Unity test assemblies cannot reference the predefined
 | `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; a full-field burn crossing the sphere of influence matching an independent 20,000-step RK4 of the same field and thrust, its acceleration at a sample being the field plus the thrust rather than the two-body value, a short local burn agreeing with the two-body burn, and the reference body being a label (one inertial path, two local decompositions differing by exactly the two bodies' states); the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
 | `FiniteBurnTripPlannerTests` | the six-arc hybrid plan with one finite burn between the conic coasts, the trim and circularisation impulses, seam steps of exactly the burn level, end-to-end flights to Mars, Earth, Venus, Jupiter, and Saturn with stable parking orbits, every level from 0.3 to 1.0 g reaching an exact parking orbit, zero level reproducing the conic plan, the cheaper-than-quintic capture across all five targets, the Jupiter parking radius below the quintic ceiling, and the finite/trim split reaching the plan |
 | `HandoverBandTests` | the handover band the fixed burns hand over inside: the floor scaling as `1/sqrt(a)` when halved (Earth and Jupiter unclamped, and Mercury's gravity floor under a clamped band), the ceiling being exactly `1.02 × SOI` per body and moving per body (Mercury 114,658.2 km against Uranus 52,795,223.9 km), the departure endpoint being the ceiling and the arrival endpoint the floor, the clamped floor sitting at or above the surface clearance on every planet, moon, and asteroid at 0.3 g and 1 g (Mercury and Mars at 1 g are the named cases, their gravity floors below the surface), the exactly three catalogue bodies whose band is empty at every level (Phobos, Deimos, Proteus) reported with the floor, the clamp, and the ceiling in the reason and refused by the planner before a chain is built, and the body-clearance gate accepting a 1 g burn that crosses Earth's sphere while clearing the planet by 821,258 km and refusing a 30 s burn 60 km up that grazes the surface |
-| `BurnCoastBurnTripPlannerTests` | the seven-arc profile — quintic break, prograde finite burn, Lambert coast, brake, conic capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the capture chain entering at the arrival handover floor (Uranus 1 g 400 d: 38,643.0 km, a 1,860.2 s fall, a 6.369 km/s periapsis burn, every seam inside 1 km and 1 m/s) while the coast profile keeps its 577,241 km sphere-of-influence entry and 1.3187-day fall, the brake spending the coast plan's handover, continuous position and velocity at every seam, every fixed burn clearing the body it works near, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing closing cheaply (200 days to Mars at 12.46 km/s) with the slow end set by the 179.4° coast, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes |
+| `BurnCoastBurnTripPlannerTests` | the eight-arc profile — quintic break, prograde finite burn, Lambert coast, planetocentric approach, brake, conic capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the capture chain entering at the arrival handover floor (Uranus 1 g 400 d: 38,643.0 km, a 1,860.2 s fall, a 6.369 km/s periapsis burn, every seam inside 1 km and 1 m/s) while the coast profile keeps its 577,241 km sphere-of-influence entry and 1.3187-day fall, the coast ending on the target's handover ceiling (52,795,223.9 km at Uranus, within 10 m) with the planetocentric approach falling from it (7.544 d, 52.8 million km → 368,111 km, no burn, periapsis 84,354 km above the floor) and the fast Mercury trip keeping seven arcs because its brake starts outside the ceiling, the brake spending the rest of the handover, continuous position and velocity at every seam, every fixed burn clearing the body it works near, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing closing cheaply (200 days to Mars at 11.86 km/s with a 27.3-hour approach) with the slow end set by the 179.4° coast, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
@@ -223,16 +223,18 @@ The burn–coast–burn profile has these anchors at the epoch, from Gateway at
 |---|---|
 | Trip-time window (Mars) | 6.74–20.21 days |
 | Trip-time window (Mercury) | 3.22–9.65 days |
+| Trip-time window (Uranus) | 33.90–101.70 days at 1 g, 41.57–124.71 at 0.3 g |
 | True floor, Mars at 0.3 g | 6.74 days, peak 5.14 m/s², 1,172 km/s |
 | True floor, Mercury at 1 g | 3.22 days, peak 9.70 m/s², 1,766 km/s |
-| True floor, Uranus at 1 g | 34.00 days, peak 9.70 m/s², 2,047 km/s |
+| True floor, Uranus at 1 g | 33.90 days, peak 9.70 m/s², 2,054 km/s |
 | True floor, Uranus at 0.3 g | 41.57 days, peak 2.94 m/s², 1,757 km/s |
 | Just below the Mercury floor | 3.19 days refused: the departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Just below the Mars floor | 6.60 days refused at 10.03 m/s²; 6.70 days leaves the brake 8,073 m and 0.8 m/s short of the entry |
 | 90-day Mars plan, total | 44.4 km/s (direct build, outside the nav window) |
 | 90-day quintic break | 4.84 days, 8.8 km/s, 0.03 m/s² peak |
 | 90-day departure burn | 76 min, 13.4 km/s, 2.94 m/s² |
-| 90-day Lambert coast | 85.0 days, 0.05 km/s, 0.005 m/s² peak |
+| 90-day Lambert coast | 84.7 days, ending on the 588,786 km ceiling, 0.034 km/s |
+| 90-day approach | 6.03 h, 588,786 → 92,923 km, a 2-body conic with no burn |
 | 90-day brake | 1.7 h, 18.5 km/s, 2.94 m/s² |
 | 90-day capture entry | 6,033 km (the Mars 0.3 g floor), 13.6-minute fall, 3.53 km/s impulse |
 | Seam error | under a metre and 3.7 × 10⁻⁴ m/s on the tested trips; the floor gate is 1 km and 1 m/s |
@@ -251,8 +253,11 @@ and the capture are measured at the epoch against the sphere-of-influence build:
 | Uranus 1 g, 400 d: inbound fall | 117.13 days | 31 min |
 | Uranus 1 g, 400 d: capture Δv | 6.37 km/s | 6.37 km/s |
 | Uranus 1 g, 400 d: total | 242.1 km/s | 182.3 km/s |
-| Uranus 1 g, 400 d: brake start radius | 51.96 million km | 366,505 km (0.0071 SOI) |
-| Uranus 0.3 g, 400 d: fall / total / brake start | 117.13 d / 242.5 / 52.45 million km | 1.3 h / 180.8 / 1,159,005 km (0.0224 SOI) |
+| Uranus 1 g, 400 d: coast end | 366,505 km (0.0071 SOI) | **52,795,224 km (1.0000 ceiling)** |
+| Uranus 1 g, 400 d: approach | — | **7.544 d, 52,795,224 → 368,111 km**, periapsis 84,354 km |
+| Uranus 1 g, 400 d: brake start radius | 51.96 million km | 368,111 km (0.0071 SOI) |
+| Uranus 0.3 g, 400 d: fall / total / brake start | 117.13 d / 242.5 / 52.45 million km | 1.3 h / 180.8 / 1,160,664 km (0.0224 SOI) |
+| Mars 90 d: coast end / approach / total | 92,790 km / — / 45.4 km/s | **588,786 km / 6.03 h to 92,923 km / 44.4 km/s** |
 | Mercury 1 g, 8 d: fall / total | 6.09 h / 569.9 km/s | 3.3 min / 557.0 km/s |
 | Mars 0.3 g, 90 d: fall / total | 1.3187 d / 45.4 km/s | 13.6 min / 44.4 km/s |
 
@@ -307,7 +312,7 @@ floor; the 5% screen decides near the limit, so the fast number never becomes a
 reported peak. The search-input work left the plans and floors alone; the
 arrival entry radius moved them afterwards, and the table above carries the new
 numbers. After that change a floor is a certified full-field plan, but the search
-can be conservative: at Uranus 1 g it returns 34.00 days while a direct build at
+can be conservative: at Uranus 1 g it returns 33.90 days while a direct build at
 33.0 days also closes, because the fast bracket's low end stops the full-field
 bisection. Re-probing below a fast bracket with the full field is [step 7's
 cost question](/technical/planning-performance.md) — do not widen the gate.
@@ -340,9 +345,9 @@ The departure burn's delta-v is level-independent (it spends the coast's
 departure speed above escape); its duration is `1/level`, so 13.4 km/s is
 7.7 hours at 0.05 g, 76 minutes at 0.3 g, and 23 minutes at 1 g. A crossing whose
 coast arrives slower than the target's frame would need an acceleration rather
-than a brake (the branch is still in the solver, but after the floor entry a
-200-day Mars crossing closes at 12.46 km/s instead, and the slow end is the
-coast's own geometry: 305 days is refused at 179.4°); a trip time whose transfer
+than a brake (the branch is still in the solver, but after the floor entry and
+the approach leg a 200-day Mars crossing closes at 11.86 km/s instead, and the
+slow end is the coast's own geometry: 305 days is refused at 179.4°); a trip time whose transfer
 sweeps 180° or more is rejected with the transfer angle. A plan over the drive carries an
 `InfeasibleReason` naming the arc and the peak it needs. The 90-day anchors are
 direct `PlanAtDuration` builds: the nav slider's Mars window is 6.74–20.21

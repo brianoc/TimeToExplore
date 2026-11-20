@@ -137,6 +137,7 @@ namespace TimeToExplore.UI
             {
                 case FlightPhase.Departure: return "Departure";
                 case FlightPhase.Cruise: return "Cruise";
+                case FlightPhase.Approach: return "Approach";
                 case FlightPhase.Coast: return "Coast";
                 case FlightPhase.Capture: return "Capture";
                 case FlightPhase.Parking: return "Parking";
@@ -197,6 +198,7 @@ namespace TimeToExplore.UI
             PlanArc departureBurn = null;
             PlanArc brake = null;
             PlanArc coast = null;
+            PlanArc approach = null;
             int chainStart = plan.Arcs.Count;
 
             for (int i = 0; i < plan.Arcs.Count; i++)
@@ -210,6 +212,8 @@ namespace TimeToExplore.UI
                     brake = arc;
                 else if (aboutSun && arc.Phase == FlightPhase.Cruise && arc.IsCoast)
                     coast = arc;
+                else if (arc.Phase == FlightPhase.Approach)
+                    approach = arc;
 
                 if (chainStart == plan.Arcs.Count && !aboutSun &&
                     (arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture ||
@@ -239,6 +243,12 @@ namespace TimeToExplore.UI
             {
                 rows.Add(DetailRow.Of("Coast",
                     $"drive off  ·  {SolarSystemHud.FormatDuration(coast.DurationSeconds)}"));
+            }
+
+            if (approach != null)
+            {
+                rows.Add(DetailRow.Of("Approach",
+                    $"drive off  ·  {SolarSystemHud.FormatDuration(approach.DurationSeconds)}"));
             }
 
             if (brake != null)

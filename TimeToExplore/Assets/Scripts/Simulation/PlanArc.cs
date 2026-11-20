@@ -9,6 +9,11 @@ namespace TimeToExplore.Simulation
         Departure,
         /// <summary>Heliocentric transfer between spheres of influence.</summary>
         Cruise,
+        /// <summary>The planetocentric approach: the Keplerian fall about the
+        /// target from the handover band's ceiling down to where the brake
+        /// begins. It is the part of the final approach a heliocentric conic
+        /// cannot describe ([the powered-leg floor](/simulation/powered-leg-floor.md)).</summary>
+        Approach,
         /// <summary>A Keplerian coast, such as the inbound transfer hyperbola.</summary>
         Coast,
         /// <summary>Dropping from the target's sphere of influence into the

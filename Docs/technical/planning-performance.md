@@ -221,7 +221,7 @@ build, the same sources as the suite:
 
 | Case | `Plan()` | Floor | Peak | Direct builds below the floor |
 |---|---:|---:|---:|---|
-| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s |
+| Uranus, 1 g | **71.1 s** | **33.99769 d**, 2,047.44 km/s | 9.700 m/s² | 33.48773 d closes (5.9 s, 2,081.11 km/s); 33.6577 and 33.8277 d stall at 1.362 × 10⁻⁵ and 1.350 × 10⁻⁵ m/s. The planetocentric arrival leg moves it to **33.89968 d**, 2,053.82 km/s, eight arcs |
 | Uranus, 0.3 g | **59.2 s** | **41.57095 d**, 1,756.59 km/s | 2.942 m/s² | 41.36309 and 40.94738 d close (4.8 s each, 1,767.17 and 1,788.76 km/s); 41.1552 d stalls at 3.039 × 10⁻⁵ m/s |
 | Mars, 0.3 g | **27.5 s** | **6.73715 d**, 1,172.48 km/s | 5.137 m/s² | 6.7035 d misses the brake chain by 6,182.2 m / 0.6 m/s, 6.6698 by 1,651.5 m / 0.2, 6.6361 by 9,254.9 m / 0.9; at 6.535 d the break needs 14.2 m/s² |
 | Mercury, 1 g | **7.8 s** | **3.21610 d**, 1,765.52 km/s | 9.700 m/s² | 3.1839 d needs a 10.3 m/s² break, rising to 275.0 m/s² at 3.0875 d |
@@ -246,9 +246,12 @@ probes cheaply. The conservative floor is not a purely wrong answer, and
 tightening it is step 7's trade, not a free fix.
 
 The window takes its right-hand end from that floor. `MaximumPreviewSeconds` is
-3 × the floor, so Uranus at 1 g offers **34.00–101.99 d**. A direct build at the
-maximum (101.99307 d) is accepted: **seven arcs, 661.35 km/s**, a **9.105 h**
-departure burn and a **9.185 h** brake. Its `PlanAtDuration` is **2.7 s**; the
+3 × the floor, so Uranus at 1 g offered **34.00–101.99 d** before the arrival leg
+and offers **33.90–101.70 d** after it. A direct build at the old maximum
+(101.99307 d) was accepted: **seven arcs, 661.35 km/s**, a **9.105 h**
+departure burn and a **9.185 h** brake. The post-approach build at 101.69 d is
+**eight arcs and 661.3 km/s**, and its brake also starts inside the ceiling. Its
+`PlanAtDuration` is **2.7 s**; the
 36 s harness run around it also reflies both burns under the six alternative
 steering laws, so that is the report, not the build. The slider's right end
 never asks for a refused plan. All timings here are .NET-harness numbers; the
