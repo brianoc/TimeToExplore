@@ -92,12 +92,18 @@ change). The field is summed; the attitude is still the frame-relative one the
 profile already used. Changing the attitude law is
 [the steering measurement](#steering-starts-simple), not this change.
 
-**The two-tier boundary stands.** The floor search's probes keep the cheap
-two-body burn: a probe only has to decide whether a duration fits, and the
-reported plan is rebuilt and certified with the summed field. Every fixed burn in
-that certified build is full-field — the departure burn, the brake, and the
-hybrid capture's injection arc — and a full-field burn is one arc even when it
-crosses a sphere of influence. There is still no split at an SOI.
+**The two-tier boundary stands, with two probe qualities below it.** The floor
+search's first probes keep the cheap two-body burn: a probe only has to decide
+whether a duration fits, and the reported plan is rebuilt and certified with the
+summed field. Step 2 added a **full-field probe** for the continuation search
+after a refused certificate: its burns integrate the summed field, so its
+closure decision is the reported build's, while its departure solve (64
+samples), measurement (a fixed burn's commanded acceleration, a conic's zero, a
+break against its own body), and skipped settle passes keep it cheap. Neither
+probe is ever reported. Every fixed burn in the certified build is full-field —
+the departure burn, the brake, and the hybrid capture's injection arc — and a
+full-field burn is one arc even when it crosses a sphere of influence. There is
+still no split at an SOI.
 
 One boundary is explicit rather than incidental. The **hybrid capture solver**
 — the search over the capture burn's start offset and duration, which integrates
@@ -144,6 +150,11 @@ the six seams is Mercury's 9.9 m / 4.1 × 10⁻³ m/s. `FiniteBurnArc.MaximumSam
 itself and the hybrid capture's injection burn are unchanged. The measurements
 are in
 [planning performance](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20).
+**Step 2 adds the full-field probe** the continuation search uses: its burns
+integrate the summed field, its departure solve is 64 samples with no 512
+fallback, its brake stays at 512, and its measurement is the cheap one. It is a
+search input; the certified build is always the answer
+([step 2](/technical/planning-performance.md#step-2-the-searches-probes-are-cheap-and-the-answer-is-certified-2026-11-20)).
 
 Also measured: the reported plans **did not move** at their stated precision. The
 reason is structural, not luck. A fixed-direction burn's delta-v is set by the
@@ -395,6 +406,17 @@ at 40.5, 40.0, and 39.0 d directly (inside the gate) while the fast probes still
 refuse them, so the search is conservative there. Step 3 re-anchors the floors
 and windows; step 4 re-measures the editor
 ([step 1](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)).
+
+**Step 2 changed the search, not the physics, but one editor floor moved.** The
+full-field probe quality re-measured the editor's Jupiter floor from **13.27662
+to 13.34149 d** (+0.49%): Mono refuses the fast high, and the certified duration
+the probe continuation finds is a different point in the near-floor scatter. The
+window follows to **13.341–40.024 d**. Every other measured floor is unchanged —
+Mars 6.73715 d, Mercury 3.21610 d, Uranus 33.60438 d at 0.3 g and 31.25256 d at
+1 g — and the .NET Jupiter floor stays 13.33520 d, so the runtime divergence the
+plan records is still there. The moved plan is certified and every seam is
+inside the gate; the measurement and the probe/certificate boundary are in
+[step 2](/technical/planning-performance.md#step-2-the-searches-probes-are-cheap-and-the-answer-is-certified-2026-11-20).
 
 **A hotter entry shortens the fall but grows the capture.** Sweeping the
 per-plan entry speed at Uranus 1 g and 400 days, at the floor:
@@ -649,7 +671,8 @@ velocity.
   This supersedes the exclusion in
   [burn–coast–burn trips](/simulation/burn-coast-burn.md#not-in-the-first-cut).
   `FiniteBurnArc` now integrates the one arc through the boundary; the fast
-  probes keep the two-body burn.
+  probe keeps the two-body burn, and the full-field probe keeps the summed
+  field with a cheap solve and measurement.
 * The `1.02 × SOI` clearance sphere becomes the **ceiling** of the handover band,
   not the definition of the handover radius; the departure endpoint is that
   ceiling, so the departure plan is unchanged.

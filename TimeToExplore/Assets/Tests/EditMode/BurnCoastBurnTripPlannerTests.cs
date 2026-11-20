@@ -1034,6 +1034,53 @@ namespace TimeToExplore.Tests.EditMode
                 "the full field certifies the break at the floor");
         }
 
+        /// <summary>
+        /// The floor search's probes are search inputs, never answers. A plan
+        /// that leaves <see cref="TripPlanner.Plan"/> is certified: every arc's
+        /// clearance and delta-v were measured in the summed field, and every
+        /// seam closes inside the 1 km / 1 m/s gate. The probe quality the search
+        /// uses reports an infinite clearance and no measured delta-v on a
+        /// coasted arc, so the two are distinguishable. Mars at 0.3 g is the case
+        /// where the certificate refuses the fast answer and the continuation
+        /// search runs; Uranus and Jupiter are the unchanged low-cost cases.
+        /// </summary>
+        [TestCase("uranus", 0.3)]
+        [TestCase("mars", 0.3)]
+        [TestCase("jupiter", 0.3)]
+        public void TheFloorSearchReturnsACertifiedPlanNotAProbe(string targetId,
+            double level)
+        {
+            _planner.BurnLevelG = level;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan floor = _planner.Plan(ship, targetId);
+            Assert.That(floor.IsFeasible, Is.True, floor.InfeasibleReason);
+
+            foreach (PlanArc arc in floor.Arcs)
+            {
+                Assert.That(double.IsFinite(arc.MinimumClearanceM), Is.True,
+                    $"{arc.Phase} clearance is measured in the full field");
+                Assert.That(arc.DeltaVMps, Is.GreaterThan(0.0),
+                    $"{arc.Phase} delta-v is measured in the full field");
+            }
+
+            AssertChainCloses(floor);
+
+            // A trip half again as long is a legal probe: it is feasible, and
+            // its coasts carry no clearance and no measured delta-v.
+            TrajectoryPlan probe = _planner.BuildProbeAtDuration(ship, targetId,
+                floor.FlightTimeSeconds * 1.5);
+            Assert.That(probe.IsFeasible, Is.True, probe.InfeasibleReason);
+            Assert.That(probe.Arcs.Count, Is.EqualTo(floor.Arcs.Count));
+            foreach (PlanArc arc in probe.Arcs)
+            {
+                Assert.That(double.IsPositiveInfinity(arc.MinimumClearanceM), Is.True,
+                    $"{arc.Phase} probe does not measure clearance");
+                if (!arc.IsFiniteBurn)
+                    Assert.That(arc.DeltaVMps, Is.EqualTo(0.0),
+                        $"{arc.Phase} probe does not measure a coast's delta-v");
+            }
+        }
+
         [Test]
         public void TheAdvertisedMinimumIsTheTrueMarsFloor()
         {
@@ -1043,10 +1090,10 @@ namespace TimeToExplore.Tests.EditMode
             _planner.Trace = probes.Add;
             TrajectoryPlan fastest = _planner.Plan(ship, "mars");
 
-            // The fast floor is optimistic here, so the full-field retry runs.
-            // Its seeded high is the duration the certification just built, and
-            // a full-field build is the most expensive call in the profile: the
-            // retry must reuse it rather than pay for the same duration twice.
+            // The fast floor is optimistic here, so the continuation search runs.
+            // The certificate it has just spent is the search's seeded low end
+            // and must be reported [cached], not rebuilt: a certified build is
+            // the profile's most expensive call.
             bool reusedCertification = false;
             foreach (string probe in probes)
                 if (probe.EndsWith("[cached]")) reusedCertification = true;

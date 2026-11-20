@@ -128,6 +128,24 @@ namespace TimeToExplore.Simulation
         /// input, and its brake must not move with the build's cost trim.</summary>
         private const int BrakeSamples = 512;
 
+        /// <summary>Burn samples used by a **full-field probe**'s pinned
+        /// departure solve and its reported trial arcs. A probe is a search
+        /// input, not an answer: 64 samples resolve the trial burn well enough
+        /// to decide whether the chain closes, while the certified build that
+        /// follows the search integrates at <see cref="PinnedDepartureSamples"/>
+        /// and reports at 512 or better. A probe gets no 512-sample fallback;
+        /// that retry protects a certified fixed-duration answer, not a search
+        /// decision.</summary>
+        private const int ProbeDepartureSamples = 64;
+
+        /// <summary>Certificates the floor search may spend before it reports the
+        /// last refusal. The fast probe's answer is certified at least once; a
+        /// refused certificate seeds the probe search above itself and the next
+        /// answer is certified again. Three is the bound that keeps a noisy
+        /// near-floor basin from turning the search into a chain of certified
+        /// builds.</summary>
+        private const int MaxFloorCertificates = 3;
+
         /// <summary>Velocity mismatch, in m/s, at the brake's start that ends
         /// the pinned brake/departure fixed point. The mismatch is integrated
         /// over the brake, so 1e-6 m/s is at most about 0.3 m of entry position
@@ -382,16 +400,21 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// The burn–coast–burn profile's true floor: the shortest duration whose
-        /// build fits the drive and whose chain closes. The search runs on the
+        /// build fits the drive and whose chain closes. The search starts on the
         /// fast probe model (<see cref="Build"/>'s <c>fast</c> mode), which
         /// measures the break against its own central body and treats a fixed
         /// burn as its commanded acceleration. A bracket is found by probing a
         /// little above the planner's kinematic estimate and walking down in 15%
         /// steps to the first rejected request; the crossing is then bisected to
-        /// <see cref="FloorRelativeTolerance"/>. The candidate the search
-        /// returns is rebuilt with the full field before it leaves the planner,
-        /// and if the fast model was optimistic the search finishes with
-        /// full-field builds. The fast numbers are never reported.
+        /// <see cref="FloorRelativeTolerance"/>.
+        ///
+        /// The fast answer is never reported. It is rebuilt as a **certified**
+        /// full-field plan; if the certificate refuses, the search continues
+        /// upward with the **full-field probe** quality, whose burns integrate the
+        /// summed field but whose solve and measurement are the cheap probe ones.
+        /// The certificate is the probe search's low end, so its refusal is never
+        /// rebuilt, and at most <see cref="MaxFloorCertificates"/> certificates are
+        /// spent before the last refusal is reported honestly.
         /// </summary>
         private TrajectoryPlan PlanBurnCoastBurnMinimum(ShipState ship, BodyRuntime target,
             double estimateSeconds)
@@ -402,38 +425,59 @@ namespace TimeToExplore.Simulation
                 return Reported(fast.LastPlan);
 
             // The full field is the authority. The fast crossing is normally
-            // feasible there (the floor's break is certified either way), but a
-            // fast estimate may not stand in when it is not.
-            TrajectoryPlan certified = Build(ship, target, fast.HighSeconds).Plan;
-            if (IsFeasibleAt(certified, fast.HighSeconds))
-                return Reported(certified);
+            // feasible there, but the near-floor basin is a scatter, so a refused
+            // certificate is the search's new low end rather than its answer.
+            var tried = new Dictionary<double, BuildResult>();
+            double candidate = fast.HighSeconds;
+            TrajectoryPlan lastRefusal = null;
 
-            // The fast model was optimistic. Finish the search with full-field
-            // builds, seeded with the fast bracket so it stays a few probes. The
-            // certificate above already answered the seeded high, so hand it to
-            // the search instead of building the same duration twice: a
-            // full-field build is the profile's most expensive call.
-            var certifiedProbes = new Dictionary<double, BuildResult>
+            for (int certificate = 0; certificate < MaxFloorCertificates; certificate++)
             {
-                [fast.HighSeconds] = new BuildResult(certified, 0.0)
-            };
-            FloorSearch full = SearchFloor(ship, target, estimateSeconds,
-                fast: false, seedLow: fast.LowSeconds, seedHigh: fast.HighSeconds,
-                certifiedProbes);
-            return Reported(full.Plan ?? full.LastPlan);
+                BuildResult certified = Build(ship, target, candidate);
+                tried[candidate] = certified;
+                lastRefusal = certified.Plan;
+
+                bool feasible = IsFeasibleAt(certified.Plan, candidate);
+                Trace?.Invoke($"certify {candidate / SecondsPerDay:F5} d: " +
+                              $"feasible {feasible}, " +
+                              $"time {certified.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
+                              $"peak {certified.Plan.PeakThrustMps2:F3}, " +
+                              $"reason {certified.Plan.InfeasibleReason}");
+                if (feasible)
+                    return Reported(certified.Plan);
+
+                if (certificate == MaxFloorCertificates - 1)
+                    break;
+
+                // The fast or probe model was optimistic at this duration.
+                // Continue above it with full-field probes; the certificate is
+                // the seeded low, so the search reuses it instead of rebuilding.
+                FloorSearch probe = SearchFloor(ship, target, estimateSeconds,
+                    fast: false, seedLow: candidate, seedHigh: candidate * 1.2,
+                    tried, probe: true);
+                if (probe.Plan == null)
+                    break;
+
+                candidate = probe.HighSeconds;
+            }
+
+            return Reported(lastRefusal);
         }
 
         /// <summary>One bracketed search for the floor. <paramref name="fast"/>
-        /// selects the probe model; the final call is full-field. A feasible
-        /// high and a rejected low are established with direct probes, then the
-        /// bracket is bisected to a tolerance. The 0.2% retry keeps a near-floor
+        /// selects the two-body probe model; <paramref name="probe"/> keeps the
+        /// full summed field for the burns but solves and measures at probe
+        /// quality. The final answer is neither: the caller rebuilds it with
+        /// <see cref="Build"/>'s default, certified mode. A feasible high and a
+        /// rejected low are established with direct probes, then the bracket is
+        /// bisected to a tolerance. The 0.2% retry keeps a near-floor
         /// non-convergence from becoming the advertised floor.
         /// <paramref name="tried"/> carries builds this call has already paid
         /// for, keyed by the requested duration, so a duration the caller
         /// certified before the search is never built again.</summary>
         private FloorSearch SearchFloor(ShipState ship, BodyRuntime target,
             double estimateSeconds, bool fast, double seedLow, double seedHigh,
-            Dictionary<double, BuildResult> tried = null)
+            Dictionary<double, BuildResult> tried = null, bool probe = false)
         {
             double low = 0.0;
             double high = 0.0;
@@ -447,7 +491,7 @@ namespace TimeToExplore.Simulation
                 bool reused = false;
                 if (tried == null || !tried.TryGetValue(seconds, out BuildResult result))
                 {
-                    result = Build(ship, target, seconds, fast);
+                    result = Build(ship, target, seconds, fast, probe);
                     if (tried != null) tried[seconds] = result;
                 }
                 else
@@ -458,7 +502,7 @@ namespace TimeToExplore.Simulation
                 lastPlan = result.Plan;
                 lastRequest = seconds;
                 bool feasible = IsFeasibleAt(result.Plan, seconds);
-                Trace?.Invoke($"floor {(fast ? "fast" : "full")} " +
+                Trace?.Invoke($"floor {(fast ? "fast" : probe ? "probe" : "full")} " +
                               $"{seconds / SecondsPerDay:F5} d: feasible {feasible}, " +
                               $"time {result.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
                               $"peak {result.Plan.PeakThrustMps2:F3}, " +
@@ -499,8 +543,9 @@ namespace TimeToExplore.Simulation
             }
             else
             {
-                double probe = Math.Max(estimateSeconds * 1.2, MinimumArcSeconds);
-                FloorProbe estimate = Probe(probe);
+                double estimateProbeSeconds = Math.Max(estimateSeconds * 1.2,
+                    MinimumArcSeconds);
+                FloorProbe estimate = Probe(estimateProbeSeconds);
                 if (estimate.Feasible)
                 {
                     high = estimate.Plan.FlightTimeSeconds;
@@ -508,13 +553,13 @@ namespace TimeToExplore.Simulation
                 }
                 else
                 {
-                    low = probe;
+                    low = estimateProbeSeconds;
                 }
             }
 
-            // Grow to a feasible duration in 20% steps. A seed rejected by the
-            // full field is retried at the 0.2% step first, because it is a
-            // near-floor bracket and the next feasible duration is close. The
+            // Grow to a feasible duration in 20% steps. A rejected seed is
+            // retried at the 0.2% step first, because it is a near-floor bracket
+            // and the next feasible duration is close. The
             // step count is generous because the estimate starts from the
             // capture chain's own duration: with the arrival entering at the
             // handover floor that is minutes rather than months, so the seed can
@@ -551,13 +596,38 @@ namespace TimeToExplore.Simulation
             if (highPlan == null)
                 return new FloorSearch(low, high, null, lastPlan);
 
+            // A seeded full-field probe search starts well above the refused
+            // certificate so it has a feasible anchor. The near-floor basin's
+            // narrow holes are the search's own resolution, so retry a fifth of
+            // a percent above the refused low before bracketing the whole seeded
+            // interval: when that retry closes, the bracket is a few probes wide.
+            if (probe && low > 0.0 && high > 0.0)
+            {
+                double near = low * 1.002;
+                if (near < high)
+                {
+                    FloorProbe tightened = Probe(near);
+                    if (tightened.Feasible && tightened.Plan.FlightTimeSeconds < high)
+                    {
+                        high = tightened.Plan.FlightTimeSeconds;
+                        highPlan = tightened.Plan;
+                    }
+                }
+            }
+
             // Walk down to a rejected request. The 15% step is the bracket the
             // old search used, bounded here; the first step below the crossing
-            // is the low end.
-            for (int step = 0; step < 8 && !(low > 0.0); step++)
+            // is the low end. A full-field probe search that was seeded above a
+            // refused certificate also walks down from its seeded high, but
+            // stops at the seeded low: stepping below it would re-probe a
+            // duration the certificate has already refused. The fast search's
+            // walk is unchanged — its growth already found the low end.
+            bool walkDown = !(low > 0.0) || probe;
+            for (int step = 0; step < 8 && walkDown; step++)
             {
                 double shorter = high * 0.85;
                 if (!(shorter > MinimumArcSeconds)) break;
+                if (probe && low > 0.0 && shorter <= low) break;
 
                 FloorProbe walk = Probe(shorter);
                 if (!walk.Feasible)
@@ -580,11 +650,11 @@ namespace TimeToExplore.Simulation
             for (int iteration = 0; iteration < 10 && high - low > tolerance; iteration++)
             {
                 double middle = 0.5 * (low + high);
-                FloorProbe probe = Probe(middle);
-                if (probe.Feasible && probe.Plan.FlightTimeSeconds < high)
+                FloorProbe middleProbe = Probe(middle);
+                if (middleProbe.Feasible && middleProbe.Plan.FlightTimeSeconds < high)
                 {
-                    high = probe.Plan.FlightTimeSeconds;
-                    highPlan = probe.Plan;
+                    high = middleProbe.Plan.FlightTimeSeconds;
+                    highPlan = middleProbe.Plan;
                     continue;
                 }
 
@@ -653,6 +723,26 @@ namespace TimeToExplore.Simulation
             return Reported(Build(ship, target, durationSeconds).Plan);
         }
 
+        /// <summary>Diagnostic only: build one burn–coast–burn trip at the
+        /// full-field **probe** quality the floor search uses. The planner never
+        /// returns this plan — probes are search inputs, and the answer is
+        /// rebuilt at certified quality — so this exists for the tests that prove
+        /// the difference. A probe reports a fixed burn's commanded acceleration,
+        /// a conic's zero thrust, and no clearance or measured delta-v.</summary>
+        public TrajectoryPlan BuildProbeAtDuration(ShipState ship, string targetId,
+            double durationSeconds)
+        {
+            if (CruiseStyle != CruiseStyle.BurnCoastBurn)
+                throw new InvalidOperationException(
+                    "Probe quality is the burn–coast–burn floor search's.");
+            if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds),
+                    "A pinned flight time must be finite and positive.");
+
+            BodyRuntime target = RequireTarget(targetId);
+            return Reported(Build(ship, target, durationSeconds, fast: false, probe: true).Plan);
+        }
+
         private BodyRuntime RequireTarget(string targetId)
         {
             BodyRuntime target = _model.Get(targetId);
@@ -668,12 +758,12 @@ namespace TimeToExplore.Simulation
         }
 
         private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds,
-            bool fast = false)
+            bool fast = false, bool probe = false)
         {
             if (CruiseStyle == CruiseStyle.Coast)
-                return BuildCoast(ship, target, totalSeconds, fast);
+                return BuildCoast(ship, target, totalSeconds, fast, null, probe);
             if (CruiseStyle == CruiseStyle.BurnCoastBurn)
-                return BuildBurnCoastBurn(ship, target, totalSeconds, fast);
+                return BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe);
 
             return ArrivalStyle == CaptureStyle.Conic || ArrivalStyle == CaptureStyle.FiniteBurn
                 ? BuildConic(ship, target, totalSeconds)
@@ -1049,8 +1139,9 @@ namespace TimeToExplore.Simulation
         /// not a planner fault and not a long-way fallback.
         /// </summary>
         private BuildResult BuildCoast(ShipState ship, BodyRuntime target, double totalSeconds,
-            bool fast = false, double? entryRadiusM = null)
+            bool fast = false, double? entryRadiusM = null, bool probe = false)
         {
+            bool cheap = fast || probe;
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
 
@@ -1197,7 +1288,7 @@ namespace TimeToExplore.Simulation
                     ship.PositionM, ship.VelocityMps, exitPosition,
                     coast.DepartureVelocityMps,
                     endAcceleration: heliocentricCoast.AccelerationAt(0.0),
-                    fast: fast));
+                    fast: cheap));
             }
             else
             {
@@ -1205,7 +1296,7 @@ namespace TimeToExplore.Simulation
             }
 
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, escapeEndJd, cruiseEndJd,
-                heliocentricCoast, startImpulse, fast));
+                heliocentricCoast, startImpulse, cheap));
 
             // The coast arrives with the Lambert arrival velocity, which need
             // not equal the capture chain's entry velocity. The trim is the
@@ -1224,7 +1315,7 @@ namespace TimeToExplore.Simulation
             {
                 if (!AppendHybridCapture(arcs, target, cruiseEndJd, chain, arrivalTrim,
                         out parkingEndJd, out parking, out string reason,
-                        out finiteBurnAcceleration, fast))
+                        out finiteBurnAcceleration, fast, probe))
                 {
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "hybrid capture: " + reason);
@@ -1233,7 +1324,7 @@ namespace TimeToExplore.Simulation
             else
             {
                 AppendConicCapture(arcs, target, cruiseEndJd, chain, arrivalTrim,
-                    out parkingEndJd, out parking, fast);
+                    out parkingEndJd, out parking, cheap);
             }
 
             double limit = MaxAccelerationMps2 * ThrustMargin;
@@ -1316,27 +1407,35 @@ namespace TimeToExplore.Simulation
         /// time is rejected.
         /// </summary>
         private BuildResult BuildBurnCoastBurn(ShipState ship, BodyRuntime target,
-            double totalSeconds, bool fast = false)
+            double totalSeconds, bool fast = false, bool probe = false)
         {
             double acceleration = FixedBurnAccelerationMps2;
             if (!(acceleration > 0.0))
-                return BuildCoast(ship, target, totalSeconds, fast);
+                return BuildCoast(ship, target, totalSeconds, fast, null, probe);
 
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
-            int burnSamples = fast ? FastProbeBurnSamples : Math.Max(512, ArcSamples);
+            bool cheap = fast || probe;
+            int burnSamples = fast ? FastProbeBurnSamples
+                : probe ? ProbeDepartureSamples
+                : Math.Max(512, ArcSamples);
             // The fast probe is a search input and keeps the brake resolution it
-            // has always had; only the certified build's brake is trimmed. A
-            // probe's brake is the same coarse decision the search made before
-            // step 1, so changing it would change the search rather than just
-            // make a build cheap.
+            // has always had; the certified build's brake is trimmed. A
+            // full-field probe keeps the certified 512-sample brake: it is a
+            // search input too, and the brake's closure is what decides a
+            // near-floor duration.
             int brakeSamples = fast ? FiniteBurnArc.MaximumSamples : BrakeSamples;
 
-            // A probe keeps the cheap two-body burn: it only has to decide
-            // whether a duration fits, and the reported plan is rebuilt and
-            // certified with the summed field. Every burn in that certified
-            // build integrates the full field.
+            // The fast probe keeps the cheap two-body burn. A full-field probe
+            // integrates the summed field like the plan it stands in for, so its
+            // closure decision is the reported build's; only its solve and its
+            // measurement are the cheap ones.
             IGravityField burnGravity = fast ? null : _gravity;
+
+            // A probe solves at 64 samples and never falls back; the fallback
+            // exists to protect a certified fixed-duration answer.
+            int solveSamples = probe ? ProbeDepartureSamples : PinnedDepartureSamples;
+            int fallbackSamples = cheap ? 0 : burnSamples;
 
             _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi)
@@ -1384,7 +1483,8 @@ namespace TimeToExplore.Simulation
             // burn's size. It is built at the floor entry radius too, so its
             // timing and its handover are the ones the burn–coast–burn flies; the
             // coast profile itself keeps the sphere of influence.
-            BuildResult reference = BuildCoast(ship, target, totalSeconds, fast, arrivalRadius);
+            BuildResult reference = BuildCoast(ship, target, totalSeconds, cheap,
+                arrivalRadius, probe);
             if (!string.IsNullOrEmpty(reference.Plan.InfeasibleReason))
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
@@ -1471,10 +1571,14 @@ namespace TimeToExplore.Simulation
             // is the coast's end, and the coast's start is the burn's end. Settle
             // both by repeating the reverse brake, the break's duration, and the
             // pinned departure solve, and stop once the brake's own velocity
-            // mismatch stops falling. A probe may stop at a looser tolerance than
-            // the plan that is reported: the certified build is the authority.
+            // mismatch stops falling. A fast probe may stop at a looser tolerance
+            // than the plan that is reported: the certified build is the
+            // authority. A full-field probe keeps the certified tolerances — its
+            // closure decision is meant to be the reported build's — but it is
+            // still a probe, so it skips the settle passes.
             double brakeTolerance = fast ? FastBrakeConvergenceMps : BrakeConvergenceMps;
-            double directionTolerance = fast ? FastBrakeDirectionTolerance : BrakeDirectionTolerance;
+            double directionTolerance = fast ? FastBrakeDirectionTolerance
+                : BrakeDirectionTolerance;
             double durationTolerance = fast ? FastBrakeDurationToleranceSeconds
                 : BrakeDurationToleranceSeconds;
 
@@ -1514,7 +1618,7 @@ namespace TimeToExplore.Simulation
 
                 breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
                     clearanceRadius, escapeSpeed, breakSeconds, brakeStartJd,
-                    burnSeconds, brakeSeconds, fast);
+                    burnSeconds, brakeSeconds, cheap);
 
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 _model.ComputeState(departureBody, burnStartJd,
@@ -1525,7 +1629,7 @@ namespace TimeToExplore.Simulation
                 if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        PinnedDepartureSamples, fast ? 0 : burnSamples, burnGravity,
+                        solveSamples, fallbackSamples, burnGravity,
                         out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string reason))
                 {
@@ -1569,7 +1673,7 @@ namespace TimeToExplore.Simulation
             // finished with, so the arcs that are about to be built all belong
             // to the same ray. A converged loop needs one pass; a near-floor
             // probe whose fixed point is still drifting gets the old three.
-            int settlePasses = fast ? 0 : 3;
+            int settlePasses = cheap ? 0 : 3;
             for (int settle = 0; settle < settlePasses; settle++)
             {
                 double previousSettleBurn = burnSeconds;
@@ -1577,12 +1681,12 @@ namespace TimeToExplore.Simulation
 
                 breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
                     clearanceRadius, escapeSpeed, breakSeconds, brakeStartJd,
-                    burnSeconds, brakeSeconds, fast);
+                    burnSeconds, brakeSeconds, cheap);
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        PinnedDepartureSamples, fast ? 0 : burnSamples, burnGravity,
+                        solveSamples, fallbackSamples, burnGravity,
                         out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string settleReason))
                 {
@@ -1685,17 +1789,17 @@ namespace TimeToExplore.Simulation
             var arcs = new List<PlanArc>(8);
             arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, burnStartJd,
                 ship.PositionM, ship.VelocityMps, burnStartPosition, burnStartVelocity,
-                fast: fast));
+                fast: cheap));
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
-                burnStartJd, coastStartJd, departureBurn, fast));
+                burnStartJd, coastStartJd, departureBurn, cheap));
 
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, coastStartJd,
-                brakeStartFinalJd, coast, Vector3d.Zero, fast));
+                brakeStartFinalJd, coast, Vector3d.Zero, cheap));
 
             if (brakeSeconds > 0.0)
             {
                 arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
-                    brakeStartFinalJd, entryJd, brake, fast));
+                    brakeStartFinalJd, entryJd, brake, cheap));
             }
 
             double parkingEndJd;
@@ -1707,7 +1811,7 @@ namespace TimeToExplore.Simulation
             {
                 if (!AppendHybridCapture(arcs, target, entryJd, chain, Vector3d.Zero,
                         out parkingEndJd, out parking, out string reason,
-                        out finiteBurnAcceleration, fast))
+                        out finiteBurnAcceleration, cheap, probe))
                 {
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "burn-coast-burn: hybrid capture: " + reason);
@@ -1716,7 +1820,7 @@ namespace TimeToExplore.Simulation
             else
             {
                 AppendConicCapture(arcs, target, entryJd, chain, Vector3d.Zero,
-                    out parkingEndJd, out parking, fast);
+                    out parkingEndJd, out parking, cheap);
             }
 
             // Every fixed burn must clear the body it is working near. The old
@@ -1774,7 +1878,7 @@ namespace TimeToExplore.Simulation
         private double SolveBreakSeconds(ShipState ship, BodyRuntime departureBody,
             Vector3d direction, double clearanceRadius, double escapeSpeed,
             double candidateSeconds, double brakeStartJd, double burnSeconds,
-            double brakeSeconds, bool fast = false)
+            double brakeSeconds, bool cheap = false)
         {
             double limit = MaxAccelerationMps2 * ThrustMargin;
             double available = (brakeStartJd - ship.JulianDate) * SecondsPerDay
@@ -1785,7 +1889,7 @@ namespace TimeToExplore.Simulation
             // A probe measures the break against its own central body and skips
             // the full-field certification; the certified build at the end of
             // the floor search decides with the field the plan reports.
-            double Peak(double seconds) => fast
+            double Peak(double seconds) => cheap
                 ? BreakPeakCentralBody(ship, departureBody, direction, clearanceRadius,
                     escapeSpeed, seconds)
                 : BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
@@ -1814,7 +1918,7 @@ namespace TimeToExplore.Simulation
             // The crossing is a smooth function of the break's duration, so a
             // tolerance-based bisection is enough; a probe stops a few steps
             // early because only the certified build's break is reported.
-            double tolerance = fast ? 1e-3 * high : 0.0;
+            double tolerance = cheap ? 1e-3 * high : 0.0;
             for (int iteration = 0; iteration < 20; iteration++)
             {
                 double middle = 0.5 * (low + high);
@@ -2598,8 +2702,9 @@ namespace TimeToExplore.Simulation
         private bool AppendHybridCapture(List<PlanArc> arcs, BodyRuntime target,
             double cruiseEndJd, TransferConic chain, Vector3d inboundImpulseMps,
             out double parkingEndJd, out ConicArc parking, out string reason,
-            out double accelerationMps2, bool fast = false)
+            out double accelerationMps2, bool fast = false, bool probe = false)
         {
+            bool cheap = fast || probe;
             parkingEndJd = cruiseEndJd;
             parking = null;
             reason = null;
@@ -2651,14 +2756,14 @@ namespace TimeToExplore.Simulation
                 inboundCoastSeconds, chain.EntryLocalPositionM,
                 chain.EntryLocalVelocityMps);
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, cruiseEndJd, burnStartJd,
-                inbound, inboundImpulseMps, fast));
+                inbound, inboundImpulseMps, cheap));
 
             FiniteBurnArc captureBurn = FiniteBurnArc.Create(_model, target, burnStartJd,
                 capture.BurnSeconds, capture.BurnStartLocalPositionM,
                 capture.BurnStartLocalVelocityMps, accelerationMps2, retrograde: true,
-                gravity: fast ? null : _gravity);
+                gravity: fast && !probe ? null : _gravity);
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, target.Id, burnStartJd,
-                burnEndJd, captureBurn, fast));
+                burnEndJd, captureBurn, cheap));
 
             // Recompute the trim from the plan's own burn end, not the solver's
             // sample, so the transfer actually starts where the flown arc ends.
@@ -2681,7 +2786,7 @@ namespace TimeToExplore.Simulation
                 transferSeconds, captureBurn.EndLocalPositionM, transferVelocity);
             double transferEndJd = burnEndJd + transferSeconds / SecondsPerDay;
             arcs.Add(MakeConicArc(FlightPhase.Coast, target.Id, burnEndJd,
-                transferEndJd, transfer, trim, fast));
+                transferEndJd, transfer, trim, cheap));
 
             // The transfer ends at its apoapsis; use the arc's own end state so
             // the circularisation impulse matches the drawn coast.
@@ -2698,7 +2803,7 @@ namespace TimeToExplore.Simulation
                 parkingSeconds, apoapsisPositionFlown, circularVelocity);
             parkingEndJd = transferEndJd + parkingSeconds / SecondsPerDay;
             arcs.Add(MakeConicArc(FlightPhase.Parking, target.Id, transferEndJd,
-                parkingEndJd, parking, circularisationFlown, fast));
+                parkingEndJd, parking, circularisationFlown, cheap));
 
             return true;
         }

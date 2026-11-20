@@ -29,6 +29,12 @@ note records the whole shape, its boundary, and the measurements.
 | **Search** | The arc's own central body (`arc.BodyId`) in a body-relative frame: the departure body for the break, the Sun for the heliocentric arcs, the target for capture. The quintic still carries full-field **endpoint** accelerations. A fixed burn is the reference body's two-body burn. | The planner only. It picks a duration. |
 | **Plan** | The existing full `GravityField` over the catalogue, sampled as before. Every fixed burn integrates the summed field ([full-field burns](/simulation/powered-leg-floor.md)). | The caller, the nav computer, the trajectory line, and the flight report. |
 
+Step 2 adds a second search quality. A **full-field probe** integrates its fixed
+burns through the summed field, so its closure decision is the reported build's,
+but keeps a 64-sample departure solve and the cheap probe measurement. It is
+still a search input; the certified build remains the result
+([step 2](#step-2-the-searches-probes-are-cheap-and-the-answer-is-certified-2026-11-20)).
+
 The boundary is a single rule: **the fast model is a search input and never a
 result.** `Plan()` and `PlanAtDuration()` rebuild the chosen duration with the
 full field and measure it there, so the returned plan's peak thrust, delta-v,
@@ -66,14 +72,19 @@ a fixed burn reports its commanded acceleration, a conic coasts, the break is
 measured against its own body, the probe burn integrates at 128 samples
 (`FastProbeBurnSamples`) with 12 outer passes, and the pinned brake/departure
 fixed point stops loosely. Delta-v and clearance are not tracked on a probe.
+When the fast answer is refused by the certificate, the search continues above
+it with a **full-field probe** (`Build(..., probe: true)`), which integrates the
+summed field but solves and measures at probe quality
+([step 2](#step-2-the-searches-probes-are-cheap-and-the-answer-is-certified-2026-11-20)).
 
 The bracket is a probe just above the kinematic estimate, a 15% walk-down, and a
 bisection to 0.05% (or 30 s). A refused probe is retried 0.2% higher, because
 the near-floor basin has narrow non-convergence holes; that retry is the
-search's real resolution. The candidate is rebuilt at 512 samples with the full
-field and certified before it leaves the planner; if the fast model was
-optimistic the search finishes with full-field builds. The closure gate is
-unchanged: 1 km of position and 1 m/s of velocity.
+search's real resolution. The candidate is rebuilt at certified quality with the
+full field before it leaves the planner; if the certificate refuses, the search
+continues above it and at most three certificates are spent before the last
+refusal is reported with its reason. The closure gate is unchanged: 1 km of
+position and 1 m/s of velocity.
 
 `FlightSession.WindowFor` caches the floor plan and the trip-time window per
 `(departure date, target, burn level, cruise style, arrival style)`. A repeat
@@ -449,12 +460,96 @@ is accepted with seven arcs and 736.02 km/s. Every fixed-duration anchor is
 unchanged. Step 3 re-measures the floors and windows as anchors; step 4
 re-measures the editor.
 
+## Step 2: the search's probes are cheap and the answer is certified (2026-11-20)
+
+Step 1 made the **certified** build cheap. Step 2 makes the builds the floor
+search spends its time on cheap as well, while keeping the answer certified. The
+fast two-body probe is unchanged. A new **full-field probe** quality sits
+between it and the certified build:
+
+* its fixed burns integrate the **summed field** (`burnGravity` stays
+  `_gravity`), so its closure decision is the one the reported build makes;
+* the pinned departure solve integrates its trial burns at **64 samples**
+  (`TripPlanner.ProbeDepartureSamples`) and has **no 512 fallback**. The fallback
+  protects a certified fixed-duration anchor; a probe is a search decision.
+* the brake keeps the certified **512** samples (`BrakeSamples`);
+* it measures with `MeasureFast`: a fixed burn reports its commanded
+  acceleration, a conic coasts, and a break is measured against its own central
+  body. There are no per-sample catalogue `Prepare` calls, and delta-v and
+  clearance are not tracked.
+
+The probe keeps the certified fixed-point stops (a probe's decision is meant to
+be the reported build's) and skips the three settle passes. The fast two-body
+probe keeps its own loose stops, its 2,048-sample brake, and its 128-sample trial
+burns. Both probe qualities are search inputs; neither is ever reported.
+
+**The answer is always certified.** `PlanBurnCoastBurnMinimum` rebuilds every
+candidate with the default build — solve at 128 with the 512 fallback, brake at
+512, full `Measure` — and returns it only when the drive and the chain accept it.
+The fast answer is certified first. If that certificate refuses, the search
+continues **above** it with full-field probes, seeded at `candidate × 1.2` with
+the refused candidate as the low end; the certified refusal is in the search's
+`tried` map, so the low probe is `[cached]` and free. The near-floor 0.2% retry is
+applied to the seeded bracket before the wide bisection, so a narrow hole costs
+one probe instead of a full bisection. At most **three** certificates are spent;
+after that the last refusal is reported with its reason, never a probe. No
+tolerance and no seam gate moved.
+
+Measured in the warm Release .NET harness (medians of three, epoch, Gateway,
+conic capture). Only Mars reaches the continuation path in .NET, because Mono's
+last-bit difference is what refuses Jupiter's fast high:
+
+| Case | `Plan()` before → after | Floor | Search |
+|---|---:|---:|---|
+| Uranus, 0.3 g | 0.213 → **0.230 s** | 40.71332 d (both) | certificate accepted |
+| Uranus, 1 g | 0.222 → **0.239 s** | 30.55886 d (both) | certificate accepted |
+| Mars, 0.3 g | 0.612 → **0.778 s** | 6.73715 d (both) | 5 probes, 2 certificates |
+| Mercury, 1 g | 0.246 → **0.267 s** | 3.21610 d (both) | certificate accepted |
+| Jupiter, 0.3 g | 0.224 → **0.240 s** | 13.33520 d (both) | certificate accepted |
+
+The editor is the target, and its first `Plot()` (planner plus window, warm test
+project) is where the continuation changes the cost:
+
+| Case | Editor before → after | Floor before → after |
+|---|---:|---|
+| Uranus, 0.3 g | 1.806 → **1.713 s** | 33.60438 d (both) |
+| Uranus, 1 g | 1.230 → **1.232 s** | 31.25256 d (both) |
+| Mars, 0.3 g | 4.009 → **4.558 s** | 6.73715 d (both) |
+| Mercury, 1 g | 2.288 → **2.356 s** | 3.21610 d (both) |
+| Jupiter, 0.3 g | **14.555 → 9.552 s** | **13.27662 → 13.34149 d** |
+
+Jupiter is the multi-million-kilometre case that used to freeze the nav
+computer: its fast high is refused by the certificate in Mono, the old search
+bisected the near-floor scatter with about fourteen certified builds, and the
+new search does the same bracket with full-field probes. Mars is the one
+regression, 4.01 → 4.56 s: its certificate refusal costs a second certificate
+plus the five-probe continuation, and the step-2 bisection is still 0.05%.
+Step 3's coarse growth and 1% bisection is the lever that removes that cost; the
+full-field probe is the prerequisite this step added. Uranus and Mercury keep
+their single certificate and are unchanged within noise.
+
+The Jupiter floor moved **13.27662 → 13.34149 d** in the editor (+0.49%) because
+the probe search certifies a different duration from the scatter; the window
+follows, 13.341–40.024 d. It is a re-measured, certified floor, not an error: the
+plan is rebuilt full-field, every arc has its measured clearance and delta-v, and
+every seam is inside the 1 km / 1 m/s gate. The .NET Jupiter floor is unchanged
+at 13.33520 d, so the runtime divergence the plan already records is still there;
+Mars (6.73715 d), Mercury (3.21610 d), and Uranus (33.60438 / 31.25256) did not
+move. The six fixed-duration Δv anchors are unchanged to four decimals.
+
+The hybrid capture is threaded through the probe too: a probe's injection burn
+stays a full-field burn (`fast && !probe` selects the two-body field), while its
+measurement is the cheap one. `BuildProbeAtDuration` is a diagnostic the tests
+use to show a probe's infinite clearance and zero coast delta-v; `Plan` never
+returns it.
+
 # Where it lives
 
 | Concern | Code |
 |---|---|
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
-| Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
+| Full-field probe, certificate, and the continuation | `TripPlanner.Build(..., probe: true)`, `ProbeDepartureSamples`, `MaxFloorCertificates`, `PlanBurnCoastBurnMinimum`'s certificate loop, `BuildProbeAtDuration` (diagnostic) |
+| Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
 | Retime | `FlightSession.RequestPreviewDuration`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `PendingPreviewSeconds`, `RetimeLoop`, `BuildRetime`, `StartRetimeWorker` |
@@ -463,9 +558,12 @@ re-measures the editor.
 # Verification
 
 `BurnCoastBurnTripPlannerTests` covers the fast-vs-full peak, the unchanged plan
-anchors, the 5% screen accepting no over-thrust break, and the just-below floors
-still rejected, plus every reported burn's acceleration being the summed field
-plus its thrust and a Sun-only field moving the plan.
+anchors, the 5% screen accepting no over-thrust break, the just-below floors
+still rejected, the floor search's returned plan being **certified** (finite
+clearance and measured delta-v on every arc, every seam inside the gate) while a
+`BuildProbeAtDuration` probe reports an infinite clearance and no coast delta-v,
+plus every reported burn's acceleration being the summed field plus its thrust
+and a Sun-only field moving the plan.
 `FiniteBurnTests` covers the arc through an SOI against an independent RK4, the
 two-body agreement where the third bodies are negligible, and the reference body
 being a label. `FlightSessionTests` covers the cache and the background retime,
