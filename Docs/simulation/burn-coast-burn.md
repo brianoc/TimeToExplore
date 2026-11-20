@@ -211,11 +211,12 @@ the case that motivated the change:
 | Coast | 277.3 days | 392.3 days |
 | Total | 242.1 km/s | **182.3 km/s** |
 | Brake start radius | 51.96 million km (1.004 SOI) | **366,505 km (0.0071 SOI)** |
-| Profile floor | 150.73 days | **34.16 days** |
+| Profile floor | 150.73 days | **30.56 days** |
 
 At 0.3 g the same comparison is a 1.3-hour fall against 117.13 days, 79.7 km/s of
 brake, 180.8 km/s in total, a brake start 1,159,005 km out (0.0224 SOI), and a
-floor of **40.71 days** against 160.47. The brake starts deep inside the target's
+floor of **40.71 days** against 160.47 (unchanged by step 1; the 1 g floor is the
+one its cheaper solve moved). The brake starts deep inside the target's
 sphere on a long trip because the coast, not the brake, flies most of the
 approach; at the fast floor the brake itself spans it (28.4 hours of 990 km/s
 from 50.55 million km, 0.976 SOI). That is the measurement the next decision
@@ -385,16 +386,19 @@ Measured at the epoch (2026-11-15) from Gateway, conic capture:
 |---|---|---:|---:|---:|---|---|
 | Mercury | 1 g | **3.22 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Mars | 0.3 g | **6.74 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
-| Uranus | 1 g | **34.16 d** | 9.70 m/s² | 2,037 km/s | 33.83 d | refused by the pinned-departure stall (33.6577 d builds directly at 2,070 km/s), so the returned floor is about 0.50 d conservative |
-| Uranus | 0.3 g | **40.71 d** | 2.94 m/s² | 1,801 km/s | 40.90 d | a needle: 40.30 d builds directly at 1,824 km/s and 40.95 d at 1,789, while 40.5–40.9 d stall and the returned plan does not rebuild cold |
+| Uranus | 1 g | **30.56 d** | 9.70 m/s² | 2,299 km/s | not re-swept | step 1 re-measured the floor (34.16041 → 30.55886 d): the 128-sample certified solve converges where 512 stalled, and the plan is certified (6.7 m / 8.4 × 10⁻⁴ m/s) |
+| Uranus | 0.3 g | **40.71 d** | 2.94 m/s² | 1,801 km/s | not re-swept | step 1 leaves the floor unchanged; the certified build closes 40.5, 40.0, and 39.0 d directly while the fast probes refuse them, so the search is conservative |
 
-The Uranus 0.3 g basin is a set of **needles**, not a boundary: the search's 0.2%
-retry found a certified 40.71332 d plan inside a hole that runs to about 40.9 d,
-so a direct build at that exact duration is refused a few tens of milliseconds
-away. The plan is a real full-field plan (worst seam 3.07 m and 1.7 × 10⁻⁴ m/s)
-and the cached floor is what the slider returns; [planning
-performance](/technical/planning-performance.md#step-7-the-levers-measured-2026-11-20)
-records the needle and the cache reuse that keeps the background retime off it.
+The Uranus 0.3 g basin is a set of **needles**, not a boundary, and step 1 left
+the returned floor at **40.71332 d**. The search's fast probes still refuse the
+durations below it; the certified build now closes at 40.5, 40.0, and 39.0 d
+directly (worst seams 17.6 m / 1.7 × 10⁻³ m/s or better) as well as at the floor
+itself (5.1 m / 6.5 × 10⁻⁴ m/s), so the search is conservative here. Step 3
+re-anchors the bracket. The 1 g floor is now 30.55886 d and rebuilds cold at
+0.4 m / 1.0 × 10⁻³ m/s. [Planning
+performance](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)
+records the re-measurement and the cache reuse that keeps the background retime
+off it.
 
 The floor search also requires the chain to be **closed**: a plan whose peak
 fits but whose brake misses the capture entry is not flyable. The near-floor

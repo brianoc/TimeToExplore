@@ -114,14 +114,17 @@ accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
 burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
 of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
-build is outside that window. At Uranus the window is **34.16 to 102.48 days** at
+build is outside that window. At Uranus the window is **30.56 to 91.68 days** at
 1 g (40.71–122.14 d at 0.3 g), and its right-hand end is a feasible direct build
-(seven arcs, 658.19 km/s), so the slider's right end is not a refusal. The first
-selection there is the cost: after step 7 the first `Plan()` is about **3.6 s in
-the .NET harness** at 1 g and 0.8 s at 0.3 g, against 22.0 and 18.7 s in the same
-Release harness (71 and 59 s in the Debug harness step 6 used), and the editor
-runs the same work several times slower, so the first Uranus preview is a pause
-of order ten seconds rather than the multi-minute freeze it was. The floor
+(seven arcs, 736.02 km/s at 1 g and 554.63 at 0.3 g), so the slider's right end
+is not a refusal. The first selection there is the cost: after step 1 the first
+`Plan()` is about **0.22 s in the .NET harness** at 1 g and 0.21 s at 0.3 g
+(3.1 and 0.5 s after step 7; the probe path is unchanged and the certified builds
+are cheaper), against 22.0 and 18.7 s before step 7 in the same Release harness
+(71 and 59 s in the Debug harness step 6 used), and the editor runs the same work
+several times slower, so the first Uranus preview is a short pause rather than
+the multi-minute freeze it was. The floors and the window's ends are re-measured
+on the editor at step 4. The floor
 plan and the window are cached per departure date, target, burn level, cruise
 style, and arrival style, so plotting the same route again at the same date
 reuses both; a changed departure date, or a place/teleport, drops the cache.

@@ -58,17 +58,49 @@ cheap **probe was never optimistic** against the certified build (probe ✓ ⇒
 cert ✓), which is what makes "search cheap, certify the answer" safe; a refused
 certificate must continue the search upward, not be reported.
 
+## Step 1 result (2026-11-20)
+
+Done on this branch. The departure solve's trial burns integrate at **128
+samples** (`PinnedDepartureSamples`), the reported departure burn stays at
+**512**, the certified brake is **512** (`BrakeSamples`), a fast probe keeps its
+own 2,048-sample brake, and the coast is re-solved from the reported burn's own
+end. A coarse solve that stalls retries once at 512 (needed by Mono at Uranus
+35 d; .NET converges first).
+
+Warm Release .NET harness, medians of five after two warm-up builds:
+
+| Plan | Δv (both) | Build before → after | Worst seam |
+|---|---|---:|---|
+| Mars 90 d 0.3 g | 44.3564 | 0.16 → **0.05 s** | 0.009 m / 1.7 × 10⁻⁵ m/s |
+| Mercury 8 d 1 g | 557.0380 | 0.28 → **0.09 s** | 9.9 m / 4.1 × 10⁻³ m/s |
+| Uranus 400 d 1 g | 182.3393 | 0.18 → **0.06 s** | 0.07 m / 2.2 × 10⁻⁵ m/s |
+| Mars 20 d 0.3 g | 270.8500 | 0.23 → **0.06 s** | 0.02 m / 3.5 × 10⁻⁵ m/s |
+| Mars 10 d 0.3 g | 607.8259 | 0.26 → **0.08 s** | 2.2 m / 1.3 × 10⁻³ m/s |
+| Uranus 35 d 1 g | 1984.4479 | 0.40 → **0.11 s** | 2.2 m / 3.7 × 10⁻⁴ m/s |
+
+`Plan()` (warm, median of three): Uranus 1 g **3.11 → 0.22 s**, Uranus 0.3 g
+**0.48 → 0.21 s**, Mars 0.3 g **1.97 → 0.60 s**, Mercury 1 g **0.56 → 0.25 s**,
+Jupiter 0.3 g **0.59 → 0.22 s**. Floors re-measured: Mars 6.73715 d, Mercury
+3.21610, Uranus 0.3 g 40.71332, and Jupiter 13.33520 are unchanged;
+**Uranus 1 g moves from 34.16041 to 30.55886 d** (2,299.29 km/s) because the
+certified 128-sample solve converges where 512 stalled at ~1.1 × 10⁻⁵ m/s. It is
+certified (`IsFeasibleAt`, worst seam 6.7 m / 8.4 × 10⁻⁴ m/s, cold rebuild at
+0.4 m / 1.0 × 10⁻³ m/s), and the 1 g window becomes **30.56–91.68 d**. The six
+fixed-duration anchors did not move; the details are in
+[planning performance](Docs/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20).
+
 ## Steps
 
 - [x] **Step 0** — plan recorded, handoff live.
-- [ ] **Step 1 — cheap certified build.** Departure solve at 128 samples,
-      reported burn unchanged at 512, coast re-solved from the reported burn's
-      end (position seam exact), brake at 512. Tests pin the six Δv anchors and
-      the seam/flight-arrival gates. Expected: Uranus 1 g `Plan()` 3.38 → ~1.8 s
-      .NET; 0.3 g 27 → ~7 s editor.
+- [x] **Step 1 — cheap certified build.** Done: solve at 128 samples, reported
+      burn at 512, coast re-solved from the reported end, certified brake at 512
+      (probes untouched), fallback retry for the Mono stall. Six Δv anchors
+      identical to four decimals; builds 2.9–3.9× faster; seams metres / sub-m/s.
+      `tools/check.sh --tests flight` passed.
 - [ ] **Step 2 — cheap search probes.** Probe quality (solve 64, fast peak) for
       full-field floor probes; the answer is rebuilt at certified quality, and a
-      refused certificate continues upward.
+      refused certificate continues upward. **This is next**: the probe path is
+      now the untouched one, and it is the remaining `Plan()` cost.
 - [ ] **Step 3 — a bracket for the scatter.** Replace the 15%-walk +
       0.05%-bisection with coarse growth and a 1% bisection (~7 probes). Floors
       and windows are **re-measured and become the new anchors**; this is the
@@ -79,6 +111,10 @@ certificate must continue the search upward, not be reported.
       floors/windows, testing anchors), log, handoff cleared.
 
 ## Verification
+
+Last result on this branch: `tools/check.sh --tests flight` passed the flight
+category in **125 s**, 0 failed; `.venv/bin/python tools/validate_okf.py` clean
+(41 concepts, 0 warnings, 0 errors, the same check `check.sh` runs first).
 
 ```bash
 tools/check.sh --tests flight        # any C# change
@@ -96,7 +132,7 @@ The .NET harness lives at `.cache/plan-harness` (gitignored, **not committed**):
 compiles `Assets/Scripts/Core/**` and `Assets/Scripts/Simulation/**` against a
 small `UnityEngine` shim and loads the shipped catalogue; `Program.cs` has
 `plan`/`duration`/`session` modes and `Probe.cs` has `sweep`/`build`/`knobs`/
-`compare` modes. Adapt it when the API changes.
+`compare`/`seam` modes. Adapt it when the API changes.
 
 ## Traps
 
@@ -110,7 +146,16 @@ small `UnityEngine` shim and loads the shipped catalogue; `Program.cs` has
   a converged plan.
 - A coarse departure solve leaves the reported burn and the coast from the same
   start but different sample counts; re-solve the coast from the **reported**
-  burn's end or the position seam breaks.
+  burn's end or the position seam breaks. The 128-sample solve also stalls just
+  over the tolerance in Mono at Uranus 35 d (1.274 × 10⁻⁵ m/s); the one retry at
+  512 (`TrySolvePinnedDepartureWithFallback`) is what keeps that anchor a plan.
+  Do not remove it, and do not give fast probes a retry — that would change the
+  search.
+- Step 1 moved only the Uranus 1 g floor (34.16041 → 30.55886 d) because the
+  certified 128-sample solve converges where 512 stalled; Uranus 0.3 g stays
+  40.71332 d and is still conservative (direct certified builds close at 40.5,
+  40.0, and 39.0 d, but the fast probes refuse them). Step 3 owns the bracket and
+  the windows; do not treat the step-7 floor table as current.
 - `FlightSession.Plot` stays synchronous this plan. Do not add async, a
   prefetch, or UI state; that is a later plan and the user asked for it to wait.
 - The user's Unity editor is open on `main`: never force-close it, never run

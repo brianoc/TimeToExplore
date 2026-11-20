@@ -819,6 +819,67 @@ namespace TimeToExplore.Tests.EditMode
                 "the full-field capture burn still ends at a safe injection radius");
         }
 
+        /// <summary>
+        /// The six fixed-duration plans are the profile's reference answers, and a
+        /// cheaper build must not move any of them. Measured at the epoch from
+        /// Gateway with the conic capture, with the departure solve integrating
+        /// its trial burns at 128 samples, the reported burn still at 512, and the
+        /// coast re-solved from the reported burn's own end. The delta-v is pinned
+        /// to four decimals and is identical to the 512-sample build.
+        /// </summary>
+        [TestCase("mars", 0.3, 90.0, 44.3564)]
+        [TestCase("mercury", 1.0, 8.0, 557.0380)]
+        [TestCase("uranus", 1.0, 400.0, 182.3393)]
+        [TestCase("mars", 0.3, 20.0, 270.8500)]
+        [TestCase("mars", 0.3, 10.0, 607.8259)]
+        [TestCase("uranus", 1.0, 35.0, 1984.4479)]
+        public void TheFixedDurationDeltaVAnchorsDoNotMove(string targetId,
+            double level, double days, double expectedKmPerSecond)
+        {
+            _planner.BurnLevelG = level;
+            TrajectoryPlan plan = PlanTo(targetId, days);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            TestContext.WriteLine($"{targetId} {days} d at {level} g: " +
+                                  $"{plan.DeltaVMps / 1000.0:F4} km/s " +
+                                  $"(anchor {expectedKmPerSecond:F4})");
+            Assert.That(Math.Round(plan.DeltaVMps / 1000.0, 4),
+                Is.EqualTo(expectedKmPerSecond),
+                "the fixed-duration delta-v anchor is unchanged to four decimals");
+        }
+
+        /// <summary>
+        /// The departure solve integrates its trial burns at 128 samples while the
+        /// reported burn stays at 512, so the coast is re-solved from the reported
+        /// burn's own end. Uranus at 35 days and 1 g is the measured fast,
+        /// long-burn case: the burn-to-coast seam is 2.0 × 10⁻⁴ m and 3.4 × 10⁻⁶
+        /// m/s, and every seam in the chain stays inside the 1 km / 1 m/s gate.
+        /// </summary>
+        [Test]
+        public void TheDepartureBurnHandsACoastSolvedFromItsOwnEnd()
+        {
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan plan = PlanTo("uranus", 35.0);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            PlanArc burn = plan.Arcs[1];
+            PlanArc coast = plan.Arcs[2];
+            Assert.That(burn.IsFiniteBurn, Is.True, "the departure burn is second");
+            Assert.That(coast.Path, Is.InstanceOf<ConicArc>());
+
+            double positionStep = Vector3d.Distance(
+                burn.Path.PositionAt(1.0), coast.Path.PositionAt(0.0));
+            double velocityStep = (burn.Path.VelocityAt(1.0)
+                                   + coast.EntryImpulseVectorMps
+                                   - coast.Path.VelocityAt(0.0)).Magnitude;
+            TestContext.WriteLine($"departure burn -> coast: {positionStep:E3} m, " +
+                                  $"{velocityStep:E3} m/s");
+            Assert.That(positionStep, Is.LessThan(10.0),
+                "the coast starts where the reported burn ends");
+            Assert.That(velocityStep, Is.LessThan(1e-2));
+
+            AssertChainCloses(plan);
+        }
 
         /// <summary>The break search's fast model is the departure body alone;
         /// the plan reports the full field. The two peaks must stay close enough

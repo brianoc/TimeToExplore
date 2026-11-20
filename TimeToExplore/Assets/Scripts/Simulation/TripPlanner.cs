@@ -110,6 +110,24 @@ namespace TimeToExplore.Simulation
         /// authority.</summary>
         private const int FastProbeBurnSamples = 128;
 
+        /// <summary>Burn samples used inside the pinned departure solve's
+        /// trial burns. This is the solve's resolution, not the reported arc's:
+        /// the Newton iteration only has to place the burn's end velocity on the
+        /// coast's departure, and 128 samples resolve the trial burn finely
+        /// enough to converge to <see cref="DepartureSolveToleranceMps"/> at a
+        /// quarter of the 512-sample cost. The plan's departure burn is still
+        /// integrated at <see cref="ArcSamples"/>-or-better (512).</summary>
+        private const int PinnedDepartureSamples = 128;
+
+        /// <summary>Brake samples in the burn–coast–burn **certified** build. The
+        /// brake is a slow crossing over hours, so 512 samples is a metre-scale
+        /// integration step and the pin's velocity mismatch stays far inside the
+        /// 1 km / 1 m/s chain gate; the automatic count would clamp at the old
+        /// 2,048 for every measured brake. A fast probe keeps
+        /// <see cref="FiniteBurnArc.MaximumSamples"/>: the probe is a search
+        /// input, and its brake must not move with the build's cost trim.</summary>
+        private const int BrakeSamples = 512;
+
         /// <summary>Velocity mismatch, in m/s, at the brake's start that ends
         /// the pinned brake/departure fixed point. The mismatch is integrated
         /// over the brake, so 1e-6 m/s is at most about 0.3 m of entry position
@@ -1307,7 +1325,12 @@ namespace TimeToExplore.Simulation
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
             int burnSamples = fast ? FastProbeBurnSamples : Math.Max(512, ArcSamples);
-            int brakeSamples = FiniteBurnArc.MaximumSamples;
+            // The fast probe is a search input and keeps the brake resolution it
+            // has always had; only the certified build's brake is trimmed. A
+            // probe's brake is the same coarse decision the search made before
+            // step 1, so changing it would change the search rather than just
+            // make a build cheap.
+            int brakeSamples = fast ? FiniteBurnArc.MaximumSamples : BrakeSamples;
 
             // A probe keeps the cheap two-body burn: it only has to decide
             // whether a duration fits, and the reported plan is rebuilt and
@@ -1499,10 +1522,11 @@ namespace TimeToExplore.Simulation
                 burnStartPosition = anchorPosition + escapeDirection * clearanceRadius;
                 burnStartVelocity = anchorVelocity + escapeDirection * escapeSpeed;
 
-                if (!TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
+                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        burnSamples, burnGravity, out coastStartPosition, out coastStartVelocity,
+                        PinnedDepartureSamples, fast ? 0 : burnSamples, burnGravity,
+                        out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string reason))
                 {
                     return StretchedPlan(ship, target, totalSeconds, reason);
@@ -1555,10 +1579,11 @@ namespace TimeToExplore.Simulation
                     clearanceRadius, escapeSpeed, breakSeconds, brakeStartJd,
                     burnSeconds, brakeSeconds, fast);
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
-                if (!TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
+                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        burnSamples, burnGravity, out coastStartPosition, out coastStartVelocity,
+                        PinnedDepartureSamples, fast ? 0 : burnSamples, burnGravity,
+                        out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string settleReason))
                 {
                     return StretchedPlan(ship, target, totalSeconds, settleReason);
@@ -1593,9 +1618,13 @@ namespace TimeToExplore.Simulation
                     "frame, so the crossing needs an acceleration rather than a brake");
             }
 
-            // The burn's final arc uses the solve's sample count, so its end state
-            // is the state the coast was solved from; its end velocity is the
-            // coast's departure velocity and its position is the Lambert start.
+            // The reported burn integrates at the plan's resolution (512 or
+            // ArcSamples), while the solve above integrated its trial burns at
+            // PinnedDepartureSamples. Its end state is therefore not the state
+            // the solve's coast ran from, so the coast is re-solved below from
+            // where the reported burn actually ends: the position seam stays
+            // exact and only the velocity seam carries the sample-count
+            // difference (metres, not kilometres).
             _model.ComputeState(_model.Sun, burnStartJd,
                 out Vector3d sunForBurn, out Vector3d sunVelocityForBurn);
             FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
@@ -1616,6 +1645,10 @@ namespace TimeToExplore.Simulation
                 out Vector3d sunAtCoastStart, out Vector3d sunVelocityAtCoastStart);
             _model.ComputeState(_model.Sun, brakeStartFinalJd,
                 out Vector3d sunAtBrakeArc, out Vector3d sunVelocityAtBrakeArc);
+
+            // The coast starts where the reported burn ends, not where the
+            // solve's coarser trial burn ended.
+            coastStartPosition = departureBurn.EndLocalPositionM + sunAtCoastStart;
 
             LambertSolution coastSolution = LambertSolver.SolveShortWay(
                 coastStartPosition, brakeStartPosition, coastSeconds, _model.Sun.Gm);
@@ -2199,6 +2232,44 @@ namespace TimeToExplore.Simulation
             reason = "burn-coast-burn: the departure burn did not settle on the " +
                      $"coast ({best:F3} m/s short)";
             return false;
+        }
+
+        /// <summary>
+        /// Solve the pinned departure at the cheap trial resolution, retrying once
+        /// at the plan's resolution when the coarse solve stalls. The tolerance is
+        /// identical at both; the retry exists because a runtime's last-bit libm
+        /// difference can leave the coarse iteration a fraction above
+        /// <see cref="DepartureSolveToleranceMps"/> — measured at Uranus 35 d at
+        /// 1 g in Mono — and a fixed-duration anchor must not turn into a refusal
+        /// because the build got cheaper. A fast probe has no fallback: it is the
+        /// search's cheap decision, and the certified build after it is the
+        /// authority.
+        /// </summary>
+        private bool TrySolvePinnedDepartureWithFallback(ShipState ship,
+            BodyRuntime departureBody, double clearanceRadius, double escapeSpeed,
+            double acceleration, double burnStartJd, double brakeStartJd,
+            Vector3d brakeStart, ref Vector3d direction, ref double burnSeconds,
+            int samples, int fallbackSamples, IGravityField burnGravity,
+            out Vector3d coastStartPosition, out Vector3d coastStartVelocity,
+            out Vector3d coastArrivalVelocity, out double coastSeconds,
+            out string reason)
+        {
+            if (TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
+                    escapeSpeed, acceleration, burnStartJd, brakeStartJd, brakeStart,
+                    ref direction, ref burnSeconds, samples, burnGravity,
+                    out coastStartPosition, out coastStartVelocity,
+                    out coastArrivalVelocity, out coastSeconds, out reason))
+            {
+                return true;
+            }
+
+            if (fallbackSamples <= samples) return false;
+
+            return TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
+                escapeSpeed, acceleration, burnStartJd, brakeStartJd, brakeStart,
+                ref direction, ref burnSeconds, fallbackSamples, burnGravity,
+                out coastStartPosition, out coastStartVelocity,
+                out coastArrivalVelocity, out coastSeconds, out reason);
         }
 
         private bool EvaluatePinnedDeparture(ShipState ship, BodyRuntime departureBody,

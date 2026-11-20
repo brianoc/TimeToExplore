@@ -108,7 +108,7 @@ because Unity test assemblies cannot reference the predefined
 | `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; a full-field burn crossing the sphere of influence matching an independent 20,000-step RK4 of the same field and thrust, its acceleration at a sample being the field plus the thrust rather than the two-body value, a short local burn agreeing with the two-body burn, and the reference body being a label (one inertial path, two local decompositions differing by exactly the two bodies' states); the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
 | `FiniteBurnTripPlannerTests` | the six-arc hybrid plan with one finite burn between the conic coasts, the trim and circularisation impulses, seam steps of exactly the burn level, end-to-end flights to Mars, Earth, Venus, Jupiter, and Saturn with stable parking orbits, every level from 0.3 to 1.0 g reaching an exact parking orbit, zero level reproducing the conic plan, the cheaper-than-quintic capture across all five targets, the Jupiter parking radius below the quintic ceiling, and the finite/trim split reaching the plan |
 | `HandoverBandTests` | the handover band the fixed burns hand over inside: the floor scaling as `1/sqrt(a)` when halved (Earth and Jupiter unclamped, and Mercury's gravity floor under a clamped band), the ceiling being exactly `1.02 × SOI` per body and moving per body (Mercury 114,658.2 km against Uranus 52,795,223.9 km), the departure endpoint being the ceiling and the arrival endpoint the floor, the clamped floor sitting at or above the surface clearance on every planet, moon, and asteroid at 0.3 g and 1 g (Mercury and Mars at 1 g are the named cases, their gravity floors below the surface), the exactly three catalogue bodies whose band is empty at every level (Phobos, Deimos, Proteus) reported with the floor, the clamp, and the ceiling in the reason and refused by the planner before a chain is built, and the body-clearance gate accepting a 1 g burn that crosses Earth's sphere while clearing the planet by 821,258 km and refusing a 30 s burn 60 km up that grazes the surface |
-| `BurnCoastBurnTripPlannerTests` | the seven-arc profile — quintic break, prograde finite burn, Lambert coast, brake, conic capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the capture chain entering at the arrival handover floor (Uranus 1 g 400 d: 38,643.0 km, a 1,860.2 s fall, a 6.369 km/s periapsis burn, every seam inside 1 km and 1 m/s) while the coast profile keeps its 577,241 km sphere-of-influence entry and 1.3187-day fall, the brake spending the coast plan's handover, continuous position and velocity at every seam, every fixed burn clearing the body it works near, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing closing cheaply (200 days to Mars at 12.46 km/s) with the slow end set by the 179.4° coast, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes |
+| `BurnCoastBurnTripPlannerTests` | the seven-arc profile — quintic break, prograde finite burn, Lambert coast, brake, conic capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the capture chain entering at the arrival handover floor (Uranus 1 g 400 d: 38,643.0 km, a 1,860.2 s fall, a 6.369 km/s periapsis burn, every seam inside 1 km and 1 m/s) while the coast profile keeps its 577,241 km sphere-of-influence entry and 1.3187-day fall, the brake spending the coast plan's handover, continuous position and velocity at every seam, every fixed burn clearing the body it works near, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing closing cheaply (200 days to Mars at 12.46 km/s) with the slow end set by the 179.4° coast, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes; and, for step 1's cheaper build, the six fixed-duration delta-v anchors pinned to four decimals and the departure-burn-to-coast seam on Uranus 35 d at 1 g, where the solve integrates at 128 samples and the reported burn at 512 |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
@@ -225,7 +225,7 @@ The burn–coast–burn profile has these anchors at the epoch, from Gateway at
 | Trip-time window (Mercury) | 3.22–9.65 days |
 | True floor, Mars at 0.3 g | 6.74 days, peak 5.14 m/s², 1,172 km/s |
 | True floor, Mercury at 1 g | 3.22 days, peak 9.70 m/s², 1,766 km/s |
-| True floor, Uranus at 1 g | 34.16 days, peak 9.70 m/s², 2,037 km/s |
+| True floor, Uranus at 1 g | 30.56 days, peak 9.70 m/s², 2,299 km/s |
 | True floor, Uranus at 0.3 g | 40.71 days, peak 2.94 m/s², 1,801 km/s |
 | Just below the Mercury floor | 3.19 days refused: the departure break needs 10.1 m/s², above the 10.0 m/s² drive |
 | Just below the Mars floor | 6.60 days refused at 10.03 m/s²; 6.70 days leaves the brake 8,073 m and 0.8 m/s short of the entry |
@@ -291,6 +291,21 @@ A body-relative position on a full-field arc carries the catalogue's date
 quantisation — about **0.2–0.9 m** at 1.5 AU — so a model-to-model comparison uses
 inertial states.
 
+Step 1 changed the sampling a build integrates at, not the reported answers. The
+pinned departure solve's trial burns integrate at **128 samples**
+(`PinnedDepartureSamples`), the reported departure burn stays at **512**, the
+certified brake is **512** (`BrakeSamples`), and a fast probe keeps its own
+2,048-sample brake. The coast is re-solved from the reported burn's own end so
+the position seam is exact. A coarse solve that stalls retries
+once at 512, which is what keeps the Uranus 35 d and 1 g anchor a plan in Mono.
+Measured in a warm Release .NET harness, a build is **2.9–3.9× faster** (Mars
+90 d 0.16 → 0.05 s, Mercury 8 d 0.28 → 0.09, Uranus 400 d 0.18 → 0.06, Mars 20 d
+0.23 → 0.06, Mars 10 d 0.26 → 0.08, Uranus 35 d 0.40 → 0.11), the six
+fixed-duration delta-v anchors are unchanged to four decimals (44.3564,
+557.0380, 182.3393, 270.8500, 607.8259, and 1984.4479 km/s), and the worst seam
+of the six is Mercury's 9.9 m / 4.1 × 10⁻³ m/s. Uranus 35 d's
+departure-burn-to-coast seam is 2.0 × 10⁻⁴ m and 3.4 × 10⁻⁶ m/s.
+
 The break search is measured separately because it used to dominate the profile.
 At the epoch on a throwaway copy under `.cache`, Mercury at 1 g: one `Plan()` is
 **1.5 s** (36.2 s in the first cut, 12.0 s after the two-tier break search) and
@@ -307,16 +322,26 @@ floor; the 5% screen decides near the limit, so the fast number never becomes a
 reported peak. The search-input work left the plans and floors alone; the
 arrival entry radius moved them afterwards, and the table above carries the new
 numbers. After that change a floor is a certified full-field plan, but the search
-can be conservative: at Uranus 1 g it returns 34.16 days while a direct build at
-33.66 days also closes (0.50 days, 1.5%), because the pinned-departure solve
-stalls below that and the search refuses the probe. At 0.3 g the near-floor
-basin is a set of **needles** — 40.30 and 40.95 days close, 40.5–40.9 do not,
-and the returned 40.71332 days is certified but does not rebuild cold — so its
-floor is a point the search's 0.2% retry found, not a boundary. The
-conservatism is a cost shield, not a wrong answer: do not loosen
-`DepartureSolveToleranceMps` or widen the gate. Step 7 measured the trade and
-kept the shield ([planning
+can be conservative: before step 1, at Uranus 1 g it returned 34.16 days while a
+direct build at 33.66 days also closed (0.50 days, 1.5%), because the
+pinned-departure solve stalled below that and the search refused the probe. At
+0.3 g the near-floor basin was a set of **needles at step 7** — 40.30 and 40.95
+days closed, 40.5–40.9 did not, and the returned 40.71332 days was certified but
+did not rebuild cold — so its floor was a point the search's 0.2% retry found,
+not a boundary. The conservatism is a cost shield, not a wrong answer: do not
+loosen `DepartureSolveToleranceMps` or widen the gate. Step 7 measured the trade
+and kept the shield ([planning
 performance](/technical/planning-performance.md#step-7-the-levers-measured-2026-11-20)).
+Step 1's cheaper build re-measured the returned floors. Uranus 0.3 g stays
+**40.71 d** and the search is still conservative there — the fast probes refuse
+40.5–39.0 d while the certified build now closes them, and a cold rebuild at
+40.71332 d closes at 5.1 m / 6.5 × 10⁻⁴ m/s. **Uranus 1 g moves from 34.16 to
+30.56 d** (2,299 km/s), because the certified build's 128-sample departure
+solve converges where the 512-sample one stalled at about 1.1 × 10⁻⁵ m/s, so
+the cost shield no longer refuses that probe. The plan is certified: the worst
+seam is 6.7 m / 8.4 × 10⁻⁴ m/s and a cold rebuild at 30.55886 d closes at 0.4 m
+/ 1.0 × 10⁻³ m/s. The window follows, **30.56–91.68 d** at 1 g. The basin has
+not been re-swept, so step 3 re-anchors the bracket.
 
 Those timings are the two-body-burn profile. Since the certified plan's fixed
 burns integrate the summed field, the same work in a .NET harness before step 7

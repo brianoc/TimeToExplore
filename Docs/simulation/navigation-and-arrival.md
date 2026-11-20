@@ -168,7 +168,9 @@ radius)` — not the sphere of influence: the brake ends there and the chain's
 inbound fall starts there. Measured at the epoch from Gateway to Uranus at 1 g
 and 400 days, the chain enters at 38,643 km and falls for 31 minutes, against
 117.13 days from the 51.76 million km sphere, and the profile's floor drops from
-150.73 to **34.16 days**. The **coast** profile has no brake to hand over and
+150.73 to **30.56 days** (34.16 at step 7; step 1's cheaper certified solve
+converges where the 512-sample one stalled, so the re-measured floor is lower at
+1 g). The **coast** profile has no brake to hand over and
 keeps its sphere-of-influence entry
 ([the chain's entry radius](/simulation/powered-leg-floor.md#the-chains-entry-radius)).
 Every seam is continuous in position and velocity, and the plan arrives on the

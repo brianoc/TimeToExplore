@@ -193,7 +193,9 @@ twelve-pass cap (the certified tolerances were then 1e-7 m/s and 1e-6 s), and
 each pass interpolates the brake at 2,048 samples and the departure burn at 512.
 That is about **1.2 s per pass, ~15 s per build**. A floor search pays for a
 bracket of those builds, so a floor plot was **72 s** and a burn-level change
-**80 s**.
+**80 s**. Step 1 has since cut those two counts — the solve's trial burns to 128
+samples and the brake to 512 — and re-solved the coast from the reported burn's
+end ([step 1](#step-1-the-builds-own-cost-2026-11-20)).
 
 Two builds in that path were redundant and are gone:
 
@@ -219,7 +221,10 @@ step also clamps to 2,048 for any brake longer than 2 h 17 min. Every measured
 brake is 6–29 h (Mercury floor 6.2 h, Mars floor 1 day, Uranus 28.5 h), so
 switching to the automatic count would not change any of them. Cutting the cost
 means a coarser brake step or a looser pin tolerance, and both change certified
-numbers: that is the performance step's decision, not a trim.
+numbers: that is the performance step's decision, not a trim. Step 1 took the
+coarser brake step — a fixed 512 samples — kept both tolerances, and re-solved
+the coast from the reported burn's end; the measurement is in
+[step 1](#step-1-the-builds-own-cost-2026-11-20).
 
 ## The Uranus floor and its conservative bracket (measured before step 7)
 
@@ -326,18 +331,20 @@ duration the certified full-field build closes at, and the basin was already
 noisy. `Plan()` is now 2.6–6× faster at Mars, Mercury and Uranus 1 g, and 24× at
 Uranus 0.3 g partly because its floor moved.
 
-The 0.3 g floor is a **needle**, and that matters for the slider. Its plan is
-certified as feasible at 40.71332 d, and the 1 g floor at 34.16041 d rebuilds
-normally from a direct request. The 0.3 g one does not: a cold
-`PlanAtDuration(40.71332 d)` is refused with *"the departure burn cannot be
+**At step 7 the 0.3 g floor was a needle**, and that mattered for the slider.
+Its plan was certified as feasible at 40.71332 d, and the 1 g floor at 34.16041 d
+rebuilt normally from a direct request. The 0.3 g one did not: a cold
+`PlanAtDuration(40.71332 d)` was refused with *"the departure burn cannot be
 placed at this trip time"*, 1.039 × 10⁻⁵ m/s short — 4% over
 `DepartureSolveToleranceMps` — because the search's 0.2% retry found a feasible
 point only about **40 ms** wide inside a hole that runs to 40.9 d. The returned
-plan is still a certified full-field plan and its seams are inside the gate, but
-a rebuild at its own duration stalls. The background retime used to rebuild a
-floor request and would have published that refusal; it now hands the window's
+plan was still a certified full-field plan and its seams were inside the gate,
+but a rebuild at its own duration stalled. The background retime used to rebuild
+a floor request and would have published that refusal; it now hands the window's
 stored floor plan to the publisher, mirroring `SetPreviewDuration`'s reuse, so a
-drag to the left end is free and cannot refuse. The rest of the window keeps the
+drag to the left end is free and cannot refuse. Step 1's certified brake now
+closes that rebuild (5.1 m / 6.5 × 10⁻⁴ m/s), but the cache reuse still keeps
+the drag off the search. The rest of the window keeps the
 pre-existing holes (at 0.3 g, 41.6–41.8 d was refused before step 7 too); the
 window's right end is a feasible build at both levels.
 
@@ -358,13 +365,97 @@ before its trim), the Mars floor test **18.8 s** (68 s), the Mercury floor 10.4 
 and the longest test anywhere is 59.3 s (the HUD's cruise-profile control), so no
 multi-minute silent stretch is left.
 
+## Step 1: the build's own cost (2026-11-20)
+
+The first-plot plan's step 1 makes one **certified full-field** burn–coast–burn
+build cheap. The search's logic, its tolerances, the 5% screen, the floor
+tolerance, and the 1 km / 1 m/s seam gate are unchanged; what changes is the
+resolution the build's own solve integrates at, and the two sample counts that
+dominated it.
+
+* **The pinned departure solve's trial burns integrate at 128 samples**
+  (`TripPlanner.PinnedDepartureSamples`). That is the solve's resolution, not
+  the reported arc's: the damped Newton only has to place the trial burn's end
+  velocity on the coast, and 128 samples converge to
+  `DepartureSolveToleranceMps` at a quarter of the cost. Both the main pin loop
+  and the settle loop pass it.
+* **The reported departure burn still integrates at 512** (`Math.Max(512,
+  ArcSamples)`), so the arc the caller sees is the resolution it has always had.
+* **The coast is re-solved from the reported burn's actual end.** The 128-sample
+  trial burn and the 512-sample reported burn end a few metres apart; the
+  Lambert solve, the correction, and the conic now start from
+  `departureBurn.EndLocalPositionM + sunAtCoastStart` instead of the solve's
+  `coastStartPosition`. The position seam is therefore exact, and only the
+  velocity seam carries the sample-count difference — metres and milli-metres
+  per second, not kilometres.
+* **The brake integrates at 512 samples** (`TripPlanner.BrakeSamples`) in
+  `BuildBurnCoastBurn` **for the certified build**, replacing the old
+  `FiniteBurnArc.MaximumSamples` (2,048). A **fast probe keeps
+  `MaximumSamples`**: it is a search input, and trimming its brake would change
+  the search rather than just make a build cheap. Every measured certified
+  brake is 6–29 h, so the automatic 4 s step also clamped at 2,048; the explicit
+  512 is the measured step. `FiniteBurnArc.MaximumSamples` itself and the hybrid
+  capture's injection burn are unchanged.
+* **A stalled coarse solve retries once at the reported resolution.**
+  `TrySolvePinnedDepartureWithFallback` runs the 128-sample solve and, when it
+  refuses, the 512-sample one. The tolerance is identical at both; the retry is
+  there because a runtime's last-bit libm difference can leave the coarse
+  iteration a fraction above the tolerance. Measured at Uranus 35 d and 1 g, the
+  Mono build refused at 1.274 × 10⁻⁵ m/s while the .NET build converged, so
+  without the retry that fixed-duration anchor would have moved from a plan to a
+  refusal. Fast probes get no retry: their cheap decision is the search's, and
+  the certified build after it is the authority.
+
+Measured at the epoch (2026-11-15), Gateway departure, conic capture, in the
+throwaway Release .NET harness. Builds are medians of five after two warm-up
+builds, so tiered JIT is not in the number; the absolute times are about half
+the step-7 record, but the before/after pair is the change:
+
+| Plan | Δv before → after | Build before → after | Worst seam |
+|---|---|---|---|
+| Mars 90 d, 0.3 g | 44.3564 km/s (both) | 0.16 → **0.05 s** | 0.009 m / 1.7 × 10⁻⁵ m/s |
+| Mercury 8 d, 1 g | 557.0380 (both) | 0.28 → **0.09 s** | 9.9 m / 4.1 × 10⁻³ m/s |
+| Uranus 400 d, 1 g | 182.3393 (both) | 0.18 → **0.06 s** | 0.07 m / 2.2 × 10⁻⁵ m/s |
+| Mars 20 d, 0.3 g | 270.8500 (both) | 0.23 → **0.06 s** | 0.02 m / 3.5 × 10⁻⁵ m/s |
+| Mars 10 d, 0.3 g | 607.8259 (both) | 0.26 → **0.08 s** | 2.2 m / 1.3 × 10⁻³ m/s |
+| Uranus 35 d, 1 g | 1984.4479 (both) | 0.40 → **0.11 s** | 2.2 m / 3.7 × 10⁻⁴ m/s |
+
+The six fixed-duration answers are **identical to four decimals**, and every
+seam is metres and milli-metres per second: the worst of the six is Mercury's
+9.9 m and 4.1 × 10⁻³ m/s, a hundredfold inside the 1 km / 1 m/s gate. The
+departure-burn-to-coast seam on the Uranus 35-day plan is **2.0 × 10⁻⁴ m and
+3.4 × 10⁻⁶ m/s**, which is the seam the coast re-solve exists to keep closed.
+
+`Plan()` is the floor search, so its cost is the number of certified builds it
+pays for. The probe path is the same one the search used before step 1 — only
+the certified builds it pays for got cheaper — so every measured case fell:
+Uranus 1 g **3.11 → 0.22 s**, Uranus 0.3 g **0.48 → 0.21 s**, Mars 0.3 g
+**1.97 → 0.60 s**, Mercury 1 g **0.56 → 0.25 s**, and Jupiter 0.3 g
+**0.59 → 0.22 s**.
+
+The floors are the first duration the certified build closes at, so the cheaper
+build can change one where the coarse solve stops stalling. Four are unchanged:
+Mars 0.3 g **6.73715 d**, Mercury 1 g **3.21610 d**, Uranus 0.3 g
+**40.71332 d**, and Jupiter 0.3 g **13.33520 d**. **Uranus 1 g moves from
+34.16041 to 30.55886 d** (2,037 → 2,299.29 km/s): the certified build's
+128-sample departure solve converges at durations where the 512-sample one
+stalled about 1.1 × 10⁻⁵ m/s above the tolerance, so the cost shield that used
+to buy a refusal no longer does. It is a re-measured floor, not an error. The
+returned plan is certified — `IsFeasibleAt` holds, the worst seam is **6.7 m /
+8.4 × 10⁻⁴ m/s**, and a cold rebuild at 30.55886 d closes at 0.4 m /
+1.0 × 10⁻³ m/s — and the window follows: **30.56–91.68 d** at 1 g and
+**40.71–122.14 d** at 0.3 g. A direct build at the new 1 g maximum (91.67658 d)
+is accepted with seven arcs and 736.02 km/s. Every fixed-duration anchor is
+unchanged. Step 3 re-measures the floors and windows as anchors; step 4
+re-measures the editor.
+
 # Where it lives
 
 | Concern | Code |
 |---|---|
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
-| Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `AppendHybridCapture` |
+| Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
 | Retime | `FlightSession.RequestPreviewDuration`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `PendingPreviewSeconds`, `RetimeLoop`, `BuildRetime`, `StartRetimeWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
