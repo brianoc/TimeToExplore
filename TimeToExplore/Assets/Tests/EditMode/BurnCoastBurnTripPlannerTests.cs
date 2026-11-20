@@ -585,6 +585,117 @@ namespace TimeToExplore.Tests.EditMode
                 "the reason names the peak the arc needs");
         }
 
+        /// <summary>
+        /// The reported plan's burns are full-field burns, not the two-body
+        /// search model: every fixed burn integrates the summed catalogue field
+        /// and its measured acceleration is the field plus the thrust. Rebuilding
+        /// the same trip through a field that holds only the Sun moves the plan,
+        /// which is what a burn that quietly used one body could not do.
+        /// </summary>
+        [Test]
+        public void EveryBurnInAReportedPlanIntegratesTheFullField()
+        {
+            TrajectoryPlan plan = PlanTo("mars");
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            var sunOnly = FlightFixture.SunOnlyField(_model);
+            int burns = 0;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (!(arc.Path is FiniteBurnArc burn)) continue;
+                burns++;
+                Assert.That(burn.UsesFullField, Is.True, $"{arc.Phase} burn");
+                Assert.That(burn.Gravity, Is.SameAs(_gravity), $"{arc.Phase} field");
+
+                // The arc's own acceleration is the summed field at its state
+                // plus the commanded thrust.
+                const double u = 0.5;
+                Vector3d position = arc.Path.PositionAt(u);
+                double julianDate = arc.StartJulianDate
+                                    + arc.Path.SecondsAt(u) / JulianDate.SecondsPerDay;
+                _gravity.Prepare(position, julianDate);
+                Vector3d fieldAcceleration = _gravity.AccelerationAt(position, julianDate);
+                Vector3d thrust = arc.Path.AccelerationAt(u) - fieldAcceleration;
+                Assert.That(thrust.Magnitude,
+                    Is.EqualTo(plan.FiniteBurnAccelerationMps2).Within(1e-6),
+                    $"{arc.Phase} thrust");
+
+                sunOnly.Prepare(position, julianDate);
+                Vector3d sunAcceleration = sunOnly.AccelerationAt(position, julianDate);
+                double nonSun = (fieldAcceleration - sunAcceleration).Magnitude;
+                TestContext.WriteLine($"{arc.Phase} burn: |thrust| {thrust.Magnitude:F4}, " +
+                                      $"non-Sun term {nonSun:E3} m/s²");
+                Assert.That(nonSun, Is.GreaterThan(1e-6),
+                    $"{arc.Phase} burn is not a one-body burn");
+            }
+
+            Assert.That(burns, Is.EqualTo(2), "the departure burn and the brake");
+
+            // A different field is a different plan.
+            var sunPlanner = new TripPlanner(_model, sunOnly)
+            {
+                CruiseStyle = CruiseStyle.BurnCoastBurn,
+                ArrivalStyle = CaptureStyle.Conic,
+                BurnLevelG = _planner.BurnLevelG
+            };
+            TrajectoryPlan weak = sunPlanner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "gateway"), "mars",
+                TripDays * JulianDate.SecondsPerDay);
+            Assert.That(weak.IsFeasible, Is.True, weak.InfeasibleReason);
+            TestContext.WriteLine($"full {plan.DeltaVMps / 1000.0:F1} km/s against " +
+                                  $"the Sun alone {weak.DeltaVMps / 1000.0:F1} km/s");
+            Assert.That(Math.Abs(weak.DeltaVMps - plan.DeltaVMps),
+                Is.GreaterThan(0.01 * plan.DeltaVMps),
+                "the plan is built in the field it reports");
+        }
+
+        /// <summary>
+        /// The hybrid arrival's injection burn is deep in the target's well, where
+        /// the summed field is the target plus a small tide. It is still a burn in
+        /// a full-field plan, so it is integrated full-field too — the capture
+        /// solver and the arc that is reported use the same field.
+        /// </summary>
+        [Test]
+        public void TheHybridCaptureInjectionBurnAlsoIntegratesTheFullField()
+        {
+            var planner = new TripPlanner(_model, _gravity)
+            {
+                CruiseStyle = CruiseStyle.BurnCoastBurn,
+                ArrivalStyle = CaptureStyle.FiniteBurn,
+                BurnLevelG = 0.3
+            };
+            TrajectoryPlan plan = planner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "gateway"), "mars",
+                TripDays * JulianDate.SecondsPerDay);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            int burns = 0;
+            double captureEndRadius = 0.0;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (!(arc.Path is FiniteBurnArc burn)) continue;
+                burns++;
+                Assert.That(burn.UsesFullField, Is.True, $"{arc.Phase} burn");
+                if (burn.Centre == _model.Get("mars"))
+                {
+                    captureEndRadius = burn.EndLocalPositionM.Magnitude;
+                    TestContext.WriteLine($"capture burn: {burn.DurationSeconds:F1} s, " +
+                                          $"injection {captureEndRadius / 1000.0:N0} km");
+                }
+            }
+
+            Assert.That(burns, Is.EqualTo(3),
+                "the departure burn, the brake, and the capture burn");
+            Assert.That(captureEndRadius,
+                Is.LessThan(ParkingOrbit.ConicRadiusM(_model.Get("mars"))),
+                "the full-field capture burn ends below the parking radius");
+            Assert.That(captureEndRadius,
+                Is.GreaterThan(_model.Get("mars").RadiusM
+                               + HybridCapture.MinimumClearanceAltitudeM),
+                "the full-field capture burn still ends at a safe injection radius");
+        }
+
+
         /// <summary>The break search's fast model is the departure body alone;
         /// the plan reports the full field. The two peaks must stay close enough
         /// that the search's duration decision does not move the plan, and the

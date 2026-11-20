@@ -1,10 +1,10 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Step 1 is done: the design is recorded in
-[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
-Step 2, the full-field finite burn in `FiniteBurnArc`, is next. Screenshots are
-waived for this plan.
+Steps 1 and 2 are done. The design is recorded in
+[Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md),
+and `FiniteBurnArc` now integrates the summed field. Step 3, the handover band,
+is next. Screenshots are waived for this plan.
 
 ## Why
 
@@ -24,10 +24,9 @@ The reasoning and the numbers are in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 this list is the caretaker's short form.
 
-1. **Full-field burns, not patched burns.** Fixed burns integrate the summed
-   gravity field; the reference body becomes a label. One burn arc may cross an
-   SOI. Do not split a burn at the SOI — the handover would sit where each
-   two-body model is about 50% wrong.
+1. **Full-field burns, not patched burns.** *Implemented.* Fixed burns integrate
+   the summed gravity field; the reference body is a label. One burn arc may
+   cross an SOI; it is never split there.
 2. **Handover band.** The burn hands over to the shaped ends between a hard
    floor and a hard ceiling: floor `sqrt(μ / (κ a_drive))` with the parking
    ceiling's `κ = 0.4`, ceiling the current `1.02 × SOI`. Asymmetric between
@@ -40,7 +39,9 @@ this list is the caretaker's short form.
    constant (at least as an option). This is what allows a short fall.
 5. **Steering starts simple.** A fixed inertial direction, subdivided into a
    few segments if needed. Measure the Δv penalty against a local-prograde law
-   before paying for a shooting solve.
+   before paying for a shooting solve. (The field change kept the existing law:
+   the escape ray and handover change are fixed inertial directions, and
+   prograde/retrograde follow the reference-relative velocity.)
 
 Open questions: the steering law above, the band-versus-solved radius rule, the
 asymmetry between the two ends, and whether the handover radius should be a
@@ -49,12 +50,15 @@ search input or a certified build.
 ## Steps (one sub-agent per step, one commit each)
 
 1. **Record the design.** **Done** — the new concept is
-   [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md),
-   linked from the index, with the Uranus numbers and the decisions above; the
-   two existing concepts and the flight model carry pointers. Docs only.
-2. **Full-field finite burn.** Let `FiniteBurnArc` integrate the summed field;
-   keep the reference body as a label. Tests: a burn crossing an SOI closes; the
-   existing two-body cases are unchanged where they should be.
+   [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
+2. **Full-field finite burn.** **Done** — `FiniteBurnArc` takes an optional
+   `IGravityField`, integrates absolute coordinates, and decomposes back into the
+   reference body's frame; every fixed burn in a certified plan is full-field
+   (departure, brake, hybrid injection); the fast probes keep the two-body burn.
+   Tests: an SOI-crossing burn against an independent RK4, the two-body agreement
+   where the third bodies are negligible, the reference body as a label, and the
+   plan's burns carrying the field. The plans and floors did not move; the cost
+   did (see Traps).
 3. **Handover band and endpoints.** Floor and ceiling radii, asymmetric
    departure/arrival, and the clearance gate replacing "the burn stays outside
    the departure SOI" with "the burn clears the body". Tests: scaling per body
@@ -78,9 +82,10 @@ search input or a certified build.
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result: `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0
-  warnings, 0 errors; `tools/check.sh --fast` passed (2026-11-19) after step 1's
-  docs-only commit. No code or tests changed.
+- Last result (2026-11-19, after step 2): `tools/check.sh --tests flight` —
+  passed, 239 tests, 0 failed, 403 s; `tools/check.sh --tests
+  presentation,smoke` — passed, 140 tests, 0 failed, 159 s;
+  `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0 warnings, 0 errors.
 
 ## Traps
 
@@ -95,3 +100,22 @@ search input or a certified build.
 - The existing anchors (Mercury 3.46 d, Mars 8.03 d, the seam tolerances) will
   move when the handover changes. Re-measure them; do not preserve them blindly.
 - `DepartureBurnStaysOutside` becomes a body-clearance gate, not an SOI gate.
+- **Full-field burns are the suite's cost now.** One `Prepare` per RK4 step
+  evaluates the whole catalogue, so a full-field step is ~50× a two-body step:
+  a 90-day Mars build is 0.47 s in a .NET harness and the editor's
+  burn–coast–burn class is a ~4-minute silent stretch of the Unity log. The
+  guard's stall window is eight minutes and the suite about nine; do not read
+  that as a hang. Step 7 owns the remedy (a cheaper prepare rule, measured
+  against the per-step one).
+- A **body-relative position** on a full-field arc carries the catalogue's
+  Julian-date quantisation (0.2–0.9 m at 1.5 AU, because a date's last place is
+  40 µs), while the absolute path does not. Compare inertial states in tests, or
+  use a metre-scale tolerance; `TheChainIsContinuous...` reads absolute positions
+  and still sees 10⁻⁴ m.
+- The hybrid capture **solver** stays on the two-body burn on purpose (measured:
+  under 0.2 km and 0.05 m/s of trim against a 5 km injection margin). Its
+  reported arc and trim are full-field. Do not thread the field through
+  `HybridCapture` without dealing with its search cost.
+- `TryCorrectCoastDeparture` targets a millimetre, not 10⁻⁴ m. A weeks-long coast
+  at 1.5 AU cannot resolve better than ~10⁻⁴ m, and the tighter target turned
+  round-off into a refusal at 0.1 and 0.15 g.

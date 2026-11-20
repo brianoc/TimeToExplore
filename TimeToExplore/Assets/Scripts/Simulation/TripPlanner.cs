@@ -1249,6 +1249,12 @@ namespace TimeToExplore.Simulation
             int burnSamples = fast ? FastProbeBurnSamples : Math.Max(512, ArcSamples);
             int brakeSamples = FiniteBurnArc.MaximumSamples;
 
+            // A probe keeps the cheap two-body burn: it only has to decide
+            // whether a duration fits, and the reported plan is rebuilt and
+            // certified with the summed field. Every burn in that certified
+            // build integrates the full field.
+            IGravityField burnGravity = fast ? null : _gravity;
+
             _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi)
                 return BuildQuintic(ship, target, totalSeconds);
@@ -1374,11 +1380,25 @@ namespace TimeToExplore.Simulation
             {
                 _model.ComputeState(_model.Sun, entryJd,
                     out Vector3d sunAtEntry, out Vector3d sunVelocityAtEntry);
-                FiniteBurnArc.SimulateBackward(_model.Sun,
-                    entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
-                    acceleration, retrograde: true, brakeSeconds, brakeSamples,
-                    out Vector3d brakeLocalPosition, out Vector3d brakeLocalVelocity,
-                    brakeDirection);
+                Vector3d brakeLocalPosition;
+                Vector3d brakeLocalVelocity;
+                if (burnGravity == null)
+                {
+                    FiniteBurnArc.SimulateBackward(_model.Sun,
+                        entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
+                        acceleration, retrograde: true, brakeSeconds, brakeSamples,
+                        out brakeLocalPosition, out brakeLocalVelocity,
+                        brakeDirection);
+                }
+                else
+                {
+                    FiniteBurnArc.SimulateBackward(_model, burnGravity, _model.Sun, entryJd,
+                        entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
+                        acceleration, retrograde: true, brakeSeconds, brakeSamples,
+                        out brakeLocalPosition, out brakeLocalVelocity,
+                        brakeDirection);
+                }
+
                 brakeStartJd = entryJd - brakeSeconds / SecondsPerDay;
                 _model.ComputeState(_model.Sun, brakeStartJd,
                     out Vector3d sunAtBrakeStart, out Vector3d sunVelocityAtBrakeStart);
@@ -1398,7 +1418,7 @@ namespace TimeToExplore.Simulation
                 if (!TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        burnSamples, out coastStartPosition, out coastStartVelocity,
+                        burnSamples, burnGravity, out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string reason))
                 {
                     return StretchedPlan(ship, target, totalSeconds, reason);
@@ -1454,7 +1474,7 @@ namespace TimeToExplore.Simulation
                 if (!TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, brakeStartJd,
                         brakeStartPosition, ref escapeDirection, ref burnSeconds,
-                        burnSamples, out coastStartPosition, out coastStartVelocity,
+                        burnSamples, burnGravity, out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string settleReason))
                 {
                     return StretchedPlan(ship, target, totalSeconds, settleReason);
@@ -1498,7 +1518,7 @@ namespace TimeToExplore.Simulation
                 burnStartJd, burnSeconds, burnStartPosition - sunForBurn,
                 burnStartVelocity - sunVelocityForBurn, acceleration,
                 retrograde: false, samples: burnSamples,
-                fixedThrustDirection: escapeDirection);
+                fixedThrustDirection: escapeDirection, gravity: burnGravity);
 
             // The brake is solved backwards from the entry, so its start is the
             // state a forward brake must leave from. The coast is then solved to
@@ -1543,7 +1563,7 @@ namespace TimeToExplore.Simulation
                 brakeStartFinalJd, brakeSeconds, brakeStartPosition - sunAtBrakeArc,
                 coastSolution.ArrivalVelocityMps - sunVelocityAtBrakeArc, acceleration,
                 retrograde: true, samples: brakeSamples,
-                fixedThrustDirection: brakeDirection);
+                fixedThrustDirection: brakeDirection, gravity: burnGravity);
 
             var arcs = new List<PlanArc>(8);
             arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, burnStartJd,
@@ -1922,6 +1942,7 @@ namespace TimeToExplore.Simulation
             double clearanceRadius, double escapeSpeed, double acceleration,
             double burnStartJd, double brakeStartJd, Vector3d brakeStart,
             ref Vector3d direction, ref double burnSeconds, int samples,
+            IGravityField burnGravity,
             out Vector3d coastStartPosition, out Vector3d coastStartVelocity,
             out Vector3d coastArrivalVelocity, out double coastSeconds,
             out string reason)
@@ -1951,7 +1972,7 @@ namespace TimeToExplore.Simulation
                 if (!EvaluatePinnedDeparture(ship, departureBody, direction,
                         tangent1, tangent2, clearanceRadius, escapeSpeed,
                         acceleration, burnStartJd, brakeStartJd, brakeStart,
-                        angle1, angle2, seconds, samples,
+                        angle1, angle2, seconds, samples, burnGravity,
                         out Vector3d mismatch, out coastStartPosition,
                         out coastStartVelocity, out coastArrivalVelocity,
                         out coastSeconds))
@@ -1982,32 +2003,32 @@ namespace TimeToExplore.Simulation
                     if (!EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1 + angleStep, angle2, seconds, samples,
+                            angle1 + angleStep, angle2, seconds, samples, burnGravity,
                             out Vector3d mismatch1, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1 - angleStep, angle2, seconds, samples,
+                            angle1 - angleStep, angle2, seconds, samples, burnGravity,
                             out Vector3d mismatch1Low, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1, angle2 + angleStep, seconds, samples,
+                            angle1, angle2 + angleStep, seconds, samples, burnGravity,
                             out Vector3d mismatch2, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1, angle2 - angleStep, seconds, samples,
+                            angle1, angle2 - angleStep, seconds, samples, burnGravity,
                             out Vector3d mismatch2Low, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1, angle2, seconds + timeStep, samples,
+                            angle1, angle2, seconds + timeStep, samples, burnGravity,
                             out Vector3d mismatch3, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            angle1, angle2, seconds - timeStep, samples,
+                            angle1, angle2, seconds - timeStep, samples, burnGravity,
                             out Vector3d mismatch3Low, out _, out _, out _, out _))
                     {
                         reason = "burn-coast-burn: the departure burn has no coast at " +
@@ -2065,7 +2086,7 @@ namespace TimeToExplore.Simulation
                     if (!EvaluatePinnedDeparture(ship, departureBody, direction,
                             tangent1, tangent2, clearanceRadius, escapeSpeed,
                             acceleration, burnStartJd, brakeStartJd, brakeStart,
-                            trialAngle1, trialAngle2, trialSeconds, samples,
+                            trialAngle1, trialAngle2, trialSeconds, samples, burnGravity,
                             out Vector3d trial, out _, out _, out _, out _))
                     {
                         continue;
@@ -2099,6 +2120,7 @@ namespace TimeToExplore.Simulation
             double clearanceRadius, double escapeSpeed, double acceleration,
             double burnStartJd, double brakeStartJd, Vector3d brakeStart,
             double angle1, double angle2, double seconds, int samples,
+            IGravityField burnGravity,
             out Vector3d mismatch, out Vector3d coastStartPosition,
             out Vector3d coastStartVelocity, out Vector3d coastArrivalVelocity,
             out double coastSeconds)
@@ -2126,7 +2148,7 @@ namespace TimeToExplore.Simulation
             FiniteBurnArc burn = FiniteBurnArc.Create(_model, _model.Sun, burnStartJd,
                 seconds, startPosition - sunAtStart, startVelocity - sunVelocityAtStart,
                 acceleration, retrograde: false, samples: samples,
-                fixedThrustDirection: ray);
+                fixedThrustDirection: ray, gravity: burnGravity);
 
             _model.ComputeState(_model.Sun, coastStartJd,
                 out Vector3d sunAtEnd, out Vector3d sunVelocityAtEnd);
@@ -2147,14 +2169,20 @@ namespace TimeToExplore.Simulation
         /// Correct a Lambert departure velocity until the two-body propagator
         /// itself lands on the required end position. The Lambert solve is a
         /// tolerance apart from the propagator, which is centimetres on a fast
-        /// coast; this closes the coast's end seam to below a millimetre.
+        /// coast; this closes the coast's end seam to about a millimetre.
+        ///
+        /// The tolerance is a millimetre rather than a tenth: a coast of weeks at
+        /// 1.5 AU cannot resolve its end position below about 10⁻⁴ m, so a tighter
+        /// target leaves the Newton cycle in its round-off and reports a failure
+        /// that is not there. A millimetre is three orders below the seam gate and
+        /// four below the plan's own closure gate.
         /// </summary>
         private static bool TryCorrectCoastDeparture(BodyRuntime sun,
             Vector3d localStartPosition, Vector3d localStartVelocity,
             double seconds, Vector3d localTarget, out Vector3d correctedVelocity)
         {
             correctedVelocity = localStartVelocity;
-            double tolerance = 1e-4;
+            double tolerance = 1e-3;
 
             for (int iteration = 0; iteration < 16; iteration++)
             {
@@ -2401,6 +2429,12 @@ namespace TimeToExplore.Simulation
                 chain.InboundSeconds, chain.EntryLocalPositionM,
                 chain.EntryLocalVelocityMps);
 
+            // The hybrid solver's own grid is hundreds of radius integrations, so
+            // it stays the two-body search model; the burn arc the plan reports
+            // below is rebuilt full-field and its trim is taken from that arc, so
+            // the plan still flies what it reports. Measured at the epoch, the
+            // full-field burn ends within 0.2 km of the two-body injection
+            // radius, against the 5 km injection margin.
             HybridCapture capture = HybridCapture.Build(target, fullInbound,
                 parkingRadius, periapsisRadius, accelerationMps2);
             if (!capture.IsValid)
@@ -2427,7 +2461,8 @@ namespace TimeToExplore.Simulation
 
             FiniteBurnArc captureBurn = FiniteBurnArc.Create(_model, target, burnStartJd,
                 capture.BurnSeconds, capture.BurnStartLocalPositionM,
-                capture.BurnStartLocalVelocityMps, accelerationMps2, retrograde: true);
+                capture.BurnStartLocalVelocityMps, accelerationMps2, retrograde: true,
+                gravity: fast ? null : _gravity);
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, target.Id, burnStartJd,
                 burnEndJd, captureBurn, fast));
 

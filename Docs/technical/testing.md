@@ -30,9 +30,10 @@ tools/check.sh --reset            # drop the warm test project first
 
 The Unity tests carry one category each: `core`, `flight`, `presentation`, or
 `smoke`. `--tests` narrows the Unity gate to the categories named; the fast
-gates still run. A `core` or `presentation` run is a few seconds, the full
-flight matrix is about a minute, and the whole suite is under a minute and a
-half.
+gates still run. A `core` or `presentation` run is a few seconds, the flight
+matrix is about six minutes, and the whole suite about nine. The burn–coast–burn
+plan is the expensive part: its fixed burns integrate the summed field, and a
+plan build is a few seconds in the editor.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -45,19 +46,23 @@ about half a minute on the first run. The cache is gitignored and never contains
 edited sources.
 
 Unity runs under `tools/unity_guard.py`, which stops it when it writes nothing
-to the log for two minutes, exceeds a twenty-minute budget, repeats a Unity
+to the log for eight minutes, exceeds a thirty-minute budget, repeats a Unity
 cloud-endpoint lookup, or starts shutting down and does not finish. Shutdown
 hangs are the known failure: batch Unity can finish the tests, write
 `results.xml`, and then retry DNS lookups forever. `check.sh` still reads the
 results that were written, so a hang at the end does not throw away a completed
-run. The log is `.cache/test-project/unity.log`. For any other batch run, such
-as a capture helper or a scene builder, use the same wrapper:
+run. The log is `.cache/test-project/unity.log`. The stall window is long
+because the runner writes nothing between test classes: the burn–coast–burn
+class is one silent stretch of about four minutes now that its burns integrate
+the summed field ([Full-field burns](/simulation/powered-leg-floor.md)). For any
+other batch run, such as a capture helper or a scene builder, use the same
+wrapper:
 
 ```bash
 python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
 ```
 
-A full run takes about 80 seconds with the warm project. `--fast` is the loop
+A full run takes about nine minutes with the warm project. `--fast` is the loop
 to use while editing docs, Python tools, or catalogue data. The Unity suite is
 the gate for any C# change.
 
@@ -100,9 +105,9 @@ because Unity test assemblies cannot reference the predefined
 | `TransferConicTests` | the entry at the sphere of influence, an inbound coast to a low periapsis, the capture plane and prograde direction, the retrograde periapsis and prograde apoapsis burns, the conic parking radius below the gravity ceiling, and invalid geometries reported rather than built |
 | `ConicTripPlannerTests` | the conic arc chain, lower parking and cheaper capture than the quintic, seam continuity with velocity steps at the burns, end-to-end conic flights to Mars, Earth, Venus, Jupiter, and Saturn with a stable lower orbit, and the capture cost across all five targets |
 | `CoastTripPlannerTests` | the coast chain — quintic break, heliocentric conic, conic capture — with the drive off on the middle arc, the departure retargeted to the Lambert `v₁`, the flown arrival and three-orbit hold, the orders-of-magnitude delta-v drop, the planner finding a coast time on its own, the style switch leaving the ship at t₀, a rejected long transfer with its reason, and the handover to the hybrid capture |
-| `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
+| `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; a full-field burn crossing the sphere of influence matching an independent 20,000-step RK4 of the same field and thrust, its acceleration at a sample being the field plus the thrust rather than the two-body value, a short local burn agreeing with the two-body burn, and the reference body being a label (one inertial path, two local decompositions differing by exactly the two bodies' states); the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
 | `FiniteBurnTripPlannerTests` | the six-arc hybrid plan with one finite burn between the conic coasts, the trim and circularisation impulses, seam steps of exactly the burn level, end-to-end flights to Mars, Earth, Venus, Jupiter, and Saturn with stable parking orbits, every level from 0.3 to 1.0 g reaching an exact parking orbit, zero level reproducing the conic plan, the cheaper-than-quintic capture across all five targets, the Jupiter parking radius below the quintic ceiling, and the finite/trim split reaching the plan |
-| `BurnCoastBurnTripPlannerTests` | the five-arc profile — quintic break, prograde finite burn, Lambert coast, brake, capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the brake spending the coast plan's handover, continuous position and velocity at every seam, the departure burn staying outside the sphere of influence, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing needing an acceleration rejected, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes |
+| `BurnCoastBurnTripPlannerTests` | the five-arc profile — quintic break, prograde finite burn, Lambert coast, brake, capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the brake spending the coast plan's handover, continuous position and velocity at every seam, the departure burn staying outside the sphere of influence, a flown arrival on the conic parking orbit and its three-orbit hold, `0 g` reproducing the coast plan exactly, a slow crossing needing an acceleration rejected, a time without a prograde short transfer rejected with its 180° reason, the hybrid arrival keeping all three burns at the level, and the powered cruise still the default; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes |
 | `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, and a zero-length frame completing the zoom |
 | `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
 | `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, and the pan ease |
@@ -228,6 +233,22 @@ The burn–coast–burn profile has these anchors at the epoch, from Gateway at
 | Jupiter at 230.6 days | 119 km/s (departure 40, brake 53) |
 | `0 g` | exactly `CruiseStyle.Coast` |
 
+The full-field burns have their own anchors, measured at the epoch. A burn that
+crosses a sphere of influence is checked against an independent 20,000-step RK4
+of the same field and thrust: an 80,000 s burn from 800 Mm inside Earth's sphere
+agrees to **1.7 mm and 7 × 10⁻⁹ m/s**, and its acceleration at a sample is the
+field plus the thrust exactly, while the two-body value differs by
+**7.6 × 10⁻⁵ m/s²**. A short 120 s burn 4,000 km above Mars ends **0.17 m and
+7.6 × 10⁻⁵ m/s** from its two-body counterpart, with the fields only
+**3.3 × 10⁻⁷ m/s²** apart; two arcs over one inertial state labelled with the Sun
+and with Mars follow the same path to round-off and differ locally by exactly the
+two bodies' 2.4 × 10¹¹ m. In the reported plans the folded terms are
+**4.4 × 10⁻⁴ m/s²** at the departure burn's midpoint and **1.2 × 10⁻⁴ m/s²** at
+the brake's, and a Sun-only field moves a 90-day Mars plan by 32% of its delta-v.
+A body-relative position on a full-field arc carries the catalogue's date
+quantisation — about **0.2–0.9 m** at 1.5 AU — so a model-to-model comparison uses
+inertial states.
+
 The break search is measured separately because it used to dominate the profile.
 At the epoch on a throwaway copy under `.cache`, Mercury at 1 g: one `Plan()` is
 **1.5 s** (36.2 s in the first cut, 12.0 s after the two-tier break search) and
@@ -244,9 +265,18 @@ floor; the 5% screen decides near the limit, so the fast number never becomes a
 reported peak. The plans and floors in the table above are unchanged within the
 search's 0.2% retry resolution.
 
+Those timings are the two-body-burn profile. Since the certified plan's fixed
+burns integrate the summed field, the same work in a .NET harness is a **0.47 s**
+90-day Mars build, **1.1 s** at Mercury 8 d, and a **2.0–2.4 s** `Plan()` at the
+floors; the editor is several times slower again, which is why the suite is about
+nine minutes ([full-field burns](/simulation/powered-leg-floor.md)). The floors,
+plans, seams, and windows did not move.
+
 The slider's retime runs off the main thread. On the same throwaway copy at the
 epoch, a synchronous `SetPreviewDuration` took 120 ms at 4.5 d and 97 ms at
-7.35 d to Mercury at 1 g, and 97–125 ms to Mars at 0.3 g over 9–15 d.
+7.35 d to Mercury at 1 g, and 97–125 ms to Mars at 0.3 g over 9–15 d. With the
+full-field burns a retime is a **0.7–1.4 s** build in a .NET harness and a few
+seconds in the editor, so the latest-wins worker is what keeps the frame free.
 Request-to-publish on the background worker was the same build plus **2–4 ms**
 of handover: 99–124 ms at Mercury and 100–128 ms at Mars. The worker's plan
 equalled the synchronous plan exactly — flight time, arrival date, peak thrust,

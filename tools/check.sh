@@ -225,8 +225,8 @@ UNITY_ARGS=(
 set +e
 "$PYTHON" tools/unity_guard.py \
     --log "$UNITY_LOG" \
-    --stall-seconds 120 \
-    --timeout-seconds 1200 \
+    --stall-seconds 480 \
+    --timeout-seconds 1800 \
     --shutdown-grace 20 \
     -- "$UNITY_BIN" "${UNITY_ARGS[@]}"
 UNITY_STATUS=$?

@@ -4,22 +4,33 @@ using TimeToExplore.Core;
 namespace TimeToExplore.Simulation
 {
     /// <summary>
-    /// A finite burn around one body: a constant thrust magnitude along the
-    /// instantaneous velocity (prograde or retrograde), or along a fixed inertial
-    /// direction, integrated through the body's two-body gravity. Unlike a
-    /// quintic, the thrust does not ramp from zero; the arc is the fixed-thrust
-    /// burn the drive can actually fly, and it meets a coast with a step in
-    /// acceleration rather than a blend
+    /// A finite burn: a constant thrust magnitude along the velocity relative to
+    /// the reference body (prograde or retrograde), or along a fixed inertial
+    /// direction. Unlike a quintic, the thrust does not ramp from zero; the arc
+    /// is the fixed-thrust burn the drive can actually fly, and it meets a coast
+    /// with a step in acceleration rather than a blend
     /// ([ADR-015](/decisions/adr-015-fixed-thrust-burns.md)).
     ///
     /// A fixed direction is the honest model of a real burn: the ship holds one
     /// attitude instead of tracking its velocity. The planner uses it for the
-    /// burn–coast–burn brake, whose velocity change is not along the velocity.
+    /// burn–coast–burn departure burn and brake, whose velocity change is not
+    /// along the velocity.
+    ///
+    /// Two gravity models share the arc. Without a <c>gravity</c> source the burn
+    /// integrates the reference body's two-body field in the body-relative frame,
+    /// which is the planner's cheap search model. With one it integrates the
+    /// **summed field** over the catalogue in absolute heliocentric coordinates
+    /// and decomposes the table back into the reference body's frame; the
+    /// reference body is then a **label** — the phase's frame, the frame the
+    /// state is reported in, and the ephemeris the decomposition uses — not the
+    /// physics
+    /// ([Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+    /// One full-field arc may cross a sphere of influence; it is never split
+    /// there.
     ///
     /// The parameter u is linear in time. Local samples are stored at a uniform
     /// step and interpolated with a cubic Hermite in position, so position and
-    /// velocity are continuous at the seams. The heliocentric path adds the
-    /// centre's own ephemeris, exactly as <see cref="ConicArc"/> does.
+    /// velocity are continuous at the seams.
     /// </summary>
     public sealed class FiniteBurnArc : IArcPath
     {
@@ -33,6 +44,7 @@ namespace TimeToExplore.Simulation
 
         private readonly SolarSystemModel _model;
         private readonly BodyRuntime _centre;
+        private readonly IGravityField _gravity;
         private readonly double _startJulianDate;
         private readonly double _durationSeconds;
         private readonly double _accelerationMps2;
@@ -42,13 +54,14 @@ namespace TimeToExplore.Simulation
         private readonly Vector3d[] _localVelocitiesMps;
         private readonly Vector3d _fixedThrustDirection;
 
-        private FiniteBurnArc(SolarSystemModel model, BodyRuntime centre, double startJulianDate,
-            double durationSeconds, double accelerationMps2, bool retrograde,
-            Vector3d fallbackDirection, Vector3d[] localPositionsM,
+        private FiniteBurnArc(SolarSystemModel model, BodyRuntime centre, IGravityField gravity,
+            double startJulianDate, double durationSeconds, double accelerationMps2,
+            bool retrograde, Vector3d fallbackDirection, Vector3d[] localPositionsM,
             Vector3d[] localVelocitiesMps, Vector3d fixedThrustDirection = default)
         {
             _model = model;
             _centre = centre;
+            _gravity = gravity;
             _startJulianDate = startJulianDate;
             _durationSeconds = durationSeconds;
             _accelerationMps2 = accelerationMps2;
@@ -65,6 +78,16 @@ namespace TimeToExplore.Simulation
         public double AccelerationMps2 => _accelerationMps2;
         public bool IsRetrograde => _retrograde;
 
+        /// <summary>True when the burn integrates the summed catalogue field.
+        /// False is the two-body search model the floor probes still use.</summary>
+        public bool UsesFullField => _gravity != null;
+
+        /// <summary>The summed field this arc integrates, or null for the
+        /// two-body model. The arc prepares this field at every query and every
+        /// RK4 step, so a caller must not rely on a prepared set it did not ask
+        /// for last.</summary>
+        public IGravityField Gravity => _gravity;
+
         /// <summary>The local state at the end of the burn.</summary>
         public Vector3d EndLocalPositionM => _localPositionsM[_localPositionsM.Length - 1];
 
@@ -72,17 +95,27 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// Integrate a constant-magnitude burn from a body-relative state. The
-        /// model is used only to place the centre at each queried date, never
-        /// mutated. <paramref name="samples"/> above zero overrides the automatic
-        /// sample count; the solver uses a coarser table than the final arc.
-        /// <paramref name="fixedThrustDirection"/>, when given, holds the thrust
-        /// along that inertial direction instead of the velocity.
+        /// model is used only to place the centre and the field's bodies at each
+        /// queried date, never mutated. <paramref name="samples"/> above zero
+        /// overrides the automatic sample count; the solver uses a coarser table
+        /// than the final arc. <paramref name="fixedThrustDirection"/>, when
+        /// given, holds the thrust along that inertial direction instead of the
+        /// velocity.
+        ///
+        /// <paramref name="gravity"/>, when given, makes the burn full-field: the
+        /// integration runs in absolute coordinates through the summed field and
+        /// the table is decomposed back into <paramref name="centre"/>'s frame.
+        /// The thrust law is unchanged — prograde or retrograde is relative to
+        /// the reference body's velocity, a fixed direction is inertial — so the
+        /// reference body names the attitude frame as well as the reporting
+        /// frame, and a burn that holds a fixed inertial direction is independent
+        /// of the label.
         /// </summary>
         public static FiniteBurnArc Create(SolarSystemModel model, BodyRuntime centre,
             double startJulianDate, double durationSeconds,
             Vector3d localStartPositionM, Vector3d localStartVelocityMps,
             double accelerationMps2, bool retrograde, int samples = 0,
-            Vector3d? fixedThrustDirection = null)
+            Vector3d? fixedThrustDirection = null, IGravityField gravity = null)
         {
             if (model == null) throw new ArgumentNullException(nameof(model));
             if (centre == null) throw new ArgumentNullException(nameof(centre));
@@ -95,27 +128,50 @@ namespace TimeToExplore.Simulation
             var positions = new Vector3d[count + 1];
             var velocities = new Vector3d[count + 1];
 
-            Vector3d position = localStartPositionM;
-            Vector3d velocity = localStartVelocityMps;
-            Vector3d fallback = FallbackDirection(position, velocity);
+            Vector3d fallback = FallbackDirection(localStartPositionM, localStartVelocityMps);
             Vector3d direction = fixedThrustDirection.HasValue
                 ? Normalized(fixedThrustDirection.Value)
                 : Vector3d.Zero;
             bool directed = direction.SqrMagnitude > 0.5;
 
-            positions[0] = position;
-            velocities[0] = velocity;
+            positions[0] = localStartPositionM;
+            velocities[0] = localStartVelocityMps;
 
             double step = durationSeconds / count;
-            for (int i = 0; i < count; i++)
+
+            if (gravity != null)
             {
-                Step(centre.Gm, accelerationMps2, retrograde, fallback, direction, directed,
-                    ref position, ref velocity, step);
-                positions[i + 1] = position;
-                velocities[i + 1] = velocity;
+                model.ComputeState(centre, startJulianDate,
+                    out Vector3d centrePosition, out Vector3d centreVelocity);
+                Vector3d position = centrePosition + localStartPositionM;
+                Vector3d velocity = centreVelocity + localStartVelocityMps;
+
+                for (int i = 0; i < count; i++)
+                {
+                    StepFull(model, gravity, centre, startJulianDate, i * step,
+                        accelerationMps2, retrograde, fallback, direction, directed,
+                        ref position, ref velocity, step);
+
+                    model.ComputeState(centre, startJulianDate + (i + 1) * step / JulianDate.SecondsPerDay,
+                        out centrePosition, out centreVelocity);
+                    positions[i + 1] = position - centrePosition;
+                    velocities[i + 1] = velocity - centreVelocity;
+                }
+            }
+            else
+            {
+                Vector3d position = localStartPositionM;
+                Vector3d velocity = localStartVelocityMps;
+                for (int i = 0; i < count; i++)
+                {
+                    Step(centre.Gm, accelerationMps2, retrograde, fallback, direction, directed,
+                        ref position, ref velocity, step);
+                    positions[i + 1] = position;
+                    velocities[i + 1] = velocity;
+                }
             }
 
-            return new FiniteBurnArc(model, centre, startJulianDate, durationSeconds,
+            return new FiniteBurnArc(model, centre, gravity, startJulianDate, durationSeconds,
                 accelerationMps2, retrograde, fallback, positions, velocities,
                 directed ? direction : Vector3d.Zero);
         }
@@ -151,6 +207,53 @@ namespace TimeToExplore.Simulation
 
             endPositionM = position;
             endVelocityMps = velocity;
+        }
+
+        /// <summary>
+        /// <see cref="Simulate"/> through the summed field. The start and end
+        /// states are body-relative, exactly as the two-body form, but the
+        /// dynamics are integrated in absolute coordinates and the reported
+        /// radius is measured against the reference body's position at each
+        /// step, so a burn may cross the sphere of influence.
+        /// </summary>
+        public static void Simulate(SolarSystemModel model, IGravityField gravity,
+            BodyRuntime centre, double startJulianDate,
+            Vector3d localStartPositionM, Vector3d localStartVelocityMps,
+            double accelerationMps2, bool retrograde, double durationSeconds, int samples,
+            out Vector3d endPositionM, out Vector3d endVelocityMps,
+            out double minimumRadiusM)
+        {
+            if (model == null) throw new ArgumentNullException(nameof(model));
+            if (gravity == null) throw new ArgumentNullException(nameof(gravity));
+            if (centre == null) throw new ArgumentNullException(nameof(centre));
+            if (!(durationSeconds > 0.0))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds));
+
+            int count = SampleCount(durationSeconds, samples);
+            Vector3d fallback = FallbackDirection(localStartPositionM, localStartVelocityMps);
+
+            model.ComputeState(centre, startJulianDate,
+                out Vector3d centrePosition, out Vector3d centreVelocity);
+            Vector3d position = centrePosition + localStartPositionM;
+            Vector3d velocity = centreVelocity + localStartVelocityMps;
+
+            minimumRadiusM = localStartPositionM.Magnitude;
+            double step = durationSeconds / count;
+            for (int i = 0; i < count; i++)
+            {
+                StepFull(model, gravity, centre, startJulianDate, i * step,
+                    accelerationMps2, retrograde, fallback, Vector3d.Zero, false,
+                    ref position, ref velocity, step);
+
+                model.ComputeState(centre,
+                    startJulianDate + (i + 1) * step / JulianDate.SecondsPerDay,
+                    out centrePosition, out centreVelocity);
+                double radius = (position - centrePosition).Magnitude;
+                if (radius < minimumRadiusM) minimumRadiusM = radius;
+            }
+
+            endPositionM = position - centrePosition;
+            endVelocityMps = velocity - centreVelocity;
         }
 
         /// <summary>
@@ -215,6 +318,81 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
+        /// <see cref="SimulateUntilRadius"/> through the summed field. The radius
+        /// is measured against the reference body's position at each step, and
+        /// the crossing state is decomposed into that body's frame.
+        /// </summary>
+        public static bool SimulateUntilRadius(SolarSystemModel model, IGravityField gravity,
+            BodyRuntime centre, double startJulianDate,
+            Vector3d localStartPositionM, Vector3d localStartVelocityMps,
+            double accelerationMps2, bool retrograde, double targetRadiusM,
+            double maximumSeconds, out double crossingSeconds,
+            out Vector3d endPositionM, out Vector3d endVelocityMps)
+        {
+            if (model == null) throw new ArgumentNullException(nameof(model));
+            if (gravity == null) throw new ArgumentNullException(nameof(gravity));
+            if (centre == null) throw new ArgumentNullException(nameof(centre));
+            if (!(maximumSeconds > 0.0))
+                throw new ArgumentOutOfRangeException(nameof(maximumSeconds));
+
+            crossingSeconds = 0.0;
+            endPositionM = localStartPositionM;
+            endVelocityMps = localStartVelocityMps;
+
+            Vector3d fallback = FallbackDirection(localStartPositionM, localStartVelocityMps);
+            model.ComputeState(centre, startJulianDate,
+                out Vector3d centrePosition, out Vector3d centreVelocity);
+            Vector3d position = centrePosition + localStartPositionM;
+            Vector3d velocity = centreVelocity + localStartVelocityMps;
+
+            double previousRadius = localStartPositionM.Magnitude;
+            if (previousRadius <= targetRadiusM) return true;
+
+            int count = Math.Clamp((int)Math.Ceiling(maximumSeconds / 2.0), 256, 4096);
+            double step = maximumSeconds / count;
+
+            for (int i = 0; i < count; i++)
+            {
+                Vector3d previousPosition = position;
+                Vector3d previousVelocity = velocity;
+
+                StepFull(model, gravity, centre, startJulianDate, i * step,
+                    accelerationMps2, retrograde, fallback, Vector3d.Zero, false,
+                    ref position, ref velocity, step);
+
+                double julianDate = startJulianDate + (i + 1) * step / JulianDate.SecondsPerDay;
+                model.ComputeState(centre, julianDate,
+                    out centrePosition, out centreVelocity);
+                double radius = (position - centrePosition).Magnitude;
+                if (radius > targetRadiusM)
+                {
+                    previousRadius = radius;
+                    continue;
+                }
+
+                double drop = previousRadius - radius;
+                double fraction = drop > 0.0
+                    ? Math.Clamp((previousRadius - targetRadiusM) / drop, 0.0, 1.0)
+                    : 0.0;
+
+                crossingSeconds = (i + fraction) * step;
+                double crossingJd = startJulianDate
+                                    + crossingSeconds / JulianDate.SecondsPerDay;
+                model.ComputeState(centre, crossingJd,
+                    out centrePosition, out centreVelocity);
+                Vector3d crossingPosition = previousPosition
+                                            + (position - previousPosition) * fraction;
+                Vector3d crossingVelocity = previousVelocity
+                                            + (velocity - previousVelocity) * fraction;
+                endPositionM = crossingPosition - centrePosition;
+                endVelocityMps = crossingVelocity - centreVelocity;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Integrate a burn backwards from its end state and return the state it
         /// started from. The forward dynamics are unchanged: constant thrust along
         /// the instantaneous velocity (prograde, or retrograde), or along a fixed
@@ -251,6 +429,55 @@ namespace TimeToExplore.Simulation
             localStartVelocityMps = velocity;
         }
 
+        /// <summary>
+        /// <see cref="SimulateBackward"/> through the summed field. The end state
+        /// is body-relative and <paramref name="endJulianDate"/> places it; the
+        /// reverse flow is integrated in absolute coordinates, so the burn it
+        /// returns started in the same field the forward arc will fly.
+        /// </summary>
+        public static void SimulateBackward(SolarSystemModel model, IGravityField gravity,
+            BodyRuntime centre, double endJulianDate, Vector3d localEndPositionM,
+            Vector3d localEndVelocityMps, double accelerationMps2, bool retrograde,
+            double durationSeconds, int samples,
+            out Vector3d localStartPositionM, out Vector3d localStartVelocityMps,
+            Vector3d? fixedThrustDirection = null)
+        {
+            if (model == null) throw new ArgumentNullException(nameof(model));
+            if (gravity == null) throw new ArgumentNullException(nameof(gravity));
+            if (centre == null) throw new ArgumentNullException(nameof(centre));
+            if (!(durationSeconds > 0.0))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds));
+
+            int count = SampleCount(durationSeconds, samples);
+            Vector3d fallback = FallbackDirection(localEndPositionM, localEndVelocityMps);
+            Vector3d fixedDirection = fixedThrustDirection.HasValue
+                ? Normalized(fixedThrustDirection.Value)
+                : Vector3d.Zero;
+            bool directed = fixedDirection.SqrMagnitude > 0.5;
+
+            double startJulianDate = endJulianDate - durationSeconds / JulianDate.SecondsPerDay;
+            model.ComputeState(centre, endJulianDate,
+                out Vector3d centrePosition, out Vector3d centreVelocity);
+            Vector3d position = centrePosition + localEndPositionM;
+            Vector3d velocity = centreVelocity + localEndVelocityMps;
+
+            double step = -durationSeconds / count;
+            for (int i = 0; i < count; i++)
+            {
+                // A negative step means the step's start is the later date:
+                // the state begins at the end of the burn and walks back.
+                double elapsed = durationSeconds + i * step;
+                StepFull(model, gravity, centre, startJulianDate, elapsed,
+                    accelerationMps2, retrograde, fallback, fixedDirection, directed,
+                    ref position, ref velocity, step);
+            }
+
+            model.ComputeState(centre, startJulianDate,
+                out centrePosition, out centreVelocity);
+            localStartPositionM = position - centrePosition;
+            localStartVelocityMps = velocity - centreVelocity;
+        }
+
         public Vector3d PositionAt(double u)
         {
             LocalStateAt(u, out Vector3d localPosition, out _);
@@ -265,15 +492,33 @@ namespace TimeToExplore.Simulation
             return centreVelocity + localVelocity;
         }
 
+        /// <summary>
+        /// The arc's true inertial acceleration: the summed field at its own
+        /// state and date plus the thrust. The two-body mode keeps the reference
+        /// body's rail acceleration plus its local gravity, which is the same
+        /// quantity in that model.
+        /// </summary>
         public Vector3d AccelerationAt(double u)
         {
             LocalStateAt(u, out Vector3d localPosition, out Vector3d localVelocity);
             double julianDate = JulianDateFor(u);
 
-            return _model.ComputeAcceleration(_centre, julianDate)
-                   + LocalAcceleration(_centre.Gm, localPosition, localVelocity,
-                       _accelerationMps2, _retrograde, _fallbackDirection,
-                       _fixedThrustDirection, _fixedThrustDirection.SqrMagnitude > 0.5);
+            if (_gravity == null)
+            {
+                return _model.ComputeAcceleration(_centre, julianDate)
+                       + LocalAcceleration(_centre.Gm, localPosition, localVelocity,
+                           _accelerationMps2, _retrograde, _fallbackDirection,
+                           _fixedThrustDirection, _fixedThrustDirection.SqrMagnitude > 0.5);
+            }
+
+            _model.ComputeState(_centre, julianDate,
+                out Vector3d centrePosition, out Vector3d centreVelocity);
+            Vector3d position = centrePosition + localPosition;
+            Vector3d velocity = centreVelocity + localVelocity;
+            _gravity.Prepare(position, julianDate);
+            return FullAcceleration(_model, _gravity, _centre, julianDate, position, velocity,
+                _accelerationMps2, _retrograde, _fallbackDirection,
+                _fixedThrustDirection, _fixedThrustDirection.SqrMagnitude > 0.5);
         }
 
         public double SecondsAt(double u) =>
@@ -373,6 +618,81 @@ namespace TimeToExplore.Simulation
             return gravity + direction * accelerationMps2;
         }
 
+        /// <summary>
+        /// The summed field plus the thrust at an absolute state. The thrust law
+        /// is the two-body one: a fixed inertial direction, or the velocity
+        /// relative to the reference body, so the label names the attitude frame
+        /// and not the physics.
+        /// </summary>
+        private static Vector3d FullAcceleration(SolarSystemModel model,
+            IGravityField gravity, BodyRuntime centre, double julianDate,
+            Vector3d position, Vector3d velocity, double accelerationMps2,
+            bool retrograde, Vector3d fallbackDirection, Vector3d fixedDirection,
+            bool directed)
+        {
+            Vector3d gravityAcceleration = gravity.AccelerationAt(position, julianDate);
+            if (directed) return gravityAcceleration + fixedDirection * accelerationMps2;
+
+            model.ComputeState(centre, julianDate, out _, out Vector3d centreVelocity);
+            Vector3d relativeVelocity = velocity - centreVelocity;
+            Vector3d direction = relativeVelocity.SqrMagnitude > 1e-12
+                ? relativeVelocity.Normalized
+                : fallbackDirection;
+            if (retrograde) direction = -direction;
+
+            return gravityAcceleration + direction * accelerationMps2;
+        }
+
+        /// <summary>
+        /// One RK4 step of the summed-field burn in absolute coordinates. The
+        /// field is prepared once per step, at the step's start, and that active
+        /// set is evaluated at the four stage times — the integrator's own
+        /// pattern. A burn that leaves a body's vicinity therefore reselects the
+        /// set every step, so the set stays a superset of the bodies that matter.
+        /// </summary>
+        private static void StepFull(SolarSystemModel model, IGravityField gravity,
+            BodyRuntime centre, double startJulianDate, double elapsedSeconds,
+            double accelerationMps2, bool retrograde, Vector3d fallbackDirection,
+            Vector3d fixedDirection, bool directed,
+            ref Vector3d position, ref Vector3d velocity, double h)
+        {
+            double julianDate = startJulianDate + elapsedSeconds / JulianDate.SecondsPerDay;
+            double halfDays = 0.5 * h / JulianDate.SecondsPerDay;
+
+            gravity.Prepare(position, julianDate);
+
+            Vector3d k1Position = velocity;
+            Vector3d k1Velocity = FullAcceleration(model, gravity, centre, julianDate,
+                position, velocity, accelerationMps2, retrograde, fallbackDirection,
+                fixedDirection, directed);
+
+            Vector3d p2 = position + k1Position * (0.5 * h);
+            Vector3d v2 = velocity + k1Velocity * (0.5 * h);
+            Vector3d k2Position = v2;
+            Vector3d k2Velocity = FullAcceleration(model, gravity, centre,
+                julianDate + halfDays, p2, v2, accelerationMps2, retrograde,
+                fallbackDirection, fixedDirection, directed);
+
+            Vector3d p3 = position + k2Position * (0.5 * h);
+            Vector3d v3 = velocity + k2Velocity * (0.5 * h);
+            Vector3d k3Position = v3;
+            Vector3d k3Velocity = FullAcceleration(model, gravity, centre,
+                julianDate + halfDays, p3, v3, accelerationMps2, retrograde,
+                fallbackDirection, fixedDirection, directed);
+
+            Vector3d p4 = position + k3Position * h;
+            Vector3d v4 = velocity + k3Velocity * h;
+            Vector3d k4Position = v4;
+            Vector3d k4Velocity = FullAcceleration(model, gravity, centre,
+                julianDate + h / JulianDate.SecondsPerDay, p4, v4, accelerationMps2,
+                retrograde, fallbackDirection, fixedDirection, directed);
+
+            position += (k1Position + 2.0 * k2Position + 2.0 * k3Position + k4Position)
+                        * (h / 6.0);
+            velocity += (k1Velocity + 2.0 * k2Velocity + 2.0 * k3Velocity + k4Velocity)
+                        * (h / 6.0);
+        }
+
         private static void Step(double mu, double accelerationMps2, bool retrograde,
             Vector3d fallbackDirection, Vector3d fixedDirection, bool directed,
             ref Vector3d position, ref Vector3d velocity, double h)
@@ -411,7 +731,8 @@ namespace TimeToExplore.Simulation
         }
 
         public override string ToString() =>
-            $"{(IsRetrograde ? "retrograde" : "prograde")} burn about {_centre.Id}, " +
-            $"{_accelerationMps2:F2} m/s² for {_durationSeconds / 60.0:F1} min";
+            $"{(IsRetrograde ? "retrograde" : "prograde")} burn about {_centre.Id}" +
+            (UsesFullField ? " (full field)" : "") +
+            $", {_accelerationMps2:F2} m/s² for {_durationSeconds / 60.0:F1} min";
     }
 }

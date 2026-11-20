@@ -117,13 +117,14 @@ profile.
    speed along the escape ray, and the departure burn starts there. The burn
    holds that ray — its prograde direction in the departure body's frame — and
    its duration and the coast's start are solved together: the burn is
-   integrated forward, the Lambert coast from its end to the brake's start, and
-   the two ray angles and the duration are driven until the burn's end velocity
-   is the coast's departure velocity. The brake spends the handover the coast
-   skeleton would have made an impulse. Every seam is continuous and the arrival
-   is exact. The break's duration is solved as well: it keeps the reference
-   coast's departure share while that is gentle enough for the drive, and
-   lengthens it to the drive's limit when the share is too short.
+   integrated forward through the summed gravity field, the Lambert coast from
+   its end to the brake's start, and the two ray angles and the duration are
+   driven until the burn's end velocity is the coast's departure velocity. The
+   brake spends the handover the coast skeleton would have made an impulse.
+   Every seam is continuous and the arrival is exact. The break's duration is
+   solved as well: it keeps the reference coast's departure share while that is
+   gentle enough for the drive, and lengthens it to the drive's limit when the
+   share is too short.
 4. **The control.** The nav computer's `PROFILE` row selects Powered, Coast, or
    Burn-coast-burn; the trip-time slider is the profile's speed control and its
    window is that profile's own feasible range; the existing burn-level slider
@@ -184,9 +185,12 @@ capture:
 | Mars | 90 | 4.787 | 0.033 | 9.0 | 0.016 | 13.7 | 83.815 | 0.023 | 19.1 | 45.4 | yes |
 
 The Mars row is a direct build at 90 days; after the pin the nav computer's Mars
-window is 8.03–24.09 days, so the slider cannot reach 90 days. At 0.3 g the
-90-day build costs 45.4 km/s with the same gentle break (4.79 d, 9.0 km/s,
-0.03 m/s²), a 78-minute departure burn, an 83.7-day coast, and a 1.8-hour brake.
+window is 8.03–24.09 days, so the slider cannot reach 90 days. Its durations in
+the table are the 1 g values (23.5 and 32.9 minutes) so the row is comparable;
+the plan is actually flown at 0.3 g, where the same 13.7 and 19.1 km/s take
+**77.6 minutes** and **108.4 minutes**. The 90-day build costs 45.4 km/s with the
+same gentle break (4.79 d, 9.0 km/s, 0.03 m/s²), an 83.7-day coast, and a 1.8-hour
+brake.
 
 The 8-day trip now closes at 1 g: the break's peak is 3.02 m/s² and the plan's
 9.70 m/s² peak is the two fixed burns at the commanded level. The break ends at
@@ -201,6 +205,43 @@ at the boundary. The quintic still cancels the station's motion and flies the
 distance, so a gentle break spends tens of kilometres per second even though it
 ends at 0.92 km/s. What the pin removes is the 53 m/s² peak and the
 four-sphere-long backwards burn.
+
+# The burns in the summed field
+
+The two fixed burns are integrated through the **summed gravity field**, not a
+single body's. `FiniteBurnArc` takes an optional `IGravityField`; with one it runs
+the RK4 in absolute heliocentric coordinates and decomposes the table back into
+the reference body's frame. The Sun named on the departure burn and the brake is
+then a label — the phase, the frame the arc is reported in, and the ephemeris
+that decomposes the state — not the physics. One burn arc may cross a sphere of
+influence; it is never split at the boundary. The full design and its boundaries
+are in
+[full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
+
+Two things stay as they were. The **attitude** is the profile's: the departure
+burn holds the escape ray, the brake holds the handover change, and a
+prograde/retrograde burn follows the velocity relative to the reference body.
+And the floor probes keep the **two-body burn** as their search model; every
+fixed burn in the plan that is reported and flown is the full-field one,
+including the hybrid capture's injection arc.
+
+Measured at the epoch, the change is real in the arcs and almost invisible in the
+reported numbers. At the 90-day Mars plan's mid-burn the summed field is
+**4.4 × 10⁻⁴ m/s²** away from the Sun's rail at the departure burn and
+**1.2 × 10⁻⁴ m/s²** at the brake; a short 120 s burn 4,000 km above Mars ends
+**0.17 m** from its two-body counterpart. But a fixed-direction burn's delta-v is
+`a T` and `T` is set by the velocity change the chain needs, so the pinned solve
+absorbs the field difference into the escape ray and the path, not the spend: the
+8-day Mercury plan is still 569.9 km/s, 12.3 days 379.9, Mars 90 days 45.4, and
+the floors are still 3.46 and 8.03 days. The seams close to under a millimetre
+and 10⁻⁶ m/s, and the Mars 90-day flight arrives 0.08 m and 7 × 10⁻⁵ m/s from the
+reference state.
+
+The cost is planning time, not delta-v: each full-field step re-prepares the
+field over the catalogue, so a certified build is about an order of magnitude
+more work than the two-body build it replaced
+([planning performance](/technical/planning-performance.md), step 7 of the plan,
+owns the remedy).
 
 # The break search
 
@@ -279,7 +320,7 @@ Measured at the epoch (2026-11-15) from Gateway, conic capture:
 | Target | Level | True floor | Peak | Total Δv | Just below | Why the shorter trip is refused |
 |---|---|---:|---:|---:|---|---|
 | Mercury | 1 g | **3.46 d** | 9.70 m/s² | 1,760 km/s | 3.43 d | departure break needs 10.2 m/s², above the 10.0 m/s² drive; 3.44–3.45 d also leave the brake 375,000 km short of the capture entry |
-| Mars | 0.3 g | **8.03 d** | 5.25 m/s² | 1,170 km/s | 7.80 d | departure break needs 58.1 m/s², above the 10.0 m/s² drive; 8.00 d leaves the brake 7,493 km short of the entry |
+| Mars | 0.3 g | **8.03 d** | 5.25 m/s² | 1,170 km/s | 7.80 d | departure break needs 58.2 m/s², above the 10.0 m/s² drive; 8.00 d leaves the brake 7,493 km short of the entry |
 
 The floor search also requires the chain to be **closed**: a plan whose peak
 fits but whose brake misses the capture entry is not flyable. The near-floor
@@ -346,12 +387,12 @@ plan's fourth step.
   and the next follow-up, not part of the first flyable profile.
 - **Optimal control.** A shooting or indirect solver that minimises propellant
   remains the eventual answer ([ADR-006](/decisions/adr-006-quintic-plan.md)).
-- **Burning across a sphere of influence.** *No longer excluded.* The first cut
-  refused a burn that crossed the SOI because each two-body model stops at the
-  boundary and the reference-body handover would sit where both models are about
-  half wrong. The agreed design integrates a fixed burn through the summed field
-  and lets one arc cross; splitting the burn at the SOI is the option that is
-  refused. See
+- **Burning across a sphere of influence.** *Supported, not excluded.* The first
+  cut refused a burn that crossed the SOI because each two-body model stops at
+  the boundary and the reference-body handover would sit where both models are
+  about half wrong. `FiniteBurnArc` now integrates a fixed burn through the
+  summed field, so one arc crosses; splitting the burn at the SOI is the option
+  that stays refused. See
   [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 
 # Settled choices

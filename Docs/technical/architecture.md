@@ -149,7 +149,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `IArcPath` | `Scripts/Simulation/IArcPath.cs` | The arc contract: position, velocity, acceleration, and the parameter/time mappings |
 | `Quintic` | `Scripts/Simulation/Quintic.cs` | Degree-five curve matching r, v, a at both ends; linear in time |
 | `ConicArc` | `Scripts/Simulation/ConicArc.cs` | Keplerian coast around any body, linear in true anomaly, re-added to that body's ephemeris: the planetocentric capture and the heliocentric Lambert cruise |
-| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, the radius-crossing solver step, an optional fixed thrust direction, and `SimulateBackward` for the reverse-placed brake |
+| `FiniteBurnArc` | `Scripts/Simulation/FiniteBurnArc.cs` | Integrated constant-thrust burn, time-linear table, the radius-crossing solver step, an optional fixed thrust direction, and `SimulateBackward` for the reverse-placed brake; an optional summed-field source integrates the burn in absolute coordinates and decomposes it back into the reference body's frame, so one arc can cross a sphere of influence |
 | `TransferConic` | `Scripts/Simulation/TransferConic.cs` | The arrival hyperbola, periapsis and apoapsis burns, transfer ellipse, and circular state |
 | `HybridCapture` | `Scripts/Simulation/HybridCapture.cs` | The fixed capture burn, its injection radius and trim, the transfer ellipse, and the split |
 | `PathTessellation` | `Scripts/Simulation/PathTessellation.cs` | Curvature-adaptive arc polyline with a scale-free chord tolerance |
@@ -172,7 +172,15 @@ ray; its angles, its duration, and the coast's start are solved forward, while
 the brake is still built backwards from the capture chain's entry state with
 `FiniteBurnArc.SimulateBackward`. Every seam is continuous and the arrival is
 exact; the brake's thrust direction is the change the chain needs, not the
-instantaneous velocity. `CruiseStyle` and `CaptureStyle` are independent: the
+instantaneous velocity. Its fixed burns are integrated through the **summed
+field**: `FiniteBurnArc` takes an optional `IGravityField`, runs the RK4 in
+absolute heliocentric coordinates, and decomposes the table back into the
+reference body's frame, so the body named on the arc is a label for the phase's
+frame rather than the physics. The reference-related attitude is unchanged —
+prograde and retrograde follow the body-relative velocity, and the pinned
+departure burn and the brake hold fixed inertial directions. The floor search's
+probes keep the cheap two-body burn; the plan that is reported and flown is the
+full-field build. `CruiseStyle` and `CaptureStyle` are independent: the
 powered profile can pair with any of the three arrival styles, while a coasting
 profile builds the conic or hybrid capture, because a quintic capture cannot be
 fed by a coast.
@@ -466,7 +474,12 @@ expensive one: the true-floor search probes a fast model — fixed burns at thei
 commanded acceleration, the break against its own body, a 128-sample burn and a
 loose pinned fixed point — and rebuilds and certifies the chosen duration with
 the full field at 512 samples, so one plot still costs about twenty probes but
-each is much cheaper than a full build. The break search inside each build is
+each is much cheaper than a full build. A certified build's fixed burns
+integrate the summed field one RK4 step at a time, and every step re-prepares the
+field over the catalogue; that is roughly an order of magnitude more work per
+burn than the two-body model, and it is the profile's remaining planning cost
+([Full-field burns](/simulation/powered-leg-floor.md)). The break search inside
+each build is
 two-tier: it measures the quintic against the departure body alone as a search
 input, certifies probes within 5% of the drive limit with a one-prepare
 full-field sweep, and always returns a plan rebuilt and measured with the full

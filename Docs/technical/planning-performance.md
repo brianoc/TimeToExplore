@@ -26,8 +26,8 @@ note records the whole shape, its boundary, and the measurements.
 
 | Tier | Model | Who sees it |
 |---|---|---|
-| **Search** | The arc's own central body (`arc.BodyId`) in a body-relative frame: the departure body for the break, the Sun for the heliocentric arcs, the target for capture. The quintic still carries full-field **endpoint** accelerations. | The planner only. It picks a duration. |
-| **Plan** | The existing full `GravityField` over the catalogue, sampled as before. | The caller, the nav computer, the trajectory line, and the flight report. |
+| **Search** | The arc's own central body (`arc.BodyId`) in a body-relative frame: the departure body for the break, the Sun for the heliocentric arcs, the target for capture. The quintic still carries full-field **endpoint** accelerations. A fixed burn is the reference body's two-body burn. | The planner only. It picks a duration. |
+| **Plan** | The existing full `GravityField` over the catalogue, sampled as before. Every fixed burn integrates the summed field ([full-field burns](/simulation/powered-leg-floor.md)). | The caller, the nav computer, the trajectory line, and the flight report. |
 
 The boundary is a single rule: **the fast model is a search input and never a
 result.** `Plan()` and `PlanAtDuration()` rebuild the chosen duration with the
@@ -154,12 +154,31 @@ the main thread kept its 10 ms cadence.
   the very gentle 90-day Mars break, +0.05% at the Mercury floor — small enough
   that the screen, not the estimate, decides near the limit.
 
+## The full-field burns
+
+The reported plan's fixed burns integrate the summed field, and that is the new
+cost floor. Measured at the epoch in a .NET harness over the same sources, with
+the two-body build it replaced in brackets: a 90-day Mars build **0.47 s**
+(0.05 s), the Mercury 8-day build 1.1 s, `Plan()` at the Mars floor **2.0 s**
+(0.5 s) and at the Mercury floor 2.4 s, and a slider retime 0.7–1.4 s. The editor
+runs the same work several times slower: in the Unity suite the burn–coast–burn
+class is a **4-minute** silent stretch, the near-limit screen sweep (four Mercury
+builds) is 80 s, the Mars floor test 34 s, and the whole suite about 9 minutes,
+which is why the guard watches for eight minutes of log silence. Almost all of it
+is `GravityField.Prepare`: a full-field burn step re-selects the active set once
+per RK4 step, and that evaluates the whole catalogue's ephemeris, so a step costs
+about fifty times a two-body step. The plans, floors, seams, and window did not
+move ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
+A cheaper prepare rule is the obvious lever for the performance step; it must be
+measured against the per-step rule.
+
 # Where it lives
 
 | Concern | Code |
 |---|---|
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
 | Floor search | `TripPlanner.SearchFloor`, `FastProbeBurnSamples`, `FastProbeOuterPasses` |
+| Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor` |
 | Retime | `FlightSession.RequestPreviewDuration`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `PendingPreviewSeconds`, `RetimeLoop`, `BuildRetime`, `StartRetimeWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
@@ -168,7 +187,11 @@ the main thread kept its 10 ms cadence.
 
 `BurnCoastBurnTripPlannerTests` covers the fast-vs-full peak, the unchanged plan
 anchors, the 5% screen accepting no over-thrust break, and the just-below floors
-still rejected. `FlightSessionTests` covers the cache and the background retime,
+still rejected, plus every reported burn's acceleration being the summed field
+plus its thrust and a Sun-only field moving the plan.
+`FiniteBurnTests` covers the arc through an SOI against an independent RK4, the
+two-body agreement where the third bodies are negligible, and the reference body
+being a label. `FlightSessionTests` covers the cache and the background retime,
 including latest-wins with a first build in flight, background equals
 synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, and `Dispose` stopping
