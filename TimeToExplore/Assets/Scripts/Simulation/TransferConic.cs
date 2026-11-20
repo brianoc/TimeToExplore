@@ -5,10 +5,20 @@ namespace TimeToExplore.Simulation
 {
     /// <summary>
     /// The planetocentric geometry of a conic arrival: an inbound hyperbola from
-    /// the sphere of influence to a low periapsis, a transfer ellipse from that
-    /// periapsis to the parking radius, and the circular state the plan ends on.
-    /// The burns are impulses at the two apsides, which is the Oberth-optimal
-    /// capture ([ADR-014](/decisions/adr-014-keplerian-coast.md)).
+    /// the chain's <b>entry radius</b> to a low periapsis, a transfer ellipse
+    /// from that periapsis to the parking radius, and the circular state the plan
+    /// ends on. The burns are impulses at the two apsides, which is the
+    /// Oberth-optimal capture
+    /// ([ADR-014](/decisions/adr-014-keplerian-coast.md)).
+    ///
+    /// The entry radius is not necessarily the sphere of influence. A coast has
+    /// no brake to hand over, so it enters where the heliocentric coast ends — on
+    /// the sphere of influence. The burn–coast–burn's brake ends at the arrival
+    /// handover band's floor, so its chain is built from that radius and the
+    /// fall is short ([the powered-leg floor](/simulation/powered-leg-floor.md)).
+    /// The hyperbola's periapsis burn is the same either way: it is set by the
+    /// entry (hyperbolic excess) speed and the periapsis radius, not by where the
+    /// chain is handed over.
     ///
     /// Everything here is local to the body and in its equatorial plane, prograde
     /// about the IAU north pole. The planner re-adds the body's ephemeris. The
@@ -28,7 +38,10 @@ namespace TimeToExplore.Simulation
         public bool IsValid { get; private set; }
         public string InvalidReason { get; private set; }
 
-        public double SphereOfInfluenceM { get; private set; }
+        /// <summary>The radius the chain is handed over at: the sphere of
+        /// influence for a coast, the arrival handover floor for a
+        /// burn–coast–burn.</summary>
+        public double EntryRadiusM { get; private set; }
         public double EntrySpeedMps { get; private set; }
         public double Eccentricity { get; private set; }
         public double PeriapsisRadiusM { get; private set; }
@@ -67,9 +80,12 @@ namespace TimeToExplore.Simulation
         /// Build the capture chain. <paramref name="approachDirection"/> points
         /// from the target towards the arriving ship; it only chooses the
         /// azimuth of the capture plane about the target's pole.
+        /// <paramref name="entryRadiusM"/> is where the chain is handed over: the
+        /// sphere of influence for a coast, the handover floor for a
+        /// burn–coast–burn.
         /// </summary>
         public static TransferConic Build(BodyRuntime target, Vector3d approachDirection,
-            double sphereOfInfluenceM, double entrySpeedMps,
+            double entryRadiusM, double entrySpeedMps,
             double parkingRadiusM, double periapsisRadiusM)
         {
             if (target == null) throw new ArgumentNullException(nameof(target));
@@ -77,7 +93,7 @@ namespace TimeToExplore.Simulation
             var chain = new TransferConic
             {
                 Target = target,
-                SphereOfInfluenceM = sphereOfInfluenceM,
+                EntryRadiusM = entryRadiusM,
                 EntrySpeedMps = entrySpeedMps,
                 PeriapsisRadiusM = periapsisRadiusM,
                 ApoapsisRadiusM = parkingRadiusM
@@ -86,16 +102,16 @@ namespace TimeToExplore.Simulation
             double mu = target.Gm;
             if (!(mu > 0.0))
                 return Invalid(chain, "the target has no gravitational parameter");
-            if (!(sphereOfInfluenceM > 0.0) || !double.IsFinite(sphereOfInfluenceM))
-                return Invalid(chain, "the target has no finite sphere of influence");
+            if (!(entryRadiusM > 0.0) || !double.IsFinite(entryRadiusM))
+                return Invalid(chain, "the target has no finite entry radius");
             if (!(entrySpeedMps > 0.0))
                 return Invalid(chain, "the arrival needs a positive hyperbolic excess speed");
             if (!(periapsisRadiusM > target.RadiusM))
                 return Invalid(chain, "the capture periapsis is inside the body");
             if (!(parkingRadiusM >= periapsisRadiusM))
                 return Invalid(chain, "the parking orbit is below the capture periapsis");
-            if (!(sphereOfInfluenceM > periapsisRadiusM))
-                return Invalid(chain, "the sphere of influence is smaller than the periapsis");
+            if (!(entryRadiusM > periapsisRadiusM))
+                return Invalid(chain, "the entry radius is inside the capture periapsis");
 
             double rp = periapsisRadiusM;
             double ra = parkingRadiusM;
@@ -105,9 +121,9 @@ namespace TimeToExplore.Simulation
             double eccentricity = 1.0 + rp * vInfinity * vInfinity / mu;
             double semiLatus = rp * (1.0 + eccentricity);
 
-            double cosNu = (semiLatus / sphereOfInfluenceM - 1.0) / eccentricity;
+            double cosNu = (semiLatus / entryRadiusM - 1.0) / eccentricity;
             if (cosNu >= 1.0)
-                return Invalid(chain, "the arrival hyperbola does not reach the sphere of influence");
+                return Invalid(chain, "the arrival hyperbola does not reach the entry radius");
             double entryAnomaly = Math.Acos(Math.Clamp(cosNu, -1.0, 1.0));
             if (!(entryAnomaly > 0.0))
                 return Invalid(chain, "the arrival hyperbola has no inbound branch");
@@ -134,7 +150,7 @@ namespace TimeToExplore.Simulation
 
             Vector3d entryPosition = (periapsisDirection * cosEntry
                                       + transverseDirection * sinEntry)
-                                     * sphereOfInfluenceM;
+                                     * entryRadiusM;
             Vector3d entryVelocity = (periapsisDirection * -sinEntry
                                       + transverseDirection * (eccentricity + cosEntry))
                                      * velocityScale;

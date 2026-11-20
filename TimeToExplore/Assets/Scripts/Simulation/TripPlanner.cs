@@ -196,6 +196,17 @@ namespace TimeToExplore.Simulation
         /// <summary>Points sampled per arc to measure peak thrust and clearance.</summary>
         public int ArcSamples { get; set; } = 64;
 
+        /// <summary>Geometric refinement points added at each end of a conic arc
+        /// when its thrust and delta-v are measured. A conic's parameter is
+        /// linear in true anomaly, so the sample spacing in time collapses at one
+        /// end of a long transfer; the delta-v is a time integral and its last
+        /// uniform bin can span days of approach into the target's well.</summary>
+        private const int ConicEdgeSamples = 16;
+
+        /// <summary>Fraction of a conic arc's duration the edge refinement
+        /// covers, halving towards each end.</summary>
+        private const double ConicEdgeFraction = 0.01;
+
         public int MaxIterations { get; set; } = 16;
 
         /// <summary>Relative flight-time error that ends the moving-target loop.</summary>
@@ -276,7 +287,20 @@ namespace TimeToExplore.Simulation
 
             double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
             if (UsesConicCapture)
-                total += EstimateConicCaptureSeconds(target);
+            {
+                // The estimate is only the search's seed, but the burn–coast–burn
+                // now enters at the handover floor instead of the sphere of
+                // influence, so its capture's fall is minutes rather than months
+                // and the seed should say so.
+                double entryRadius = SphereOfInfluence.RadiusM(target);
+                if (CruiseStyle == CruiseStyle.BurnCoastBurn && FixedBurnAccelerationMps2 > 0.0)
+                {
+                    HandoverBand band = HandoverBand.For(target, FixedBurnAccelerationMps2);
+                    if (band.IsValid) entryRadius = ArrivalEntryRadiusM(band, target);
+                }
+
+                total += EstimateConicCaptureSeconds(target, entryRadius);
+            }
 
             // The burn–coast–burn profile has a real floor that the generic
             // growing loop cannot see: the pinned break is gentle, so the fast
@@ -445,8 +469,12 @@ namespace TimeToExplore.Simulation
 
             // Grow to a feasible duration in 20% steps. A seed rejected by the
             // full field is retried at the 0.2% step first, because it is a
-            // near-floor bracket and the next feasible duration is close.
-            for (int step = 0; step < 5 && highPlan == null; step++)
+            // near-floor bracket and the next feasible duration is close. The
+            // step count is generous because the estimate starts from the
+            // capture chain's own duration: with the arrival entering at the
+            // handover floor that is minutes rather than months, so the seed can
+            // land well below the profile's real floor.
+            for (int step = 0; step < 12 && highPlan == null; step++)
             {
                 if (!(lastRequest == low))
                 {
@@ -947,6 +975,8 @@ namespace TimeToExplore.Simulation
                 parkingPosition, parkingVelocity, ship.DryMassKg, ship.PropellantKg);
             var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
             plan.FiniteBurnAccelerationMps2 = finiteBurnAcceleration;
+            plan.CaptureEntryRadiusM = chain.EntryRadiusM;
+            plan.CaptureInboundSeconds = chain.InboundSeconds;
 
             return new BuildResult(plan, requiredSeconds);
         }
@@ -974,10 +1004,16 @@ namespace TimeToExplore.Simulation
         /// not a planner fault and not a long-way fallback.
         /// </summary>
         private BuildResult BuildCoast(ShipState ship, BodyRuntime target, double totalSeconds,
-            bool fast = false)
+            bool fast = false, double? entryRadiusM = null)
         {
             double t0 = ship.JulianDate;
             double targetSoi = SphereOfInfluence.RadiusM(target);
+
+            // The coast has no brake, so it enters the target's sphere of
+            // influence where the heliocentric coast ends. The burn–coast–burn
+            // passes its own floor entry radius here so its reference coast lands
+            // on the same entry state; the coast profile itself never does.
+            double captureEntryRadius = entryRadiusM ?? targetSoi;
 
             _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
             bool insideTarget = Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi;
@@ -1033,7 +1069,7 @@ namespace TimeToExplore.Simulation
             // which a fixed few-hour escape cannot supply.
             for (int pass = 0; pass < 5; pass++)
             {
-                chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
+                chain = BuildCaptureShape(ship, target, captureEntryRadius, arrivalJd);
                 if (!chain.IsValid)
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "conic capture: " + chain.InvalidReason);
@@ -1068,7 +1104,7 @@ namespace TimeToExplore.Simulation
 
             // Rebuild the shape at the settled arrival, so the plane and the
             // approach azimuth belong to the date the plan actually reaches.
-            chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
+            chain = BuildCaptureShape(ship, target, captureEntryRadius, arrivalJd);
             if (!chain.IsValid)
                 return InfeasiblePlan(ship, target, totalSeconds,
                     "conic capture: " + chain.InvalidReason);
@@ -1173,6 +1209,8 @@ namespace TimeToExplore.Simulation
                 parkingPosition, parkingVelocity, ship.DryMassKg, ship.PropellantKg);
             var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
             plan.FiniteBurnAccelerationMps2 = finiteBurnAcceleration;
+            plan.CaptureEntryRadiusM = chain.EntryRadiusM;
+            plan.CaptureInboundSeconds = chain.InboundSeconds;
 
             return new BuildResult(plan, requiredSeconds);
         }
@@ -1254,16 +1292,18 @@ namespace TimeToExplore.Simulation
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi)
                 return BuildQuintic(ship, target, totalSeconds);
 
-            // The arrival endpoint is the band's floor. The capture chain still
-            // enters at the target's sphere of influence in this step, so the
-            // floor is validated here and flown in the step that gives the chain
-            // its entry radius.
+            // The arrival endpoint is the band's floor, raised to the radius the
+            // chain captures into when the floor is deeper than it. The capture
+            // chain is built from that radius instead of the sphere of influence:
+            // the brake ends there, so the chain's inbound fall starts there.
             HandoverBand arrivalBand = HandoverBand.For(target, acceleration);
             if (!arrivalBand.IsValid)
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
                     "burn-coast-burn: " + arrivalBand.InvalidReason);
             }
+
+            double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
 
             BodyRuntime departureBody = FindDepartureBody(ship, target, t0);
             if (departureBody == null)
@@ -1286,12 +1326,15 @@ namespace TimeToExplore.Simulation
 
             Trace?.Invoke($"handover band: departure {departureBand.DepartureRadiusM / 1000.0:F0} km " +
                           $"(ceiling), arrival {arrivalBand.ArrivalRadiusM / 1000.0:F0} km " +
-                          $"(floor), ceiling {arrivalBand.CeilingRadiusM / 1000.0:F0} km");
+                          $"(floor), chain entry {arrivalRadius / 1000.0:F0} km, " +
+                          $"ceiling {arrivalBand.CeilingRadiusM / 1000.0:F0} km");
 
             // The coast skeleton supplies the capture chain, the handover the
             // brake spends, and a first guess at the outbound direction and the
-            // burn's size.
-            BuildResult reference = BuildCoast(ship, target, totalSeconds, fast);
+            // burn's size. It is built at the floor entry radius too, so its
+            // timing and its handover are the ones the burn–coast–burn flies; the
+            // coast profile itself keeps the sphere of influence.
+            BuildResult reference = BuildCoast(ship, target, totalSeconds, fast, arrivalRadius);
             if (!string.IsNullOrEmpty(reference.Plan.InfeasibleReason))
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
@@ -1314,18 +1357,12 @@ namespace TimeToExplore.Simulation
                     "burn-coast-burn: the coast skeleton has no heliocentric arc");
             }
 
-            // The capture chain is rebuilt at the reference coast's arrival, so the
-            // two plans share one chain and one entry state.
-            double entryJd = referenceCruise.EndJulianDate;
-            TransferConic chain = BuildCaptureShape(ship, target, targetSoi, entryJd);
-            if (!chain.IsValid)
-            {
-                return InfeasiblePlan(ship, target, totalSeconds,
-                    "conic capture: " + chain.InvalidReason);
-            }
-
-            double arrivalJd = entryJd + chain.TotalSeconds / SecondsPerDay;
-            chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
+            // The capture chain enters at the arrival handover radius. The plan
+            // still ends at the duration the caller asked for: the capture takes
+            // only its own short fall, and the coast absorbs what the old
+            // sphere-of-influence fall used to spend.
+            double arrivalJd = t0 + totalSeconds / SecondsPerDay;
+            TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius, arrivalJd);
             if (!chain.IsValid)
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
@@ -1333,7 +1370,7 @@ namespace TimeToExplore.Simulation
             }
 
             double captureSeconds = chain.TotalSeconds;
-            entryJd = arrivalJd - captureSeconds / SecondsPerDay;
+            double entryJd = arrivalJd - captureSeconds / SecondsPerDay;
             _model.ComputeState(target, entryJd,
                 out Vector3d targetAtEntry, out Vector3d targetVelocityAtEntry);
             Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
@@ -1660,6 +1697,8 @@ namespace TimeToExplore.Simulation
                 parkingPosition, parkingVelocity, ship.DryMassKg, ship.PropellantKg);
             var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
             plan.FiniteBurnAccelerationMps2 = finiteBurnAcceleration;
+            plan.CaptureEntryRadiusM = chain.EntryRadiusM;
+            plan.CaptureInboundSeconds = chain.InboundSeconds;
 
             return new BuildResult(plan, requiredSeconds);
         }
@@ -2566,23 +2605,47 @@ namespace TimeToExplore.Simulation
             return true;
         }
 
-        private double EstimateConicCaptureSeconds(BodyRuntime target)
+        /// <summary>The capture chain's duration at one entry radius. Only the
+        /// inbound fall moves with the radius: the periapsis burn, the transfer,
+        /// and the parking coast are set by the entry speed and the radii.</summary>
+        private double EstimateConicCaptureSeconds(BodyRuntime target, double entryRadiusM)
         {
             TransferConic chain = TransferConic.Build(target, new Vector3d(1.0, 0.0, 0.0),
-                SphereOfInfluence.RadiusM(target), EntrySpeedMps,
+                entryRadiusM, EntrySpeedMps,
                 ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
             return chain.IsValid ? chain.TotalSeconds : 0.0;
         }
 
+        /// <summary>The radius the capture chain is handed over at.
+        /// <paramref name="entryRadiusM"/> is the branch's entry radius: the
+        /// sphere of influence for the coast, the arrival handover floor for the
+        /// burn–coast–burn.</summary>
         private TransferConic BuildCaptureShape(ShipState ship, BodyRuntime target,
-            double targetSoi, double arrivalJd)
+            double entryRadiusM, double arrivalJd)
         {
             _model.ComputeState(target, arrivalJd, out Vector3d targetPosition, out _);
             Vector3d approach = (ship.PositionM - targetPosition).Normalized;
             if (approach.SqrMagnitude < 0.5) approach = new Vector3d(1.0, 0.0, 0.0);
 
-            return TransferConic.Build(target, approach, targetSoi, EntrySpeedMps,
+            return TransferConic.Build(target, approach, entryRadiusM, EntrySpeedMps,
                 ParkingOrbit.ConicRadiusM(target), ParkingOrbit.PeriapsisRadiusM(target));
+        }
+
+        /// <summary>
+        /// The burn–coast–burn's arrival handover radius: the band's floor, raised
+        /// to the radius the capture chain captures into when the floor is deeper
+        /// than that. The floor is a lower bound on the handover, not a promise
+        /// the chain can start there: at 1 g on Mercury and Mars, and on several
+        /// small moons, the clamped floor sits inside the conic periapsis. An
+        /// entry at the parking radius is above the periapsis by construction and
+        /// falls into the orbit the chain ends on
+        /// ([the powered-leg floor](/simulation/powered-leg-floor.md#the-floor-is-clamped-to-the-body)).
+        /// </summary>
+        public static double ArrivalEntryRadiusM(HandoverBand band, BodyRuntime target)
+        {
+            if (band == null) throw new ArgumentNullException(nameof(band));
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            return Math.Max(band.ArrivalRadiusM, ParkingOrbit.ConicRadiusM(target));
         }
 
         /// <summary>An infeasible plan that also asks for a longer trip. The
@@ -2708,6 +2771,7 @@ namespace TimeToExplore.Simulation
             }
 
             int samples = Math.Max(8, ArcSamples);
+            double duration = arc.Path.DurationSeconds;
             double peak = 0.0;
             double deltaV = 0.0;
             double clearance = double.PositiveInfinity;
@@ -2715,12 +2779,37 @@ namespace TimeToExplore.Simulation
             double previousMagnitude = 0.0;
             double previousSeconds = 0.0;
 
+            // Sample uniformly in time, not in the path's parameter. A quintic
+            // and a fixed burn are linear in time, so the two agree; a conic is
+            // linear in true anomaly, so a coarse parameter grid puts most of a
+            // long approach in one bin. A conic's field also changes fastest at
+            // its ends — the approach to periapsis for an inbound arc, where
+            // gravity goes as the inverse square of a radius that is falling
+            // fast — so the two ends get a geometric refinement as well. The
+            // delta-v is a time integral, and a uniform grid alone over-reports
+            // the last bin by tens of km/s on a long transfer that ends in the
+            // target's well.
+            var times = new List<double>(samples + 2 * ConicEdgeSamples + 1);
             for (int i = 0; i <= samples; i++)
+                times.Add(duration * i / samples);
+
+            if (arc.Path is ConicArc)
             {
-                double u = (double)i / samples;
+                for (int k = 0; k < ConicEdgeSamples; k++)
+                {
+                    double offset = duration * ConicEdgeFraction * Math.Pow(0.5, k + 1);
+                    times.Add(offset);
+                    times.Add(duration - offset);
+                }
+
+                times.Sort();
+            }
+
+            foreach (double seconds in times)
+            {
+                double u = arc.Path.ParameterAtSeconds(seconds);
                 Vector3d position = arc.Path.PositionAt(u);
                 Vector3d required = arc.Path.AccelerationAt(u);
-                double seconds = arc.Path.SecondsAt(u);
                 double julianDate = arc.StartJulianDate + seconds / JulianDate.SecondsPerDay;
 
                 _gravity.Prepare(position, julianDate);
@@ -2734,7 +2823,7 @@ namespace TimeToExplore.Simulation
                     nearest = _gravity.NearestBodyId;
                 }
 
-                if (i > 0)
+                if (seconds > previousSeconds)
                     deltaV += 0.5 * (previousMagnitude + magnitude)
                               * (seconds - previousSeconds);
                 previousMagnitude = magnitude;

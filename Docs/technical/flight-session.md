@@ -112,9 +112,9 @@ flight time in seconds. For the powered plan the maximum is three times the
 minimum; for a coasting profile it is the slowest duration the planner still
 accepts, because a long short-way Lambert transfer is rejected once it sweeps
 180° or its arrival no longer needs a brake. At the epoch the Gateway→Mars
-burn–coast–burn window is **8.03 to 24.09 days**, from the profile's true floor
-of 8.03 days at 0.3 g; the Mercury floor at 1 g is 3.46 days. A 90-day Mars build
-is outside that window. The floor plan and the window are cached per departure
+burn–coast–burn window is **6.74 to 20.21 days**, from the profile's true floor
+of 6.74 days at 0.3 g; the Mercury window is 3.22 to 9.65 days. A 90-day Mars
+build is outside that window. The floor plan and the window are cached per departure
 date, target, burn level, cruise style, and arrival style, so plotting the same
 route again at the same date reuses both; a changed departure date, or a
 place/teleport, drops the cache.
@@ -411,8 +411,8 @@ new work. `SolarSystemHudTests` covers the profile control and the coasting
 window: the
 `PROFILE` row defaults to Powered, a switch rebuilds the preview, and the
 burn–coast–burn slider ends at the slowest duration the planner accepts rather
-than at three times its minimum (8.03–24.09 days at the epoch for Gateway→Mars,
-from the 8.03-day true floor).
+than at three times its minimum (6.74–20.21 days at the epoch for Gateway→Mars,
+from the 6.74-day true floor).
 `TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
 and lower delta-v at twice the minimum, and an infeasible report below it.
 `CoastTripPlannerTests` and `BurnCoastBurnTripPlannerTests` cover the two Lambert

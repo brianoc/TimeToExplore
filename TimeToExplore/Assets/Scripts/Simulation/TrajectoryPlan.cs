@@ -147,6 +147,17 @@ namespace TimeToExplore.Simulation
         /// zero when the plan has none. The panel prints it as a g level.</summary>
         public double FiniteBurnAccelerationMps2 { get; internal set; }
 
+        /// <summary>Where the plan's conic or hybrid capture chain is handed
+        /// over, measured from the target's centre: the target's sphere of
+        /// influence for a coast, the arrival handover floor for a
+        /// burn–coast–burn. Zero when the plan uses the quintic capture, which
+        /// has no planetocentric entry point.</summary>
+        public double CaptureEntryRadiusM { get; internal set; }
+
+        /// <summary>The capture chain's inbound fall, in seconds: the coast from
+        /// the entry radius to periapsis. Zero for the quintic capture.</summary>
+        public double CaptureInboundSeconds { get; internal set; }
+
         public double MinimumClearanceM
         {
             get

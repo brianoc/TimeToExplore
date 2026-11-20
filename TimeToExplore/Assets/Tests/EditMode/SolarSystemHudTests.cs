@@ -479,9 +479,9 @@ namespace TimeToExplore.Tests.EditMode
                     arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast), Is.True);
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(9.0),
-                "the window starts at the profile's true floor, below the old 9.64 d first-feasible plan");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(7.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(7.5),
+                "the window starts at the profile's true floor, below the old 8.03 d one");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.0),
                 "the floor is the shortest plan the profile can fly, not the torch plan");
             double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
@@ -706,7 +706,7 @@ namespace TimeToExplore.Tests.EditMode
             };
             TrajectoryPlan rejected = planner.PlanAtDuration(
                 FlightFixture.ShipAt(_bootstrap.Model, "gateway"), "mercury",
-                3.43 * JulianDate.SecondsPerDay);
+                3.19 * JulianDate.SecondsPerDay);
             Assert.That(rejected.IsFeasible, Is.False);
             Assert.That(rejected.InfeasibleReason, Does.Contain("departure break"));
 

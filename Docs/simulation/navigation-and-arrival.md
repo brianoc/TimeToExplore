@@ -162,28 +162,40 @@ to that; the pin removes that backwards departure solve. The brake is a
 fixed-thrust burn whose direction is the change the chain needs rather than the
 velocity direction; it is still integrated backwards from the state the capture
 chain must begin at, and it spends the handover the coast plan would have made
-an impulse, so the capture chain is handed its entry state with **no impulse at
-the target's sphere of influence**. Every seam is continuous in position and
-velocity, and the plan arrives on the parking orbit exactly. The brake's thrust
-direction is fixed along the change the chain needs, because a burn along the
-instantaneous velocity can only change the speed; the direction opposes the
-arrival velocity, and a trip time whose coast arrives slower than the target's
-frame — which would need an acceleration rather than a brake — is rejected. The
-departure burn begins on the departure handover band's ceiling, `1.02 × SOI`, and
+an impulse, so the capture chain is handed its entry state with **no impulse**.
+That entry is the **arrival handover floor** — `max(band floor, conic parking
+radius)` — not the sphere of influence: the brake ends there and the chain's
+inbound fall starts there. Measured at the epoch from Gateway to Uranus at 1 g
+and 400 days, the chain enters at 38,643 km and falls for 31 minutes, against
+117.13 days from the 51.76 million km sphere, and the profile's floor drops from
+150.73 to **34.00 days**. The **coast** profile has no brake to hand over and
+keeps its sphere-of-influence entry
+([the chain's entry radius](/simulation/powered-leg-floor.md#the-chains-entry-radius)).
+Every seam is continuous in position and velocity, and the plan arrives on the
+parking orbit exactly. The brake's thrust direction is fixed along the change
+the chain needs, because a burn along the instantaneous velocity can only change
+the speed; the direction opposes the arrival velocity, and a trip time whose
+coast arrives slower than the target's frame would need an acceleration rather
+than a brake. (After the floor entry that branch did not trigger at Mars between
+200 and 300 days: a 200-day crossing closes at 12.46 km/s, and the slow end is
+the short-way coast's own geometry, refused at 305 days for a 179.4° transfer.)
+The departure burn begins on the departure handover band's ceiling, `1.02 × SOI`, and
 every fixed burn is now gated on **body clearance**, not on the sphere of
 influence: a burn that crosses the boundary while clearing both bodies is valid,
 because a full-field burn integrates the summed gravity field
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
 At `0 g` the style is exactly `CruiseStyle.Coast`.
 
-Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.79-day
-quintic break (9.0 km/s, 0.03 m/s² peak), a 78-minute departure burn of
-13.7 km/s, an 83.7-day coast, a 1.8-hour brake of 19.1 km/s, and the 3.5 km/s
-conic capture, 45 km/s in total against the coast plan's 14 km/s at 200 days.
-The profile's true floor at the epoch is **8.03 days** to Mars at 0.3 g
-(1,170 km/s) and **3.46 days** to Mercury at 1 g (1,763 km/s); the Mars
-trip-time window ends at **24.09 days**, three times that floor, so the 90-day
+Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 4.84-day
+quintic break (8.8 km/s, 0.03 m/s² peak), a 76-minute departure burn of
+13.4 km/s, an 85.0-day coast, a 1.7-hour brake of 18.5 km/s, and the 3.5 km/s
+conic capture, 44.4 km/s in total against the coast plan's 14 km/s at 200 days.
+The profile's true floor at the epoch is **6.74 days** to Mars at 0.3 g
+(1,172 km/s) and **3.22 days** to Mercury at 1 g (1,766 km/s); the Mars
+trip-time window ends at **20.21 days**, three times that floor, so the 90-day
 plan above is a direct `PlanAtDuration` build outside the nav computer's window.
+The capture enters at 6,033 km (the Mars 0.3 g floor) and falls for 13.6
+minutes.
 The 8-day Mercury flight arrives 0.05 m and 4.4 × 10⁻⁵ m/s from the reference
 state and holds the parking orbit. The nav computer exposes the cruise as a
 `PROFILE` row beside the arrival buttons — **Powered** (the default), **Coast**,
@@ -207,7 +219,7 @@ would need an acceleration rather than a brake. Selecting **Coast** or
 **Burn-coast-burn** therefore resets the slider to that profile's own fastest
 plan and clamps the right end to the slowest duration the planner still accepts,
 found by probing inside the same span. At the epoch the burn–coast–burn window
-runs from **8.03 days to 24.09 days** to Mars, not from the torch plan's 4.4 days
+runs from **6.74 days to 20.21 days** to Mars, not from the torch plan's 4.4 days
 and not to an arbitrary three times the powered minimum. The right-hand end is
 exactly three times the true floor, so a 90-day Mars build is outside the
 control's reach; it can only be built directly with `PlanAtDuration`. The

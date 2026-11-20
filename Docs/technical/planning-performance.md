@@ -144,12 +144,16 @@ the main thread kept its 10 ms cadence.
 
 ## What did not change
 
-* **The plans.** Mercury 8 d is still 3.02 m/s² and 569.9 km/s, 12.3 d is 1.35
-  and 379.9, Mars 90 d is 0.033 and 45.4.
-* **The floors and the window.** 3.462 d to Mercury at 1 g and 8.032 d to Mars
-  at 0.3 g, printed as 3.46 and 8.03; the window is 8.03–24.095 d.
-* **The seams and the arrival.** Under a millimetre and 1e-5 m/s; the 8.03 d
-  flight arrives 0.1 m and 10⁻⁴ m/s on the conic parking orbit.
+* **The plans at that step.** Mercury 8 d was 3.02 m/s² and 569.9 km/s, 12.3 d
+  1.35 and 379.9, Mars 90 d 0.033 and 45.4. The arrival entry radius moved them
+  afterwards to 2.85 / 557.0, 1.30 / 376.9, and 0.033 / 44.4.
+* **The floors and the window at that step.** 3.462 d to Mercury at 1 g and
+  8.032 d to Mars at 0.3 g; the window was 8.03–24.095 d. They are 3.22 and
+  6.74 d and 6.74–20.21 d after the entry change.
+* **The seams and the arrival.** Under a millimetre and 1e-5 m/s then; under a
+  metre and 3.7 × 10⁻⁴ m/s after the entry change, still well inside the gate.
+  The 6.74 d floor flight arrives 0.08 m and 3.7 × 10⁻⁵ m/s on the conic parking
+  orbit.
 * **The fast-vs-full peak.** +0.18% at 8 d Mercury, +0.41% at 12.3 d, +4.5% on
   the very gentle 90-day Mars break, +0.05% at the Mercury floor — small enough
   that the screen, not the estimate, decides near the limit.

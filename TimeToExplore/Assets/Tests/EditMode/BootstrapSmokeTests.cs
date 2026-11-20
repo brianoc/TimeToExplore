@@ -434,9 +434,9 @@ namespace TimeToExplore.Tests.EditMode
                 "the preview carries the departure burn and the brake");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(9.0),
-                "the profile's true floor is below the old 9.64 d first-feasible plan");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(7.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(7.5),
+                "the profile's true floor is below the old 8.03 d one");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.0),
                 "the floor is a real plan, not the profile being flown faster than it can");
             Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
                 Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6));

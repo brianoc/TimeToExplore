@@ -129,10 +129,11 @@ reason is structural, not luck. A fixed-direction burn's delta-v is set by the
 chain (`a T` = the velocity change the coast needs), so the summed field changes
 where the burn is and how its attitude is placed, not how much it spends; the
 pinned solve absorbs the field difference into the escape ray and the path. The
-8-day Mercury plan is still 569.9 km/s, 12.3 days 379.9, Mars 90 days 45.4, and
-the floors are still 3.46 and 8.03 days. The seams close to under a millimetre
-and 10⁻⁶ m/s, and the Mars 90-day flight arrives 0.08 m and 7 × 10⁻⁵ m/s from
-the reference state.
+8-day Mercury plan was then still 569.9 km/s, 12.3 days 379.9, Mars 90 days
+45.4, and the floors were then still 3.46 and 8.03 days; the arrival entry
+radius moved those in the next step (see [the measurements](#what-the-floor-entry-measured)).
+The seams closed to under a millimetre and 10⁻⁶ m/s, and the Mars 90-day flight
+arrives 0.08 m and 7 × 10⁻⁵ m/s from the reference state.
 
 **One consequence to know.** A body-relative position on a full-field arc carries
 the catalogue's Julian-date quantisation — about 0.2–0.9 m at 1.5 AU, because a
@@ -180,13 +181,43 @@ optimum:
 * **Arrival: the floor.** The brake ends at the deepest radius where local
   gravity is still 40% of the drive, and the capture chain is handed its entry
   state there. The fall shortens as the radius comes in, which is the point of
-  the change. The chain still enters at the target's sphere of influence today;
-  connecting the arrival endpoint to it, and to the residual entry speed, is the
-  next step of the plan in `HANDOFF.md`.
+  the change. **Implemented for the burn–coast–burn**: its chain is built at
+  `max(floor, what the chain needs)`, where "what the chain needs" is the conic
+  parking radius — an entry at that radius is above the periapsis by
+  construction and falls into the orbit the chain ends on. Where the floor is
+  above the parking radius (the giants, and any level where the gravity floor
+  clears the surface) the floor itself governs. The **coast** profile does not
+  take this endpoint: it has no brake to hand over, so it still enters on the
+  target's sphere of influence ([the chain's entry contract](#the-chains-entry-radius)).
+  Handing the chain the *residual entry speed* as well is the next decision, not
+  this one.
 
 An **interior** solved radius is still open. If the steering measurement shows
 that the rule costs real delta-v or time, the radius becomes a variable inside
 the band. Nothing here solves for one.
+
+## The chain's entry radius
+
+The capture chain takes a **handover radius**, not a sphere of influence. Which
+radius each profile passes is deliberate:
+
+| Profile | Entry radius | Why |
+|---|---|---|
+| Conic or hybrid arrival on the powered cruise | the target's sphere of influence | the quintic cruise hands over where the heliocentric arc ends |
+| `CruiseStyle.Coast` | the target's sphere of influence | there is no brake to hand over; the coast profile's anchors are unchanged |
+| `CruiseStyle` burn–coast–burn | `max(band floor, conic parking radius)` | the brake ends there, so the chain's fall starts there |
+
+`TransferConic.Build`'s radius argument is therefore the **entry radius**, and
+`TransferConic.EntryRadiusM` is its reported name. Only the inbound fall moves
+with it: the periapsis burn is `sqrt(v∞² + 2μ/r_p) − v_transfer`, which is set by
+the entry (hyperbolic excess) speed and the periapsis radius. The entry radius
+buys **time**, not capture delta-v.
+
+`TrajectoryPlan.CaptureEntryRadiusM` and `CaptureInboundSeconds` report the
+chain's entry and its fall, so a test or the panel can read where the handover
+happened and how long the coast in was; the quintic capture reports zero for
+both, because it has no planetocentric entry point.
+
 
 ## The floor is clamped to the body
 
@@ -227,6 +258,21 @@ and the arrival endpoint is the larger of the band floor and what the chain
 needs. At the giants the floor is far **above** the parking radius (Uranus at
 0.3 g: 70,167.5 km against a 29,166 km conic parking radius), which is the normal
 arrival case: the handover is high, and the capture falls in from it.
+
+Measured at the epoch, the radius the burn–coast–burn actually enters at:
+
+| Body and level | Band floor | Conic parking radius | Entry used |
+|---|---:|---:|---:|
+| Mercury, 1 g | 2,539.7 km (clamped, inside the 2,561.7 km periapsis) | 2,805.7 km | **2,805.7 km** |
+| Mars, 1 g | 3,489.5 km (clamped, inside the 3,559.0 km periapsis) | 3,897.9 km | **3,897.9 km** |
+| Mars, 0.3 g | 6,032.7 km | 3,897.9 km | **6,032.7 km** |
+| Uranus, 1 g | 38,643.0 km | 29,166.3 km | **38,643.0 km** |
+| Uranus, 0.3 g | 70,167.5 km | 29,166.3 km | **70,167.5 km** |
+
+The clamp binds on Mercury and Mars at 1 g, so the entry is the parking radius
+there and the fall is short rather than zero; at 0.3 g on Mars and at both
+Uranus levels the floor governs.
+
 
 ## The band can be empty
 
@@ -279,17 +325,89 @@ pinned fixed point, the escape-ray attitude, the brake's direction, the trim, th
 transfer ellipse, and the circularisation are unchanged. No new arc type is
 introduced, and `0 g` still selects `CruiseStyle.Coast` exactly.
 
+# What the floor entry measured
+
+Measured at the epoch (2026-11-15), from Gateway, conic capture. The old build
+enters on the target's sphere of influence at the planted 5 km/s; the new one
+enters at the row's entry radius, with the same 5 km/s.
+
+| Target, level, trip | Entry radius old → new | Inbound fall old → new | Capture Δv | Total old → new | Brake start radius | Brake Δv | Floor old → new |
+|---|---|---:|---:|---:|---:|---:|---|
+| Uranus, 1 g, 400 d | 51,760,023 km → 38,643 km | 117.13 d → 31 min | 6.37 km/s (both) | 242.1 → 182.3 km/s | 51.96 million km → **366,505 km** | 112.70 → 81.20 km/s | 150.73 d → **34.00 d** |
+| Uranus, 0.3 g, 400 d | 51,760,023 km → 70,168 km | 117.13 d → 1.3 h | 6.37 km/s (both) | 242.5 → 180.8 km/s | 52.45 million km → **1,159,005 km** | 112.83 → 79.75 km/s | 160.47 d → **41.57 d** |
+| Mercury, 1 g, 8 d | 112,410 km → 2,806 km | 6.09 h → 3.3 min | 3.50 km/s (both) | 569.9 → 557.0 km/s | 2.64 million km → 2.38 million km | 216.29 → 213.30 km/s | 3.46 d → **3.22 d** |
+| Mercury, 1 g, 12.3 d | 112,410 km → 2,806 km | 6.09 h → 3.3 min | 3.50 km/s (both) | 379.9 → 376.9 km/s | 1.21 million km → 1.07 million km | 141.17 → 142.29 km/s | — |
+| Mars, 0.3 g, 90 d | 577,241 km → 6,033 km | 1.3187 d → 13.6 min | 3.46 km/s (both) | 45.38 → 44.36 km/s | 658,870 km → **92,790 km** | 19.13 → 18.51 km/s | 8.03 d → **6.74 d** |
+
+The trend is the one the design predicted, and it is bigger than the fall alone:
+the 104-day Uranus fall is gone, and because the coast absorbs the time the
+profile used to spend falling, the floor moves fourfold at Uranus (150.73 → 34.00
+days at 1 g) and the 400-day plan is *cheaper* as well as shorter (242 → 182
+km/s). A slower profile pays by carrying speed longer: the 400-day coast is 392
+days at 1 g and the burn and brake are 90.2 and 81.2 km/s against 118.8 and
+112.7.
+
+**A hotter entry shortens the fall but grows the capture.** Sweeping the
+per-plan entry speed at Uranus 1 g and 400 days, at the floor:
+
+| Entry speed | Inbound fall | Capture Δv | Brake Δv | Total |
+|---:|---:|---:|---:|---:|
+| 5 km/s | 31.0 min | 6.37 km/s | 81.20 km/s | 182.3 km/s |
+| 20 km/s | 19.0 min | 13.82 km/s | 79.93 km/s | 188.5 km/s |
+| 50 km/s | 8.97 min | 39.10 km/s | 84.75 km/s | 218.6 km/s |
+
+So the entry speed is not free: the fall falls as the speed rises, but the
+periapsis burn grows faster than the brake shrinks. That is why the brake-produced
+residual is the next decision rather than a number to plant.
+
+## The binding question: where the coast ends
+
+The brake ends at the floor, and the brake's start is the coast's end. A fixed
+burn at `a` covers `Δv / a` seconds, so the distance it spans depends on the trip:
+the **long** trips hand the coast a final leg inside the target's sphere, and the
+**fast** ones make the brake span the sphere itself.
+
+* **Long trips.** At Uranus 1 g and 400 days the brake is 139.5 min of 81.2 km/s
+  and starts **366,505 km** from Uranus — **0.0071 × the sphere of influence**,
+  where Uranus's gravity is 0.043 m/s². The coast has ended deep inside the
+  target's well. The seams close (the worst is under 0.1 m and 2 × 10⁻⁵ m/s) and
+  the reported plan is continuous, but the last part of that coast is a
+  heliocentric conic in a region where the target dominates. That is a **model
+  gap**, not a seam: the measurement reports it, and the next decision owns it.
+  At 0.3 g the same plan's brake is 7.5 h and starts 1,159,005 km out — 0.0224
+  spheres, 0.0043 m/s². Mars at 90 d is 0.16 spheres (92,790 km).
+* **Fast trips.** At Uranus's 1 g floor (34.00 d) the brake is 28.5 h of 995 km/s
+  and starts **51.07 million km** out — 0.987 spheres — so the brake itself
+  spans the sphere-to-floor gap. Mercury's floor (3.22 d) puts the brake's start
+  at 31.05 million km, **276 spheres** out; Mars's floor (6.74 d) at 48.30
+  million km, **83.7 spheres** out. At the fast end the coast ends well outside
+  the target and the brake is the long crossing.
+
+The brake is never *wrong* about the field: every fixed burn integrates the
+summed field, so the 28.5-hour Uranus brake feels Uranus. What the measurement
+shows is the other side: a Sun-only coast cannot describe the final approach when
+it ends deep in the well, so a deep floor entry trades the chain's 104-day
+planetocentric fall for a heliocentric coast over the same region. The seams
+close either way; the models differ. The choice between a planetocentric approach
+leg, an entry-speed rule, or a full-field coast is the next decision.
+
 # Entry speed is an output
 
 Today the entry speed is an **input**. `EntrySpeedMps = 5000` is global and shapes
 every capture; changing it moves every conic plan, including the inner-system
-ones where the current entry works.
+ones where the current entry works. `FlightSession` already copies it per plan
+(the retime's request carries it), so a per-plan value is possible without moving
+the default; this step kept the default and the per-plan input exactly as they
+were.
 
-The capture chain gains an **entry radius** — the handover radius — and the brake
-solve sets the **residual entry speed** at that radius instead of accepting the
-planted 5 km/s. The entry speed becomes an **output** of the trip: the brake
-solve chooses how much of the arrival velocity it removes, and the state it
-leaves — radius and residual speed — is what the capture chain is handed.
+The capture chain now gains its **entry radius** — the handover radius — and the
+next decision is the **residual entry speed** at that radius. Making it an
+**output** of the brake solve means the brake chooses how much of the arrival
+velocity it removes, and the state it leaves — radius and residual speed — is what
+the chain is handed. The measurements above are what that decision needs: at the
+Uranus floor, 5 → 50 km/s moves the fall from 31 to 9 minutes but the capture from
+6.4 to 39.1 km/s, and the brake's own delta-v hardly moves, because the brake is
+shedding the heliocentric crossing, not the local entry.
 
 This is what makes a short fall representable. The fall time is set by the entry
 radius and the entry speed, not by the SOI. A brake that ends near the floor with
@@ -299,8 +417,9 @@ effect is strongest. The 104-day fall at Uranus is a statement about entering at
 51.8 million km at exactly 5 km/s, not a property of Uranus.
 
 Keeping the global constant as an option is allowed — a plan may still plant
-5 km/s at the SOI — but a per-plan residual is what the profile needs. Changing
+5 km/s at the floor — but a per-plan residual is what the profile needs. Changing
 the global value is not the lever: it moves every plan at once.
+
 
 # Steering starts simple
 
@@ -336,21 +455,36 @@ means keeping that and measuring it, not replacing it.
   a **body-clearance** gate: every fixed burn must keep 100 km above the body it
   works near, and a burn that crosses a sphere while clearing both bodies is
   valid.
-* The global `EntrySpeedMps` stops being the profile's entry condition; the entry
-  radius and the residual entry speed are per plan.
-* The coast, the quintic, the capture chain, and the `0 g` identity are
-  unchanged.
+* The capture chain takes an **entry radius**. The burn–coast–burn passes the
+  arrival handover floor (raised to the parking radius where the floor is deeper
+  than the chain's own periapsis); the coast and the powered conic/hybrid arrival
+  keep the sphere of influence. Measured at the epoch, the Uranus fall at 1 g
+  drops from 117.13 days to 31 minutes and the profile's floor from 150.73 to
+  34.00 days.
+* The global `EntrySpeedMps` is still the profile's entry condition, now per plan
+  through `FlightSession`; making the brake produce the residual entry speed is
+  the next decision.
+* The coast, the quintic, and the `0 g` identity are unchanged. The coast profile
+  keeps its sphere-of-influence entry and its anchors.
 
 # Open questions
 
+* **The entry speed.** The entry *radius* is implemented. Whether the brake
+  produces the residual entry speed, and from what rule, waits on the measured
+  trade above: a hotter entry shortens the fall but grows the periapsis burn.
+* **The approach model.** A deep floor entry leaves the coast ending inside the
+  target's sphere — 0.007 spheres at Uranus 1 g and 400 days — where a
+  heliocentric conic is a poor model. A planetocentric approach leg, a hotter
+  entry, or a full-field coast are the candidates; the measurement is in
+  [the binding question](#the-binding-question-where-the-coast-ends).
 * **The steering law.** Fixed direction, a few fixed segments, or local prograde?
   The delta-v penalty of the simple law is unmeasured; the choice waits on a
   measurement at the epoch at 0.3 g and 1 g.
 * **Band versus solved radius.** *Settled for this plan:* the departure endpoint
-  is the ceiling and the arrival endpoint is the floor, with the floor clamped to
-  the body clearance. *Still open:* whether that rule should give way to an
-  interior solved radius, if the steering measurement shows the rule costs real
-  delta-v or time.
+  is the ceiling and the arrival endpoint is the floor (or the parking radius
+  where the floor is deeper), with the floor clamped to the body clearance.
+  *Still open:* whether that rule should give way to an interior solved radius,
+  if the steering measurement shows the rule costs real delta-v or time.
 * **Search input or certified build.** Is the handover radius a free variable the
   floor search explores, or a value computed from the band and then certified
   with the full field like a chosen duration? The floor search is already noisy

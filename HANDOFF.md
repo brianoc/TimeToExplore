@@ -1,24 +1,20 @@
 # Handoff
 
 **Active plan, started 2026-11-19: full-field burns to the powered-leg floor.**
-Steps 1–3 are done. The design is recorded in
+Steps 1–4 are done. The design is recorded in
 [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md);
 `FiniteBurnArc` integrates the summed field, the handover band bounds the shaped
-ends, and every fixed burn is gated on body clearance. Step 4, the capture entry
-radius and the residual entry speed, is next. Screenshots are waived for this
-plan.
+ends, every fixed burn is gated on body clearance, and the burn–coast–burn's
+capture chain now enters at the **arrival handover floor**. Step 5, the steering
+experiment, is next. Screenshots are waived for this plan.
 
 ## Why
 
-A Uranus burn–coast–burn trip reads as almost all coast at any trip-time slider
-setting. The conic capture always enters the target's sphere of influence at the
-planted `TripPlanner.EntrySpeedMps = 5000`, and Uranus's SOI is 51.8 million km,
-so the drive-off free-fall to periapsis is about **104 days** (roughly
-`r_SOI / v∞`; Earth's 0.92 million km is about 2 days). The slider only re-times
-the heliocentric leg, so the fixed capture coast dominates every duration. This
-is a *speed* problem, not an arc-boundary problem: braking early makes the fall
-longer, and the architecture below is what makes a hot entry and a deep brake
-representable.
+A Uranus burn–coast–burn trip read as almost all coast: the conic capture entered
+the target's sphere of influence at the planted `TripPlanner.EntrySpeedMps =
+5000`, and Uranus's 51.8 million km SOI made the drive-off fall about **104 days**.
+The slider only re-times the heliocentric leg, so the fixed capture coast
+dominated every duration. It is a *speed* problem, not an arc-boundary problem.
 
 ## Design agreed (recorded in step 1)
 
@@ -32,61 +28,53 @@ this list is the caretaker's short form.
 2. **Handover band.** *Implemented.* `HandoverBand.For(body, a_drive)` returns
    the floor `sqrt(μ / (κ a_drive))` at the parking ceiling's `κ = 0.4` clamped
    up to `R + 100 km`, the ceiling `1.02 × SOI`, validity, and the reason when it
-   is empty. Endpoints are decided for this plan: **departure = the ceiling**
-   (unchanged plan) and **arrival = the floor** (flown in step 4); an interior
-   solved radius waits on the steering measurement.
+   is empty. **Departure = the ceiling** (unchanged plan) and **arrival = the
+   floor** (flown in step 4). An interior solved radius waits on the steering
+   measurement.
 3. **Quintic ends stay.** The break and the conic/hybrid capture keep their
-   jobs; only the handover radius and the field change.
-4. **Entry speed becomes an output.** The capture chain gains an entry radius;
-   the brake solve sets the residual entry speed instead of the global 5 km/s
-   constant (at least as an option). This is what allows a short fall.
-5. **Steering starts simple.** A fixed inertial direction, subdivided into a
-   few segments if needed. Measure the Δv penalty against a local-prograde law
-   before paying for a shooting solve. (The field change kept the existing law:
-   the escape ray and handover change are fixed inertial directions, and
-   prograde/retrograde follow the reference-relative velocity.)
+   jobs; only the handover radius and the field changed.
+4. **The capture chain takes an entry radius.** *Implemented in step 4, radius
+   only.* The burn–coast–burn enters at `max(band floor, conic parking radius)`;
+   the coast profile and the powered conic arrival keep the sphere. The **entry
+   speed is still the per-plan `EntrySpeedMps`** (5 km/s default); the
+   brake-produced residual is the next decision and needs the step-4 numbers.
+5. **Steering starts simple.** A fixed inertial direction, subdivided into a few
+   segments if needed. Measure the Δv penalty against a local-prograde law
+   before paying for a shooting solve.
 
-Open questions: the steering law above, whether an interior solved radius is worth
-it, and whether the handover radius should be a search input or a certified build.
-The departure/arrival asymmetry is settled for this plan (ceiling and floor).
+Open questions: the entry-speed rule, the approach model (see Traps), the
+steering law, whether an interior solved radius is worth it, and whether the
+handover radius should be a search input or a certified build.
 
 ## Steps (one sub-agent per step, one commit each)
 
-1. **Record the design.** **Done** — the new concept is
-   [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
+1. **Record the design.** **Done.**
 2. **Full-field finite burn.** **Done** — `FiniteBurnArc` takes an optional
-   `IGravityField`, integrates absolute coordinates, and decomposes back into the
-   reference body's frame; every fixed burn in a certified plan is full-field
-   (departure, brake, hybrid injection); the fast probes keep the two-body burn.
-   Tests: an SOI-crossing burn against an independent RK4, the two-body agreement
-   where the third bodies are negligible, the reference body as a label, and the
-   plan's burns carrying the field. The plans and floors did not move; the cost
-   did (see Traps).
-3. **Handover band and endpoints.** **Done** — `HandoverBand` computes the floor
-   (`0.4` of the drive, clamped to `R + 100 km`), the ceiling (`1.02 × SOI`), and
-   the empty-band reason; the departure endpoint is the ceiling (the plan is
-   unchanged) and the arrival endpoint is the floor, validated but not yet flown.
-   `DepartureBurnStaysOutside` became `FixedBurnClearsBody`: every fixed burn
-   keeps 100 km above the body it works near, and the SOI is not consulted.
-   Tests: floor scaling, ceiling per body, the clamp on every accepted body,
-   Phobos/Deimos/Proteus empty and refused, and the gate accepting an SOI-crossing
-   burn while refusing a surface graze. New `HandoverBandTests`.
-4. **Capture entry radius and entry speed.** Build the capture chain from an
-   arbitrary handover radius — the arrival endpoint is
-   `max(band floor, what the chain needs)`, because the clamped floor sits below
-   the conic periapsis at 1 g on Mercury, Mars, and several small moons; the
-   concern is already recorded in Traps. Let the brake set the residual entry
-   speed. Tests:
-   the Uranus fall shortens as the entry gets hotter, the capture Δv grows as
-   predicted, seams stay closed.
+   `IGravityField`; every fixed burn in a certified plan is full-field.
+3. **Handover band and endpoints.** **Done** — `HandoverBand` computes the floor,
+   the ceiling, and the empty-band reason; `FixedBurnClearsBody` gates every
+   fixed burn on body clearance. New `HandoverBandTests`.
+4. **Capture entry at the handover floor.** **Done** — the burn–coast–burn's
+   chain is built at `max(floor, conic parking radius)`; `TransferConic`'s radius
+   is the **entry radius**; `TrajectoryPlan.CaptureEntryRadiusM` and
+   `CaptureInboundSeconds` report it. Measured at the epoch: the Uranus 1 g
+   400-day fall goes from 117.13 days to 31 minutes, the total from 242.1 to
+   182.3 km/s, and the floor from 150.73 to 34.00 days (0.3 g: 41.57 days). The
+   coast's end / brake's start is **366,505 km (0.0071 SOI)** from Uranus on that
+   plan and **1,159,005 km (0.0224 SOI)** at 0.3 g; at the fast floor the brake
+   spans the sphere instead (28.5 h of 995 km/s from 51.07 million km). That
+   measurement is the next decision's input; the concept records it under "The
+   binding question".
 5. **Steering experiment.** Fixed direction versus a few fixed segments versus
    local prograde. Record the Δv penalty at the epoch at 0.3 g and 1 g, and pick
-   one in the concept.
-6. **Slider and window.** The trip-time window's left end now reflects the new
-   floor; check the HUD copy and the window cache still hold.
-7. **Performance.** Full-field probes are slower and less smooth; use the
-   existing fast-probe-then-certify pattern. Measure `Plan()` and one slider
-   retime before and after. Close out the docs and clear this file.
+   one in the concept. *Next.*
+6. **Slider and window.** The trip-time window's left end moved (Mars
+   6.74–20.21 days, Mercury 3.22–9.65); the HUD copy and the window cache hold in
+   the tests, and step 6 should re-check the copy and the floor search's
+   conservative bracket (see Traps).
+7. **Performance.** Full-field probes are slower and less smooth; measure
+   `Plan()` and one slider retime before and after. Close out the docs and clear
+   this file.
 
 ## Verification
 
@@ -94,11 +82,11 @@ The departure/arrival asymmetry is settled for this plan (ceiling and floor).
 - `tools/check.sh --tests presentation,smoke` when the window or HUD changes.
 - `tools/check.sh --fast` for a docs-only step.
 - `.venv/bin/python tools/validate_okf.py` for every bundle edit.
-- Last result (2026-11-19, after step 3): `tools/check.sh --tests flight` —
-  passed, 245 tests, 0 failed, 405 s; `.venv/bin/python tools/validate_okf.py` —
-  40 concepts, 0 warnings, 0 errors. (The step 2 run was 239 tests, 403 s, and
-  `presentation,smoke` 140 tests, 159 s; step 3 touched no UI, so that suite was
-  not re-run.)
+- Last result (2026-11-20, after step 4): `tools/check.sh --tests flight` —
+  passed, 249 tests, 0 failed, 606 s; `tools/check.sh --tests
+  flight,presentation,smoke` on the final tree — passed, 389 tests, 0 failed,
+  1005 s; `.venv/bin/python tools/validate_okf.py` — 40 concepts, 0 warnings,
+  0 errors. (Step 3's run was 245 tests, 0 failed, 405 s.)
 
 ## Traps
 
@@ -106,46 +94,61 @@ The departure/arrival asymmetry is settled for this plan (ceiling and floor).
   seam where the models disagree most.
 - Do not "fix" the fall by braking sooner; it lengthens the coast. The win is a
   hotter entry and a deeper brake.
-- `EntrySpeedMps` is global today; changing it moves every conic plan. Make the
-  replacement per-plan before tuning it.
+- **The approach model is now the open problem.** On a long trip the coast ends
+  deep inside the target's sphere — 0.0071 spheres at Uranus 1 g and 400 days,
+  where the target's gravity is 0.043 m/s² and a Sun-only conic is a poor model.
+  The seams close, so this is not a build failure: it is the model gap the
+  next decision (a planetocentric approach leg, a hotter residual entry, or a
+  full-field coast) has to settle. Do not "fix" it by widening the seam gate.
+- **The entry speed is still planted.** `EntrySpeedMps` is per plan through
+  `FlightSession` but its default is 5 km/s and nothing produces a residual from
+  the brake yet. A hotter entry shortens the fall but grows the periapsis burn
+  (Uranus 1 g: 31 → 9 minutes, 6.37 → 39.10 km/s from 5 to 50 km/s).
+- `EntrySpeedMps` is global today; changing its default moves every conic plan.
+  Do not tune it without the per-plan rule.
 - The floor search is already noisy near the minimum; a full-field probe makes
   it noisier and slower. Certify the chosen build as the current profile does.
-- The existing anchors (Mercury 3.46 d, Mars 8.03 d, the seam tolerances) will
-  move when the handover changes. Step 3 changed the rule and left them alone
-  (measured: 569.9 / 379.9 / 45.4 km/s, floors 3.46 and 8.03 d); step 4 is the one
-  that will move them. Re-measure them; do not preserve them blindly.
-- **The arrival floor does not bind below the capture chain.** At 1 g the clamped
-  floor is *under* the conic periapsis on Mercury (2,539.7 km against 2,561.7) and
-  Mars (3,489.5 against 3,559.0), and on several small moons whose `1.05 R`
-  periapsis beats `R + 100 km`. The floor is a lower bound on the handover, not a
-  promise the chain can start there: step 4's arrival endpoint must be
-  `max(floor, what the chain needs)`, or the chain is handed an entry inside its
-  own periapsis.
-- **Three catalogue moons have an empty band at every level**: Phobos and Deimos
-  (their spheres of influence are inside their own surfaces: 7.2 km against an
-  11.3 km radius) and Proteus (a 310.0 km floor against a 280.1 km ceiling). They
-  were already unreachable through the conic chain's "the sphere of influence is
-  smaller than the periapsis"; the refusal now comes first and names the numbers.
-  Do not "fix" this by moving the ceiling.
-- **The floor is clamped, so it is not `1/sqrt(a)` everywhere.** Only an unclamped
+  **The estimate got shorter**, because the capture no longer contributes
+  months, so the growth loop now runs to twelve 20% steps; five stopped below the
+  Uranus 0.3 g floor and reported the trip infeasible. The search can still be
+  conservative: Uranus 1 g returns 34.00 days while a direct 33.0-day build
+  closes, because the fast bracket's low end stops the full-field bisection.
+  Re-probing below a fast bracket is step 7's cost question. **Uranus is now a
+  reachable target**, and its floor search grows from the capture-only estimate
+  (13.5 d) to 34–42 d, so a first selection there is a dozen full-field builds:
+  a few seconds in a .NET harness and plausibly a minute in the editor. Step 6
+  should measure it before shipping a Uranus preview.
+- **`Measure` samples uniformly in time now**, with a geometric refinement at a
+  conic's ends. A conic is linear in true anomaly, so the old anomaly grid put a
+  long transfer's whole final approach in one bin and over-reported the Uranus
+  coast's third-body delta-v by two orders. Any third-body number on a conic
+  must be checked for convergence before it is believed.
+- **The existing anchors moved** with the entry radius: Mercury 8 d 557.0 km/s
+  (was 569.9), 12.3 d 376.9 (379.9), Mars 90 d 44.4 (45.4); floors 3.22 and
+  6.74 days (were 3.46 and 8.03); windows 3.22–9.65 and 6.74–20.21 days. The
+  seam tolerances on the 12.3-day trip are 7.5 × 10⁻² m and 3.7 × 10⁻⁴ m/s (were
+  10⁻⁴ m and 10⁻⁸ m/s) because the brake's fixed point now ends at the floor.
+  Re-measure; do not preserve them blindly.
+- **A slow Mars crossing closes now.** The 200-day 0.3 g build that used to need
+  an acceleration is 12.46 km/s, and the slow end is the coast's 179.4° geometry
+  at 305 days. The acceleration branch is still in the solver; the test now pins
+  the measured slow behaviour rather than that branch.
+- The floor is clamped, so it is not `1/sqrt(a)` everywhere. Only an unclamped
   floor scales; Mercury and Mars at 1 g sit on the `R + 100 km` clearance and do
-  not move until the level falls far enough.
-- **Full-field burns are the suite's cost now.** One `Prepare` per RK4 step
-  evaluates the whole catalogue, so a full-field step is ~50× a two-body step:
-  a 90-day Mars build is 0.47 s in a .NET harness and the editor's
-  burn–coast–burn class is a ~4-minute silent stretch of the Unity log. The
-  guard's stall window is eight minutes and the suite about nine; do not read
-  that as a hang. Step 7 owns the remedy (a cheaper prepare rule, measured
-  against the per-step one).
+  not move until the level falls far enough. At 1 g on Mercury and Mars the
+  clamped floor is *under* the conic periapsis, so the entry is the parking
+  radius there.
+- **Three catalogue moons have an empty band at every level**: Phobos, Deimos,
+  and Proteus. Do not "fix" this by moving the ceiling.
+- **Full-field burns are the suite's cost now.** A full-field step is ~50× a
+  two-body step: a 90-day Mars build is 0.47 s in a .NET harness and the
+  editor's burn–coast–burn class is a ~4-minute silent stretch of the Unity log.
+  The guard's stall window is eight minutes and the suite about nine; do not read
+  that as a hang. Step 7 owns the remedy.
 - A **body-relative position** on a full-field arc carries the catalogue's
-  Julian-date quantisation (0.2–0.9 m at 1.5 AU, because a date's last place is
-  40 µs), while the absolute path does not. Compare inertial states in tests, or
-  use a metre-scale tolerance; `TheChainIsContinuous...` reads absolute positions
-  and still sees 10⁻⁴ m.
-- The hybrid capture **solver** stays on the two-body burn on purpose (measured:
-  under 0.2 km and 0.05 m/s of trim against a 5 km injection margin). Its
+  Julian-date quantisation (0.2–0.9 m at 1.5 AU). Compare inertial states in
+  tests, or use a metre-scale tolerance.
+- The hybrid capture **solver** stays on the two-body burn on purpose. Its
   reported arc and trim are full-field. Do not thread the field through
   `HybridCapture` without dealing with its search cost.
-- `TryCorrectCoastDeparture` targets a millimetre, not 10⁻⁴ m. A weeks-long coast
-  at 1.5 AU cannot resolve better than ~10⁻⁴ m, and the tighter target turned
-  round-off into a refusal at 0.1 and 0.15 g.
+- `TryCorrectCoastDeparture` targets a millimetre, not 10⁻⁴ m.

@@ -315,22 +315,22 @@ torch-ship fiction uses is flyable. The design is
   is the slowest duration the planner accepts, probed because a long short-way
   transfer sweeps past 180° and a slow coast would need an acceleration rather
   than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
-  the chain closing, so at the epoch the Mars window is **8.03–24.09 days** and
-  the Mercury fast end is 3.46 days at 1 g. A 90-day Mars plan is a direct
+  the chain closing, so at the epoch the Mars window is **6.74–20.21 days** and
+  the Mercury fast end is 3.22 days at 1 g. A 90-day Mars plan is a direct
   `PlanAtDuration` build outside that window. The floor plan and window are
   cached per date, target, level, cruise and arrival style, and moving the
   slider retimes on a latest-wins background worker; every published preview is
   the full-field build, never the fast search estimate
   ([Planning performance](/technical/planning-performance.md)).
-* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 45 km/s in
-  total (a 4.79-day break at 9.0 km/s, a 13.7 km/s departure burn in 78 minutes,
-  an 83.7-day coast, a 19.1 km/s brake in 1.8 hours, and the 3.5 km/s conic
-  capture), against the cheap coast's 14 km/s at 200 days and the torch plan's
-  2,345 km/s at 4.4 days. Seams close under a millimetre and 10⁻⁵ m/s; the
-  flight arrives 0.1 m and 0.0001 m/s from the reference state. The true floors
-  are 3.46 days to Mercury at 1 g (1,763 km/s) and 8.03 days to Mars at 0.3 g
-  (1,170 km/s), and an over-thrust plan carries an `InfeasibleReason` naming the
-  arc and the peak it needs.
+* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 44.4 km/s in
+  total (a 4.84-day break at 8.8 km/s, a 13.4 km/s departure burn in 76 minutes,
+  an 85.0-day coast, an 18.5 km/s brake in 1.7 hours, and the 3.5 km/s conic
+  capture into a 6,033 km entry), against the cheap coast's 14 km/s at 200 days
+  and the torch plan's 2,345 km/s at 4.4 days. Seams close under a metre and
+  3.7 × 10⁻⁴ m/s; the flight arrives 0.1 m and 0.0001 m/s from the reference
+  state. The true floors are 3.22 days to Mercury at 1 g (1,766 km/s) and
+  6.74 days to Mars at 0.3 g (1,172 km/s), and an over-thrust plan carries an
+  `InfeasibleReason` naming the arc and the peak it needs.
 
 # Immediate next tasks
 

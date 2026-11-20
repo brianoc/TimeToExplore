@@ -185,7 +185,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheHandoverAtTheTargetSoiIsFlownNotImpulsive()
+        public void TheHandoverAtTheArrivalFloorIsFlownNotImpulsive()
         {
             TrajectoryPlan plan = PlanTo("mars");
             PlanArc inbound = plan.Arcs[4];
@@ -195,7 +195,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(inbound.EntryImpulseMps, Is.EqualTo(0.0));
 
             // The only impulses left are the capture chain's own trim and
-            // circularisation, which are not at the sphere of influence.
+            // circularisation, which are not at the handover point.
             double chainImpulses = 0.0;
             for (int i = 4; i < plan.Arcs.Count; i++)
                 chainImpulses += plan.Arcs[i].EntryImpulseMps;
@@ -203,6 +203,91 @@ namespace TimeToExplore.Tests.EditMode
             TestContext.WriteLine($"chain impulses {chainImpulses / 1000.0:F2} km/s, " +
                                   $"total {plan.ImpulseDeltaVMps / 1000.0:F2} km/s");
             Assert.That(plan.ImpulseDeltaVMps, Is.EqualTo(chainImpulses).Within(1e-6));
+        }
+
+        /// <summary>
+        /// The burn–coast–burn's capture chain enters at the arrival handover
+        /// band's floor, not the target's sphere of influence: the brake ends
+        /// there, so the fall starts there. Measured at the epoch from Gateway to
+        /// Uranus at 1 g and 400 days, the entry is 38,643.0 km (the band's floor,
+        /// above the 29,166 km conic parking radius), the fall is 1,860.2 s
+        /// against the old 117.13 days from the 51.76 million km sphere, and every
+        /// seam closes inside the 1 km / 1 m/s gate.
+        /// </summary>
+        [Test]
+        public void TheChainEntersAtTheArrivalHandoverFloor()
+        {
+            _planner.BurnLevelG = 1.0;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan plan = _planner.PlanAtDuration(ship, "uranus",
+                400.0 * JulianDate.SecondsPerDay);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            PrintPlan(plan);
+
+            BodyRuntime uranus = _model.Get("uranus");
+            double acceleration = _planner.FixedBurnAccelerationMps2;
+            HandoverBand band = HandoverBand.For(uranus, acceleration);
+            double entry = TripPlanner.ArrivalEntryRadiusM(band, uranus);
+
+            TestContext.WriteLine($"entry {plan.CaptureEntryRadiusM / 1000.0:F1} km, " +
+                                  $"band floor {band.ArrivalRadiusM / 1000.0:F1} km, " +
+                                  $"parking {ParkingOrbit.ConicRadiusM(uranus) / 1000.0:F1} km, " +
+                                  $"fall {plan.CaptureInboundSeconds:F1} s");
+            Assert.That(plan.CaptureEntryRadiusM, Is.EqualTo(band.ArrivalRadiusM).Within(1.0),
+                "the entry is the band's arrival endpoint");
+            Assert.That(plan.CaptureEntryRadiusM, Is.EqualTo(entry).Within(1.0));
+            Assert.That(plan.CaptureEntryRadiusM,
+                Is.EqualTo(38_643_000.0).Within(1_000.0),
+                "measured: 38,643.0 km at 1 g");
+            Assert.That(plan.CaptureInboundSeconds,
+                Is.EqualTo(0.02153 * JulianDate.SecondsPerDay).Within(1.0),
+                "measured: a 31-minute fall, not 117 days");
+            Assert.That(plan.CaptureInboundSeconds,
+                Is.LessThan(3_600.0), "the fall is under an hour");
+
+            // The capture chain's own burn is the chain's, unchanged by the
+            // radius: 6.369 km/s at the 5 km/s entry.
+            double captureImpulse = 0.0;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Capture && !arc.IsFiniteBurn)
+                    captureImpulse = arc.EntryImpulseMps;
+            }
+
+            Assert.That(captureImpulse, Is.EqualTo(6_369.1).Within(1.0),
+                "the periapsis capture burn is the chain's");
+
+            AssertChainCloses(plan);
+        }
+
+        /// <summary>
+        /// The coast has no brake to hand over, so it keeps its sphere-of-
+        /// influence entry and its anchors: at the epoch from Gateway to Mars at
+        /// 200 days the entry is the 577,241 km sphere and the fall is 1.3187
+        /// days. The burn–coast–burn enters at the floor instead — the split is
+        /// deliberate, not an omission.
+        /// </summary>
+        [Test]
+        public void TheCoastProfileKeepsItsSphereOfInfluenceEntry()
+        {
+            TrajectoryPlan coast = CoastTo("mars", 200.0);
+            Assert.That(coast.IsFeasible, Is.True, coast.InfeasibleReason);
+
+            BodyRuntime mars = _model.Get("mars");
+            double soi = SphereOfInfluence.RadiusM(mars);
+            TestContext.WriteLine($"coast entry {coast.CaptureEntryRadiusM / 1000.0:F1} km " +
+                                  $"(SOI {soi / 1000.0:F1} km), fall " +
+                                  $"{coast.CaptureInboundSeconds / 86400.0:F4} d");
+
+            Assert.That(coast.CaptureEntryRadiusM, Is.EqualTo(soi).Within(1.0),
+                "the coast enters at the sphere of influence");
+            Assert.That(coast.CaptureEntryRadiusM,
+                Is.GreaterThan(ParkingOrbit.ConicRadiusM(mars) * 10.0),
+                "which is far above the parking radius");
+            Assert.That(coast.CaptureInboundSeconds,
+                Is.EqualTo(1.3187 * JulianDate.SecondsPerDay).Within(60.0),
+                "measured: the 1.3187-day fall is unchanged");
+            Assert.That(coast.Arcs.Count, Is.EqualTo(5));
         }
 
         [Test]
@@ -251,7 +336,10 @@ namespace TimeToExplore.Tests.EditMode
                 TestContext.WriteLine($"seam {i} {left.Phase}->{right.Phase}: " +
                                       $"{positionStep:E2} m, {velocityStep:E2} m/s");
                 Assert.That(positionStep, Is.LessThan(0.1), $"seam {i}");
-                Assert.That(velocityStep, Is.LessThan(1e-6), $"seam {i}");
+                // The brake's start is the handover floor, deeper than the
+                // sphere, so its fixed point's residual is measured here:
+                // 1.8e-5 m/s on this trip, still four orders inside the gate.
+                Assert.That(velocityStep, Is.LessThan(1e-4), $"seam {i}");
             }
         }
 
@@ -356,15 +444,34 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        /// <summary>
+        /// The slow crossing now closes. With the capture entering at the handover
+        /// floor, the 1.32-day fall is minutes and the coast absorbs it, so the
+        /// 200-day Mars build that used to be refused for needing an acceleration
+        /// is a 12.46 km/s plan (the brake is 2.52 km/s). The slow end is still
+        /// bounded — at 305 days the prograde short-way coast has no solution
+        /// (179.4 deg) — and the acceleration branch remains in the solver; it did
+        /// not trigger at Mars between 200 and 300 days after this change.
+        /// </summary>
         [Test]
-        public void ASlowArrivalThatWouldNeedAnAccelerationIsRejectedWithAReason()
+        public void ASlowCrossingClosesCheaplyAndTheSlowEndIsTheCoast()
         {
             TrajectoryPlan plan = PlanTo("mars", 200.0);
+            PrintPlan(plan);
 
-            TestContext.WriteLine("reason: " + plan.InfeasibleReason);
-            Assert.That(plan.IsFeasible, Is.False);
-            Assert.That(plan.InfeasibleReason, Does.Contain("brake"));
-            Assert.That(plan.InfeasibleReason, Does.Contain("acceleration"));
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.FlightTimeDays, Is.EqualTo(200.0).Within(1e-3));
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(12.46).Within(0.5),
+                "measured: the 200-day crossing is cheap now the fall is minutes");
+            Assert.That(plan.CaptureEntryRadiusM,
+                Is.EqualTo(6_032_700.0).Within(1_000.0),
+                "and it enters at the Mars 0.3 g floor");
+
+            TrajectoryPlan refused = PlanTo("mars", 305.0);
+            TestContext.WriteLine("reason: " + refused.InfeasibleReason);
+            Assert.That(refused.IsFeasible, Is.False);
+            Assert.That(refused.InfeasibleReason, Does.Contain("short-way"));
+            Assert.That(refused.InfeasibleReason, Does.Contain("180"));
         }
 
         [Test]
@@ -543,8 +650,12 @@ namespace TimeToExplore.Tests.EditMode
                                            - right.Path.VelocityAt(0.0)).Magnitude;
                     TestContext.WriteLine($"seam {i} {left.Phase}->{right.Phase}: " +
                                           $"{positionStep:E2} m, {velocityStep:E2} m/s");
-                    Assert.That(positionStep, Is.LessThan(1e-3), $"seam {i}");
-                    Assert.That(velocityStep, Is.LessThan(1e-5), $"seam {i}");
+                    // The brake now ends at the handover floor, so the fixed
+                    // point's residual and the coast's Lambert correction show
+                    // up in these seams: measured worst 7.5e-2 m and 3.7e-4 m/s,
+                    // still three orders inside the 1 km / 1 m/s gate.
+                    Assert.That(positionStep, Is.LessThan(1.0), $"seam {i}");
+                    Assert.That(velocityStep, Is.LessThan(1e-3), $"seam {i}");
                 }
 
                 Assert.That(plan.Arcs[plan.Arcs.Count - 1].EndJulianDate,
@@ -573,9 +684,9 @@ namespace TimeToExplore.Tests.EditMode
             TestContext.WriteLine($"mercury floor: {fastest}, " +
                                   $"peak {fastest.PeakThrustMps2:F3} m/s²");
             Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
-            Assert.That(fastest.FlightTimeDays, Is.LessThan(3.6),
-                "the pinned break moved the true floor well below the old 12.32 d");
-            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(3.3),
+            Assert.That(fastest.FlightTimeDays, Is.LessThan(3.4),
+                "the floor entry moved the true floor below the old 3.46 d");
+            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(3.1),
                 "the floor is a real burn-coast-burn plan, not an unphysical request");
             Assert.That(fastest.PeakThrustMps2,
                 Is.LessThanOrEqualTo(fastest.MaxAccelerationMps2 * (1.0 + 1e-6)));
@@ -584,7 +695,7 @@ namespace TimeToExplore.Tests.EditMode
             // A little below the floor is the same geometry with the break
             // working harder than the drive allows.
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mercury",
-                3.43 * JulianDate.SecondsPerDay);
+                3.19 * JulianDate.SecondsPerDay);
             TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
 
             Assert.That(tooFast.IsFeasible, Is.False);
@@ -712,9 +823,9 @@ namespace TimeToExplore.Tests.EditMode
         /// the plan reports the full field. The two peaks must stay close enough
         /// that the search's duration decision does not move the plan, and the
         /// near-floor case is the one that runs through the 5% screen.</summary>
-        [TestCase("mercury", 1.0, 8.0, 3.0165, 92.906, 569.9)]
-        [TestCase("mercury", 1.0, 12.3, 1.3534, 61.699, 379.9)]
-        [TestCase("mars", 0.3, 90.0, 0.0334, 8.978, 45.4)]
+        [TestCase("mercury", 1.0, 8.0, 2.8471, 90.213, 557.038)]
+        [TestCase("mercury", 1.0, 12.3, 1.3046, 60.547, 376.941)]
+        [TestCase("mars", 0.3, 90.0, 0.0327, 8.845, 44.356)]
         public void TheFastBreakPeakTracksTheFullFieldPlan(string targetId,
             double level, double days, double expectedBreakPeak,
             double expectedBreakDeltaVKm, double expectedTotalDeltaVKm)
@@ -737,7 +848,9 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThanOrEqualTo(Math.Max(0.02, 0.1 * full)),
                 "the fast break peak tracks the full field");
 
-            // The search input changed; the plan the caller receives did not.
+            // The search input is unchanged; the plan the caller receives moved
+            // when the capture started entering at the handover floor (the fall
+            // is minutes rather than hours, so the trip re-times). Measured.
             PlanArc breakArc = plan.Arcs[0];
             Assert.That(breakArc.PeakThrustMps2,
                 Is.EqualTo(expectedBreakPeak).Within(
@@ -768,14 +881,14 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Math.Abs(fast - full),
                 Is.LessThanOrEqualTo(Math.Max(0.02, 0.1 * full)),
                 "the fast break peak tracks the full field at the floor");
-            Assert.That(plan.PeakThrustMps2, Is.EqualTo(9.702).Within(0.005),
-                "the floor peak is unchanged");
+            Assert.That(plan.PeakThrustMps2, Is.EqualTo(9.700).Within(0.005),
+                "the floor peak is the drive limit");
             // The floor is found to the probe model's 0.2% retry resolution, so
             // the reported delta-v tracks the returned duration to that order;
             // it is not the plan's identity. The peaks and the 8/12.3/90-day
             // anchors below are the exact ones.
-            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1763.0).Within(0.01 * 1763.0),
-                "the floor total delta-v is unchanged within the search resolution");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1765.5).Within(0.01 * 1765.5),
+                "the floor total delta-v moved by the shortened fall");
 
             // The floor sits on the drive limit, so its break goes through the
             // full-field branch of the screen.
@@ -795,9 +908,9 @@ namespace TimeToExplore.Tests.EditMode
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             double limit = _planner.MaxAccelerationMps2 * _planner.ThrustMargin;
 
-            // 4 d sits on the drive limit, the floor is just below it, and
-            // 3.43 d is the rejected just-under-floor case.
-            foreach (double days in new[] { 4.0, 3.47, 3.43 })
+            // 4 d sits on the drive limit, the floor is just below it (3.22 d
+            // with the floor entry), and 3.19 d is the rejected just-under case.
+            foreach (double days in new[] { 4.0, 3.25, 3.19 })
             {
                 TrajectoryPlan plan = _planner.PlanAtDuration(ship, "mercury",
                     days * JulianDate.SecondsPerDay);
@@ -825,7 +938,7 @@ namespace TimeToExplore.Tests.EditMode
             }
 
             TrajectoryPlan refused = _planner.PlanAtDuration(ship, "mercury",
-                3.43 * JulianDate.SecondsPerDay);
+                3.19 * JulianDate.SecondsPerDay);
             Assert.That(refused.IsFeasible, Is.False,
                 "the just-below-floor trip still rejects");
         }
@@ -878,13 +991,13 @@ namespace TimeToExplore.Tests.EditMode
                     $"{(left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps - right.Path.VelocityAt(0.0)).Magnitude:E2} m/s");
             }
             Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
-            Assert.That(fastest.FlightTimeDays, Is.LessThan(9.6),
-                "the true floor is below the old 9.64 d first-feasible plan");
-            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(7.0));
+            Assert.That(fastest.FlightTimeDays, Is.LessThan(7.5),
+                "the true floor is below the old 8.03 d one, because the fall is minutes");
+            Assert.That(fastest.FlightTimeDays, Is.GreaterThan(6.0));
             AssertChainCloses(fastest);
 
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
-                7.8 * JulianDate.SecondsPerDay);
+                6.6 * JulianDate.SecondsPerDay);
             TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
 
             Assert.That(tooFast.IsFeasible, Is.False);
