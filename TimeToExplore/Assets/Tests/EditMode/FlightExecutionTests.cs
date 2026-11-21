@@ -33,7 +33,8 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan plan = _planner.Plan(ship, "mars");
 
             TestContext.WriteLine(plan.ToString());
-            Assert.That(plan.IsFeasible, Is.True);
+            TestContext.WriteLine("infeasible: " + plan.InfeasibleReason);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
 
             var autopilot = new Autopilot(_gravity, plan);
             IntegrationReport report = autopilot.Fly(ref ship, _integrator);
@@ -52,11 +53,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(velocityError, Is.LessThan(10.0), "arrive within 10 m/s");
 
             BodyRuntime mars = _model.Get("mars");
-            double radius = ParkingOrbit.RadiusM(mars);
+            double radius = ParkingOrbit.ConicRadiusM(mars);
             AssertOrbitAround(mars, ship, radius, 0.01, 0.01);
 
             // The plan is done, so the drive is off; the ship keeps the orbit.
-            double period = ParkingOrbit.PeriodSeconds(mars);
+            double period = TwoBody.PeriodSeconds(mars.Gm, radius);
             IntegrationReport coast = _integrator.Advance(ref ship,
                 ship.JulianDate + 3.0 * period / JulianDate.SecondsPerDay,
                 (state, date) => ThrustCommand.None);
@@ -84,11 +85,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(positionError, Is.LessThan(20_000.0));
 
             BodyRuntime mars = _model.Get("mars");
-            AssertOrbitAround(mars, ship, ParkingOrbit.RadiusM(mars), 0.05, 0.05);
+            AssertOrbitAround(mars, ship, ParkingOrbit.ConicRadiusM(mars), 0.05, 0.05);
         }
 
         [Test]
-        public void FlyFromMarsOrbitBackToEarth()
+        public void MarsToEarthAtTheEpochIsRejectedForARetrogradeTransfer()
         {
             BodyRuntime mars = _model.Get("mars");
             _model.ComputeState(mars, _model.CurrentJulianDate,
@@ -99,22 +100,11 @@ namespace TimeToExplore.Tests.EditMode
             var ship = new ShipState(_model.CurrentJulianDate, position, velocity);
             TrajectoryPlan plan = _planner.Plan(ship, "earth");
 
-            TestContext.WriteLine(plan.ToString());
-            Assert.That(plan.IsFeasible, Is.True);
-            Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
-            Assert.That(plan.Arcs[0].ReferenceBodyId, Is.EqualTo("mars"));
-
-            var autopilot = new Autopilot(_gravity, plan);
-            IntegrationReport report = autopilot.Fly(ref ship, _integrator);
-
-            double error = Vector3d.Distance(ship.PositionM, plan.ArrivalState.PositionM);
-            TestContext.WriteLine($"arrival error: {error:F1} m");
-
-            Assert.That(report.CollisionDetected, Is.False);
-            Assert.That(error, Is.LessThan(10_000.0));
-
-            BodyRuntime earth = _model.Get("earth");
-            AssertOrbitAround(earth, ship, ParkingOrbit.RadiusM(earth), 0.01, 0.01);
+            TestContext.WriteLine("reason: " + plan.InfeasibleReason);
+            Assert.That(plan.IsFeasible, Is.False,
+                "the short Earth arc runs clockwise at this epoch, and the profile only has the prograde branch");
+            Assert.That(plan.InfeasibleReason, Does.Contain("prograde"));
+            Assert.That(plan.InfeasibleReason, Does.Contain("short-way"));
         }
 
         [Test]
@@ -127,7 +117,8 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan plan = _planner.Plan(ship, "jupiter");
 
             TestContext.WriteLine(plan.ToString());
-            Assert.That(plan.IsFeasible, Is.True);
+            TestContext.WriteLine("infeasible: " + plan.InfeasibleReason);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
 
             var autopilot = new Autopilot(_gravity, plan);
             IntegrationReport report = autopilot.Fly(ref ship, _integrator);
@@ -140,11 +131,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(error, Is.LessThan(10_000.0));
 
             BodyRuntime jupiter = _model.Get("jupiter");
-            double radius = ParkingOrbit.RadiusM(jupiter, plan.MaxAccelerationMps2);
+            double radius = ParkingOrbit.ConicRadiusM(jupiter);
             AssertOrbitAround(jupiter, ship, radius, 1e-3, 0.01);
 
             // The drive is off, so the orbit must persist.
-            double period = ParkingOrbit.PeriodSeconds(jupiter, plan.MaxAccelerationMps2);
+            double period = TwoBody.PeriodSeconds(jupiter.Gm, radius);
             IntegrationReport coast = _integrator.Advance(ref ship,
                 ship.JulianDate + 3.0 * period / JulianDate.SecondsPerDay,
                 (state, date) => ThrustCommand.None);

@@ -476,36 +476,16 @@ namespace TimeToExplore
                 Rig.Frame(target);
         }
 
-        /// <summary>How the nav computer brings the ship into orbit: the fast
-        /// quintic capture, the cheap coasted conic one, or the conic coasts
-        /// with one fixed-thrust capture burn and an impulse trim.</summary>
+        /// <summary>How the nav computer brings the ship into orbit: the cheap
+        /// coasted conic capture, or the conic coasts with one fixed-thrust
+        /// capture burn and an impulse trim.</summary>
         public CaptureStyle ArrivalStyle =>
-            Flight != null ? Flight.ArrivalStyle : CaptureStyle.Quintic;
+            Flight != null ? Flight.ArrivalStyle : CaptureStyle.Conic;
 
         /// <summary>The chosen fixed-burn level in g, or the planner's default
         /// when there is no flight session yet.</summary>
         public double BurnLevelG =>
             Flight != null ? Flight.BurnLevelG : TripPlanner.DefaultBurnLevelG;
-
-        /// <summary>How the ship crosses between the spheres of influence: the
-        /// powered quintic, the unpowered Lambert coast, or the burn–coast–burn
-        /// profile.</summary>
-        public CruiseStyle CruiseProfile =>
-            Flight != null ? Flight.CruiseProfile : CruiseStyle.Powered;
-
-        /// <summary>
-        /// Switch the cruise profile. A plotted preview is rebuilt against the
-        /// new profile on the background planner — the HUD draws it through
-        /// <see cref="ApplyPreviewIfReady"/> — and a live flight is left alone,
-        /// because it keeps the plan it was begun with. The camera is not
-        /// re-framed: the choice changes the crossing, not the viewer's aim.
-        /// </summary>
-        public void SetCruiseProfile(CruiseStyle style)
-        {
-            if (Flight == null || Flight.CruiseProfile == style) return;
-
-            Flight.SetCruiseProfile(style);
-        }
 
         /// <summary>
         /// Switch the arrival style. A plotted preview is rebuilt against the
@@ -522,10 +502,10 @@ namespace TimeToExplore
         }
 
         /// <summary>
-        /// Set the fixed-burn level. A fixed-thrust preview is rebuilt on the
-        /// background planner from the pinned departure state; any other style
-        /// just remembers the level for the next switch. A live flight is left
-        /// alone.
+        /// Set the burn level. A plotted preview is rebuilt on the background
+        /// planner from the pinned departure state, because the profile's
+        /// departure burn, brake, and hybrid capture all use it. A live flight
+        /// is left alone.
         /// </summary>
         public void SetBurnLevel(double levelG)
         {
@@ -552,11 +532,11 @@ namespace TimeToExplore
             {
                 Model.ComputeState(target, plan.ArrivalJulianDate,
                     out Vector3d arrivalPosition, out _);
-                Trajectory.Show(plan, _gravity, arrivalPosition);
+                Trajectory.Show(plan, arrivalPosition);
             }
             else
             {
-                Trajectory.Show(plan, _gravity);
+                Trajectory.Show(plan);
             }
         }
 

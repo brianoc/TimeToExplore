@@ -567,7 +567,7 @@ namespace TimeToExplore.Tests.EditMode
 
                 trajectory = lineObject.AddComponent<TrajectoryLine>();
                 trajectory.Initialise(unitsPerMeter);
-                trajectory.Show(plan, ZeroGravityField.Instance);
+                trajectory.Show(plan);
                 trajectory.Refresh(start, camera);
 
                 LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();
@@ -650,7 +650,7 @@ namespace TimeToExplore.Tests.EditMode
 
                 trajectory = lineObject.AddComponent<TrajectoryLine>();
                 trajectory.Initialise(unitsPerMeter);
-                trajectory.Show(plan, ZeroGravityField.Instance);
+                trajectory.Show(plan);
                 trajectory.Refresh(arc.Path.PositionAt(0.0), camera);
 
                 LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();

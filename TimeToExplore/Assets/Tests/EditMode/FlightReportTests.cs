@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -38,8 +39,13 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Capture"), Is.Not.Null);
             Assert.That(Find(rows, "Arrival")?.Value,
                 Does.Match(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"));
-            Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("m/s²"));
-            Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("%"));
+            Assert.That(Find(rows, "Peak thrust"), Is.Null,
+                "the profile reports its burns, not a torch peak");
+            Assert.That(Find(rows, "Departure burn")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Brake")?.Value, Does.Contain("km/s"));
+            Assert.That(rows.Any(row => row.Label == "Coast" &&
+                                        row.Value.StartsWith("drive off")), Is.True,
+                "the profile's coast reports the drive off");
             Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
             Assert.That(Find(rows, "Fuel")?.Value, Does.Contain("t"));
             Assert.That(Find(rows, "Fuel")?.Value, Does.Contain("% of departure mass"));
@@ -58,7 +64,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Status")?.Value, Is.EqualTo("Under way"));
             Assert.That(Find(rows, "Phase")?.Value, Is.Not.Empty);
             Assert.That(Find(rows, "Throttle")?.Value, Does.Contain("%"));
-            Assert.That(Find(rows, "Flip")?.Value, Does.StartWith("T"));
             Assert.That(Find(rows, "Next event")?.Value, Is.Not.Empty);
 
             Assert.That(_session.Plan.ArrivalJulianDate, Is.EqualTo(plan.ArrivalJulianDate));
@@ -74,7 +79,6 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(Find(rows, "Status")?.Value, Is.EqualTo("Arrived, in orbit"));
             Assert.That(Find(rows, "Next event")?.Value, Is.EqualTo("Arrived"));
-            Assert.That(Find(rows, "Flip")?.Value, Is.EqualTo("passed"));
             Assert.That(Find(rows, "Throttle"), Is.Null, "the drive is off, so there is no throttle row");
         }
 
@@ -117,7 +121,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Arrival")?.Value,
                 Is.Not.EqualTo(JulianDate.FormatShort(fastest.ArrivalJulianDate)),
                 "the arrival date slides with the chosen time");
-            Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("m/s²"));
+            Assert.That(Find(rows, "Departure burn")?.Value, Does.Contain("km/s"));
             Assert.That(Find(rows, "Fuel")?.Value, Is.Not.EqualTo(fastestFuel),
                 "a longer trip burns less fuel, so the readout moves");
             Assert.That(_session.Preview.PropellantKg,
@@ -156,8 +160,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Coast"), Is.Not.Null);
             Assert.That(Find(rows, "Capture"), Is.Not.Null);
             Assert.That(Find(rows, "Parking"), Is.Not.Null);
-            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("impulsive"));
-            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Departure burn")?.Value, Does.Contain("0.3 g"));
+            Assert.That(Find(rows, "Brake")?.Value, Does.Contain("0.3 g"));
+            Assert.That(Find(rows, "Peak thrust"), Is.Null);
             Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
         }
 
@@ -177,10 +182,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Coast"), Is.Not.Null);
             Assert.That(Find(rows, "Capture"), Is.Not.Null);
             Assert.That(Find(rows, "Parking"), Is.Not.Null);
-            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("fixed"));
-            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("trim"));
-            Assert.That(Find(rows, "Burns")?.Value, Does.Contain("0.3 g"));
-            Assert.That(Find(rows, "Burns")?.Value, Does.Not.Contain("impulsive"));
+            Assert.That(Find(rows, "Departure burn")?.Value, Does.Contain("0.3 g"));
+            Assert.That(Find(rows, "Brake")?.Value, Does.Contain("0.3 g"));
+            Assert.That(Find(rows, "Peak thrust"), Is.Null);
+            Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
         }
 
         [Test]

@@ -37,10 +37,11 @@ radius from the finite-burn loss.
    on the burn, with no ramp.
 
 2. **The level is data.** `TripPlanner.BurnLevelG` is a player-facing value in
-   `[0, 1 g]`, clamped to the drive's own thrust margin
-   (`MaxAccelerationMps2 * ThrustMargin`). `0 g` selects the pure conic plan and
-   has no finite-burn arc; the nav computer labels the control `0.0 g burn`.
-   The default is `0.3 g`.
+   `[0.05, 1 g]`, clamped to the drive's own thrust margin
+   (`MaxAccelerationMps2 * ThrustMargin`). The floor was originally 0 g, which
+   selected the pure conic plan; the plain coast was later retired, so the
+   profile is always two real burns and the floor is 0.05 g. The default is
+   `0.3 g`.
 
 3. **The injection point is a radius.** `HybridCapture` starts at the conic
    capture periapsis, `max(1.05 R, R + 100 km)`, and the fixed burn ends at its
@@ -92,8 +93,9 @@ radius from the finite-burn loss.
 * The level has a visible meaning. At Mars the fixed burn is 15.3 min at 0.3 g
   and the trim is 1.79 km/s; at 1.0 g the burn is 5.5 min and the trim is
   0.82 km/s. The split is reported, so the player can see what the level buys.
-* `0 g` is exactly the conic plan: the same arcs, arrival date, and delta-v. The
-  style therefore has a continuous off switch rather than a second code path.
+* The original `0 g` off switch made the style exactly the conic plan. It was
+  withdrawn with the plain coast: the profile's level now floors at 0.05 g, so a
+  commanded burn is always present.
 
 **Negative**
 

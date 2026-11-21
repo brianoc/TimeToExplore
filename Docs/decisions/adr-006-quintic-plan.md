@@ -92,8 +92,9 @@ converge", and it cannot easily guarantee the exact arrival state the game needs
   value: any future planner must satisfy it or report the arrival infeasible.
   The conic arrival removes the bound because its coast has `a_ref = g`
   pointwise and its burns are impulses; it parks Earth at 7,327 km and Jupiter
-  at 80,398 km. The quintic capture remains the working default, so the ceiling
-  still applies to it.
+  at 80,398 km. The conic capture is the profile's default now; the ceiling
+  still applies to the quintic capture a trip uses when it starts inside the
+  target's sphere of influence.
 * The plan is a curve fixed in time. If the ship is knocked off it, the
   autopilot tracks back, but a large deviation needs a re-plan.
 

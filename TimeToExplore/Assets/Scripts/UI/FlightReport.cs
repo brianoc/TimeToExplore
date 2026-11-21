@@ -120,7 +120,6 @@ namespace TimeToExplore.UI
                             : "drive off"));
                 }
 
-                rows.Add(DetailRow.Of("Flip", FlipLabel(session)));
             }
 
             if (!string.IsNullOrEmpty(warpLabel))
@@ -166,9 +165,8 @@ namespace TimeToExplore.UI
             return arc.Phase == FlightPhase.Departure ? "break" : "powered";
         }
 
-        /// <summary>True when the plan crosses on a coast rather than a powered
-        /// quintic: the coast cruise, and the burn–coast–burn profile whose
-        /// heliocentric middle is the same coast.</summary>
+        /// <summary>True for the burn–coast–burn profile, whose heliocentric
+        /// middle is a coast rather than a powered quintic.</summary>
         public static bool IsCoastProfile(TrajectoryPlan plan)
         {
             if (plan == null) return false;
@@ -351,16 +349,6 @@ namespace TimeToExplore.UI
                 ? PhaseLabel(session.NextPhase.Value)
                 : "Arrival";
             return $"{phase}  {FormatCountdown(seconds)}";
-        }
-
-        public static string FlipLabel(FlightSession session)
-        {
-            if (session == null || double.IsNaN(session.FlipJulianDate)) return "—";
-
-            double seconds = (session.FlipJulianDate - session.State.JulianDate)
-                             * JulianDate.SecondsPerDay;
-            if (session.Status == FlightStatus.Arrived) return "passed";
-            return seconds < 0.0 ? "passed" : FormatCountdown(seconds);
         }
 
         /// <summary>

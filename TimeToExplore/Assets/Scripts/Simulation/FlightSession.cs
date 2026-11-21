@@ -51,9 +51,9 @@ namespace TimeToExplore.Simulation
     /// <see cref="TryApplyCompletedRetime"/> / <see cref="TryApplyCompletedPreview"/>
     /// publish the finished plan on the main thread.
     /// <see cref="RequestPreviewDuration"/> is the slider's retime path;
-    /// <see cref="PlotAsync"/> plots a route and <see cref="SetArrivalStyle"/>,
-    /// <see cref="SetCruiseProfile"/> and <see cref="SetBurnLevel"/> rebuild the
-    /// preview. Every one of them is latest-wins: the newest request supersedes
+    /// <see cref="PlotAsync"/> plots a route and <see cref="SetArrivalStyle"/>
+    /// and <see cref="SetBurnLevel"/> rebuild the preview. Every one of them is
+    /// latest-wins: the newest request supersedes
     /// an older one, so a drag never queues work behind a stale plan. The
     /// synchronous <see cref="SetPreviewDuration"/> remains the deterministic
     /// path for callers that need a plan immediately.
@@ -86,10 +86,10 @@ namespace TimeToExplore.Simulation
         private readonly HashSet<PlanArc> _appliedImpulses = new HashSet<PlanArc>();
 
         /// <summary>Recent preview windows, keyed by departure date, target,
-        /// burn level, cruise, and arrival style. A repeat selection reuses the
-        /// floor plan and the slow end instead of re-solving either; the cache is
-        /// owned here because the preview is the session's draft. It is cleared
-        /// when the departure date or the ship's pinned state changes.</summary>
+        /// burn level, and arrival style. A repeat selection reuses the floor
+        /// plan and the slow end instead of re-solving either; the cache is owned
+        /// here because the preview is the session's draft. It is cleared when
+        /// the departure date or the ship's pinned state changes.</summary>
         private readonly Dictionary<WindowKey, PreviewWindow> _windows =
             new Dictionary<WindowKey, PreviewWindow>();
 
@@ -188,12 +188,11 @@ namespace TimeToExplore.Simulation
         /// or NaN. The trip-time control's lower bound.</summary>
         public double PreviewMinimumSeconds { get; private set; } = double.NaN;
 
-        /// <summary>The slowest trip the trip-time control offers, or NaN. For
-        /// the powered cruise it is <see cref="TripPlanner.MaxDurationScale"/>
-        /// times the minimum; for a coasting cruise it is the slowest duration
-        /// the planner still accepts, found by probing the same window, because
-        /// a long coast is rejected once its transfer sweeps 180° or its
-        /// arrival no longer needs a brake.</summary>
+        /// <summary>The slowest trip the trip-time control offers, or NaN. It is
+        /// the slowest duration the planner still accepts inside
+        /// <see cref="TripPlanner.MaxDurationScale"/> times the minimum, found by
+        /// probing the window, because a long coast is rejected once its transfer
+        /// sweeps 180° or its arrival no longer needs a brake.</summary>
         public double PreviewMaximumSeconds { get; private set; } = double.NaN;
 
         /// <summary>The preview's current flight time, or NaN.</summary>
@@ -228,28 +227,17 @@ namespace TimeToExplore.Simulation
 
         public ShipIntegrator Integrator => _integrator;
 
-        /// <summary>Arrival style used for the next plan. The planner's quintic
-        /// capture is the default; a conic arrival is the cheap, slow
-        /// alternative, and a fixed-thrust arrival flies the same coasts with
-        /// finite 0.3 g burns instead of impulses.</summary>
+        /// <summary>Arrival style used for the next plan. The conic capture is
+        /// the default; a fixed-thrust arrival flies the same coasts with finite
+        /// burns at <see cref="BurnLevelG"/> instead of impulses.</summary>
         public CaptureStyle ArrivalStyle
         {
             get => _planner.ArrivalStyle;
             set => _planner.ArrivalStyle = value;
         }
 
-        /// <summary>How the ship crosses between the spheres of influence: the
-        /// powered quintic, the unpowered Lambert coast, or the burn–coast–burn
-        /// profile with its departure burn and brake. The powered cruise is the
-        /// default, matching the planner.</summary>
-        public CruiseStyle CruiseProfile
-        {
-            get => _planner.CruiseStyle;
-            set => _planner.CruiseStyle = value;
-        }
-
-        /// <summary>Player-facing fixed-burn level in g. Zero selects the pure
-        /// conic arrival.</summary>
+        /// <summary>Player-facing burn level in g for the profile's departure
+        /// burn, brake, and hybrid capture.</summary>
         public double BurnLevelG
         {
             get => _planner.BurnLevelG;
@@ -296,10 +284,6 @@ namespace TimeToExplore.Simulation
             }
         }
 
-        /// <summary>The middle of the plan where the along-track thrust turns
-        /// over, or NaN if this plan has no such point.</summary>
-        public double FlipJulianDate { get; private set; } = double.NaN;
-
         /// <summary>Put the ship in a body's own state at a date. Gateway is the
         /// shipped starting point, so the default trip is the tested one.</summary>
         public void PlaceAt(string bodyId, double julianDate)
@@ -344,7 +328,7 @@ namespace TimeToExplore.Simulation
             BeginPreviewReplacement();
             _previewDeparture = _state.WithJulianDate(julianDate);
             PreviewWindow window = WindowFor(targetId, _previewDeparture, _planner,
-                _planner.BurnLevelG, _planner.CruiseStyle, _planner.ArrivalStyle);
+                _planner.BurnLevelG, _planner.ArrivalStyle);
             Preview = window.Plan;
             PreviewJulianDate = julianDate;
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
@@ -373,14 +357,14 @@ namespace TimeToExplore.Simulation
 
             _previewDeparture = _state.WithJulianDate(julianDate);
             var request = new PreviewRequest(PreviewKind.Plot, targetId, _previewDeparture,
-                double.NaN, CruiseProfile, ArrivalStyle, BurnLevelG, _planner);
+                double.NaN, ArrivalStyle, BurnLevelG, _planner);
             return EnqueuePreview(request);
         }
 
         /// <summary>
         /// Re-time the current preview without re-solving the minimum or moving
         /// the ship. One planner build at the requested duration, so the route,
-        /// its flip, and its delta-v all change while the arrival date slides.
+        /// its delta-v all change while the arrival date slides.
         /// The value is clamped to the preview's feasible window; the departure
         /// state and displayed date stay pinned, which keeps a drag stable while
         /// the clock runs.
@@ -465,7 +449,7 @@ namespace TimeToExplore.Simulation
             }
 
             var request = new RetimeRequest(_previewDeparture, Preview.TargetId, duration,
-                CruiseProfile, ArrivalStyle, _planner);
+                ArrivalStyle, _planner);
 
             lock (_retimeLock)
             {
@@ -811,7 +795,7 @@ namespace TimeToExplore.Simulation
         {
             request.ApplyTo(_workerPlanner);
             PreviewWindow window = WindowFor(request.TargetId, request.Departure,
-                _workerPlanner, request.BurnLevelG, request.Cruise, request.Arrival);
+                _workerPlanner, request.BurnLevelG, request.Arrival);
             return new CompletedPreview(window.Plan, window.Plan,
                 window.MaximumSeconds, request.Departure.JulianDate);
         }
@@ -825,7 +809,7 @@ namespace TimeToExplore.Simulation
         {
             request.ApplyTo(_workerPlanner);
             PreviewWindow window = WindowFor(request.TargetId, request.Departure,
-                _workerPlanner, request.BurnLevelG, request.Cruise, request.Arrival);
+                _workerPlanner, request.BurnLevelG, request.Arrival);
             TrajectoryPlan plan = window.Plan;
             if (plan.IsFeasible && request.DurationSeconds > plan.FlightTimeSeconds)
                 plan = _workerPlanner.PlanAtDuration(request.Departure,
@@ -883,59 +867,35 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Choose the cruise profile and rebuild the preview against it, from the
-        /// same pinned departure state. The fastest feasible plan of the new
-        /// profile sets the trip-time window, and a coasting profile's window is
-        /// clamped to the durations its Lambert solve actually accepts. The
-        /// previous flight time is kept when it falls inside that window, so the
-        /// choice changes the crossing rather than silently throwing away the
-        /// player's trip time. A live flight is never touched: it keeps the plan
-        /// it was begun with.
-        /// Returns the current preview at once; the rebuilt plan arrives
-        /// through <see cref="TryApplyCompletedPreview"/> and the HUD's
-        /// per-frame pump.
-        /// </summary>
-        public TrajectoryPlan SetCruiseProfile(CruiseStyle style)
-        {
-            if (CruiseProfile == style) return Preview;
-            CruiseProfile = style;
-            RequestRebuild();
-            return Preview;
-        }
-
-        /// <summary>
         /// Choose the fixed-burn level and rebuild a preview that uses it from
-        /// the pinned departure state. Both the hybrid arrival and the
-        /// burn–coast–burn cruise plan their burns at this level. The level is
-        /// rounded to 0.05 g so a slider drag does not re-solve the whole route
-        /// at every pixel. A live flight keeps the plan it was begun with.
-        /// Returns the current preview at once; the rebuilt plan arrives
-        /// through <see cref="TryApplyCompletedPreview"/> and the HUD's
-        /// per-frame pump.
+        /// the pinned departure state. The profile's departure burn, brake, and
+        /// hybrid capture all plan at this level. The level is rounded to 0.05 g
+        /// so a slider drag does not re-solve the whole route at every pixel. A
+        /// live flight keeps the plan it was begun with. Returns the current
+        /// preview at once; the rebuilt plan arrives through
+        /// <see cref="TryApplyCompletedPreview"/> and the HUD's per-frame pump.
         /// </summary>
         public TrajectoryPlan SetBurnLevel(double levelG)
         {
-            levelG = Math.Clamp(levelG, 0.0, TripPlanner.MaxBurnLevelG);
+            levelG = Math.Clamp(levelG, TripPlanner.MinimumBurnLevelG,
+                TripPlanner.MaxBurnLevelG);
             levelG = Math.Round(levelG * 20.0) / 20.0;
             if (Math.Abs(levelG - BurnLevelG) < 1e-9) return Preview;
 
             BurnLevelG = levelG;
-            if (Preview == null ||
-                (ArrivalStyle != CaptureStyle.FiniteBurn &&
-                 CruiseProfile != CruiseStyle.BurnCoastBurn))
-                return Preview;
+            if (Preview == null) return Preview;
 
             RequestRebuild();
             return Preview;
         }
 
         /// <summary>Queue a background rebuild of the published preview
-        /// against the session's current style, cruise, and burn level,
-        /// keeping the player's flight time when the new window contains it.
-        /// The rebuild is the route-updating half of the preview lifecycle:
-        /// the worker builds it with its own planner, and the previous plan
-        /// stays published until the new one is ready. Outstanding retimes and
-        /// other preview builds are superseded, as in <see cref="EnqueuePreview"/>.</summary>
+        /// against the session's current style and burn level, keeping the
+        /// player's flight time when the new window contains it. The rebuild is
+        /// the route-updating half of the preview lifecycle: the worker builds it
+        /// with its own planner, and the previous plan stays published until the
+        /// new one is ready. Outstanding retimes and other preview builds are
+        /// superseded, as in <see cref="EnqueuePreview"/>.</summary>
         private void RequestRebuild()
         {
             if (Preview == null) return;
@@ -943,17 +903,10 @@ namespace TimeToExplore.Simulation
             string targetId = Preview.TargetId;
             double requested = Preview.FlightTimeSeconds;
             var request = new PreviewRequest(PreviewKind.Rebuild, targetId, _previewDeparture,
-                requested, CruiseProfile, ArrivalStyle, BurnLevelG, _planner);
+                requested, ArrivalStyle, BurnLevelG, _planner);
             EnqueuePreview(request);
         }
 
-        /// <summary>
-        /// The floor plan and the trip-time window for a target, at the current
-        /// pinned departure state. A repeat request for the same date, target,
-        /// level, cruise, and arrival style is free: it returns the plan and the
-        /// window the first request solved. A changed departure date drops every
-        /// cached window, because every window belongs to one departure date.
-        /// </summary>
         /// <summary>
         /// The floor plan and the trip-time window for a target, at the given
         /// pinned departure state. Runs on the caller's thread: the session's
@@ -964,11 +917,10 @@ namespace TimeToExplore.Simulation
         /// calls run outside it, on the worker for async builds.
         /// </summary>
         private PreviewWindow WindowFor(string targetId, ShipState departure,
-            TripPlanner planner, double burnLevelG, CruiseStyle cruise,
-            CaptureStyle arrival)
+            TripPlanner planner, double burnLevelG, CaptureStyle arrival)
         {
             double julianDate = departure.JulianDate;
-            var key = new WindowKey(julianDate, targetId, burnLevelG, cruise, arrival);
+            var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
 
             lock (_retimeLock)
             {
@@ -983,7 +935,7 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan = planner.Plan(departure, targetId);
             var window = new PreviewWindow(plan,
                 MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds, planner,
-                    cruise, departure));
+                    departure));
 
             lock (_retimeLock)
             {
@@ -1005,8 +957,7 @@ namespace TimeToExplore.Simulation
             window = default;
             if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate) return false;
 
-            var key = new WindowKey(julianDate, targetId, BurnLevelG, CruiseProfile,
-                ArrivalStyle);
+            var key = new WindowKey(julianDate, targetId, BurnLevelG, ArrivalStyle);
             lock (_retimeLock) return _windows.TryGetValue(key, out window);
         }
 
@@ -1035,37 +986,34 @@ namespace TimeToExplore.Simulation
             PreviewMaximumSeconds = double.NaN;
         }
 
-        /// <summary>How many bisection probes find a coasting profile's slowest
+        /// <summary>How many bisection probes find the profile's slowest
         /// accepted trip. Six puts the right-hand end within a few percent of
         /// the planner's actual limit, which is finer than the slider needs.</summary>
-        private const int CoastWindowProbes = 6;
+        private const int WindowProbes = 6;
 
         /// <summary>
-        /// The slowest trip the trip-time control may offer for the current
-        /// profile. The powered cruise keeps the historical three-times-minimum
-        /// window. A coasting cruise has a real upper bound: the short-way
-        /// Lambert transfer sweeps past 180°, and a slow coast arrives slower
-        /// than the target's frame, so the planner rejects those durations. The
-        /// end is therefore the largest accepted duration inside the same
-        /// three-times-minimum span, found by probing; the slider can never ask
-        /// for a plan the planner refuses.
+        /// The slowest trip the trip-time control may offer. The profile has a
+        /// real upper bound: the short-way Lambert transfer sweeps past 180°, and
+        /// a slow coast arrives slower than the target's frame, so the planner
+        /// rejects those durations. The end is the largest accepted duration
+        /// inside <see cref="TripPlanner.MaxDurationScale"/> times the minimum,
+        /// found by probing; the slider can never ask for a plan the planner
+        /// refuses.
         /// </summary>
         private double MaximumPreviewSeconds(string targetId, double minimum,
-            TripPlanner planner, CruiseStyle cruise, ShipState departure)
+            TripPlanner planner, ShipState departure)
         {
             if (!(minimum > 0.0) || !double.IsFinite(minimum))
                 return double.NaN;
 
             double cap = minimum * TripPlanner.MaxDurationScale;
-            if (cruise == CruiseStyle.Powered) return cap;
-
             if (IsDurationFeasible(targetId, cap, planner, departure)) return cap;
 
             // The minimum is the plan the planner just found, so it is the
             // feasible floor; the cap is the infeasible ceiling.
             double feasible = minimum;
             double infeasible = cap;
-            for (int probe = 0; probe < CoastWindowProbes; probe++)
+            for (int probe = 0; probe < WindowProbes; probe++)
             {
                 double middle = 0.5 * (feasible + infeasible);
                 if (IsDurationFeasible(targetId, middle, planner, departure))
@@ -1133,7 +1081,6 @@ namespace TimeToExplore.Simulation
             Plan = _planner.Plan(_state, targetId);
             if (!double.IsNaN(requestedSeconds) && requestedSeconds > Plan.FlightTimeSeconds)
                 Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
-            FlipJulianDate = Plan.FindFlipJulianDate(_gravity);
 
             if (!Plan.IsFeasible)
             {
@@ -1168,7 +1115,6 @@ namespace TimeToExplore.Simulation
             DiscardPreview();
             _autopilot = null;
             _appliedImpulses.Clear();
-            FlipJulianDate = double.NaN;
             ArrivedJulianDate = double.NaN;
             Status = FlightStatus.Idle;
             CurrentThrust = ThrustCommand.None;
@@ -1421,18 +1367,16 @@ namespace TimeToExplore.Simulation
         private sealed class RetimeRequest
         {
             public RetimeRequest(ShipState departure, string targetId, double durationSeconds,
-                CruiseStyle cruise, CaptureStyle arrival, TripPlanner settings)
+                CaptureStyle arrival, TripPlanner settings)
             {
                 Departure = departure;
                 TargetId = targetId;
                 DurationSeconds = durationSeconds;
-                Cruise = cruise;
                 Arrival = arrival;
                 BurnLevelG = settings.BurnLevelG;
                 MaxAccelerationMps2 = settings.MaxAccelerationMps2;
                 ThrustMargin = settings.ThrustMargin;
                 EntrySpeedMps = settings.EntrySpeedMps;
-                EscapeSpeedMps = settings.EscapeSpeedMps;
                 ArcSamples = settings.ArcSamples;
                 MaxIterations = settings.MaxIterations;
                 ConvergenceTolerance = settings.ConvergenceTolerance;
@@ -1442,13 +1386,11 @@ namespace TimeToExplore.Simulation
             public ShipState Departure { get; }
             public string TargetId { get; }
             public double DurationSeconds { get; }
-            public CruiseStyle Cruise { get; }
             public CaptureStyle Arrival { get; }
             public double BurnLevelG { get; }
             public double MaxAccelerationMps2 { get; }
             public double ThrustMargin { get; }
             public double EntrySpeedMps { get; }
-            public double EscapeSpeedMps { get; }
             public int ArcSamples { get; }
             public int MaxIterations { get; }
             public double ConvergenceTolerance { get; }
@@ -1462,13 +1404,11 @@ namespace TimeToExplore.Simulation
             /// worker is its only caller.</summary>
             public void ApplyTo(TripPlanner planner)
             {
-                planner.CruiseStyle = Cruise;
                 planner.ArrivalStyle = Arrival;
                 planner.BurnLevelG = BurnLevelG;
                 planner.MaxAccelerationMps2 = MaxAccelerationMps2;
                 planner.ThrustMargin = ThrustMargin;
                 planner.EntrySpeedMps = EntrySpeedMps;
-                planner.EscapeSpeedMps = EscapeSpeedMps;
                 planner.ArcSamples = ArcSamples;
                 planner.MaxIterations = MaxIterations;
                 planner.ConvergenceTolerance = ConvergenceTolerance;
@@ -1486,7 +1426,7 @@ namespace TimeToExplore.Simulation
             Plot,
 
             /// <summary>The published preview is being rebuilt against a
-            /// changed arrival style, cruise profile, or burn level. The build
+            /// changed arrival style or burn level. The build
             /// keeps the player's flight time when the new window contains
             /// it.</summary>
             Rebuild
@@ -1501,20 +1441,18 @@ namespace TimeToExplore.Simulation
         private sealed class PreviewRequest
         {
             public PreviewRequest(PreviewKind kind, string targetId, ShipState departure,
-                double durationSeconds, CruiseStyle cruise, CaptureStyle arrival,
+                double durationSeconds, CaptureStyle arrival,
                 double burnLevelG, TripPlanner settings)
             {
                 Kind = kind;
                 TargetId = targetId;
                 Departure = departure;
                 DurationSeconds = durationSeconds;
-                Cruise = cruise;
                 Arrival = arrival;
                 BurnLevelG = burnLevelG;
                 MaxAccelerationMps2 = settings.MaxAccelerationMps2;
                 ThrustMargin = settings.ThrustMargin;
                 EntrySpeedMps = settings.EntrySpeedMps;
-                EscapeSpeedMps = settings.EscapeSpeedMps;
                 ArcSamples = settings.ArcSamples;
                 MaxIterations = settings.MaxIterations;
                 ConvergenceTolerance = settings.ConvergenceTolerance;
@@ -1529,13 +1467,11 @@ namespace TimeToExplore.Simulation
             /// the fastest feasible plan (a plot).</summary>
             public double DurationSeconds { get; }
 
-            public CruiseStyle Cruise { get; }
             public CaptureStyle Arrival { get; }
             public double BurnLevelG { get; }
             public double MaxAccelerationMps2 { get; }
             public double ThrustMargin { get; }
             public double EntrySpeedMps { get; }
-            public double EscapeSpeedMps { get; }
             public int ArcSamples { get; }
             public int MaxIterations { get; }
             public double ConvergenceTolerance { get; }
@@ -1549,13 +1485,11 @@ namespace TimeToExplore.Simulation
             /// worker is its only caller.</summary>
             public void ApplyTo(TripPlanner planner)
             {
-                planner.CruiseStyle = Cruise;
                 planner.ArrivalStyle = Arrival;
                 planner.BurnLevelG = BurnLevelG;
                 planner.MaxAccelerationMps2 = MaxAccelerationMps2;
                 planner.ThrustMargin = ThrustMargin;
                 planner.EntrySpeedMps = EntrySpeedMps;
-                planner.EscapeSpeedMps = EscapeSpeedMps;
                 planner.ArcSamples = ArcSamples;
                 planner.MaxIterations = MaxIterations;
                 planner.ConvergenceTolerance = ConvergenceTolerance;
@@ -1608,26 +1542,23 @@ namespace TimeToExplore.Simulation
         private readonly struct WindowKey : IEquatable<WindowKey>
         {
             public WindowKey(double julianDate, string targetId, double burnLevelG,
-                CruiseStyle cruise, CaptureStyle arrival)
+                CaptureStyle arrival)
             {
                 JulianDate = julianDate;
                 TargetId = targetId;
                 BurnLevelG = burnLevelG;
-                Cruise = cruise;
                 Arrival = arrival;
             }
 
             public double JulianDate { get; }
             public string TargetId { get; }
             public double BurnLevelG { get; }
-            public CruiseStyle Cruise { get; }
             public CaptureStyle Arrival { get; }
 
             public bool Equals(WindowKey other) =>
                 JulianDate.Equals(other.JulianDate)
                 && string.Equals(TargetId, other.TargetId, StringComparison.Ordinal)
                 && BurnLevelG.Equals(other.BurnLevelG)
-                && Cruise == other.Cruise
                 && Arrival == other.Arrival;
 
             public override bool Equals(object obj) => obj is WindowKey other && Equals(other);
@@ -1639,7 +1570,6 @@ namespace TimeToExplore.Simulation
                     int hash = JulianDate.GetHashCode();
                     hash = hash * 397 ^ (TargetId != null ? TargetId.GetHashCode() : 0);
                     hash = hash * 397 ^ BurnLevelG.GetHashCode();
-                    hash = hash * 397 ^ (int)Cruise;
                     hash = hash * 397 ^ (int)Arrival;
                     return hash;
                 }

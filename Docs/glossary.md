@@ -86,8 +86,8 @@ Five different questions hide under the word "thrust". Keep them apart:
 | **Thrust profile** | What is the drive doing over time? | continuous (smooth), fixed (finite), zero (coast) |
 | **Manoeuvre model** | How is the velocity change represented? | impulse, finite burn |
 | **Path shape** | What is the arc? | quintic, conic, finite-burn arc |
-| **Arrival choice** | How does the player end the target leg? | Quintic capture, Conic coast, Fixed-thrust arrival |
-| **Cruise profile** | How does the ship cross between the spheres of influence? | Powered, Coast, Burn-coast-burn |
+| **Arrival choice** | How does the player end the target leg? | Conic capture, Fixed-thrust (hybrid) arrival |
+| **Cruise profile** | How does the ship cross between the spheres of influence? | Burn-coast-burn only |
 
 An **impulse** is a manoeuvre model, not a thrust profile. It is a Δv applied
 at an instant; the ship cannot fly it. The conic style's burns are *modelled*
@@ -200,16 +200,16 @@ feasibility are always full-field numbers.
 ### Arrival
 
 **Arrival style** — the player's choice for how the target leg ends:
-`CaptureStyle.Quintic` ("Quintic capture"), `CaptureStyle.Conic` ("Conic
-coast"), and `CaptureStyle.FiniteBurn` ("X g burn", the hybrid). The code type
-says capture; prose says arrival. Use "arrival style" in prose.
+`CaptureStyle.Conic` ("Conic", the default) and `CaptureStyle.FiniteBurn`
+("X g burn", the hybrid). The code type says capture; prose says arrival. Use
+"arrival style" in prose. A trip that starts inside the target's sphere of
+influence is a single quintic capture and has no arrival choice.
 
-**Cruise profile** — the player's choice for how the ship crosses between the
-spheres of influence: `CruiseStyle.Powered` (the default powered quintic),
-`CruiseStyle.Coast` (the unpowered Lambert conic), and
-`CruiseStyle.BurnCoastBurn` (the quintic break, departure burn, Lambert coast,
-brake, and capture). The nav computer exposes it in the `PROFILE` row; an arrival
-style is the separate capture choice. `0 g` is exactly the `Coast` profile.
+**Cruise profile** — how the ship crosses between the spheres of influence. It
+is always the burn–coast–burn route: a quintic break, a departure fixed burn, a
+Lambert coast, a planetocentric approach, a fixed brake, and the capture. The
+old powered quintic cruise and the plain Lambert coast are retired; there is no
+profile selector and no zero-thrust version.
 
 **Break** — the quintic departure arc that leaves the parking orbit and reaches
 the departure body's handover ceiling (`1.02 × SOI`, the band's ceiling) at the
@@ -255,13 +255,13 @@ body's gravity at once.
 ### The hybrid capture
 
 **Hybrid capture** — one fixed burn for the long part of the capture, then an
-impulse trim for exactness. At zero burn level it degenerates to the conic
-arrival.
+impulse trim for exactness.
 
-**Burn level** — the player's fixed-thrust acceleration, from 0 g to 1 g,
-clamped to the drive's thrust margin. It is a property of the `FiniteBurn`
-arrival style and of the `BurnCoastBurn` profile's two burns, not a fourth
-arrival style.
+**Burn level** — the player's fixed-thrust acceleration, from **0.05 g** to
+1 g, clamped to the drive's thrust margin. It is the level the profile's
+departure burn and brake are planned at, and the hybrid capture's burn. The
+floor is non-zero because the profile is two real burns around a coast, not a
+coast with optional burns.
 
 **Injection point** — the radius `r_i` where the fixed burn ends and the trim is
 applied. It starts at the conic periapsis, must be below the parking radius and

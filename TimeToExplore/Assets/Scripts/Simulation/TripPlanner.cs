@@ -4,80 +4,40 @@ using TimeToExplore.Core;
 
 namespace TimeToExplore.Simulation
 {
-    /// <summary>How the planner brings the ship into the parking orbit.</summary>
+    /// <summary>How the burn–coast–burn arrival brings the ship into the
+    /// parking orbit. Both choices take over where the brake hands over at the
+    /// target's handover floor.</summary>
     public enum CaptureStyle
     {
-        /// <summary>The continuous-thrust quintic capture. The working default:
-        /// fast, and constrained by the parking orbit's gravity ceiling.</summary>
-        Quintic,
         /// <summary>A Keplerian inbound hyperbola, an impulsive periapsis
-        /// capture, a transfer ellipse, and a circularisation burn. Slower in
-        /// flight time, much cheaper in delta-v, and free of the ceiling.</summary>
+        /// capture, a transfer ellipse, and a circularisation burn. The default:
+        /// cheap, and free of the parking orbit's gravity ceiling.</summary>
         Conic,
         /// <summary>The same coasted hyperbola and transfer ellipse, but the
         /// long capture is a single finite burn at the player's chosen
         /// acceleration (<see cref="BurnLevelG"/>). A terminal impulse trims the
         /// burn's end state onto the exact transfer ellipse, and the
-        /// circularisation is the conic style's impulse. At zero level it
-        /// degenerates to <see cref="Conic"/>.</summary>
+        /// circularisation is the conic style's impulse.</summary>
         FiniteBurn
     }
 
-    /// <summary>How the planner crosses between the spheres of influence.</summary>
-    public enum CruiseStyle
-    {
-        /// <summary>A continuously powered quintic. The working default: it is
-        /// fast, and it is what every existing recipe emits.</summary>
-        Powered,
-        /// <summary>A zero-revolution prograde Lambert coast around the Sun,
-        /// chosen to arrive on time and handed off at both ends. The departure
-        /// quintic is retargeted so its endpoint velocity is the Lambert
-        /// departure velocity, and the arrival is the conic or hybrid capture
-        /// chain; the ship coasts with the drive off between them
-        /// ([Burn–coast–burn trips](../simulation/burn-coast-burn.md)).</summary>
-        Coast,
-        /// <summary>The full burn–coast–burn profile: a quintic break out of
-        /// the departure sphere of influence, one prograde finite burn at the
-        /// chosen acceleration (<see cref="BurnLevelG"/>), the Lambert coast,
-        /// one retrograde finite brake onto the capture chain's entry state,
-        /// and the conic or hybrid capture. At zero level it degenerates to
-        /// <see cref="Coast"/> ([Burn–coast–burn trips](../simulation/burn-coast-burn.md)).</summary>
-        BurnCoastBurn
-    }
-
     /// <summary>
-    /// Builds a Go To plan: an escape arc out of the departure body's sphere of
-    /// influence, a heliocentric cruise arc, and a capture that ends on the
-    /// target's parking orbit. The default capture is a quintic that matches its
-    /// neighbours in position, velocity, and acceleration. The alternative
-    /// conic capture is a coasting hyperbola and transfer ellipse with
-    /// impulsive burns, which parks lower and spends less delta-v but takes
-    /// months from the outer spheres of influence
-    /// ([ADR-014](../decisions/adr-014-keplerian-coast.md)).
-    ///
-    /// The solver is a search, not an optimal-control solve. It allocates time
-    /// between the arcs in proportion to each arc's kinematic minimum
-    /// 2√(d/a), then grows the whole plan until the measured peak thrust fits
-    /// the drive. The result is a smooth trajectory 20-40% slower than the
-    /// bang-bang optimum, which is the right trade for a first cut: it is
-    /// deterministic, always feasible for the inner system, and its endpoint is
-    /// exact.
-    ///
-    /// The quintic capture has a known limit: it cannot thread a gravity well
-    /// whose parking-orbit gravity approaches the drive's own acceleration,
-    /// because the curve must arrive with that acceleration. Jupiter's
-    /// surface-radius orbit sits at 19 m/s², so the default path parks at the
-    /// gravity ceiling. The conic capture removes that limit by coasting; it
-    /// parks lower and spends less delta-v, at the cost of time. See the
-    /// navigation document.
-    ///
-    /// <see cref="CruiseStyle"/> chooses how the ship crosses: the default
-    /// powered quintic, or a zero-revolution Lambert conic with the drive off.
-    /// The coast style reuses the conic or hybrid capture chain and replaces
-    /// the powered cruise with a heliocentric conic, so its cost is the break
-    /// out of the departure well, the arrival handover, and the capture, and
-    /// its time is chosen rather than minimised
+    /// Builds a Go To plan on the burn–coast–burn profile: a quintic break out
+    /// of the departure sphere of influence, one prograde finite burn at the
+    /// chosen acceleration (<see cref="BurnLevelG"/>), a heliocentric Lambert
+    /// coast, a planetocentric approach, one retrograde finite brake, and the
+    /// conic or hybrid capture
     /// ([Burn–coast–burn trips](../simulation/burn-coast-burn.md)).
+    ///
+    /// The solver is a search, not an optimal-control solve. The profile's
+    /// floor is found by probing feasible durations, and the chosen duration is
+    /// rebuilt and certified with the full field. At every seam the preceding
+    /// arc ends on the next arc's start state, so the plan is continuous in
+    /// position and velocity and its endpoint is exact.
+    ///
+    /// A trip that starts inside the target's sphere of influence has no
+    /// crossing to plan. It is a single quintic capture onto the parking orbit
+    /// and uses no cruise profile at all.
     /// </summary>
     public sealed class TripPlanner
     {
@@ -237,16 +197,9 @@ namespace TimeToExplore.Simulation
         /// the executed trajectory keeps a little authority in reserve.</summary>
         public double ThrustMargin { get; set; } = 0.97;
 
-        /// <summary>Inbound speed at the target's sphere of influence. For the
-        /// quintic it shapes the deceleration; for the conic it is the
-        /// hyperbolic excess speed of the arrival hyperbola.</summary>
+        /// <summary>Inbound speed the capture chain enters with: the hyperbolic
+        /// excess speed of the arrival hyperbola.</summary>
         public double EntrySpeedMps { get; set; } = 5_000.0;
-
-        /// <summary>Outbound speed at the departure body's sphere of influence.
-        /// It shapes the powered departure only: <see cref="CruiseStyle.Coast"/>
-        /// takes its departure velocity from the Lambert solve instead, so this
-        /// placeholder never drives the coast.</summary>
-        public double EscapeSpeedMps { get; set; } = 1_000.0;
 
         /// <summary>Points sampled per arc to measure peak thrust and clearance.</summary>
         public int ArcSamples { get; set; } = 64;
@@ -270,21 +223,9 @@ namespace TimeToExplore.Simulation
         /// <summary>Rotates the arrival point around the target's equator.</summary>
         public double ParkingPhaseOffsetRad { get; set; }
 
-        /// <summary>Which arrival model the planner builds. The quintic capture
-        /// is the working default; the conic capture is the cheap, slow
-        /// alternative and is verified end to end by the suite. Under
-        /// <see cref="CruiseStyle.Coast"/> the quintic capture is not available:
-        /// the capture is always conic, or hybrid for
-        /// <see cref="CaptureStyle.FiniteBurn"/>.</summary>
-        public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Quintic;
-
-        /// <summary>Which cruise the planner builds. <see cref="CruiseStyle.Powered"/>
-        /// is the default and reproduces every existing recipe; the
-        /// <see cref="CruiseStyle.Coast"/> value sends the ship on a heliocentric
-        /// Lambert conic with the drive off, and
-        /// <see cref="CruiseStyle.BurnCoastBurn"/> bookends that coast with the
-        /// departure burn and the arrival brake.</summary>
-        public CruiseStyle CruiseStyle { get; set; } = CruiseStyle.Powered;
+        /// <summary>Which capture the plan ends on. The conic capture is the
+        /// default; the hybrid finite-burn capture is the alternative.</summary>
+        public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Conic;
 
         /// <summary>Design acceleration of a fixed-thrust burn. 0.3 g is the
         /// working level: low enough to be a real burn rather than an impulse,
@@ -297,34 +238,29 @@ namespace TimeToExplore.Simulation
         /// control. 1 g is 9.80665 m/s².</summary>
         public const double StandardGravityMps2 = 9.80665;
 
+        /// <summary>Lowest burn level the player can choose. The profile is two
+        /// real burns around a coast, so there is no zero-thrust version: below
+        /// this it would be the retired plain-coast plan.</summary>
+        public const double MinimumBurnLevelG = 0.05;
+
         /// <summary>Highest burn level the player can choose.</summary>
         public const double MaxBurnLevelG = 1.0;
 
         private double _burnLevelG = DefaultBurnLevelG;
 
-        /// <summary>Player-facing fixed-burn level in g, from 0 to
-        /// <see cref="MaxBurnLevelG"/>. Zero selects the pure conic arrival, so
-        /// the style has no finite-burn arc.</summary>
+        /// <summary>Player-facing burn level in g, clamped to
+        /// <see cref="MinimumBurnLevelG"/> and <see cref="MaxBurnLevelG"/>.</summary>
         public double BurnLevelG
         {
             get => _burnLevelG;
-            set => _burnLevelG = Math.Clamp(value, 0.0, MaxBurnLevelG);
+            set => _burnLevelG = Math.Clamp(value, MinimumBurnLevelG, MaxBurnLevelG);
         }
 
-        /// <summary>Acceleration the <see cref="CaptureStyle.FiniteBurn"/> burn
-        /// commands: the chosen level, clamped to the drive's own thrust
-        /// margin. Zero when the level is zero.</summary>
+        /// <summary>Acceleration the departure burn, the brake, and the hybrid
+        /// capture command: the chosen level, clamped to the drive's own thrust
+        /// margin.</summary>
         public double FixedBurnAccelerationMps2 =>
             Math.Min(BurnLevelG * StandardGravityMps2, MaxAccelerationMps2 * ThrustMargin);
-
-        /// <summary>True when the plan ends on the conic capture chain rather
-        /// than the quintic capture: every non-quintic arrival, and every coast
-        /// or burn–coast–burn cruise, which cannot feed a quintic capture.</summary>
-        private bool UsesConicCapture =>
-            ArrivalStyle == CaptureStyle.Conic
-            || ArrivalStyle == CaptureStyle.FiniteBurn
-            || CruiseStyle == CruiseStyle.Coast
-            || CruiseStyle == CruiseStyle.BurnCoastBurn;
 
         /// <summary>Optional diagnostic sink for the planning loop.</summary>
         public Action<string> Trace { get; set; }
@@ -334,57 +270,51 @@ namespace TimeToExplore.Simulation
             BodyRuntime target = RequireTarget(targetId);
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
-            double parkingRadius = UsesConicCapture
-                ? ParkingOrbit.ConicRadiusM(target)
-                : ParkingOrbit.RadiusM(target, MaxAccelerationMps2);
+            if (Vector3d.Distance(targetPosition, ship.PositionM)
+                < SphereOfInfluence.RadiusM(target))
+            {
+                return PlanInsideTarget(ship, target);
+            }
+
+            double parkingRadius = ParkingOrbit.ConicRadiusM(target);
             double distance = Math.Max(Vector3d.Distance(targetPosition, ship.PositionM),
                 parkingRadius);
 
+            // The estimate is only the search's seed. The profile enters at the
+            // handover floor instead of the sphere of influence, so its capture's
+            // fall is minutes rather than months and the seed should say so.
             double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
-            if (UsesConicCapture)
-            {
-                // The estimate is only the search's seed, but the burn–coast–burn
-                // now enters at the handover floor instead of the sphere of
-                // influence, so its capture's fall is minutes rather than months
-                // and the seed should say so.
-                double entryRadius = SphereOfInfluence.RadiusM(target);
-                if (CruiseStyle == CruiseStyle.BurnCoastBurn && FixedBurnAccelerationMps2 > 0.0)
-                {
-                    HandoverBand band = HandoverBand.For(target, FixedBurnAccelerationMps2);
-                    if (band.IsValid) entryRadius = ArrivalEntryRadiusM(band, target);
-                }
+            double entryRadius = SphereOfInfluence.RadiusM(target);
+            HandoverBand band = HandoverBand.For(target, FixedBurnAccelerationMps2);
+            if (band.IsValid) entryRadius = ArrivalEntryRadiusM(band, target);
+            total += EstimateConicCaptureSeconds(target, entryRadius);
 
-                total += EstimateConicCaptureSeconds(target, entryRadius);
-            }
+            return PlanBurnCoastBurnMinimum(ship, target, total);
+        }
 
-            // The burn–coast–burn profile has a real floor that the generic
-            // growing loop cannot see: the pinned break is gentle, so the fast
-            // end is limited by the drive and the solver, not by the break's
-            // clearance. Search for it instead of returning the loop's first
-            // feasible plan.
-            bool insideTarget = Vector3d.Distance(targetPosition, ship.PositionM)
-                                < SphereOfInfluence.RadiusM(target);
-            if (CruiseStyle == CruiseStyle.BurnCoastBurn
-                && FixedBurnAccelerationMps2 > 0.0
-                && !insideTarget)
-            {
-                return PlanBurnCoastBurnMinimum(ship, target, total);
-            }
+        /// <summary>A trip that starts inside the target's sphere of influence
+        /// has no crossing: it is one quintic capture onto the parking orbit.
+        /// The generic growing loop finds a duration whose peak thrust fits the
+        /// drive.</summary>
+        private TrajectoryPlan PlanInsideTarget(ShipState ship, BodyRuntime target)
+        {
+            _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
+            double parkingRadius = ParkingOrbit.RadiusM(target, MaxAccelerationMps2);
+            double distance = Math.Max(Vector3d.Distance(targetPosition, ship.PositionM),
+                parkingRadius);
+            double total = 1.1 * 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
 
             TrajectoryPlan plan = null;
             double required = total;
 
             for (int iteration = 0; iteration < MaxIterations; iteration++)
             {
-                BuildResult result = Build(ship, target, total);
+                BuildResult result = BuildInsideTarget(ship, target, total);
                 plan = result.Plan;
                 required = result.RequiredSeconds;
 
                 if (!string.IsNullOrEmpty(plan.InfeasibleReason))
                 {
-                    // A builder that knows the trip is too short says so with a
-                    // longer requirement; grow the request before giving up on the
-                    // geometry.
                     if (required > total)
                     {
                         total = 0.5 * (total + required);
@@ -404,11 +334,8 @@ namespace TimeToExplore.Simulation
                 total = 0.5 * (total + required);
             }
 
-            // A longer arc with the same endpoints needs less thrust, so a final
-            // build at the duration the last pass asked for is feasible whenever
-            // the limit is set by the curve's shape rather than by a gravity well.
             if (!plan.IsFeasible || required > total)
-                plan = Build(ship, target, Math.Max(required, total)).Plan;
+                plan = BuildInsideTarget(ship, target, Math.Max(required, total)).Plan;
 
             return Reported(plan);
         }
@@ -747,9 +674,6 @@ namespace TimeToExplore.Simulation
         public TrajectoryPlan BuildProbeAtDuration(ShipState ship, string targetId,
             double durationSeconds)
         {
-            if (CruiseStyle != CruiseStyle.BurnCoastBurn)
-                throw new InvalidOperationException(
-                    "Probe quality is the burn–coast–burn floor search's.");
             if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
                 throw new ArgumentOutOfRangeException(nameof(durationSeconds),
                     "A pinned flight time must be finite and positive.");
@@ -775,167 +699,50 @@ namespace TimeToExplore.Simulation
         private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds,
             bool fast = false, bool probe = false)
         {
-            if (CruiseStyle == CruiseStyle.Coast)
-                return BuildCoast(ship, target, totalSeconds, fast, null, probe);
-            if (CruiseStyle == CruiseStyle.BurnCoastBurn)
+            _model.ComputeState(target, ship.JulianDate, out Vector3d targetAtDeparture, out _);
+            if (Vector3d.Distance(ship.PositionM, targetAtDeparture)
+                < SphereOfInfluence.RadiusM(target))
             {
-                BuildResult result = BuildBurnCoastBurn(ship, target, totalSeconds,
-                    fast, probe);
-                if (!fast && !probe && !result.Plan.IsFeasible && result.PinStalled)
-                {
-                    // The near-floor brake/departure fixed point can stop at its
-                    // default pass cap with a residual the chain gate reads as a
-                    // position miss. Give the same fixed point the longer cap
-                    // once; the tolerances and the gate are unchanged, so this is
-                    // a solver retry, not a relaxed answer.
-                    Trace?.Invoke($"pin retry at {totalSeconds / SecondsPerDay:F5} d: " +
-                                  $"{DefaultOuterPasses} -> {RetryOuterPasses} passes, " +
-                                  $"after {result.Plan.InfeasibleReason}");
-                    result = BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe,
-                        RetryOuterPasses);
-                }
-
-                return result;
+                return BuildInsideTarget(ship, target, totalSeconds);
             }
 
-            return ArrivalStyle == CaptureStyle.Conic || ArrivalStyle == CaptureStyle.FiniteBurn
-                ? BuildConic(ship, target, totalSeconds)
-                : BuildQuintic(ship, target, totalSeconds);
+            BuildResult result = BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe);
+            if (!fast && !probe && !result.Plan.IsFeasible && result.PinStalled)
+            {
+                // The near-floor brake/departure fixed point can stop at its
+                // default pass cap with a residual the chain gate reads as a
+                // position miss. Give the same fixed point the longer cap once;
+                // the tolerances and the gate are unchanged, so this is a
+                // solver retry, not a relaxed answer.
+                Trace?.Invoke($"pin retry at {totalSeconds / SecondsPerDay:F5} d: " +
+                              $"{DefaultOuterPasses} -> {RetryOuterPasses} passes, " +
+                              $"after {result.Plan.InfeasibleReason}");
+                result = BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe,
+                    RetryOuterPasses);
+            }
+
+            return result;
         }
 
-        private BuildResult BuildQuintic(ShipState ship, BodyRuntime target, double totalSeconds)
+        /// <summary>
+        /// A trip that starts inside the target's sphere of influence is one
+        /// quintic capture onto the parking orbit. It is not the burn–coast–burn
+        /// profile: there is no sphere to break out of and no heliocentric leg
+        /// to coast, so the planner emits the smooth capture the short trip
+        /// needs.
+        /// </summary>
+        private BuildResult BuildInsideTarget(ShipState ship, BodyRuntime target,
+            double totalSeconds)
         {
             double t0 = ship.JulianDate;
-            double t1 = t0 + totalSeconds / SecondsPerDay;
-            double targetSoi = SphereOfInfluence.RadiusM(target);
+            double arrivalJd = t0 + totalSeconds / SecondsPerDay;
+            ArrivalGeometry arrival = ComputeArrival(target, ship, arrivalJd,
+                SphereOfInfluence.RadiusM(target), insideTarget: true);
 
-            _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
-            bool insideTarget = Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi;
-
-            BodyRuntime departureBody = null;
-            double departureSoi = 0.0;
-            if (!insideTarget)
-            {
-                foreach (BodyRuntime planet in _model.Sun.Children)
-                {
-                    if (planet == target || planet == target.Parent) continue;
-
-                    double soi = SphereOfInfluence.RadiusM(planet);
-                    if (!double.IsFinite(soi)) continue;
-
-                    _model.ComputeState(planet, t0, out Vector3d planetPosition, out _);
-                    if (Vector3d.Distance(ship.PositionM, planetPosition) < soi)
-                    {
-                        departureBody = planet;
-                        departureSoi = soi;
-                        break;
-                    }
-                }
-            }
-
-            ArrivalGeometry arrival = ComputeArrival(target, ship, t1, targetSoi, insideTarget);
-
-            double escapeSeconds;
-            double cruiseSeconds;
-            double captureSeconds;
-
-            Vector3d cruiseStartPosition = ship.PositionM;
-            Vector3d cruiseStartVelocity = ship.VelocityMps;
-            Vector3d exitPosition = Vector3d.Zero;
-            Vector3d exitVelocity = Vector3d.Zero;
-            double escapeEndJd = t0;
-
-            double captureBase = BaseDuration(
-                Vector3d.Distance(arrival.EntryPosition, arrival.ParkingPosition));
-
-            if (insideTarget)
-            {
-                escapeSeconds = 0.0;
-                cruiseSeconds = 0.0;
-                captureSeconds = totalSeconds;
-            }
-            else if (departureBody != null)
-            {
-                _model.ComputeState(departureBody, t0,
-                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
-
-                // Leave along the ship's own relative motion, not along the
-                // target direction. Pointing the escape at the target couples
-                // the escape length to the arrival date: when the target is
-                // behind the departure body the ship has to chase that body
-                // around its orbit, and the whole plan grows without bound.
-                Vector3d escapeDirection = (ship.VelocityMps - anchorVelocity).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = (ship.PositionM - anchorPosition).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = new Vector3d(1.0, 0.0, 0.0);
-
-                Vector3d provisionalExit = anchorPosition + escapeDirection * departureSoi;
-                double escapeBase = BaseDuration(Vector3d.Distance(ship.PositionM, provisionalExit));
-                double cruiseBase = BaseDuration(
-                    Vector3d.Distance(provisionalExit, arrival.EntryPosition));
-
-                double scale = Math.Max(1.0,
-                    totalSeconds / (escapeBase + cruiseBase + captureBase));
-                escapeSeconds = escapeBase * scale;
-                cruiseSeconds = cruiseBase * scale;
-                captureSeconds = captureBase * scale;
-
-                escapeEndJd = t0 + escapeSeconds / SecondsPerDay;
-                _model.ComputeState(departureBody, escapeEndJd,
-                    out anchorPosition, out anchorVelocity);
-
-                exitPosition = anchorPosition + escapeDirection * departureSoi;
-                exitVelocity = anchorVelocity + escapeDirection * EscapeSpeedMps;
-                cruiseStartPosition = exitPosition;
-                cruiseStartVelocity = exitVelocity;
-            }
-            else
-            {
-                double cruiseBase = BaseDuration(
-                    Vector3d.Distance(ship.PositionM, arrival.EntryPosition));
-
-                double scale = Math.Max(1.0, totalSeconds / (cruiseBase + captureBase));
-                escapeSeconds = 0.0;
-                cruiseSeconds = cruiseBase * scale;
-                captureSeconds = captureBase * scale;
-            }
-
-            double cruiseEndJd = escapeEndJd + cruiseSeconds / SecondsPerDay;
-            double provisionalArrivalJd = cruiseEndJd + captureSeconds / SecondsPerDay;
-
-            // Rebuild the arrival geometry at the true arrival date, so the final
-            // state is exactly on the parking orbit at the instant the plan ends.
-            arrival = ComputeArrival(target, ship, provisionalArrivalJd, targetSoi, insideTarget);
-            double arrivalJd = provisionalArrivalJd;
-
-            var arcs = new List<PlanArc>(3);
-
-            if (insideTarget)
-            {
-                arcs.Add(MakeArc(FlightPhase.Capture, target.Id, t0, arrivalJd,
-                    ship.PositionM, ship.VelocityMps,
-                    arrival.ParkingPosition, arrival.ParkingVelocity));
-            }
-            else
-            {
-                if (departureBody != null && escapeSeconds > MinimumArcSeconds)
-                {
-                    arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, escapeEndJd,
-                        ship.PositionM, ship.VelocityMps, exitPosition, exitVelocity));
-                }
-
-                if (cruiseSeconds > MinimumArcSeconds)
-                {
-                    arcs.Add(MakeArc(FlightPhase.Cruise, target.Id, escapeEndJd, cruiseEndJd,
-                        cruiseStartPosition, cruiseStartVelocity,
-                        arrival.EntryPosition, arrival.EntryVelocity));
-                }
-
-                arcs.Add(MakeArc(FlightPhase.Capture, target.Id, cruiseEndJd, arrivalJd,
-                    arrival.EntryPosition, arrival.EntryVelocity,
-                    arrival.ParkingPosition, arrival.ParkingVelocity));
-            }
+            var arcs = new List<PlanArc>(1);
+            arcs.Add(MakeArc(FlightPhase.Capture, target.Id, t0, arrivalJd,
+                ship.PositionM, ship.VelocityMps, arrival.ParkingPosition,
+                arrival.ParkingVelocity));
 
             double limit = MaxAccelerationMps2 * ThrustMargin;
             double worst = 1.0;
@@ -945,225 +752,34 @@ namespace TimeToExplore.Simulation
                 worst = Math.Max(worst, arc.PeakThrustMps2 / limit);
             }
 
-            // Grow quickly towards the feasible duration; shrink gently, because
-            // the arc durations have a kinematic floor.
             double actualSeconds = (arrivalJd - t0) * SecondsPerDay;
             double requiredSeconds = Math.Max(totalSeconds, actualSeconds)
                                      * Math.Clamp(Math.Sqrt(worst), 0.85, 3.0);
 
-            var arrivalState = new ShipState(arrivalJd,
-                arrival.ParkingPosition, arrival.ParkingVelocity,
-                ship.DryMassKg, ship.PropellantKg);
-            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
+            var arrivalState = new ShipState(arrivalJd, arrival.ParkingPosition,
+                arrival.ParkingVelocity, ship.DryMassKg, ship.PropellantKg);
+            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship,
+                arrivalState);
 
             return new BuildResult(plan, requiredSeconds);
         }
 
         /// <summary>
-        /// Build the cheap arrival: a powered departure and cruise, then a
-        /// planetocentric hyperbola, an impulsive periapsis capture, a transfer
-        /// ellipse, and a circularisation burn. The capture's duration is fixed
-        /// by the target's gravity and the chosen radii, so the cruise absorbs
-        /// the requested time; a request shorter than the capture plus the
-        /// kinematic floor comes out longer rather than inventing a faster
-        /// conic. A trip that starts inside the target's sphere of influence has
-        /// no entry hyperbola and keeps the quintic capture.
-        /// </summary>
-        private BuildResult BuildConic(ShipState ship, BodyRuntime target, double totalSeconds)
-        {
-            double t0 = ship.JulianDate;
-            double targetSoi = SphereOfInfluence.RadiusM(target);
-
-            _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
-            bool insideTarget = Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi;
-            if (insideTarget) return BuildQuintic(ship, target, totalSeconds);
-
-            BodyRuntime departureBody = null;
-            double departureSoi = 0.0;
-            foreach (BodyRuntime planet in _model.Sun.Children)
-            {
-                if (planet == target || planet == target.Parent) continue;
-
-                double soi = SphereOfInfluence.RadiusM(planet);
-                if (!double.IsFinite(soi)) continue;
-
-                _model.ComputeState(planet, t0, out Vector3d planetPosition, out _);
-                if (Vector3d.Distance(ship.PositionM, planetPosition) < soi)
-                {
-                    departureBody = planet;
-                    departureSoi = soi;
-                    break;
-                }
-            }
-
-            Vector3d escapeDirection = Vector3d.Zero;
-            Vector3d provisionalExit = ship.PositionM;
-            double escapeBase = 0.0;
-            if (departureBody != null)
-            {
-                _model.ComputeState(departureBody, t0,
-                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
-
-                escapeDirection = (ship.VelocityMps - anchorVelocity).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = (ship.PositionM - anchorPosition).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = new Vector3d(1.0, 0.0, 0.0);
-
-                provisionalExit = anchorPosition + escapeDirection * departureSoi;
-                escapeBase = BaseDuration(Vector3d.Distance(ship.PositionM, provisionalExit));
-            }
-
-            double arrivalJd = t0 + totalSeconds / SecondsPerDay;
-            double captureSeconds = 0.0;
-            double escapeSeconds = 0.0;
-            double cruiseSeconds = 0.0;
-            TransferConic chain = null;
-
-            for (int pass = 0; pass < 5; pass++)
-            {
-                chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
-                if (!chain.IsValid)
-                    return InfeasiblePlan(ship, target, totalSeconds,
-                        "conic capture: " + chain.InvalidReason);
-
-                captureSeconds = chain.TotalSeconds;
-                double entryJd = arrivalJd - captureSeconds / SecondsPerDay;
-                _model.ComputeState(target, entryJd,
-                    out Vector3d targetAtEntry, out Vector3d targetAtEntryVelocity);
-                Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
-
-                double available = totalSeconds - captureSeconds;
-                if (departureBody != null)
-                {
-                    double cruiseBase = BaseDuration(
-                        Vector3d.Distance(provisionalExit, entryPosition));
-                    double scale = Math.Max(1.0, available / (escapeBase + cruiseBase));
-                    escapeSeconds = escapeBase * scale;
-                    cruiseSeconds = cruiseBase * scale;
-                }
-                else
-                {
-                    double cruiseBase = BaseDuration(
-                        Vector3d.Distance(ship.PositionM, entryPosition));
-                    double scale = Math.Max(1.0, available / cruiseBase);
-                    escapeSeconds = 0.0;
-                    cruiseSeconds = cruiseBase * scale;
-                }
-
-                double nextArrival = t0 + (escapeSeconds + cruiseSeconds + captureSeconds)
-                                        / SecondsPerDay;
-                if (Math.Abs(nextArrival - arrivalJd) <= 1e-8) break;
-                arrivalJd = nextArrival;
-            }
-
-            // Rebuild the shape at the settled arrival, so the plane and the
-            // approach azimuth belong to the date the plan actually reaches.
-            chain = BuildCaptureShape(ship, target, targetSoi, arrivalJd);
-            if (!chain.IsValid)
-                return InfeasiblePlan(ship, target, totalSeconds,
-                    "conic capture: " + chain.InvalidReason);
-
-            captureSeconds = chain.TotalSeconds;
-            double cruiseEndJd = arrivalJd - captureSeconds / SecondsPerDay;
-            double escapeEndJd = t0 + escapeSeconds / SecondsPerDay;
-            if (departureBody != null)
-                cruiseEndJd = Math.Max(cruiseEndJd, escapeEndJd + MinimumArcSeconds / SecondsPerDay);
-            cruiseSeconds = (cruiseEndJd - escapeEndJd) * SecondsPerDay;
-
-            Vector3d cruiseStartPosition = ship.PositionM;
-            Vector3d cruiseStartVelocity = ship.VelocityMps;
-            if (departureBody != null)
-            {
-                _model.ComputeState(departureBody, escapeEndJd,
-                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
-                cruiseStartPosition = anchorPosition + escapeDirection * departureSoi;
-                cruiseStartVelocity = anchorVelocity + escapeDirection * EscapeSpeedMps;
-            }
-
-            _model.ComputeState(target, cruiseEndJd,
-                out Vector3d targetAtEntryFinal, out Vector3d targetAtEntryVelocityFinal);
-            Vector3d entryPositionFinal = targetAtEntryFinal + chain.EntryLocalPositionM;
-            Vector3d entryVelocityFinal = targetAtEntryVelocityFinal + chain.EntryLocalVelocityMps;
-            Vector3d entryAcceleration = _model.ComputeAcceleration(target, cruiseEndJd)
-                                          + chain.EntryLocalAccelerationMps2;
-
-            var arcs = new List<PlanArc>(6);
-
-            if (departureBody != null && escapeSeconds > MinimumArcSeconds)
-            {
-                arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, escapeEndJd,
-                    ship.PositionM, ship.VelocityMps, cruiseStartPosition, cruiseStartVelocity));
-            }
-
-            if (cruiseSeconds > MinimumArcSeconds)
-            {
-                arcs.Add(MakeArc(FlightPhase.Cruise, target.Id, escapeEndJd, cruiseEndJd,
-                    cruiseStartPosition, cruiseStartVelocity,
-                    entryPositionFinal, entryVelocityFinal,
-                    endAcceleration: entryAcceleration));
-            }
-
-            double parkingEndJd;
-            ConicArc parking;
-            double finiteBurnAcceleration = 0.0;
-
-            if (ArrivalStyle == CaptureStyle.FiniteBurn
-                && FixedBurnAccelerationMps2 > 0.0)
-            {
-                if (!AppendHybridCapture(arcs, target, cruiseEndJd, chain, Vector3d.Zero,
-                        out parkingEndJd, out parking, out string reason,
-                        out finiteBurnAcceleration))
-                {
-                    return InfeasiblePlan(ship, target, totalSeconds,
-                        "hybrid capture: " + reason);
-                }
-            }
-            else
-            {
-                AppendConicCapture(arcs, target, cruiseEndJd, chain, Vector3d.Zero,
-                    out parkingEndJd, out parking);
-            }
-
-            double limit = MaxAccelerationMps2 * ThrustMargin;
-            double worst = 1.0;
-            foreach (PlanArc arc in arcs)
-            {
-                if (arc.PeakThrustMps2 <= 0.0) continue;
-                worst = Math.Max(worst, arc.PeakThrustMps2 / limit);
-            }
-
-            double actualSeconds = (parkingEndJd - t0) * SecondsPerDay;
-            double requiredSeconds = Math.Max(totalSeconds, actualSeconds)
-                                     * Math.Clamp(Math.Sqrt(worst), 0.85, 3.0);
-
-            Vector3d parkingPosition = parking.PositionAt(1.0);
-            Vector3d parkingVelocity = parking.VelocityAt(1.0);
-            var arrivalState = new ShipState(parkingEndJd,
-                parkingPosition, parkingVelocity, ship.DryMassKg, ship.PropellantKg);
-            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship, arrivalState);
-            plan.FiniteBurnAccelerationMps2 = finiteBurnAcceleration;
-            plan.CaptureEntryRadiusM = chain.EntryRadiusM;
-            plan.CaptureInboundSeconds = chain.InboundSeconds;
-
-            return new BuildResult(plan, requiredSeconds);
-        }
-
-        /// <summary>
-        /// Build the coast cruise: a quintic break out of the departure sphere
-        /// of influence retargeted so its endpoint velocity is the Lambert
-        /// departure velocity, a heliocentric zero-revolution conic coast about
-        /// the Sun, and the conic or hybrid capture chain. The capture geometry
-        /// sets the entry point and the coast's time of flight; the solver then
-        /// chooses the coast that lands there.
+        /// Build the reference coast the burn–coast–burn solve starts from: a
+        /// quintic break out of the departure sphere of influence retargeted so
+        /// its endpoint velocity is the Lambert departure velocity, a
+        /// heliocentric zero-revolution conic coast about the Sun, and the conic
+        /// or hybrid capture chain. The capture geometry sets the entry point and
+        /// the coast's time of flight; the solver then chooses the coast that
+        /// lands there. The burn–coast–burn build inserts its departure burn and
+        /// brake into this skeleton; it is never a plan the planner returns.
         ///
         /// The departure takes a share of the trip in proportion to its
         /// kinematic floor, because the Lambert break velocity is a real
         /// velocity change that a fixed few-hour escape cannot supply; whatever
         /// is left after the capture and the departure is coast. A trip time
         /// too short to leave the coast a phase comes out longer than asked
-        /// rather than inventing a faster conic, the same rule as the conic
-        /// arrival.
+        /// rather than inventing a faster conic.
         ///
         /// Only one branch exists: the prograde, short-way, zero-revolution
         /// transfer. A date whose transfer angle is 180° or more, or whose
@@ -1171,22 +787,11 @@ namespace TimeToExplore.Simulation
         /// infeasible trip time, reported with the geometry that rejected it,
         /// not a planner fault and not a long-way fallback.
         /// </summary>
-        private BuildResult BuildCoast(ShipState ship, BodyRuntime target, double totalSeconds,
-            bool fast = false, double? entryRadiusM = null, bool probe = false)
+        private BuildResult BuildCoastSkeleton(ShipState ship, BodyRuntime target,
+            double totalSeconds, double entryRadiusM, bool fast, bool probe)
         {
             bool cheap = fast || probe;
             double t0 = ship.JulianDate;
-            double targetSoi = SphereOfInfluence.RadiusM(target);
-
-            // The coast has no brake, so it enters the target's sphere of
-            // influence where the heliocentric coast ends. The burn–coast–burn
-            // passes its own floor entry radius here so its reference coast lands
-            // on the same entry state; the coast profile itself never does.
-            double captureEntryRadius = entryRadiusM ?? targetSoi;
-
-            _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
-            bool insideTarget = Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi;
-            if (insideTarget) return BuildQuintic(ship, target, totalSeconds);
 
             BodyRuntime departureBody = null;
             double departureSoi = 0.0;
@@ -1238,7 +843,7 @@ namespace TimeToExplore.Simulation
             // which a fixed few-hour escape cannot supply.
             for (int pass = 0; pass < 5; pass++)
             {
-                chain = BuildCaptureShape(ship, target, captureEntryRadius, arrivalJd);
+                chain = BuildCaptureShape(ship, target, entryRadiusM, arrivalJd);
                 if (!chain.IsValid)
                     return InfeasiblePlan(ship, target, totalSeconds,
                         "conic capture: " + chain.InvalidReason);
@@ -1273,7 +878,7 @@ namespace TimeToExplore.Simulation
 
             // Rebuild the shape at the settled arrival, so the plane and the
             // approach azimuth belong to the date the plan actually reaches.
-            chain = BuildCaptureShape(ship, target, captureEntryRadius, arrivalJd);
+            chain = BuildCaptureShape(ship, target, entryRadiusM, arrivalJd);
             if (!chain.IsValid)
                 return InfeasiblePlan(ship, target, totalSeconds,
                     "conic capture: " + chain.InvalidReason);
@@ -1389,11 +994,11 @@ namespace TimeToExplore.Simulation
         private static string CoastReason(LambertSolution coast) =>
             $"coast: no prograde short-way Lambert transfer at this trip time " +
             $"(transfer angle {coast.TransferAngleRad * 180.0 / Math.PI:F1} deg); " +
-            $"the coast needs a transfer short of 180 deg";
+            $"the coast needs a prograde transfer short of 180 deg";
 
         /// <summary>
-        /// Build the burn–coast–burn cruise: the coast skeleton of
-        /// <see cref="BuildCoast"/> with the two finite burns inserted. The
+        /// Build the burn–coast–burn profile: the reference coast of
+        /// <see cref="BuildCoastSkeleton"/> with the two finite burns inserted. The
         /// departure burn starts on the departure body's clearance sphere and the
         /// brake ends on the capture chain's entry state; the brake is placed by
         /// integrating it **backwards** from the entry and the departure burn is
@@ -1444,11 +1049,7 @@ namespace TimeToExplore.Simulation
             int outerPassesLimit = DefaultOuterPasses)
         {
             double acceleration = FixedBurnAccelerationMps2;
-            if (!(acceleration > 0.0))
-                return BuildCoast(ship, target, totalSeconds, fast, null, probe);
-
             double t0 = ship.JulianDate;
-            double targetSoi = SphereOfInfluence.RadiusM(target);
             bool cheap = fast || probe;
             int burnSamples = fast ? FastProbeBurnSamples
                 : probe ? ProbeDepartureSamples
@@ -1470,10 +1071,6 @@ namespace TimeToExplore.Simulation
             // exists to protect a certified fixed-duration answer.
             int solveSamples = probe ? ProbeDepartureSamples : PinnedDepartureSamples;
             int fallbackSamples = cheap ? 0 : burnSamples;
-
-            _model.ComputeState(target, t0, out Vector3d targetAtDeparture, out _);
-            if (Vector3d.Distance(ship.PositionM, targetAtDeparture) < targetSoi)
-                return BuildQuintic(ship, target, totalSeconds);
 
             // The arrival endpoint is the band's floor, raised to the radius the
             // chain captures into when the floor is deeper than it. The capture
@@ -1512,13 +1109,12 @@ namespace TimeToExplore.Simulation
                           $"(floor), chain entry {arrivalRadius / 1000.0:F0} km, " +
                           $"ceiling {arrivalBand.CeilingRadiusM / 1000.0:F0} km");
 
-            // The coast skeleton supplies the capture chain, the handover the
+            // The reference coast supplies the capture chain, the handover the
             // brake spends, and a first guess at the outbound direction and the
-            // burn's size. It is built at the floor entry radius too, so its
-            // timing and its handover are the ones the burn–coast–burn flies; the
-            // coast profile itself keeps the sphere of influence.
-            BuildResult reference = BuildCoast(ship, target, totalSeconds, cheap,
-                arrivalRadius, probe);
+            // burn's size. It is built at the floor entry radius, so its timing
+            // and its handover are the ones the profile flies.
+            BuildResult reference = BuildCoastSkeleton(ship, target, totalSeconds,
+                arrivalRadius, cheap, probe);
             if (!string.IsNullOrEmpty(reference.Plan.InfeasibleReason))
             {
                 return InfeasiblePlan(ship, target, totalSeconds,

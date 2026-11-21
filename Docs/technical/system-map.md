@@ -291,7 +291,7 @@ The details screen footer splits **Go To** into two steps:
 
 The preview draws through the existing `TrajectoryLine`: one coloured line per
 arc by path type — gold quintic, blue dashed conic, red fixed burn, with
-same-type runs shaded — the orange flip marker and the green arrival marker, and
+same-type runs shaded — the burn markers and the green arrival marker, and
 a bottom-left **route legend** that lists the arc types while the route is on
 screen. The
 quintic arcs are already smooth curves; at map zoom they read as the route the

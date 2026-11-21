@@ -27,9 +27,9 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheDefaultArrivalStyleIsStillTheQuinticCapture()
+        public void TheDefaultArrivalStyleIsTheConicCapture()
         {
-            Assert.That(_planner.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
+            Assert.That(_planner.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
         }
 
         [Test]
@@ -66,8 +66,12 @@ namespace TimeToExplore.Tests.EditMode
                 "1 g is clamped to the drive's thrust margin");
 
             _planner.BurnLevelG = -1.0;
-            Assert.That(_planner.BurnLevelG, Is.EqualTo(0.0));
-            Assert.That(_planner.FixedBurnAccelerationMps2, Is.EqualTo(0.0));
+            Assert.That(_planner.BurnLevelG,
+                Is.EqualTo(TripPlanner.MinimumBurnLevelG));
+            Assert.That(_planner.FixedBurnAccelerationMps2,
+                Is.EqualTo(TripPlanner.MinimumBurnLevelG
+                           * TripPlanner.StandardGravityMps2).Within(1e-12),
+                "the profile always has two real burns");
         }
 
         [Test]
@@ -101,13 +105,14 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(plan.IsFeasible, Is.True, "the plan exceeds the design acceleration");
             Assert.That(plan.PeakThrustMps2, Is.LessThanOrEqualTo(10.0 * 1.000001));
-            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
             Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
-            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
             Assert.That(plan.Arcs[0].ReferenceBodyId, Is.EqualTo("earth"));
-            Assert.That(plan.Arcs[2].ReferenceBodyId, Is.EqualTo("mars"));
-            Assert.That(plan.FlightTimeDays, Is.InRange(2.0, 10.0));
+            Assert.That(plan.Arcs[plan.Arcs.Count - 1].ReferenceBodyId,
+                Is.EqualTo("mars"));
+            Assert.That(plan.FlightTimeDays, Is.InRange(2.0, 15.0));
             Assert.That(plan.DeltaVMps, Is.GreaterThan(0.0));
         }
 
@@ -133,11 +138,11 @@ namespace TimeToExplore.Tests.EditMode
                 out Vector3d marsPosition, out Vector3d marsVelocity);
             Vector3d relativePosition = plan.ArrivalState.PositionM - marsPosition;
             Vector3d relativeVelocity = plan.ArrivalState.VelocityMps - marsVelocity;
-            double radius = ParkingOrbit.RadiusM(mars);
+            double radius = ParkingOrbit.ConicRadiusM(mars);
 
             Assert.That(relativePosition.Magnitude, Is.EqualTo(radius).Within(1.0));
             Assert.That(relativeVelocity.Magnitude,
-                Is.EqualTo(ParkingOrbit.SpeedMps(mars)).Within(1e-3));
+                Is.EqualTo(TwoBody.CircularSpeedMps(mars.Gm, radius)).Within(1e-3));
             Assert.That(TwoBody.Eccentricity(relativePosition, relativeVelocity, mars.Gm),
                 Is.LessThan(1e-9));
             Assert.That(Math.Abs(Vector3d.Dot(relativePosition, mars.PoleEcliptic)),
@@ -158,9 +163,10 @@ namespace TimeToExplore.Tests.EditMode
 
                 Assert.That(left.EndJulianDate, Is.EqualTo(right.StartJulianDate),
                     $"seam {i} is a time gap");
-                MathAssert.AreClose(left.Path.PositionAt(1.0), right.Path.PositionAt(0.0), 1.0);
-                MathAssert.AreClose(left.Path.VelocityAt(1.0), right.Path.VelocityAt(0.0), 1e-3);
-                MathAssert.AreClose(left.Path.AccelerationAt(1.0), right.Path.AccelerationAt(0.0), 1e-6);
+                MathAssert.AreClose(left.Path.PositionAt(1.0), right.Path.PositionAt(0.0),
+                    1_000.0);
+                MathAssert.AreClose(left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps,
+                    right.Path.VelocityAt(0.0), 1.0);
             }
         }
 
@@ -190,20 +196,19 @@ namespace TimeToExplore.Tests.EditMode
 
             TestContext.WriteLine(plan.ToString());
             Assert.That(plan.IsFeasible, Is.True);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
-            Assert.That(plan.FlightTimeDays, Is.InRange(1.0, 10.0));
+            Assert.That(plan.Arcs.Count, Is.InRange(7, 8),
+                "the approach leg depends on whether the certified floor's brake starts inside the ceiling");
+            Assert.That(plan.FlightTimeDays, Is.InRange(2.0, 30.0));
             Assert.That(plan.MinimumClearanceM, Is.GreaterThan(0.0),
                 "the reference path does not pass through a body");
         }
 
         [Test]
-        public void PlanToJupiterParksAboveTheGravityCeiling()
+        public void PlanToJupiterParksOnTheConicRadius()
         {
-            // Jupiter's surface-radius parking orbit would sit at 19.6 m/s² --
-            // twice the drive -- and no quintic capture arc can be flown there
-            // however long it is given, because the curve must arrive with that
-            // acceleration. The parking policy therefore lifts the orbit until
-            // its gravity is 40% of the drive. See the navigation document.
+            // The conic capture has no gravity ceiling: the impulsive periapsis
+            // burn can fly a deep well, so Jupiter parks at the conic radius
+            // rather than at the quintic capture's lifted orbit.
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             TrajectoryPlan plan = _planner.Plan(ship, "jupiter");
 
@@ -211,18 +216,14 @@ namespace TimeToExplore.Tests.EditMode
             foreach (PlanArc arc in plan.Arcs) TestContext.WriteLine("  " + arc);
 
             BodyRuntime jupiter = _model.Get("jupiter");
-            double parkingRadius = ParkingOrbit.RadiusM(jupiter, _planner.MaxAccelerationMps2);
-            double parkingGravity = jupiter.Gm / (parkingRadius * parkingRadius);
+            double parkingRadius = ParkingOrbit.ConicRadiusM(jupiter);
 
-            Assert.That(plan.IsFeasible, Is.True, "Jupiter must be reachable by the single arc");
+            Assert.That(plan.IsFeasible, Is.True, "Jupiter must be reachable");
             Assert.That(plan.PeakThrustMps2, Is.LessThanOrEqualTo(10.0 * 1.000001));
-            Assert.That(parkingRadius, Is.GreaterThan(jupiter.RadiusM * 2.0),
-                "the orbit is pushed well clear of the surface");
-            Assert.That(parkingGravity, Is.LessThanOrEqualTo(
-                ParkingOrbit.GravityFractionOfMaxAcceleration * 10.0 * (1.0 + 1e-9)));
-            Assert.That(parkingRadius, Is.EqualTo(177_965_000.0).Within(100_000.0),
-                "Jupiter parks at 2.5 radii, 177,965 km");
-            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
+            Assert.That(parkingRadius, Is.LessThan(
+                ParkingOrbit.RadiusM(jupiter, _planner.MaxAccelerationMps2)),
+                "the conic orbit is below the quintic gravity ceiling");
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
         }
 
         [Test]
@@ -292,7 +293,8 @@ namespace TimeToExplore.Tests.EditMode
                 "more time means a gentler burn");
             Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps),
                 "more time also means less delta-v");
-            Assert.That(slower.Arcs.Count, Is.EqualTo(fastest.Arcs.Count));
+            Assert.That(slower.Arcs.Count, Is.GreaterThanOrEqualTo(fastest.Arcs.Count),
+                "a slower plan may add the planetocentric approach leg");
         }
 
         [Test]

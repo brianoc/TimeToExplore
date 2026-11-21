@@ -195,7 +195,6 @@ namespace TimeToExplore.Tests.EditMode
             // The planner refuses the trip at that target with the same reason,
             // rather than building a handover with no band. The check runs before
             // the coast skeleton, so this costs one cheap build.
-            _planner.CruiseStyle = CruiseStyle.BurnCoastBurn;
             _planner.ArrivalStyle = CaptureStyle.Conic;
             _planner.BurnLevelG = 1.0;
             TrajectoryPlan plan = _planner.PlanAtDuration(

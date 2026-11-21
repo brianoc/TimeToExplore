@@ -63,44 +63,32 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void ARealQuinticPlanShadesItsThreeQuinticArcs()
-        {
-            TrajectoryPlan plan = BuildPlan(CaptureStyle.Quintic);
-
-            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
-            foreach (PlanArc arc in plan.Arcs)
-                Assert.That(RouteColours.KindOf(arc), Is.EqualTo(RouteArcKind.Quintic));
-
-            Color first = RouteColours.For(plan.Arcs, 0).Colour;
-            Color second = RouteColours.For(plan.Arcs, 1).Colour;
-            Color third = RouteColours.For(plan.Arcs, 2).Colour;
-
-            Assert.That(second, Is.Not.EqualTo(first));
-            Assert.That(third, Is.Not.EqualTo(first));
-            Assert.That(third, Is.Not.EqualTo(second));
-            AssertSameHue(first, second);
-            AssertSameHue(first, third);
-        }
-
-        [Test]
-        public void ARealConicPlanShadesTheThreeConicsAfterTheTwoQuintics()
+        public void TheProfileConicPlanShadesItsConicRunsAroundItsBurns()
         {
             TrajectoryPlan plan = BuildPlan(CaptureStyle.Conic);
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
 
             Assert.That(RouteColours.RunIndex(plan.Arcs, 0), Is.EqualTo(0));
-            Assert.That(RouteColours.RunIndex(plan.Arcs, 1), Is.EqualTo(1),
-                "the cruise is the second quintic in a row");
+            Assert.That(RouteColours.RunIndex(plan.Arcs, 1), Is.EqualTo(0),
+                "a fixed burn starts its own run");
             Assert.That(RouteColours.RunIndex(plan.Arcs, 2), Is.EqualTo(0),
-                "the coast starts a new run");
-            Assert.That(RouteColours.RunIndex(plan.Arcs, 3), Is.EqualTo(1));
-            Assert.That(RouteColours.RunIndex(plan.Arcs, 4), Is.EqualTo(2));
+                "the heliocentric coast starts a new conic run");
+            Assert.That(RouteColours.RunIndex(plan.Arcs, 3), Is.EqualTo(0),
+                "the brake starts its own run");
+            Assert.That(RouteColours.RunIndex(plan.Arcs, 4), Is.EqualTo(0),
+                "the inbound coast restarts the conic run after the brake");
+            Assert.That(RouteColours.RunIndex(plan.Arcs, 5), Is.EqualTo(1));
+            Assert.That(RouteColours.RunIndex(plan.Arcs, 6), Is.EqualTo(2));
 
-            for (int i = 2; i < 5; i++)
+            for (int i = 2; i < 7; i++)
+            {
+                if (i == 3) continue;
                 Assert.That(RouteColours.KindOf(plan.Arcs[i]), Is.EqualTo(RouteArcKind.Conic));
+            }
 
-            Color coast = RouteColours.For(plan.Arcs, 2).Colour;
-            Color transfer = RouteColours.For(plan.Arcs, 3).Colour;
-            Color parking = RouteColours.For(plan.Arcs, 4).Colour;
+            Color coast = RouteColours.For(plan.Arcs, 4).Colour;
+            Color transfer = RouteColours.For(plan.Arcs, 5).Colour;
+            Color parking = RouteColours.For(plan.Arcs, 6).Colour;
 
             Assert.That(transfer, Is.Not.EqualTo(coast));
             Assert.That(parking, Is.Not.EqualTo(coast));
@@ -110,30 +98,37 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheHybridStartsANewConicRunAfterItsBurn()
+        public void TheHybridCaptureStartsANewConicRunAfterItsBurn()
         {
             TrajectoryPlan plan = BuildPlan(CaptureStyle.FiniteBurn);
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
 
-            int burn = -1;
+            int burns = 0;
             int coasts = 0;
             for (int i = 0; i < plan.Arcs.Count; i++)
             {
-                if (RouteColours.KindOf(plan.Arcs[i]) == RouteArcKind.FiniteBurn) burn = i;
-                if (RouteColours.KindOf(plan.Arcs[i]) == RouteArcKind.Conic) coasts++;
+                RouteArcKind kind = RouteColours.KindOf(plan.Arcs[i]);
+                if (kind == RouteArcKind.FiniteBurn)
+                {
+                    burns++;
+                    Assert.That(RouteColours.For(plan.Arcs, i).Colour,
+                        Is.EqualTo(RouteColours.FixedBurn));
+                    Assert.That(RouteColours.For(plan.Arcs, i).Dashed, Is.False);
+                }
+                if (kind == RouteArcKind.Conic) coasts++;
             }
 
-            Assert.That(burn, Is.EqualTo(3), "the fixed burn is the fourth arc");
-            Assert.That(coasts, Is.EqualTo(3), "inbound coast, transfer coast, parking");
-            Assert.That(RouteColours.For(plan.Arcs, burn).Colour,
-                Is.EqualTo(RouteColours.FixedBurn));
-            Assert.That(RouteColours.For(plan.Arcs, burn).Dashed, Is.False);
+            Assert.That(burns, Is.EqualTo(3),
+                "departure burn, brake, and hybrid capture burn");
+            Assert.That(coasts, Is.EqualTo(4),
+                "heliocentric coast, inbound, transfer, parking");
 
-            Color inbound = RouteColours.For(plan.Arcs, 2).Colour;
-            Color transfer = RouteColours.For(plan.Arcs, 4).Colour;
-            Color parking = RouteColours.For(plan.Arcs, 5).Colour;
+            Color inbound = RouteColours.For(plan.Arcs, 4).Colour;
+            Color transfer = RouteColours.For(plan.Arcs, 6).Colour;
+            Color parking = RouteColours.For(plan.Arcs, 7).Colour;
 
             Assert.That(inbound, Is.EqualTo(transfer),
-                "the burn ends the run, so the transfer coast restarts at the base shade");
+                "the capture burn ends the run, so the transfer restarts at the base shade");
             Assert.That(parking, Is.Not.EqualTo(transfer),
                 "the parking coast is the second conic in the new run");
             AssertSameHue(inbound, parking);

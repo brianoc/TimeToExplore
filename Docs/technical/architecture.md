@@ -110,10 +110,10 @@ graph and reads the `.asmdef` files as the source of truth. See
      selects the body behind it.
 6. **Plot route** calls `FlightSession.PlotAsync`, which solves the floor
    plan and the trip-time window with `TripPlanner.Plan` on a background
-   worker and draws the preview when it is ready; the **`PROFILE`** and
-   **`ARRIVAL`** rows rebuild it against the chosen cruise profile, capture
-   style, or burn level on the same worker (`FlightSession.SetArrivalStyle`
-   etc.), and its **trip-time slider** requests a retime with
+   worker and draws the preview when it is ready; the **`ARRIVAL`** row rebuilds
+   it against the chosen capture style or burn level on the same worker
+   (`FlightSession.SetArrivalStyle` etc.), and its **trip-time slider** requests
+   a retime with
    `TripPlanner.PlanAtDuration` inside that profile's window on the worker as
    well; the HUD publishes finished plans on the main thread, and **Begin
    flight** replans and hands the ship to the session. On arrival the plan
@@ -161,19 +161,18 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
 | `HandoverBand` | `Scripts/Simulation/HandoverBand.cs` | The handover floor (`0.4` of the drive, clamped to the body clearance), the `1.02 × SOI` ceiling, the two endpoints, and the empty-band reason |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (the burn–coast–burn profile with two capture styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; builds route plans synchronously or on the background worker — `PlotAsync`, style/cruise/burn-level rebuilds, the slider's re-time — with its own planner and field, publishing finished plans on the main thread; coasts an idle ship; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes the profile's slowest accepted trip; builds route plans synchronously or on the background worker — `PlotAsync`, style/burn-level rebuilds, the slider's re-time — with its own planner and field, publishing finished plans on the main thread; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
-The planner crosses in one of three profiles: the powered quintic (`Powered`, the
-default), the zero-revolution prograde Lambert conic chosen by
-`LambertSolver.SolveShortWay` (`Coast`), or the same coast bookended by a
-prograde departure finite burn and a brake (`BurnCoastBurn`). The burn–coast–burn
-break ends on the departure handover band's ceiling (`1.02 × SOI`) at the local
-escape speed along the escape ray, and the departure burn starts there and holds the
-ray; its angles, its duration, and the coast's start are solved forward, while
-the brake is still built backwards from the capture chain's entry state with
+The planner crosses on the **burn–coast–burn** profile: a zero-revolution
+prograde Lambert conic chosen by `LambertSolver.SolveShortWay`, bookended by a
+prograde departure finite burn and a brake. The break ends on the departure
+handover band's ceiling (`1.02 × SOI`) at the local escape speed along the
+escape ray, and the departure burn starts there and holds the ray; its angles,
+its duration, and the coast's start are solved forward, while the brake is still
+built backwards from the capture chain's entry state with
 `FiniteBurnArc.SimulateBackward`. Every seam is continuous and the arrival is
 exact; the brake's thrust direction is the change the chain needs, not the
 instantaneous velocity. Its fixed burns are integrated through the **summed
@@ -184,10 +183,10 @@ frame rather than the physics. The reference-related attitude is unchanged —
 prograde and retrograde follow the body-relative velocity, and the pinned
 departure burn and the brake hold fixed inertial directions. The floor search's
 probes keep the cheap two-body burn; the plan that is reported and flown is the
-full-field build. `CruiseStyle` and `CaptureStyle` are independent: the
-powered profile can pair with any of the three arrival styles, while a coasting
-profile builds the conic or hybrid capture, because a quintic capture cannot be
-fed by a coast.
+full-field build. `CaptureStyle` chooses the capture: the conic chain (default)
+or the hybrid fixed-thrust chain. A quintic capture survives only for a trip
+that starts inside the target's sphere of influence, where there is no crossing
+to plan.
 
 Gateway→Mars and Mars→Earth are both exercised end to end by the suite, and the
 same Mars trip is flown through the scene's frame loop.
@@ -214,7 +213,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `LineCameraClip` | `Scripts/Rendering/LineCameraClip.cs` | Clips a billboarded polyline to the longest run in front of the camera's near plane, so a segment that crosses behind the camera cannot project into a screen-filling polygon |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline clipped to the camera plane, with a per-vertex width curve from the shared rule; never sized from the orbit radius |
 | `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
-| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, flip, arrival, and target-arrival ghost markers |
+| `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
 | `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |

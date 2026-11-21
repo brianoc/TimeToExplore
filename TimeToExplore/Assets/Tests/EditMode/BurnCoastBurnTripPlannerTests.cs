@@ -17,7 +17,8 @@ namespace TimeToExplore.Tests.EditMode
     /// velocity. The coast ends on the target's handover ceiling and the approach
     /// falls from there to the brake's start, so a Sun-only conic no longer
     /// describes the deep part of the final approach; the brake spends the rest of
-    /// the handover. The torch cruise stays the default.
+    /// the handover. The profile is the planner's only route; a trip that starts
+    /// inside the target's sphere of influence is a single quintic capture.
     /// </summary>
     [Category("flight")]
     public class BurnCoastBurnTripPlannerTests
@@ -33,7 +34,6 @@ namespace TimeToExplore.Tests.EditMode
         private GravityField _gravity;
         private ShipIntegrator _integrator;
         private TripPlanner _planner;
-        private TripPlanner _coastPlanner;
 
         [SetUp]
         public void SetUp()
@@ -43,22 +43,12 @@ namespace TimeToExplore.Tests.EditMode
             _integrator = new ShipIntegrator(_gravity);
             _planner = new TripPlanner(_model, _gravity)
             {
-                CruiseStyle = CruiseStyle.BurnCoastBurn,
-                ArrivalStyle = CaptureStyle.Conic
-            };
-            _coastPlanner = new TripPlanner(_model, _gravity)
-            {
-                CruiseStyle = CruiseStyle.Coast,
                 ArrivalStyle = CaptureStyle.Conic
             };
         }
 
         private TrajectoryPlan PlanTo(string targetId, double days = TripDays) =>
             _planner.PlanAtDuration(FlightFixture.ShipAt(_model, "gateway"), targetId,
-                days * JulianDate.SecondsPerDay);
-
-        private TrajectoryPlan CoastTo(string targetId, double days = TripDays) =>
-            _coastPlanner.PlanAtDuration(FlightFixture.ShipAt(_model, "gateway"), targetId,
                 days * JulianDate.SecondsPerDay);
 
         private static void PrintPlan(TrajectoryPlan plan)
@@ -440,65 +430,6 @@ namespace TimeToExplore.Tests.EditMode
                 "and the coast runs straight to the brake's start");
         }
 
-        /// <summary>
-        /// The coast has no brake to hand over, so it keeps its sphere-of-
-        /// influence entry and its anchors: at the epoch from Gateway to Mars at
-        /// 200 days the entry is the 577,241 km sphere and the fall is 1.3187
-        /// days. The burn–coast–burn enters at the floor instead — the split is
-        /// deliberate, not an omission.
-        /// </summary>
-        [Test]
-        public void TheCoastProfileKeepsItsSphereOfInfluenceEntry()
-        {
-            TrajectoryPlan coast = CoastTo("mars", 200.0);
-            Assert.That(coast.IsFeasible, Is.True, coast.InfeasibleReason);
-
-            BodyRuntime mars = _model.Get("mars");
-            double soi = SphereOfInfluence.RadiusM(mars);
-            TestContext.WriteLine($"coast entry {coast.CaptureEntryRadiusM / 1000.0:F1} km " +
-                                  $"(SOI {soi / 1000.0:F1} km), fall " +
-                                  $"{coast.CaptureInboundSeconds / 86400.0:F4} d");
-
-            Assert.That(coast.CaptureEntryRadiusM, Is.EqualTo(soi).Within(1.0),
-                "the coast enters at the sphere of influence");
-            Assert.That(coast.CaptureEntryRadiusM,
-                Is.GreaterThan(ParkingOrbit.ConicRadiusM(mars) * 10.0),
-                "which is far above the parking radius");
-            Assert.That(coast.CaptureInboundSeconds,
-                Is.EqualTo(1.3187 * JulianDate.SecondsPerDay).Within(60.0),
-                "measured: the 1.3187-day fall is unchanged");
-            Assert.That(coast.Arcs.Count, Is.EqualTo(5));
-        }
-
-        [Test]
-        public void TheBrakeSpendsTheHandoverTheCoastPlanWouldHaveImpulsed()
-        {
-            TrajectoryPlan plan = PlanTo("mars");
-            TrajectoryPlan coast = CoastTo("mars");
-
-            PlanArc brake = null;
-            foreach (PlanArc arc in plan.Arcs)
-                if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn) brake = arc;
-            Assert.That(brake, Is.Not.Null);
-            PlanArc coastHandover = null;
-            foreach (PlanArc arc in coast.Arcs)
-            {
-                if (arc.Phase == FlightPhase.Coast && arc.ReferenceBodyId == "mars"
-                    && arc.EntryImpulseMps > 0.0)
-                {
-                    coastHandover = arc;
-                    break;
-                }
-            }
-
-            Assert.That(coastHandover, Is.Not.Null);
-            TestContext.WriteLine($"brake {brake.DeltaVMps / 1000.0:F2} km/s against the " +
-                                  $"coast handover {coastHandover.EntryImpulseMps / 1000.0:F2} km/s");
-
-            Assert.That(brake.DeltaVMps,
-                Is.EqualTo(coastHandover.EntryImpulseMps).Within(0.05 * brake.DeltaVMps));
-        }
-
         [Test]
         public void TheChainIsContinuousEverywhereItIsNotImpulsive()
         {
@@ -603,30 +534,6 @@ namespace TimeToExplore.Tests.EditMode
             AssertOrbitAround(mars, ship, radius, 0.03, 0.03);
         }
 
-        [Test]
-        public void ZeroLevelIsTheCoastPlan()
-        {
-            _planner.BurnLevelG = 0.0;
-            TrajectoryPlan plan = PlanTo("mars");
-            TrajectoryPlan coast = CoastTo("mars");
-            PrintPlan(plan);
-
-            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
-            Assert.That(plan.FiniteBurnAccelerationMps2, Is.EqualTo(0.0));
-            Assert.That(plan.FiniteBurnDeltaVMps, Is.EqualTo(0.0));
-            Assert.That(plan.Arcs.Count, Is.EqualTo(coast.Arcs.Count));
-            Assert.That(plan.ArrivalJulianDate,
-                Is.EqualTo(coast.ArrivalJulianDate).Within(1e-9));
-            Assert.That(plan.ImpulseDeltaVMps,
-                Is.EqualTo(coast.ImpulseDeltaVMps).Within(1e-6));
-
-            for (int i = 0; i < plan.Arcs.Count; i++)
-            {
-                Assert.That(plan.Arcs[i].Phase, Is.EqualTo(coast.Arcs[i].Phase));
-                Assert.That(plan.Arcs[i].IsFiniteBurn, Is.False);
-            }
-        }
-
         /// <summary>
         /// The slow crossing now closes. With the capture entering at the handover
         /// floor, the 1.32-day fall is minutes and the coast absorbs it, so the
@@ -681,7 +588,6 @@ namespace TimeToExplore.Tests.EditMode
         {
             var planner = new TripPlanner(_model, _gravity)
             {
-                CruiseStyle = CruiseStyle.BurnCoastBurn,
                 ArrivalStyle = CaptureStyle.FiniteBurn,
                 BurnLevelG = 0.3
             };
@@ -722,18 +628,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(inbound, Is.Not.Null);
             Assert.That(inbound.EntryImpulseMps, Is.EqualTo(0.0),
                 "the brake hands the capture chain its entry state");
-        }
-
-        [Test]
-        public void ThePoweredCruiseIsStillTheDefault()
-        {
-            var planner = new TripPlanner(_model, _gravity);
-            Assert.That(planner.CruiseStyle, Is.EqualTo(CruiseStyle.Powered));
-
-            TrajectoryPlan plan = planner.Plan(FlightFixture.ShipAt(_model, "gateway"),
-                "mars");
-            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
-            Assert.That(plan.FiniteBurnDeltaVMps, Is.EqualTo(0.0));
         }
 
         [Test]
@@ -960,7 +854,6 @@ namespace TimeToExplore.Tests.EditMode
             // A different field is a different plan.
             var sunPlanner = new TripPlanner(_model, sunOnly)
             {
-                CruiseStyle = CruiseStyle.BurnCoastBurn,
                 ArrivalStyle = CaptureStyle.Conic,
                 BurnLevelG = _planner.BurnLevelG
             };
@@ -986,7 +879,6 @@ namespace TimeToExplore.Tests.EditMode
         {
             var planner = new TripPlanner(_model, _gravity)
             {
-                CruiseStyle = CruiseStyle.BurnCoastBurn,
                 ArrivalStyle = CaptureStyle.FiniteBurn,
                 BurnLevelG = 0.3
             };

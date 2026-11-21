@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -42,13 +43,16 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void NextBoundaryWalksTheArcChain()
         {
-            Assert.That(_plan.Arcs.Count, Is.EqualTo(3));
-            Assert.That(_plan.NextBoundaryJulianDate(_plan.DepartureJulianDate),
-                Is.EqualTo(_plan.Arcs[0].EndJulianDate));
-            Assert.That(_plan.NextBoundaryJulianDate(_plan.Arcs[0].EndJulianDate),
-                Is.EqualTo(_plan.Arcs[1].EndJulianDate));
-            Assert.That(_plan.NextBoundaryJulianDate(_plan.Arcs[1].EndJulianDate),
-                Is.EqualTo(_plan.Arcs[2].EndJulianDate));
+            Assert.That(_plan.Arcs.Count, Is.EqualTo(7));
+            for (int i = 0; i < _plan.Arcs.Count - 1; i++)
+            {
+                Assert.That(_plan.NextBoundaryJulianDate(_plan.Arcs[i].StartJulianDate),
+                    Is.EqualTo(_plan.Arcs[i].EndJulianDate),
+                    $"arc {i} ends at the next boundary");
+            }
+            Assert.That(_plan.NextBoundaryJulianDate(
+                    _plan.Arcs[_plan.Arcs.Count - 1].StartJulianDate),
+                Is.EqualTo(_plan.Arcs[_plan.Arcs.Count - 1].EndJulianDate));
         }
 
         [Test]
@@ -56,33 +60,6 @@ namespace TimeToExplore.Tests.EditMode
         {
             Assert.That(double.IsPositiveInfinity(
                 _plan.NextBoundaryJulianDate(_plan.ArrivalJulianDate + 1.0)), Is.True);
-        }
-
-        [Test]
-        public void TheFlipLiesBetweenDepartureAndArrival()
-        {
-            double flip = _plan.FindFlipJulianDate(_gravity);
-
-            TestContext.WriteLine($"flip at {JulianDate.Format(flip)}, " +
-                                  $"{(flip - _plan.DepartureJulianDate) * JulianDate.SecondsPerDay / 3600.0:F1} h in");
-
-            Assert.That(double.IsNaN(flip), Is.False, "a Mars plan accelerates then decelerates");
-            Assert.That(flip, Is.GreaterThan(_plan.DepartureJulianDate));
-            Assert.That(flip, Is.LessThan(_plan.ArrivalJulianDate));
-        }
-
-        [Test]
-        public void TheFlipIsWhereTheAlongTrackThrustChangesSign()
-        {
-            double flip = _plan.FindFlipJulianDate(_gravity);
-            const double tenMinutes = 600.0 / JulianDate.SecondsPerDay;
-
-            double before = AlongTrackThrust(_plan, flip - tenMinutes);
-            double after = AlongTrackThrust(_plan, flip + tenMinutes);
-
-            TestContext.WriteLine($"along-track thrust: {before:E3} then {after:E3}");
-            Assert.That(before, Is.GreaterThan(0.0));
-            Assert.That(after, Is.LessThan(0.0));
         }
 
         [Test]
@@ -178,7 +155,8 @@ namespace TimeToExplore.Tests.EditMode
                 if (arc.EntryImpulseMps > 0.0) impulses++;
             }
 
-            Assert.That(finite, Is.EqualTo(1));
+            Assert.That(finite, Is.EqualTo(3),
+                "the departure burn, the brake, and the hybrid capture burn");
             Assert.That(impulses, Is.EqualTo(2), "the trim and the circularisation");
             Assert.That(_fixedBurnPlan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
             Assert.That(_fixedBurnPlan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
@@ -187,13 +165,17 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void TheCoastSamplesPeriapsisMoreDenselyThanTheFarApproach()
         {
-            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
-            Assert.That(coast, Is.Not.Null);
+            var planner = new TripPlanner(_model, _gravity);
+            TrajectoryPlan slow = planner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "gateway"), "mars",
+                90.0 * JulianDate.SecondsPerDay);
+            PlanArc approach = slow.ArcForPhase(FlightPhase.Approach);
+            Assert.That(approach, Is.Not.Null);
 
-            double far = Vector3d.Distance(coast.Path.PositionAt(0.0),
-                coast.Path.PositionAt(0.01));
-            double near = Vector3d.Distance(coast.Path.PositionAt(0.99),
-                coast.Path.PositionAt(1.0));
+            double far = Vector3d.Distance(approach.Path.PositionAt(0.0),
+                approach.Path.PositionAt(0.01));
+            double near = Vector3d.Distance(approach.Path.PositionAt(0.99),
+                approach.Path.PositionAt(1.0));
 
             TestContext.WriteLine($"far chord {far / 1000.0:N0} km, " +
                                   $"periapsis chord {near / 1000.0:N0} km");
@@ -203,25 +185,12 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheConicFlipIsInThePoweredCruise()
-        {
-            double flip = _conicPlan.FindFlipJulianDate(_gravity);
-            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
-
-            TestContext.WriteLine($"flip at {JulianDate.Format(flip)}, " +
-                                  $"coast starts {JulianDate.Format(coast.StartJulianDate)}");
-
-            Assert.That(double.IsNaN(flip), Is.False);
-            Assert.That(flip, Is.LessThan(coast.StartJulianDate));
-            Assert.That(_conicPlan.PhaseAt(flip), Is.Not.EqualTo(FlightPhase.Coast),
-                "the flip is in a powered arc, not the coast");
-        }
-
-        [Test]
         public void TheConicBoundariesAreThePeriapsisAndTheCircularisation()
         {
-            PlanArc coast = _conicPlan.ArcForPhase(FlightPhase.Coast);
-            PlanArc capture = _conicPlan.ArcForPhase(FlightPhase.Capture);
+            PlanArc coast = _conicPlan.Arcs.First(arc =>
+                arc.Phase == FlightPhase.Coast && arc.ReferenceBodyId == "mars");
+            PlanArc capture = _conicPlan.Arcs.First(arc =>
+                arc.Phase == FlightPhase.Capture && arc.ReferenceBodyId == "mars");
             PlanArc parking = _conicPlan.ArcForPhase(FlightPhase.Parking);
 
             Assert.That(_conicPlan.NextBoundaryJulianDate(coast.StartJulianDate),
@@ -230,17 +199,6 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo(capture.EndJulianDate), "the circularisation is a boundary");
             Assert.That(_conicPlan.NextBoundaryJulianDate(parking.StartJulianDate),
                 Is.EqualTo(parking.EndJulianDate), "the arrival is a boundary");
-        }
-
-        private double AlongTrackThrust(TrajectoryPlan plan, double julianDate)
-        {
-            Vector3d position = plan.ReferencePositionAt(julianDate);
-            Vector3d velocity = plan.ReferenceVelocityAt(julianDate);
-            Vector3d required = plan.ReferenceAccelerationAt(julianDate);
-
-            _gravity.Prepare(position, julianDate);
-            Vector3d thrust = required - _gravity.AccelerationAt(position, julianDate);
-            return Vector3d.Dot(velocity, thrust);
         }
 
         /// <summary>

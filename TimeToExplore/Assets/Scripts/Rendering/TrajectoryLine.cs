@@ -9,8 +9,8 @@ namespace TimeToExplore.Rendering
     /// Draws a Go To plan in the ship-relative render frame. Every arc is its
     /// own line with its own colour from <see cref="RouteColours"/>: solid for
     /// a powered arc or a fixed-thrust burn, dashed for a coast. Burn markers
-    /// sit at each impulse or finite-burn start, with a marker at the flip and
-    /// at the arrival point. The path is sampled once per plan and re-projected
+    /// sit at each impulse or finite-burn start, with a marker at the arrival
+    /// point. The path is sampled once per plan and re-projected
     /// every frame, so it stays exact as the ship travels
     /// ([ADR-002](/decisions/adr-002-double-precision.md)).
     /// </summary>
@@ -39,12 +39,10 @@ namespace TimeToExplore.Rendering
 
         private float _unitsPerMeter = 1e-6f;
         private Texture2D _dashTexture;
-        private Transform _flipMarker;
         private Transform _arrivalMarker;
         private Transform _ghostMarker;
         private Transform[] _burnMarkers;
         private TrajectoryPlan _plan;
-        private Vector3d _flipPositionM;
         private Vector3d _arrivalPositionM;
         private Vector3d _ghostPositionM;
         private bool _hasGhost;
@@ -65,9 +63,6 @@ namespace TimeToExplore.Rendering
         /// <summary>The legend label of one arc line, for the HUD.</summary>
         public string ArcLabel(int index) =>
             index >= 0 && index < _activeLines.Count ? _activeLines[index].Label : null;
-
-        /// <summary>Render-space position of the flip marker, for a screen label.</summary>
-        public Vector3 FlipMarkerPosition => _flipMarker != null ? _flipMarker.position : Vector3.zero;
 
         /// <summary>Render-space position of the arrival marker, for a screen label.</summary>
         public Vector3 ArrivalMarkerPosition => _arrivalMarker != null ? _arrivalMarker.position : Vector3.zero;
@@ -95,13 +90,15 @@ namespace TimeToExplore.Rendering
             _unitsPerMeter = unitsPerMeter;
             _dashTexture = CreateDashTexture();
 
-            _flipMarker = CreateMarker("Flip", new Color(1f, 0.42f, 0.25f));
             _arrivalMarker = CreateMarker("Arrival", new Color(0.55f, 1f, 0.72f));
             _ghostMarker = CreateMarker("Arrival Ghost", new Color(0.62f, 0.78f, 1f));
 
             _burnMarkers = new[]
             {
-                CreateMarker("Periapsis Burn", new Color(1f, 0.96f, 0.85f)),
+                CreateMarker("Departure Burn", new Color(1f, 0.96f, 0.85f)),
+                CreateMarker("Brake", new Color(1f, 0.88f, 0.35f)),
+                CreateMarker("Capture Burn", new Color(1f, 0.80f, 0.55f)),
+                CreateMarker("Trim Burn", new Color(1f, 0.80f, 0.55f)),
                 CreateMarker("Circularise Burn", new Color(1f, 0.88f, 0.35f))
             };
 
@@ -153,19 +150,19 @@ namespace TimeToExplore.Rendering
         }
 
         /// <summary>Sample a plan into one coloured polyline per arc.</summary>
-        public void Show(TrajectoryPlan plan, IGravityField gravity) =>
-            Show(plan, gravity, default, false);
+        public void Show(TrajectoryPlan plan) =>
+            Show(plan, default, false);
 
         /// <summary>
         /// Sample a plan and mark where the target body will be on the arrival
         /// date. The ghost is the planet, not the ship's parking position, so
         /// the player sees where the route has to meet it.
         /// </summary>
-        public void Show(TrajectoryPlan plan, IGravityField gravity, Vector3d targetArrivalPositionM)
-            => Show(plan, gravity, targetArrivalPositionM, true);
+        public void Show(TrajectoryPlan plan, Vector3d targetArrivalPositionM)
+            => Show(plan, targetArrivalPositionM, true);
 
-        private void Show(TrajectoryPlan plan, IGravityField gravity,
-            Vector3d targetArrivalPositionM, bool showGhost)
+        private void Show(TrajectoryPlan plan, Vector3d targetArrivalPositionM,
+            bool showGhost)
         {
             _plan = plan;
             ClearArcLines();
@@ -195,17 +192,11 @@ namespace TimeToExplore.Rendering
                     _burnPositionsM.Add(arc.Path.PositionAt(0.0));
             }
 
-            double flip = plan.FindFlipJulianDate(gravity);
-            _flipPositionM = double.IsNaN(flip)
-                ? Vector3d.Zero
-                : plan.ReferencePositionAt(flip);
             _arrivalPositionM = plan.ArrivalState.PositionM;
 
             _ghostPositionM = targetArrivalPositionM;
             _hasGhost = showGhost;
 
-            bool hasFlip = !double.IsNaN(flip);
-            _flipMarker.gameObject.SetActive(hasFlip);
             _arrivalMarker.gameObject.SetActive(true);
             _ghostMarker.gameObject.SetActive(_hasGhost);
             for (int i = 0; i < _burnMarkers.Length; i++)
@@ -281,7 +272,6 @@ namespace TimeToExplore.Rendering
             _burnPositionsM.Clear();
             _hasGhost = false;
 
-            if (_flipMarker != null) _flipMarker.gameObject.SetActive(false);
             if (_arrivalMarker != null) _arrivalMarker.gameObject.SetActive(false);
             if (_ghostMarker != null) _ghostMarker.gameObject.SetActive(false);
             if (_burnMarkers != null)
@@ -335,7 +325,6 @@ namespace TimeToExplore.Rendering
                 }
             }
 
-            UpdateMarker(_flipMarker, _flipPositionM, shipPositionM, camera);
             UpdateMarker(_arrivalMarker, _arrivalPositionM, shipPositionM, camera);
             UpdateMarker(_ghostMarker, _ghostPositionM, shipPositionM, camera, 0.65f);
 

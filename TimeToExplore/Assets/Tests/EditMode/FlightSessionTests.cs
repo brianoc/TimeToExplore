@@ -60,10 +60,12 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
             Assert.That(plan.IsFeasible, Is.True);
             Assert.That(plan.TargetId, Is.EqualTo("mars"));
-            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
             Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
-            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Parking));
             Assert.That(_session.Phase, Is.EqualTo(FlightPhase.Departure));
 
             // Thrust is zero at the seam by construction, so measure it once the
@@ -102,51 +104,52 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void TheSessionArrivalStyleReachesThePlanner()
         {
-            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
-            _session.ArrivalStyle = CaptureStyle.Conic;
+            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
 
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
 
-            Assert.That(plan.Arcs.Count, Is.EqualTo(5));
-            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Coast));
-            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Parking));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Parking));
         }
 
         [Test]
         public void ChangingTheArrivalStyleRebuildsThePreviewAndLeavesTheShipStill()
         {
-            TrajectoryPlan quintic = _session.Plot("mars", _epoch);
-            double chosen = 2.0 * _session.PreviewMinimumSeconds;
-            _session.SetPreviewDuration(chosen);
+            TrajectoryPlan conic = _session.Plot("mars", _epoch);
             ShipState before = _session.State;
 
-            _session.SetArrivalStyle(CaptureStyle.Conic);
-            TrajectoryPlan conic = WaitForPublishedPreview();
+            _session.SetArrivalStyle(CaptureStyle.FiniteBurn);
+            TrajectoryPlan hybrid = WaitForPublishedPreview();
 
-            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_session.Preview, Is.SameAs(conic), "the rebuilt plan is published");
-            Assert.That(conic, Is.Not.SameAs(quintic), "the preview is rebuilt, not relabelled");
-            Assert.That(conic.TargetId, Is.EqualTo("mars"));
-            Assert.That(conic.Arcs.Any(arc => arc.Phase == FlightPhase.Coast), Is.True);
-            Assert.That(conic.Arcs.Any(arc => arc.Phase == FlightPhase.Parking), Is.True);
+            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
+            Assert.That(_session.Preview, Is.SameAs(hybrid), "the rebuilt plan is published");
+            Assert.That(hybrid, Is.Not.SameAs(conic), "the preview is rebuilt, not relabelled");
+            Assert.That(hybrid.TargetId, Is.EqualTo("mars"));
+            Assert.That(hybrid.Arcs.Any(arc => arc.Phase == FlightPhase.Coast), Is.True);
+            Assert.That(hybrid.Arcs.Any(arc => arc.Phase == FlightPhase.Parking), Is.True);
+            Assert.That(hybrid.Arcs.Any(arc => arc.IsFiniteBurn), Is.True);
             Assert.That(_session.PreviewMinimumSeconds, Is.GreaterThan(0.0));
             Assert.That(_session.PreviewMinimumSeconds,
                 Is.LessThanOrEqualTo(_session.PreviewDurationSeconds + 1e-3),
                 "the trip-time window is the new style's fastest plan");
-            Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(chosen).Within(1.0),
-                "a chosen flight time inside the new window is kept");
+            Assert.That(_session.PreviewDurationSeconds,
+                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1.0),
+                "the trip-time window resets to the new style's fastest plan");
             Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_session.State.JulianDate, Is.EqualTo(before.JulianDate));
             Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM), Is.Zero,
                 "changing the arrival style never moves the ship");
 
-            _session.SetArrivalStyle(CaptureStyle.Quintic);
+            _session.SetArrivalStyle(CaptureStyle.Conic);
             TrajectoryPlan back = WaitForPublishedPreview();
 
-            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
-            Assert.That(back.Arcs.Count, Is.EqualTo(3), "the quintic capture is back");
-            Assert.That(back.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
+            Assert.That(back.Arcs.Count, Is.EqualTo(7), "the conic capture is back");
+            Assert.That(back.Arcs[back.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Parking));
         }
 
         // --- The background preview planner ------------------------------------
@@ -178,7 +181,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(published.FlightTimeSeconds));
             Assert.That(_session.PreviewMaximumSeconds,
                 Is.GreaterThan(_session.PreviewMinimumSeconds),
-                "the window offers the powered scale's upper end");
+                "the window offers the profile's accepted upper end");
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_session.Plan, Is.Null, "plotting never starts a flight");
         }
@@ -230,15 +233,15 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void ArrivalStyleWithoutAPreviewOnlySetsThePlanner()
         {
-            Assert.That(_session.SetArrivalStyle(CaptureStyle.Conic), Is.Null);
-            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
+            Assert.That(_session.SetArrivalStyle(CaptureStyle.FiniteBurn), Is.Null);
+            Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
 
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
-            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Coast));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
 
             // A live flight keeps the plan it was begun with.
             TrajectoryPlan live = _session.Plan;
-            _session.SetArrivalStyle(CaptureStyle.Quintic);
+            _session.SetArrivalStyle(CaptureStyle.Conic);
             Assert.That(_session.Plan, Is.SameAs(live));
             Assert.That(_session.Preview, Is.Null);
         }
@@ -254,7 +257,7 @@ namespace TimeToExplore.Tests.EditMode
             session.PlaceAt("gateway", _epoch);
 
             TrajectoryPlan plan = session.Begin("mars", _epoch);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(5));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
             Assert.That(plan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
 
             FlightStep step = session.Advance(plan.ArrivalJulianDate, 200_000);
@@ -293,7 +296,7 @@ namespace TimeToExplore.Tests.EditMode
             session.PlaceAt("gateway", _epoch);
 
             TrajectoryPlan plan = session.Begin("mars", _epoch);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
             Assert.That(plan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
             Assert.That(plan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
 
@@ -497,7 +500,7 @@ namespace TimeToExplore.Tests.EditMode
         {
             _session.Plot("mars", _epoch);
             ShipState before = _session.State;
-            double later = _epoch + 1.2 / 24.0;
+            double later = _epoch + 1.2 * _session.PreviewStaleAfterDays;
 
             FlightStep step = _session.Coast(later, 20_000);
 
@@ -508,7 +511,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_session.HasPreview, Is.True, "coasting must not discard the preview");
             Assert.That(_session.IsPreviewStale(later), Is.True,
-                "1.2 hours is past the Mars preview's one-percent window");
+                "1.2 times the preview's one-percent window is stale");
         }
 
         [Test]
@@ -660,7 +663,6 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void ABurnLevelChangeMissesTheWindowCache()
         {
-            _session.CruiseProfile = CruiseStyle.BurnCoastBurn;
             _session.BurnLevelG = 0.3;
             TrajectoryPlan slow = _session.Plot("mars", _epoch);
 

@@ -86,7 +86,6 @@ namespace TimeToExplore.Tests.EditMode
             // trip time, not of command thrust.
             var planner = new TripPlanner(_model, _gravity)
             {
-                CruiseStyle = CruiseStyle.BurnCoastBurn,
                 ArrivalStyle = CaptureStyle.Conic
             };
             const double days = 12.0;

@@ -350,11 +350,10 @@ merged tree:
 The capture chain takes a **handover radius**, not a sphere of influence. Which
 radius each profile passes is deliberate:
 
-| Profile | Entry radius | Why |
+| Plan | Entry radius | Why |
 |---|---|---|
-| Conic or hybrid arrival on the powered cruise | the target's sphere of influence | the quintic cruise hands over where the heliocentric arc ends |
-| `CruiseStyle.Coast` | the target's sphere of influence | there is no brake to hand over; the coast profile's anchors are unchanged |
-| `CruiseStyle` burn–coast–burn | `max(band floor, conic parking radius)` | the brake ends there, so the chain's fall starts there |
+| Burn–coast–burn, conic or hybrid capture | `max(band floor, conic parking radius)` | the brake ends there, so the chain's fall starts there |
+| A trip that starts inside the target's sphere | the sphere of influence | there is no crossing and no brake to hand over |
 
 `TransferConic.Build`'s radius argument is therefore the **entry radius**, and
 `TransferConic.EntryRadiusM` is its reported name. Only the inbound fall moves
@@ -472,8 +471,7 @@ handover at the local escape speed along the escape ray; the capture is still th
 conic or hybrid chain the profile already uses. The break's duration solve, the
 pinned fixed point, the escape-ray attitude, the brake's direction, the trim, the
 transfer ellipse, and the circularisation are unchanged. No new arc *type* is
-introduced — the approach is a `ConicArc` like the coast — and `0 g` still selects
-`CruiseStyle.Coast` exactly.
+introduced — the approach is a `ConicArc` like the coast.
 
 # What the floor entry measured
 
@@ -900,10 +898,10 @@ velocity.
 * The arrival leg is **planetocentric from the target's handover ceiling down**.
   The heliocentric coast ends on `1.02 × SOI`, a `ConicArc` about the target
   covers the deep part of the final approach, and the brake starts where that
-  conic ends. The coast profile keeps its sphere-of-influence entry and its
-  anchors; the fast trips, whose brake starts outside the ceiling, keep their
+  conic ends; the fast trips, whose brake starts outside the ceiling, keep their
   original shape.
-* The coast, the quintic, and the `0 g` identity are unchanged.
+* The crossing is always burn–coast–burn; the powered quintic cruise, the plain
+  coast, and the `0 g` identity are retired.
 
 # Open questions
 

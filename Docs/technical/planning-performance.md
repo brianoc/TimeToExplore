@@ -116,9 +116,9 @@ Both run on **one managed worker thread** with latest-wins semantics:
    The simulation's field keeps a prepared active set and stays on the main
    thread; the worker reads only the catalogue (elements and `ComputeState`),
    never `FlightSession`'s `_gravity`, the integrator, or the autopilot.
-   The first plot goes through `FlightSession.PlotAsync`, and the style,
-   cruise-profile and burn-level changes through `SetArrivalStyle`,
-   `SetCruiseProfile` and `SetBurnLevel` — the same request queue.
+   The first plot goes through `FlightSession.PlotAsync`, and the style and
+   burn-level changes through `SetArrivalStyle` and `SetBurnLevel` — the same
+   request queue.
 3. A build that finishes after a newer request arrived is discarded, and the
    newest request is built next. A drag therefore never queues work behind
    stale plans; a second plot, rebuild or style change also makes the
@@ -802,7 +802,7 @@ sections record how each measurement was reached.
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
-| Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetCruiseProfile`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
+| Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 
 # Verification

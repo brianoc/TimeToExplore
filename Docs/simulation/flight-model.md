@@ -107,29 +107,23 @@ warp.
 
 ## The plan
 
-A **powered Go To plan** is three arcs — departure, cruise, capture — each a
-quintic curve matching position, velocity, and acceleration at both ends. The
-commanded thrust is the curve's acceleration minus the gravity the ship will feel
-there, so the curve *is* the trajectory rather than a target the dynamics fight.
-Endpoint accelerations are the local gravity, so the thrust is zero at the seams
-and at the end of the plan. See
-[ADR-006](../decisions/adr-006-quintic-plan.md) and
-[navigation and arrival](navigation-and-arrival.md).
+A Go To plan is the **burn–coast–burn** profile: a quintic break, a prograde
+fixed departure burn, a Lambert conic coast, a planetocentric approach, a
+retrograde fixed brake, and the capture. Every seam is continuous in position
+and velocity, and the arrival is exact rather than approximate. The fixed burns
+integrate their constant thrust through the summed field; the conic coasts
+command zero thrust on their two-body reference, and the autopilot supplies only
+the third-body tide. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
+records the burn model and the split, and
+[navigation and arrival](navigation-and-arrival.md) describes the chain.
 
-A **conic arrival** is the second style (`CaptureStyle.Conic`). The departure and
-cruise are still powered quintics; the target leg is a planetocentric hyperbola
-with `a_ref = g` pointwise, an impulsive periapsis capture, a transfer ellipse,
-and a circularisation burn. The coast's commanded thrust is zero on the two-body
-reference, and the autopilot supplies only the third-body tide. The burns are
-impulses, so the plan's delta-v is the powered arcs' integrated thrust plus the
-burn magnitudes. The style is opt-in because the coast from the sphere of
-influence is long. [ADR-014](../decisions/adr-014-keplerian-coast.md) has the
-geometry.
-
-A **hybrid fixed-thrust arrival** is the third style (`CaptureStyle.FiniteBurn`).
-It uses the same inbound hyperbola, transfer ellipse, and parking coast, but the
-long capture is one fixed burn at a player-set level from 0 to 1 g (clamped to
-the drive's thrust margin), followed by an impulse trim that puts the burn's end
+The capture is **conic** (`CaptureStyle.Conic`, the default) or **hybrid
+fixed-thrust** (`CaptureStyle.FiniteBurn`). The conic capture is a
+planetocentric hyperbola with `a_ref = g` pointwise, an impulsive periapsis
+capture, a transfer ellipse, and a circularisation burn. The hybrid uses the
+same inbound hyperbola, transfer ellipse, and parking coast, but the long
+capture is one fixed burn at a player-set level (0.05–1 g, clamped to the
+drive's thrust margin), followed by an impulse trim that puts the burn's end
 state exactly on the transfer ellipse. The throttle is exactly zero on a coast
 and exactly that level on the burn; the acceleration steps at the seam rather
 than blending. `FiniteBurnArc` integrates the constant thrust through the
@@ -137,21 +131,26 @@ two-body field and tabulates the local state; `HybridCapture` solves the burn's
 start offset, duration, and injection radius, and the trim. The parking radius
 is the conic `max(1.15 R, R + 300 km)` at every level, so the level no longer
 forces a higher orbit; the trim rather than a higher periapsis pays the
-finite-burn loss. At 0 g the style is exactly the conic plan. Measured captures
-are 4.57 km/s at Mars, 4.92 at Earth, 18.44 at Jupiter, and 12.06 at Saturn, and
-the flights arrive 0.0–0.8 m and 0.0000–0.0031 m/s from the reference state.
-The departure and cruise are still powered quintics: a fixed-thrust *cruise*
-needs the Lambert solve. [ADR-015](../decisions/adr-015-fixed-thrust-burns.md)
-records the decision and the split.
+finite-burn loss. Measured captures are 4.57 km/s at Mars, 4.92 at Earth, 18.44
+at Jupiter, and 12.06 at Saturn, and the flights arrive 0.0–0.8 m and
+0.0000–0.0031 m/s from the reference state.
+[ADR-014](../decisions/adr-014-keplerian-coast.md) has the conic geometry.
 
-Because the throttle is the curve's magnitude, the accelerate and decelerate
-phases are smooth ramps rather than a step at the flip. That is the price of the
-time penalty against the ideal table above.
+The retired all-torch plan was three quintics — departure, cruise, capture —
+matching position, velocity, and acceleration at both ends. The commanded thrust
+was the curve's acceleration minus the gravity the ship would feel there, so the
+curve *was* the trajectory. Its accelerate and decelerate phases were smooth
+ramps rather than a step, which was its price against the ideal table. It is no
+longer selectable; [ADR-006](../decisions/adr-006-quintic-plan.md) records the
+design and the measured plans below keep its numbers.
 
-## Measured plans
+## The retired all-torch plan
 
-At the epoch (2026-11-15, JD 2461359.5), from Gateway Station at the Earth–Moon
-L1 point, with a 10 m/s² drive and no fuel limit:
+Before the burn–coast–burn profile landed, the planner's default was an
+all-torch quintic. It is no longer selectable; these are its measured numbers,
+kept as the fast and expensive end of the trade. At the epoch (2026-11-15,
+JD 2461359.5), from Gateway Station at the Earth–Moon L1 point, with a 10 m/s²
+drive and no fuel limit:
 
 | Target | Separation | Plan | Ideal | Peak thrust | Delta-v |
 |---|---:|---:|---:|---:|---:|
@@ -184,12 +183,14 @@ smooth capture arc cannot be flown there however long it is given. Lifting the
 arrival to 177,965 km (2.5 radii) puts the local gravity at 4 m/s² and the whole
 trip at 10.3 days with a 9.8 m/s² peak.
 
-### The conic arrival in numbers
+### The conic capture in numbers
 
-The same epoch and ship, with `ArrivalStyle = CaptureStyle.Conic`. The flight
-time is dominated by the coast from the sphere of influence, so the outer
+The same epoch, ship, and retired all-torch cruise, with a conic capture. The
+flight time is dominated by the coast from the sphere of influence, so the outer
 arrivals are months; the capture burn is the periapsis and circularisation
-total, compared with the quintic capture arc's integrated thrust:
+total, compared with the quintic capture arc's integrated thrust. The conic
+capture is now the profile's default; these figures are the old powered
+crossing's, kept for the capture comparison:
 
 | Target | Conic plan | Conic capture | Quintic capture | Conic parking radius |
 |---|---:|---:|---:|---:|
@@ -210,8 +211,8 @@ cheaper. That trade is why the style is a choice, not a replacement.
 
 ### The burn–coast–burn profile in numbers
 
-The same epoch and ship, with `CruiseStyle.BurnCoastBurn` at 0.3 g and the conic
-capture. The departure burn is about the Sun and the brake is about the Sun as
+The same epoch and ship, on the profile at 0.3 g and the conic capture. The
+departure burn is about the Sun and the brake is about the Sun as
 well: the reference body is a label, each burn integrates the summed field, and
 the burns span thousands to millions of kilometres
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
@@ -237,10 +238,10 @@ The brake spends the handover the coast plan leaves as an impulse and ends at
 the arrival handover floor (6,033 km at Mars 0.3 g), so the capture
 chain is handed its entry state with no impulse and falls in for 13.6 minutes.
 Every seam is continuous to under a metre and 3.7 × 10⁻⁴ m/s, the flight arrives
-0.1 m and 0.0001 m/s from the reference state, and the parking orbit holds. At
-`0 g` the style is exactly the coast plan: five arcs and the handover impulse.
-At non-zero level the arrival adds a planetocentric approach leg; on a fast trip,
-whose brake starts outside the target's ceiling, it is absent.
+0.1 m and 0.0001 m/s from the reference state, and the parking orbit holds. The
+profile has no zero-thrust version: the burn-level slider's floor is 0.05 g. The
+arrival adds a planetocentric approach leg; on a fast trip, whose brake starts
+outside the target's ceiling, it is absent.
 
 The profile's true floors at the epoch are **3.21610 days** to Mercury at 1 g
 (peak 9.70 m/s², 1,766 km/s) and **6.73042 days** to Mars at 0.3 g
@@ -277,8 +278,8 @@ measure fixed burns at their commanded acceleration, conics at zero, and the
 break against its own body, with a 128-sample burn and a loose pinned fixed
 point; the chosen duration is then rebuilt at 512 samples with the full field and
 certified. Previewing the floor and the profile's window is cached in
-`FlightSession` per departure date, target, burn level, cruise and arrival style,
-so a repeat selection is free; a changed departure date drops the cache.
+`FlightSession` per departure date, target, burn level, and arrival style, so a
+repeat selection is free; a changed departure date drops the cache.
 
 Measured on a throwaway copy at the epoch: one `Plan()` to Mercury at 1 g fell
 from 36.2 s in the first cut to 12.0 s after the two-tier break search and to
@@ -293,18 +294,16 @@ boundary, the 5% screen, and the background planner.
 ## Tuning the trip in the nav computer
 
 The route preview has one **trip-time slider**. Its range starts at the fastest
-feasible plan of the selected cruise profile, and every position is a fresh solve
+feasible plan of the profile, and every position is a fresh solve
 at that duration: the arcs are rebuilt, the arrival date moves, and the target is
-met where the ephemeris puts it on that date. The **Powered** profile keeps the
-historical window to three times that minimum. **Coast** and
-**Burn-coast-burn** have a real upper bound — the short-way Lambert transfer
-sweeps past 180°, and a coast that arrives slower than the target's frame would
-need an acceleration — so their right-hand end is the slowest duration the
-planner still accepts, probed inside the same three-times span. At the epoch the
-burn–coast–burn window runs from **6.73 days to 20.19 days** to Mars, so it
-begins at the profile's true floor (6.73042 days at 0.3 g), not at the torch
-plan's 4.4 days, and it ends at three times that floor. A 90-day Mars plan exists
-as a direct `PlanAtDuration` build but the slider cannot reach it.
+met where the ephemeris puts it on that date. The profile has a real upper bound
+— the short-way Lambert transfer sweeps past 180°, and a coast that arrives
+slower than the target's frame would need an acceleration — so its right-hand
+end is the slowest duration the planner still accepts, probed inside the same
+three-times span. At the epoch the window runs from **6.73 days to 20.19 days**
+to Mars, so it begins at the profile's true floor (6.73042 days at 0.3 g) and
+ends at three times that floor. A 90-day Mars plan exists as a direct
+`PlanAtDuration` build but the slider cannot reach it.
 
 The slider is one honest axis with two costs on it:
 
@@ -324,7 +323,7 @@ preview stays on screen until the finished plan is handed back on the main
 thread, and every published plan is the full-field build, never a fast search
 estimate. `SetPreviewDuration` remains the synchronous, deterministic path for
 callers that need a plan immediately; both paths build the identical plan. The
-first plot and the style, cruise-profile and burn-level changes go through the
+first plot and the arrival-style and burn-level changes go through the
 same worker — the route now redraws on the main thread when it is ready, not
 while it is being computed. At the epoch on the throwaway copy, one synchronous
 retime is 120 ms at 4.5 d and 97 ms at 7.35 d to Mercury 1 g, and 97–125 ms to
@@ -333,12 +332,10 @@ plus **2–4 ms** of handover. Twenty requests at 10 ms intervals published only
 the newest plan — 311 ms after the first request at Mercury, with no backlog —
 so the handle stays responsive while the route catches up.
 
-The powered plans already sit at the left end, so there is no "burn harder"
-above them. A faster torch trip needs a stronger drive (a data value). The slider
-therefore only stretches the existing torch plan: the drive stays on, just more
-gently. It is **not** a coast. A coast is a Keplerian conic, not a quintic with a
-flat middle; the `PROFILE` buttons choose the unpowered `Coast` or the
-`Burn-coast-burn` profile, whose slider is a speed control over its own feasible
+The profile's fastest plan already sits at the left end, so there is no "burn
+harder" above it. A faster crossing needs a stronger drive (a data value). The
+slider therefore stretches the plan from its floor to the slowest duration the
+Lambert coast accepts; it is a speed control over the profile's own feasible
 range ([navigation and arrival](navigation-and-arrival.md#the-trip-time-control)).
 
 ## What the throttle is
@@ -348,10 +345,9 @@ curve is the throttle setting, so the HUD can draw it and the fuel readout can
 charge for its integral. Thrust direction is instantaneous: there is no
 attitude dynamics or slew limit yet.
 
-The quintic plan uses a smooth ramp. The hybrid fixed-thrust arrival is the
-deliberate opposite: a burn is a constant level the player chooses and a coast is
-zero, with a step at each seam. The nav computer's third arrival style is where
-that texture is exposed.
+The profile's fixed burns use a constant level the player chooses and its coasts
+are zero, with a step at each seam. The hybrid fixed-thrust capture is where that
+texture is exposed.
 
 # Delta-v is the real currency
 
@@ -492,16 +488,15 @@ The navigation computer should present every profile with time, delta-v, and
 arrival date, so the choice is informed. See
 [navigation and arrival](navigation-and-arrival.md).
 
-**Implemented:** the torch plan and its trip-time control, plus the conic
-**arrival** (a coasting hyperbola and an impulsive Oberth capture), the hybrid
-fixed-thrust variant (one finite burn at a player-set level, an impulse trim, and
-the conic circularisation), and the **burn–coast–burn cruise** (a quintic break,
-a prograde fixed burn, a Lambert coast, a brake, and the conic or hybrid
-capture). The `PROFILE` row chooses the powered cruise (the default), the
-unpowered coast, or the burn–coast–burn profile; the trip-time slider becomes
-that profile's speed control and the existing level slider sets both burns'
-level. A fixed-thrust *cruise* elsewhere — a slow spiral that does not coast on a
-Lambert conic — is still deferred.
+**Implemented:** the **burn–coast–burn** profile (a quintic break, a prograde
+fixed burn, a Lambert coast, an approach, a brake, and the capture) and its
+trip-time control, with the conic capture (a coasting hyperbola and an impulsive
+Oberth capture) and the hybrid fixed-thrust capture (one finite burn at a
+player-set level, an impulse trim, and the conic circularisation). The trip-time
+slider is the profile's speed control and the level slider sets both burns'
+level. The powered quintic cruise and the plain Lambert coast are retired. A
+fixed-thrust *cruise* elsewhere — a slow spiral that does not coast on a Lambert
+conic — is still deferred.
 
 # Gravity assists and Oberth
 

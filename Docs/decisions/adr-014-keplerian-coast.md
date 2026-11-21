@@ -69,12 +69,13 @@ without assuming a quintic.
    and `Autopilot.Fly` does the same for the headless tests. The seam is
    continuous in position and acceleration, and steps in velocity by exactly
    the planned impulse.
-7. **Keep the quintic capture as the default, and make the conic arrival an
-   explicit style.** `TripPlanner.ArrivalStyle` defaults to
-   `CaptureStyle.Quintic`, so the trip-time slider and the measured torch plans
-   are unchanged. `CaptureStyle.Conic` is the cheap, slow alternative. A trip
-   that starts inside the target's sphere of influence (Gateway to the Moon, or
-   Gateway to Earth) has no entry hyperbola and keeps the quintic capture.
+7. **Keep a quintic capture as the default at the time, and make the conic
+   arrival an explicit style.** `TripPlanner.ArrivalStyle` defaulted to the
+   quintic capture, so the trip-time slider and the measured torch plans were
+   unchanged. The conic capture was the cheap, slow alternative. The
+   conic capture later became the profile's default when the powered cruise was
+   retired; a trip that starts inside the target's sphere of influence still
+   has no entry hyperbola and keeps the quintic capture.
 8. **The conic parking orbit has no gravity ceiling.** It uses
    `max(1.15 R, R + 300 km)`, capped at half the Hill radius. The ceiling exists
    because a quintic capture cannot fly a deep well; an impulsive capture can.

@@ -216,55 +216,6 @@ namespace TimeToExplore.Simulation
             return double.PositiveInfinity;
         }
 
-        /// <summary>
-        /// The point where the along-track thrust changes from accelerating the
-        /// ship to decelerating it: the top of the arc, and what the HUD marks
-        /// as the flip. The quintic turns over smoothly rather than switching,
-        /// so this is the zero of `v · (a_ref − g)`, interpolated between
-        /// samples. NaN when the plan never decelerates.
-        /// </summary>
-        public double FindFlipJulianDate(IGravityField gravity, int samplesPerArc = 32)
-        {
-            if (gravity == null) throw new ArgumentNullException(nameof(gravity));
-            if (samplesPerArc < 2) throw new ArgumentOutOfRangeException(nameof(samplesPerArc));
-
-            bool seenPositive = false;
-            double previousAlong = 0.0;
-            double previousJulianDate = double.NaN;
-
-            foreach (PlanArc arc in _arcs)
-            {
-                for (int i = 0; i <= samplesPerArc; i++)
-                {
-                    double u = (double)i / samplesPerArc;
-                    double julianDate = arc.StartJulianDate
-                                        + arc.Path.SecondsAt(u) / JulianDate.SecondsPerDay;
-
-                    Vector3d position = arc.Path.PositionAt(u);
-                    Vector3d velocity = arc.Path.VelocityAt(u);
-                    Vector3d required = arc.Path.AccelerationAt(u);
-
-                    gravity.Prepare(position, julianDate);
-                    Vector3d thrust = required - gravity.AccelerationAt(position, julianDate);
-                    double along = Vector3d.Dot(velocity, thrust);
-
-                    if (seenPositive && previousAlong > 0.0 && along < 0.0)
-                    {
-                        double t = previousAlong / (previousAlong - along);
-                        return previousJulianDate + t * (julianDate - previousJulianDate);
-                    }
-
-                    if (!seenPositive && along > 0.0) seenPositive = true;
-
-                    previousAlong = along;
-                    previousJulianDate = julianDate;
-                }
-            }
-
-            return double.NaN;
-        }
-
-
         public Vector3d ReferencePositionAt(double julianDate)
         {
             if (julianDate <= DepartureJulianDate) return _arcs[0].Path.PositionAt(0.0);

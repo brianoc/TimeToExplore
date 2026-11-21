@@ -1,6 +1,8 @@
 # Handoff
 
-**No active handoff.** Route plotting now eases the camera to an overview that
-contains the whole route, seen across the plane it lies in. History is in
+**No active handoff.** The planner has one crossing — burn–coast–burn — with a
+**Conic** or **`X g burn`** capture; the powered quintic cruise, the plain coast,
+the zero-thrust level, and the torch flip marker are retired. History is in
 [the update log](Docs/log.md); the reasoning is in
-[Selection and camera focus](/technical/selection-and-camera.md#the-camera).
+[Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md) and
+[Navigation and arrival](Docs/simulation/navigation-and-arrival.md).

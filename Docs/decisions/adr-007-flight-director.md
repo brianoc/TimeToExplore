@@ -78,7 +78,7 @@ Two more problems come with a real trajectory:
 * The warp cap uses the clock's fixed power-of-ten scales, so the drop is in
   steps rather than continuous. A continuous scale would read better.
 * The destination-framed camera does not show the capture burn's direction. The
-  flip marker and the throttle row are the only cues.
+  burn markers and the throttle row are the only cues.
 * The session integrates in legs cut at frame boundaries, so the sub-step
   sequence — and therefore the last digits of the trajectory — depends on the
   frame rate. The difference is far below the navigation budget, and the test
