@@ -140,6 +140,32 @@ at the centre keeps the destination centred; only a drag stops the aiming. If
 the orbit would put the camera inside a body, it is pulled in toward the origin
 it is looking at.
 
+**Plotting a route frames the route.** A finished preview hands the view to
+`RouteFraming`, which fits the sampled path (plus the target's arrival ghost)
+into one shot. The look-at point becomes the route's bounding-box centre and
+the distance is the smallest that keeps the route's projected outline inside
+the tighter of the vertical and horizontal fields of view, with a 12% margin.
+Projecting the route rather than its bounding sphere matters for a long, thin
+transfer: the sphere fit left half the frame empty, while the projected fit
+puts the ends near the margin. The viewing direction comes from the plane the
+route lies in; the normal is taken with Newell's method over the ordered path,
+so an inclined transfer is seen across its plane rather than edge-on, and a
+route too straight to define a plane falls back to a view perpendicular to its
+chord. The camera sits 18° off that normal toward the player's current side, so
+the picture has depth without foreshortening the curve and the view never flips
+through the plane. The fit may sit beyond the wheel's local ceiling for an
+outer-system route, so it uses the map's higher ceiling; the next wheel notch
+comes back into the local range. `RouteViewTransition` eases the yaw (shortest
+turn), the pitch, the distance (log-space, like a zoom), and the pan from the
+player's pose to that frame in 1.5 s on one smoothstep. A wheel notch, a moving
+drag, a new framing target, Begin, or Space cancels the move and hands the view
+back; the route's pan is held while it is the look-at point, so a local route
+does not drift back to the ship when the sample lands inside the blend band. A
+re-time deliberately does not re-frame: the player may already have moved the
+camera, and the slider is a tool for comparing plans, not a second camera
+command. A style, cruise-profile, or burn-level change is a new plan and does
+re-frame it.
+
 **Zoom is a tween.** A wheel notch does not place the camera: it requests a new
 distance (`OrbitCamera.RequestDistance`) and the rig eases the current distance
 toward it at `ZoomEaseRatePerSecond` (7/s). The request compounds on a pending
@@ -291,7 +317,7 @@ second mapping.
 | Left click a body | Select it and open the details screen (release inside the 4 px slop) |
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
 | Left mouse drag | Pan the map (`w > 0.5`); inert in the local band, and inert when the press began on a panel |
-| **Plot route …** button | Plan the route and draw the preview without flying |
+| **Plot route …** button | Plan the route, draw the preview, and ease the camera to the whole route |
 | **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
@@ -322,6 +348,12 @@ second mapping.
   rate, and distance easing, the zoom request that eases over many frames and
   lands exactly, and the rig's framing distance, follow flags, and the smooth
   top-down tilt that follows a wheel tween;
+* the route overview: the bounding frame containing every sampled point and the
+  arrival ghost, the projected fit and its 12% margin (tighter than the
+  bounding sphere), the plane normal and its 18° tilt (including a straight
+  route seen side-on), the shortest-turn/log-distance transition and its exact
+  endpoints, the rig's eased arrival with the whole route on screen, the wheel,
+  drag, and Space cancels, and an empty route leaving the view alone;
 * the cursor anchor: the screen-to-NDC conversion, the look-at-plane point, the
   exact pinned point at a changed distance, and a centre pointer leaving the
   look-at alone; the rig's projected anchor on every frame of a real wheel

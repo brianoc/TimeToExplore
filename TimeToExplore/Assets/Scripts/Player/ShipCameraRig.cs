@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using TimeToExplore.Core;
 using TimeToExplore.UI;
@@ -8,7 +9,9 @@ namespace TimeToExplore.Player
     /// Drives the view: right-drag orbits the ship and the system map, left-drag
     /// pans the map, the wheel zooms toward the pointer, and a plan or a debug
     /// jump frames its destination automatically until the player takes the
-    /// camera back. Space eases the camera home to the ship.
+    /// camera back. Plotting a route instead eases the view to a pose that
+    /// contains the whole route, looking across the plane it lies in. Space
+    /// eases the camera home to the ship.
     ///
     /// The wheel requests a distance rather than placing one: the camera eases
     /// to it over <see cref="ZoomEaseRatePerSecond"/> (see
@@ -61,6 +64,12 @@ namespace TimeToExplore.Player
         public float HomeDurationSeconds = HomeTransition.DefaultDurationSeconds;
 
         /// <summary>
+        /// How long the move to a plotted route's overview takes, in seconds.
+        /// The aim, the distance, and the look-at point follow one smoothstep.
+        /// </summary>
+        public float RouteViewDurationSeconds = RouteViewTransition.DefaultDurationSeconds;
+
+        /// <summary>
         /// The home view sits at this fraction of the local radius: comfortably
         /// inside the blend band, so the arrival is exactly the local view
         /// (<c>w = 0</c>), and far enough out to read the ship's neighbourhood.
@@ -90,8 +99,14 @@ namespace TimeToExplore.Player
         /// <summary>The eased return to the ship that Space starts.</summary>
         public HomeTransition Home { get; } = new HomeTransition();
 
+        /// <summary>The eased move to a plotted route's overview.</summary>
+        public RouteViewTransition RouteView { get; } = new RouteViewTransition();
+
         /// <summary>True while Space's home transition is easing the view back.</summary>
         public bool IsHoming => Home.IsActive;
+
+        /// <summary>True while the view is easing to a plotted route.</summary>
+        public bool IsFramingRoute => RouteView.IsActive;
 
         /// <summary>
         /// Render units per metre. Held on <see cref="Map"/> so the blend, the
@@ -147,6 +162,7 @@ namespace TimeToExplore.Player
         private bool _panEngaged;
         private bool _zoomPending;
         private bool _zoomAnchorActive;
+        private bool _routePanHeld;
         private Vector3 _zoomAnchorUnits;
         private Vector2 _zoomAnchorNdc;
         private float _zoomAnchorAspect = 1f;
@@ -176,8 +192,10 @@ namespace TimeToExplore.Player
         public void Frame(BodyRuntime body)
         {
             // A new framing target takes the view over from the player's
-            // cursor-anchored zoom or home transition.
+            // cursor-anchored zoom, the route overview, or home transition.
             _zoomAnchorActive = false;
+            _routePanHeld = false;
+            RouteView.Cancel();
             Home.Cancel();
 
             AutoTarget = body;
@@ -189,6 +207,8 @@ namespace TimeToExplore.Player
         public void ClearAuto()
         {
             _zoomAnchorActive = false;
+            _routePanHeld = false;
+            RouteView.Cancel();
             Home.Cancel();
 
             AutoAim = false;
@@ -202,6 +222,8 @@ namespace TimeToExplore.Player
             Frame(body);
             _zoomPending = false;
             _zoomAnchorActive = false;
+            _routePanHeld = false;
+            RouteView.Cancel();
             Home.Cancel();
             if (body != null)
             {
@@ -231,11 +253,54 @@ namespace TimeToExplore.Player
             AutoDistance = false;
             _zoomPending = false;
             _zoomAnchorActive = false;
+            _routePanHeld = false;
+            RouteView.Cancel();
 
             Home.DurationSeconds = Mathf.Max(0f, HomeDurationSeconds);
             Home.Begin(Orbit.DistanceUnits,
                 HomeDistanceUnits(LocalRadiusM(shipPositionM)),
                 Map.PanOffsetM);
+        }
+
+        /// <summary>
+        /// Ease the view to a pose that contains the whole plotted route. The
+        /// pose is computed from the sampled path and the target's arrival
+        /// position by <see cref="RouteFraming"/>: its centre becomes the
+        /// look-at point, its plane chooses the viewing angle, and its projected
+        /// extent sets the distance. Input, a new framing target, or Space
+        /// cancels the move.
+        /// </summary>
+        public bool FrameRoute(IReadOnlyList<Vector3d> routePointsM,
+            Vector3d shipPositionM, Vector3d? targetArrivalM)
+        {
+            if (routePointsM == null || routePointsM.Count < 2) return false;
+
+            Vector2 screen = ScreenPixels();
+            // The fit may sit beyond the local wheel ceiling for a route to the
+            // outer system. That is a one-off pose, not a zoom gesture, so it
+            // uses the map's higher ceiling even when the map is off; a wheel
+            // notch from there comes back into the local range.
+            RouteFraming.Frame frame = RouteFraming.Compute(routePointsM, shipPositionM,
+                targetArrivalM, UnitsPerMeter, FieldOfViewDegrees, Aspect(screen),
+                Orbit.YawDegrees, Orbit.PitchDegrees, MapEnabled,
+                MapView.MaxDistanceUnits);
+            if (!frame.IsValid) return false;
+
+            // The route owns the view now: no body follow, no wheel request,
+            // and no cursor anchor left over from the previous zoom.
+            AutoAim = false;
+            AutoDistance = false;
+            AutoTarget = null;
+            Home.Cancel();
+            _zoomPending = false;
+            _zoomAnchorActive = false;
+            _routePanHeld = true;
+
+            RouteView.DurationSeconds = Mathf.Max(0f, RouteViewDurationSeconds);
+            RouteView.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, Orbit.DistanceUnits,
+                Map.PanOffsetM, frame.YawDegrees, frame.PitchDegrees,
+                frame.DistanceUnits, frame.PanM);
+            return true;
         }
 
         /// <summary>
@@ -276,6 +341,25 @@ namespace TimeToExplore.Player
                     Map.ClearPan();
                 }
             }
+            else if (RouteView.IsActive)
+            {
+                // The route overview owns the aim, the distance, and the
+                // look-at point together, so the whole pose eases toward the
+                // fit rather than the aim arriving before the zoom.
+                bool arrived = RouteView.Advance(deltaTime);
+                Orbit.YawDegrees = RouteView.YawDegreesAt;
+                Orbit.PitchDegrees = RouteView.PitchDegreesAt;
+                Orbit.SnapDistance(RouteView.DistanceUnitsAt);
+                Map.SetPanM(RouteView.PanMAt);
+
+                if (arrived)
+                {
+                    Orbit.YawDegrees = RouteView.TargetYawDegrees;
+                    Orbit.PitchDegrees = RouteView.TargetPitchDegrees;
+                    Orbit.SnapDistance(RouteView.TargetDistanceUnits);
+                    Map.SetPanM(RouteView.TargetPanM);
+                }
+            }
             else if (_zoomPending && !Orbit.EaseDistance(deltaTime, ZoomEaseRatePerSecond))
             {
                 // A wheel notch only requests a distance. Ease it before the
@@ -313,8 +397,10 @@ namespace TimeToExplore.Player
 
             // A cursor-anchored zoom keeps the pan it has: the player put the
             // point there, so easing it back to the ship would move it from
-            // under the pointer. Space is the way home.
-            if (MapEnabled && !IsMapSide && !_zoomAnchorActive && !Home.IsActive)
+            // under the pointer. A route overview keeps its look-at for the
+            // same reason. Space is the way home.
+            if (MapEnabled && !IsMapSide && !_zoomAnchorActive && !_routePanHeld &&
+                !Home.IsActive)
                 Map.EasePan(deltaTime);
 
             // Solve the look-at from the anchor last, after the aim and the
@@ -449,6 +535,7 @@ namespace TimeToExplore.Player
                 Orbit.Turn(x * OrbitDegreesPerMouseUnit, -y * OrbitDegreesPerMouseUnit);
                 AutoAim = false;
                 Home.Cancel();
+                RouteView.Cancel();
                 _zoomAnchorActive = false;
             }
             else if (_panning && _panEngaged)
@@ -457,6 +544,7 @@ namespace TimeToExplore.Player
                 AutoAim = false;
                 AutoDistance = false;
                 Home.Cancel();
+                RouteView.Cancel();
                 _zoomAnchorActive = false;
             }
         }
@@ -534,6 +622,7 @@ namespace TimeToExplore.Player
             if (steps == 0f) return;
 
             Home.Cancel();
+            RouteView.Cancel();
 
             // Compound on a pending request so a continuous gesture keeps its
             // 1.25x per notch; start from the placed distance when the last
