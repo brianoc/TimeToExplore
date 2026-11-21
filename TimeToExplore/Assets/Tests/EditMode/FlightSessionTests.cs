@@ -120,10 +120,11 @@ namespace TimeToExplore.Tests.EditMode
             _session.SetPreviewDuration(chosen);
             ShipState before = _session.State;
 
-            TrajectoryPlan conic = _session.SetArrivalStyle(CaptureStyle.Conic);
+            _session.SetArrivalStyle(CaptureStyle.Conic);
+            TrajectoryPlan conic = WaitForPublishedPreview();
 
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_session.Preview, Is.SameAs(conic));
+            Assert.That(_session.Preview, Is.SameAs(conic), "the rebuilt plan is published");
             Assert.That(conic, Is.Not.SameAs(quintic), "the preview is rebuilt, not relabelled");
             Assert.That(conic.TargetId, Is.EqualTo("mars"));
             Assert.That(conic.Arcs.Any(arc => arc.Phase == FlightPhase.Coast), Is.True);
@@ -140,11 +141,90 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM), Is.Zero,
                 "changing the arrival style never moves the ship");
 
-            TrajectoryPlan back = _session.SetArrivalStyle(CaptureStyle.Quintic);
+            _session.SetArrivalStyle(CaptureStyle.Quintic);
+            TrajectoryPlan back = WaitForPublishedPreview();
 
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
             Assert.That(back.Arcs.Count, Is.EqualTo(3), "the quintic capture is back");
             Assert.That(back.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+        }
+
+        // --- The background preview planner ------------------------------------
+
+        /// <summary>The test-side equivalent of the HUD's per-frame pump for the
+        /// plot pipeline: wait for the worker's plan and publish it on this
+        /// thread.</summary>
+        private TrajectoryPlan WaitForPublishedPreview()
+        {
+            TrajectoryPlan published = null;
+            WaitUntil(() => _session.TryApplyCompletedPreview(out published),
+                "no preview was published");
+            return published;
+        }
+
+        [Test]
+        public void APlotAsyncPublishesTheFastestFeasiblePlan()
+        {
+            Assert.That(_session.PlotAsync("mars", _epoch), Is.True,
+                "a plot is queued, not built");
+
+            TrajectoryPlan published = WaitForPublishedPreview();
+
+            Assert.That(published.TargetId, Is.EqualTo("mars"));
+            Assert.That(published.IsFeasible, Is.True);
+            Assert.That(_session.Preview, Is.SameAs(published));
+            Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
+            Assert.That(_session.PreviewMinimumSeconds, Is.EqualTo(published.FlightTimeSeconds));
+            Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(published.FlightTimeSeconds));
+            Assert.That(_session.PreviewMaximumSeconds,
+                Is.GreaterThan(_session.PreviewMinimumSeconds),
+                "the window offers the powered scale's upper end");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_session.Plan, Is.Null, "plotting never starts a flight");
+        }
+
+        [Test]
+        public void APlotAsyncMatchesTheSynchronousPlot()
+        {
+            _session.PlotAsync("mars", _epoch);
+            TrajectoryPlan published = WaitForPublishedPreview();
+
+            TrajectoryPlan sync = _session.Plot("mars", _epoch);
+
+            // The async worker solved the window the synchronous Plot reads
+            // back from the shared cache, so the plans are the same instance.
+            Assert.That(sync, Is.SameAs(published));
+            Assert.That(_session.Preview, Is.SameAs(sync));
+        }
+
+        [Test]
+        public void TheNewestPlotAsyncWins()
+        {
+            _session.PlotAsync("mars", _epoch);
+            _session.PlotAsync("venus", _epoch);
+
+            TrajectoryPlan published = WaitForPublishedPreview();
+            Assert.That(published.TargetId, Is.EqualTo("venus"),
+                "the second plot supersedes the first, newest-first");
+        }
+
+        [Test]
+        public void APlotAsyncToAnUnknownTargetReportsTheFailure()
+        {
+            _session.PlotAsync("planet-x", _epoch);
+
+            WaitUntil(() => !string.IsNullOrEmpty(_session.TakePreviewFailure()),
+                "the background plot failure never arrived");
+            Assert.That(_session.HasPreview, Is.False,
+                "a failed build publishes nothing");
+        }
+
+        [Test]
+        public void APlotAsyncToADisposedSessionIsRefused()
+        {
+            _session.Dispose();
+            Assert.That(_session.PlotAsync("mars", _epoch), Is.False,
+                "a disposed session refuses new work instead of starting a thread");
         }
 
         [Test]
