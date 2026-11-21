@@ -4,7 +4,7 @@ title: The system map and route preview
 description: The camera and navigation layer — one continuous zoom from the ship to a top-down map of the system, click-to-select and pan on the map, and a plotted route the player can inspect before pressing Begin.
 tags: [technical, ui, camera, navigation, design]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # Why the map exists
@@ -209,7 +209,7 @@ The map is for selecting big things. Its rendering rules follow from that:
 
 | Element | Rule |
 |---|---|
-| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. The shared camera-distance width rule (`LineWidth`) blends orbit lines from the local 3 px to a 10 px stroke on the map, so the system reads as coloured rings without ever becoming a ribbon; each vertex holds a 2 px floor in the distance. Each planet keeps one colour from the warm orange-to-cool purple ramp (`OrbitColours`) in both views; moons stay neutral grey. |
+| Orbit lines | Planets and moons as today (161-point Kepler ellipses). Asteroid orbits stay off; a belt map is later work. The shared camera-distance width rule (`LineWidth`) blends orbit lines from the local 3 px to a 10 px stroke on the map, so the system reads as coloured rings without ever becoming a ribbon; each vertex is bounded to a 2 px floor in the distance and to the line's own pixel count up close. Each planet keeps one colour from the warm orange-to-cool purple ramp (`OrbitColours`) in both views; moons stay neutral grey. |
 | Markers | The minimum-apparent-size aid stays, easing from 4.5 px locally to 6 px on the map so every planet and station is a comfortable click target. The `T` true-scale toggle still overrides it. |
 | Labels | Sun, planets, and stations always. Moon labels appear on the map when the camera is inside 5× the parent's SOI — zoom into a neighbourhood to read its moons. Asteroids label on hover and selection only. |
 | Ship | The ten-pixel marker, with a "YOU ARE HERE" label on the map. |
@@ -226,18 +226,18 @@ local view therefore uses the same rule as the map.
 The orbit-line width has no orbit-sized term. `LineWidth` converts a pixel
 count to render units at the camera distance; the pixel count blends from the
 local 3 px to the map's 10 px by the same `w` as the camera pose, so orbit
-lines thicken through the zoom tween. Every vertex then carries its own width:
-perspective thins the far arc until it reaches the 2 px
-`LineWidth.DistanceFloorPixels`, and holds it there, so the ring stays readable
-instead of dissolving into the distance. The old world-unit floor and ceiling
-are gone; they made the apparent width depend on the zoom range rather than on
-the screen. Colour is separate: `OrbitColours` gives each planet one fixed ramp
-sample, warm for Mercury and cool for Neptune, and nothing about the mapping
-reads `w`, so both views draw the same hue.
+lines thicken through the zoom tween. Every vertex then carries its own width,
+bounded to the 2 px `LineWidth.DistanceFloorPixels` at the far end and to the
+line's own pixel count at the near end, so the ring stays readable in the
+distance and stays a line when the camera passes close to it. The old
+world-unit floor and ceiling are gone; they made the apparent width depend on
+the zoom range rather than on the screen. Colour is separate: `OrbitColours`
+gives each planet one fixed ramp sample, warm for Mercury and cool for Neptune,
+and nothing about the mapping reads `w`, so both views draw the same hue.
 
 The route preview (below) uses the same `LineWidth` rule at the plan line's
-fixed 3 px, with the same 2 px distant floor, so a plotted curve stays readable
-at any zoom.
+fixed 3 px, with the same 2 px distant floor and 3 px near ceiling, so a plotted
+curve stays readable at any zoom without becoming a ribbon.
 
 # The local view stops inflating distant bodies
 

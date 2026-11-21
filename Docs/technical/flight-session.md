@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -276,10 +276,13 @@ owns the corner during a route, and it hides with the HUD on `H`.
 
 Line width follows the **camera distance**, not the path: `LineWidth` converts
 3 screen pixels to render units at the camera's depth. Every vertex then gets
-its own width through the `LineRenderer.widthCurve`: perspective thins the line
-with distance until it would fall below `LineWidth.DistanceFloorPixels` (2 px),
-and the far end holds that floor, so a route across the system stays readable
-instead of vanishing into the distance. The earlier rule used the farthest
+its own width through the `LineRenderer.widthCurve`, bounded to 2 px
+(`LineWidth.DistanceFloorPixels`) at the far end and to the route's own 3 px at
+the near end. The far end therefore stays readable instead of vanishing, and a
+route that passes close to a zoomed-in camera stays a line instead of filling
+the screen. The route is also clipped at the camera plane (`LineCameraClip`),
+because a billboarded segment with one end behind the camera projects into a
+huge polygon however thin its world width is. The earlier rule used the farthest
 point of the plan, which made the line 225,000 km thick on a 1 AU trip and
 swallowed the view once the camera could orbit; a later world-unit cap silently
 faded the line to a third of a pixel at full-map zoom. The path is sampled from

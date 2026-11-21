@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # Glossary
@@ -39,7 +39,8 @@ or **the map** in code and in the system-map concept. Markers keep a 6 px
 minimum so every planet and station stays clickable, the ship is labelled
 "YOU ARE HERE", and the planet orbit lines thicken from their local 3 px to a
 10 px coloured stroke without changing hue. In both views a line's far arc
-holds a 2 px floor rather than thinning away into the distance.
+holds a 2 px floor rather than thinning away into the distance, and its near arc
+is capped at the line's own pixel width rather than widening into a ribbon.
 
 It is not a second camera and not a coordinate space: the world stays
 ship-relative and only the pose changes ([ADR-009](/decisions/adr-009-map-camera-pan.md)).

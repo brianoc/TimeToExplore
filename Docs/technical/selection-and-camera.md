@@ -4,7 +4,7 @@ title: Selection and camera focus
 description: How clicking a body opens its details screen and how the camera flies to it.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # Why selection exists
@@ -83,10 +83,12 @@ while the local view keeps its old thresholds:
 * **Orbit lines.** `LineWidth` turns a pixel count into render units at the
   camera distance, with no orbit-sized term: 3 px in the local view, blending to
   10 px in the solar system view. Each vertex then keeps the natural perspective
-  falloff until it reaches the 2 px `DistanceFloorPixels`, so the far arc stays
-  visible without becoming a ribbon. Each planet's colour is fixed by
-  `OrbitColours` (warm orange Mercury to cool purple Neptune) and is identical
-  in both views; moons stay neutral grey.
+  falloff, bounded to 2 px at the far end
+  (`DistanceFloorPixels`) and to the line's own pixel count at the near end, so
+  the far arc stays visible and a near arc passed by a zoomed-in camera does not
+  become a ribbon. Each planet's colour is fixed by `OrbitColours` (warm orange
+  Mercury to cool purple Neptune) and is identical in both views; moons stay
+  neutral grey.
 
 # The details screen
 

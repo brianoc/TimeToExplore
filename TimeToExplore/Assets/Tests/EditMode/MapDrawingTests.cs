@@ -384,20 +384,75 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheNearHalfOfALineKeepsItsCurrentLook()
+        public void ANearVertexIsCappedAtTheLineWidth()
         {
             const float lookAtDepth = 185f;
             float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f);
 
-            // Nearer geometry keeps the same world width it has today, so it
-            // thickens with proximity exactly as it did before the floor.
-            foreach (float depth in new[] { 0.01f * lookAtDepth, 0.5f * lookAtDepth,
-                lookAtDepth })
+            // The reported trap: a route that passes close to a zoomed-in
+            // camera used to grow by lookAtDepth / depth. At 1% of the look-at
+            // depth that was 300 px; the ceiling holds it at the declared
+            // 3 px instead.
+            foreach (float depth in new[] { 1e-4f, 0.01f * lookAtDepth,
+                0.5f * lookAtDepth })
             {
-                Assert.That(LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
-                        depth, 60f, 1080f),
-                    Is.EqualTo(lookAtWidth).Within(1e-6f), $"at {depth} units");
+                float width = LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                    depth, 60f, 1080f);
+
+                Assert.That(LineWidth.PixelsAt(width, depth, 60f, 1080f),
+                    Is.EqualTo(LineWidth.Pixels).Within(1e-3f), $"at {depth} units");
             }
+        }
+
+        [Test]
+        public void TheNearCapUsesTheLinesOwnPixelWidth()
+        {
+            const float lookAtDepth = 185f;
+            const float mapPixels = 10f;
+            float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f, mapPixels);
+
+            float width = LineWidth.SampleWorldWidth(lookAtWidth, mapPixels,
+                1f, 60f, 1080f);
+
+            Assert.That(LineWidth.PixelsAt(width, 1f, 60f, 1080f),
+                Is.EqualTo(mapPixels).Within(1e-3f),
+                "a bold map orbit line keeps its 10 px ceiling near the camera");
+        }
+
+        [Test]
+        public void TheBoundedRuleStillNarrowsBetweenTheCapAndTheFloor()
+        {
+            const float lookAtDepth = 185f;
+            float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f);
+            float previous = float.MaxValue;
+
+            foreach (float multiple in new[] { 1f, 1.2f, 2f, 10f, 1_000f })
+            {
+                float depth = lookAtDepth * multiple;
+                float pixels = LineWidth.PixelsAt(
+                    LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels, depth,
+                        60f, 1080f),
+                    depth, 60f, 1080f);
+
+                Assert.That(pixels, Is.LessThanOrEqualTo(previous + 1e-3f),
+                    "the width never widens as the depth grows");
+                Assert.That(pixels,
+                    Is.InRange(LineWidth.DistanceFloorPixels - 1e-3f,
+                        LineWidth.Pixels + 1e-3f));
+                previous = pixels;
+            }
+        }
+
+        [Test]
+        public void AVertexAtOrBehindTheCameraHasNoWidth()
+        {
+            float lookAtWidth = LineWidth.WorldWidth(185f, 60f, 1080f);
+
+            Assert.That(LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                0f, 60f, 1080f), Is.EqualTo(0f),
+                "the camera plane is a taper, not the look-at width");
+            Assert.That(LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                -5f, 60f, 1080f), Is.EqualTo(0f));
         }
 
         [Test]
@@ -453,7 +508,7 @@ namespace TimeToExplore.Tests.EditMode
                 float lookAtWidth = LineWidth.WorldWidth(cameraDistance,
                     camera.fieldOfView, height, LineWidth.OrbitLocalPixels);
                 orbit.Refresh(earth.PositionM, camera, unitsPerMeter, true,
-                    lookAtWidth, LineWidth.OrbitLocalPixels);
+                    lookAtWidth, LineWidth.OrbitLocalPixels, cameraDistance);
 
                 line = orbitObject.GetComponent<LineRenderer>();
                 Assert.That(line, Is.Not.Null);
@@ -469,8 +524,9 @@ namespace TimeToExplore.Tests.EditMode
                         depth, camera.fieldOfView, height);
 
                     Assert.That(pixels,
-                        Is.GreaterThanOrEqualTo(LineWidth.DistanceFloorPixels - 1e-3f),
-                        $"orbit vertex {i} is only {pixels} px wide");
+                        Is.InRange(LineWidth.DistanceFloorPixels - 1e-3f,
+                            LineWidth.OrbitLocalPixels + 1e-3f),
+                        $"orbit vertex {i} is {pixels} px wide");
                 }
             }
             finally
@@ -528,8 +584,9 @@ namespace TimeToExplore.Tests.EditMode
                         depth, camera.fieldOfView, height);
 
                     Assert.That(pixels,
-                        Is.GreaterThanOrEqualTo(LineWidth.DistanceFloorPixels - 1e-3f),
-                        $"route vertex {i} is only {pixels} px wide");
+                        Is.InRange(LineWidth.DistanceFloorPixels - 1e-3f,
+                            LineWidth.Pixels + 1e-3f),
+                        $"route vertex {i} is {pixels} px wide");
                 }
 
                 float nearPixels = PixelsAtVertex(line, 0, camera, height);
@@ -550,6 +607,168 @@ namespace TimeToExplore.Tests.EditMode
                             UnityEngine.Object.DestroyImmediate(line.sharedMaterial);
                 }
                 UnityEngine.Object.DestroyImmediate(lineObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void AZoomedInRouteDoesNotGrowIntoARibbon()
+        {
+            // The reported trap, on a real renderer: a route 100,000,000 units
+            // across and a camera parked one unit from its midpoint. The old
+            // constant world width drew that vertex 100,000,000 / 1 times the
+            // look-at width, so the route filled the screen. The ceiling holds
+            // every vertex between the 2 px floor and the 3 px route width.
+            var lineObject = new GameObject("Zoomed Route Line");
+            var cameraObject = new GameObject("Zoomed Route Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            TrajectoryLine trajectory = null;
+
+            try
+            {
+                const float unitsPerMeter = 1e-6f;
+                const double radiusM = 1.0e14; // 100,000,000 render units
+                float radiusUnits = (float)radiusM * unitsPerMeter;
+
+                // The camera is 800 units from the route's midpoint, but a
+                // whole radius from the ship at the origin, so the old
+                // constant world width was 100,000× too wide there. The far
+                // end of the route falls behind the camera.
+                var routeMid = new Vector3(radiusUnits, 0f, -radiusUnits);
+                camera.transform.position = routeMid + new Vector3(0f, 0f, -800f);
+                camera.transform.LookAt(routeMid);
+                camera.fieldOfView = 60f;
+                int height = ViewportHeight(camera);
+
+                double jd = _model.CurrentJulianDate;
+                var arc = new PlanArc(FlightPhase.Cruise, "sun", jd, jd + 1.0,
+                    new CircularPath(radiusM));
+                var plan = new TrajectoryPlan("mars", 10.0,
+                    new List<PlanArc> { arc },
+                    new ShipState(jd, arc.Path.PositionAt(0.0), Vector3d.Zero),
+                    new ShipState(jd + 1.0, arc.Path.PositionAt(1.0), Vector3d.Zero));
+
+                trajectory = lineObject.AddComponent<TrajectoryLine>();
+                trajectory.Initialise(unitsPerMeter);
+                trajectory.Show(plan, ZeroGravityField.Instance);
+                trajectory.Refresh(arc.Path.PositionAt(0.0), camera);
+
+                LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();
+                Assert.That(line, Is.Not.Null);
+                Assert.That(line.positionCount, Is.GreaterThan(8),
+                    "the curved route must have mid-path vertices to test");
+
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float pixels = PixelsAtVertex(line, i, camera, height);
+                    Assert.That(pixels, Is.LessThanOrEqualTo(LineWidth.Pixels + 1e-3f),
+                        $"route vertex {i} is {pixels} px wide");
+
+                    // The two clipped endpoints taper at the camera plane,
+                    // where 1e8-unit floats cannot resolve the 0.3-unit near
+                    // clip; the rest of the route must hold the floor.
+                    if (i > 0 && i < line.positionCount - 1)
+                    {
+                        Assert.That(pixels,
+                            Is.GreaterThanOrEqualTo(LineWidth.DistanceFloorPixels - 1e-3f),
+                            $"route vertex {i} is {pixels} px wide");
+
+                        Assert.That(Vector3.Dot(line.GetPosition(i) - camera.transform.position,
+                                camera.transform.forward),
+                            Is.GreaterThanOrEqualTo(camera.nearClipPlane - 1e-3f),
+                            $"route vertex {i} is behind the camera");
+                    }
+                }
+            }
+            finally
+            {
+                if (trajectory != null)
+                {
+                    foreach (LineRenderer line in
+                        lineObject.GetComponentsInChildren<LineRenderer>(true))
+                        if (line.sharedMaterial != null)
+                            UnityEngine.Object.DestroyImmediate(line.sharedMaterial);
+                }
+                UnityEngine.Object.DestroyImmediate(lineObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void ALineCrossingBehindTheCameraIsClippedAtTheNearPlane()
+        {
+            var cameraObject = new GameObject("Clip Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            var run = new List<Vector3>();
+            var visible = new List<Vector3>();
+
+            try
+            {
+                camera.nearClipPlane = 0.1f;
+                camera.transform.position = Vector3.zero;
+
+                // The line starts behind the camera, crosses its plane at
+                // z = 0.1, and ends well in front.
+                var points = new List<Vector3>
+                {
+                    new Vector3(0f, 0f, -10f),
+                    new Vector3(0f, 0f, 0.05f),
+                    new Vector3(0f, 0f, 5f)
+                };
+
+                int count = LineCameraClip.Clip(points, camera, run, visible);
+
+                Assert.That(count, Is.EqualTo(2));
+                Assert.That(visible[0].z, Is.EqualTo(0.1f).Within(1e-4f),
+                    "the crossing is interpolated onto the near plane");
+                Assert.That(visible[1].z, Is.EqualTo(5f).Within(1e-4f));
+
+                foreach (Vector3 point in visible)
+                    Assert.That(Vector3.Dot(point - camera.transform.position,
+                            camera.transform.forward),
+                        Is.GreaterThanOrEqualTo(camera.nearClipPlane - 1e-4f),
+                        "no drawn vertex sits behind the camera");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void TheClipKeepsTheLongestVisibleRun()
+        {
+            var cameraObject = new GameObject("Clip Runs Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            var run = new List<Vector3>();
+            var visible = new List<Vector3>();
+
+            try
+            {
+                camera.nearClipPlane = 0.1f;
+                camera.transform.position = Vector3.zero;
+
+                // Two visible runs, the second longer: in front, behind, and in
+                // front again. One LineRenderer cannot draw both, so the clip
+                // keeps the longer one.
+                var points = new List<Vector3>
+                {
+                    new Vector3(0f, 0f, 1f),
+                    new Vector3(0f, 0f, -1f),
+                    new Vector3(0f, 0f, 2f),
+                    new Vector3(0f, 0f, 3f),
+                    new Vector3(0f, 0f, 4f)
+                };
+
+                int count = LineCameraClip.Clip(points, camera, run, visible);
+
+                Assert.That(count, Is.EqualTo(4),
+                    "the crossing point joins the longer in-front run");
+                Assert.That(visible[0].z, Is.EqualTo(0.1f).Within(1e-4f));
+                Assert.That(visible[3].z, Is.EqualTo(4f).Within(1e-4f));
+            }
+            finally
+            {
                 UnityEngine.Object.DestroyImmediate(cameraObject);
             }
         }
@@ -631,6 +850,48 @@ namespace TimeToExplore.Tests.EditMode
                 : 0f;
             return LineWidth.PixelsAt(line.widthCurve.Evaluate(u), depth,
                 camera.fieldOfView, height);
+        }
+
+        /// <summary>A half-circle in the XY plane for the renderer tests: a
+        /// curve whose midpoint passes close to the camera and tessellates into
+        /// many short chords.</summary>
+        private sealed class CircularPath : IArcPath
+        {
+            private readonly double _radiusM;
+
+            public CircularPath(double radiusM) => _radiusM = radiusM;
+
+            public double DurationSeconds => 1.0;
+
+            public Vector3d PositionAt(double u)
+            {
+                double angle = System.Math.PI * (u - 0.5);
+                return new Vector3d(_radiusM * System.Math.Cos(angle),
+                    _radiusM * System.Math.Sin(angle), 0.0);
+            }
+
+            public Vector3d VelocityAt(double u)
+            {
+                double angle = System.Math.PI * (u - 0.5);
+                return new Vector3d(-_radiusM * System.Math.PI * System.Math.Sin(angle),
+                    _radiusM * System.Math.PI * System.Math.Cos(angle), 0.0);
+            }
+
+            public Vector3d AccelerationAt(double u)
+            {
+                double angle = System.Math.PI * (u - 0.5);
+                return new Vector3d(
+                    -_radiusM * System.Math.PI * System.Math.PI * System.Math.Cos(angle),
+                    -_radiusM * System.Math.PI * System.Math.PI * System.Math.Sin(angle),
+                    0.0);
+            }
+
+            public double SecondsAt(double u) => u * DurationSeconds;
+
+            public double ParameterAtSeconds(double seconds) =>
+                DurationSeconds > 0.0
+                    ? System.Math.Clamp(seconds / DurationSeconds, 0.0, 1.0)
+                    : 0.0;
         }
 
         /// <summary>A straight arc for the renderer tests: constant velocity and
