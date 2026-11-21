@@ -71,6 +71,7 @@ namespace TimeToExplore
         public Vector3d ShipVelocityMps => Flight != null ? Flight.State.VelocityMps : Vector3d.Zero;
 
         private readonly List<BodyRuntime> _targets = new List<BodyRuntime>();
+        private readonly List<Vector3d> _routePoints = new List<Vector3d>();
         private GravityField _gravity;
         private TripPlanner _planner;
 
@@ -447,7 +448,32 @@ namespace TimeToExplore
 
             BodyRuntime target = Model?.Get(preview.TargetId);
             ShowPlan(preview, target);
-            Rig?.Frame(target);
+            FramePlottedRoute(preview, target);
+        }
+
+        /// <summary>
+        /// Ease the view to a pose that contains the whole plotted route. The
+        /// target's position on the arrival date joins the fit, so the arrival
+        /// ghost is in shot with the ship's path. If the route is degenerate
+        /// the old body framing is the fallback.
+        /// </summary>
+        private void FramePlottedRoute(TrajectoryPlan plan, BodyRuntime target)
+        {
+            if (Rig == null || plan == null) return;
+
+            _routePoints.Clear();
+            plan.SamplePath(RouteFraming.SamplesPerArc, _routePoints);
+
+            Vector3d? arrivalM = null;
+            if (Model != null && target != null)
+            {
+                Model.ComputeState(target, plan.ArrivalJulianDate,
+                    out Vector3d arrivalPosition, out _);
+                arrivalM = arrivalPosition;
+            }
+
+            if (!Rig.FrameRoute(_routePoints, ShipPositionM, arrivalM))
+                Rig.Frame(target);
         }
 
         /// <summary>How the nav computer brings the ship into orbit: the fast

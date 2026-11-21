@@ -194,6 +194,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
+            Assert.That(_bootstrap.Rig.IsFramingRoute, Is.True,
+                "plotting eases the camera to the whole route, not just the target");
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.Zero,
                 "a preview must not move the ship");
             Assert.That(_bootstrap.Clock.JulianDate, Is.EqualTo(date));
