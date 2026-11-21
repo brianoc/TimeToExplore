@@ -117,6 +117,23 @@ namespace TimeToExplore.Simulation
             }
         }
 
+        /// <summary>The dry mass the fuel readout is quoted against: the
+        /// departure state's, or the design default when a caller has not set
+        /// one.</summary>
+        public double DryMassKg => DepartureState.DryMassKg > 0.0
+            ? DepartureState.DryMassKg
+            : ShipState.DefaultDryMassKg;
+
+        /// <summary>Propellant the plan would burn for its
+        /// <see cref="DeltaVMps"/>, from the rocket equation. A readout only:
+        /// the ship has no finite tank and its mass does not change in flight
+        /// yet.</summary>
+        public double PropellantKg => FuelModel.PropellantKg(DeltaVMps, DryMassKg);
+
+        /// <summary>Propellant as a fraction of the mass at departure, which is
+        /// what the flight model's table calls the propellant fraction.</summary>
+        public double PropellantFraction => FuelModel.PropellantFraction(DeltaVMps);
+
         /// <summary>Delta-v carried by impulsive burns at arc seams. For a conic
         /// capture these are the periapsis capture and the circularisation; the
         /// rest of the plan is the powered quintic's integrated thrust.</summary>

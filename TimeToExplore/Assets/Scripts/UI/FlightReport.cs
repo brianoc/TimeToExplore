@@ -58,6 +58,7 @@ namespace TimeToExplore.UI
             }
 
             rows.Add(DetailRow.Of("Delta-v", $"{plan.DeltaVMps / 1000.0:N0} km/s"));
+            rows.Add(DetailRow.Of("Fuel", FuelLabel(plan)));
 
             if (!coastProfile)
             {
@@ -282,6 +283,18 @@ namespace TimeToExplore.UI
                     $"{chainDeltaV / 1000.0:F1} km/s  ·  " +
                     SolarSystemHud.FormatDuration(chainSeconds)));
             }
+        }
+
+        /// <summary>The fuel readout: propellant in tonnes and the share of the
+        /// mass at departure. A readout only — the ship carries no finite tank
+        /// yet, so this is what the journey would cost, not what is left.</summary>
+        public static string FuelLabel(TrajectoryPlan plan)
+        {
+            if (plan == null) return "—";
+
+            double tonnes = plan.PropellantKg / 1000.0;
+            string mass = tonnes >= 100.0 ? $"{tonnes:N0} t" : $"{tonnes:0.#} t";
+            return $"{mass}  ·  {plan.PropellantFraction * 100.0:0.#}% of departure mass";
         }
 
         public static string StatusLabel(FlightSession session) =>
