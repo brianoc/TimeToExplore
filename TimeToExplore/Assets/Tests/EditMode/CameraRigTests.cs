@@ -428,6 +428,97 @@ namespace TimeToExplore.Tests.EditMode
             _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput { RightReleased = true });
         }
 
+        [Test]
+        public void AutoFramingCapturesTheDistanceInsteadOfRecomputingIt()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Vector3d earthM = earth.PositionM;
+            Vector3d farShip = earthM + new Vector3d(7.5e10, 0.0, 0.0);
+
+            _rig.Frame(earth);
+            _rig.Apply(farShip, 0f);
+
+            float captured = _rig.AutoDistanceTargetUnits;
+            Assert.That(captured, Is.GreaterThan(0f));
+            Assert.That(captured,
+                Is.EqualTo(_rig.AutoDistanceUnits(farShip, earth)).Within(1e-3f));
+
+            // The ship closes half the distance. A per-frame re-target would
+            // halve the framing distance; a captured one stays put.
+            Vector3d closerShip = earthM + new Vector3d(3.75e10, 0.0, 0.0);
+            for (int i = 0; i < 60; i++) _rig.Apply(closerShip, 1f / 60f);
+
+            Assert.That(_rig.AutoDistanceTargetUnits, Is.EqualTo(captured).Within(1e-3f),
+                "the framing distance is captured once");
+            Assert.That(_rig.Orbit.DistanceUnits,
+                Is.EqualTo(captured).Within(captured * 1e-4f),
+                "the camera eases to the captured distance, not the moving one");
+
+            // The arrival hook is the one place that re-captures it.
+            _rig.RecalculateFramingDistance(closerShip);
+            Assert.That(_rig.AutoDistanceTargetUnits,
+                Is.EqualTo(_rig.AutoDistanceUnits(closerShip, earth)).Within(1e-3f));
+            Assert.That(_rig.AutoDistanceTargetUnits, Is.LessThan(captured));
+        }
+
+        [Test]
+        public void BodyAvoidancePullsTheCameraInContinuously()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Vector3d earthM = earth.PositionM;
+
+            _rig.Orbit.YawDegrees = 0f;
+            _rig.Orbit.PitchDegrees = 0f;
+            _rig.Orbit.DistanceUnits = 20f;
+
+            float previous = 0f;
+            bool sawPullIn = false;
+
+            // The camera sits at +z from the ship; moving the ship from 30 to
+            // 10 units before Earth sweeps the camera through the planet.
+            for (float shipZ = 30f; shipZ >= 10f; shipZ -= 1f)
+            {
+                Vector3d shipM = earthM
+                    + Vector3d.FromUnity(new Vector3(0f, 0f, -shipZ * 1e6f));
+                _rig.Apply(shipM, 0f);
+
+                float placed = _rig.PosePositionUnits.z;
+                if (placed < 20f - 1e-3f) sawPullIn = true;
+
+                if (previous > 0f)
+                    Assert.That(Mathf.Abs(placed - previous), Is.LessThanOrEqualTo(1.001f),
+                        $"the camera steps {Mathf.Abs(placed - previous)} units at z={shipZ}");
+
+                double clearanceM = System.Math.Abs(shipZ - placed) * 1e6;
+                Assert.That(clearanceM, Is.GreaterThanOrEqualTo(earth.RadiusM),
+                    $"the camera stays outside Earth at z={shipZ} " +
+                    $"(placed={placed}, clearance={clearanceM:F0} m, radius={earth.RadiusM:F0} m)");
+
+                previous = placed;
+            }
+
+            Assert.That(sawPullIn, Is.True, "the sweep must actually enter the planet's path");
+        }
+
+        [Test]
+        public void ChangingTheFramingTargetTurnsAtTheSlewRate()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+
+            _rig.Frame(_model.Get("earth"));
+            _rig.Apply(shipM, 0f);
+
+            _rig.Frame(_model.Get("mars"));
+            _rig.Orbit.YawDegrees = 0f;
+            _rig.Orbit.PitchDegrees = 0f;
+            _rig.Apply(shipM, 1f / 60f);
+
+            float expected = _rig.AutoSlewDegreesPerSecond / 60f;
+            Assert.That(Mathf.Abs(_rig.Orbit.YawDegrees), Is.LessThanOrEqualTo(expected + 1e-3f),
+                "a new target is slewed, not snapped to");
+            Assert.That(Mathf.Abs(_rig.Orbit.PitchDegrees), Is.LessThanOrEqualTo(expected + 1e-3f));
+        }
+
         /// <summary>The pointer-side NDC a point projects to from a given pose.</summary>
         private static Vector2 NdcOf(Vector3 pointUnits, Vector3 cameraUnits,
             Quaternion rotation, float fieldOfViewDegrees, float aspect)

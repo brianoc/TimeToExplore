@@ -65,6 +65,7 @@ namespace TimeToExplore
         private readonly List<Vector3d> _routePoints = new List<Vector3d>();
         private GravityField _gravity;
         private TripPlanner _planner;
+        private bool _wasFlying;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
@@ -244,6 +245,16 @@ namespace TimeToExplore
                     BodyRuntime target = Model.Get(Flight.TargetId);
                     if (target != null && Rig.AutoTarget != target) Rig.Frame(target);
                 }
+
+                // The framing distance is captured when the flight starts, so
+                // the cruise view does not keep winding in as the ship
+                // approaches. Re-capture it once on arrival, so the camera
+                // settles on the parking orbit instead of holding the cruise
+                // distance. Both moves ease; neither snaps.
+                bool flying = Flight.IsFlying;
+                if (_wasFlying && !flying && Flight.Status == FlightStatus.Arrived)
+                    Rig?.RecalculateFramingDistance(ShipPositionM);
+                _wasFlying = flying;
             }
 
             if (Rig != null) Rig.Apply(ShipPositionM, FrameDeltaSeconds());

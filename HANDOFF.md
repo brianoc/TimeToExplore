@@ -16,11 +16,15 @@
   and `LocalScale` (dominant body for `Space`). `OrbitCamera` owns the single
   12-billion-km range and near/far clipping. `presentation` and `smoke` suites
   pass.
+- Step 2 (code): the framing distance is captured once on `Frame` and
+  re-captured once on flight arrival; a moving target no longer re-targets the
+  zoom every frame. Body avoidance now stops the camera at the near
+  intersection of its ray with each body's clearance sphere, so grazing a body
+  slides the camera instead of stepping it inward. Continuity tests added.
 
 ## Next
 
-1. Step 2: smooth the framing and body avoidance; add continuity tests.
-2. Step 3: docs, log, verification, screenshots.
+1. Step 3: docs, log, verification, screenshots.
 
 ## Verify
 

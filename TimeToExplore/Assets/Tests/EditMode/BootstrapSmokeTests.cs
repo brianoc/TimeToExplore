@@ -539,6 +539,10 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(0.02), "the ship is on the parking orbit");
             Assert.That(eccentricity, Is.LessThan(0.03), "and the orbit is near-circular");
             Assert.That(_bootstrap.Flight.CurrentThrust.IsActive, Is.False, "the drive is off");
+            Assert.That(_bootstrap.Rig.AutoDistanceTargetUnits,
+                Is.EqualTo(_bootstrap.Rig.AutoDistanceUnits(
+                    _bootstrap.ShipPositionM, marsAtArrival)).Within(1.0),
+                "arrival re-captures the framing distance on the parking orbit");
         }
 
         /// <summary>

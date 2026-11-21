@@ -89,6 +89,14 @@ namespace TimeToExplore.Player
         /// <summary>True while the orbit distance follows the target.</summary>
         public bool AutoDistance { get; private set; }
 
+        /// <summary>
+        /// The distance the automatic framing is easing toward. Captured from
+        /// the ship-to-target distance when framing starts (or when the flight
+        /// arrives), not recomputed every frame, so a moving target cannot keep
+        /// pulling the view in under the player.
+        /// </summary>
+        public float AutoDistanceTargetUnits { get; private set; }
+
         /// <summary>True while either part of the framing is following.</summary>
         public bool Auto => AutoAim || AutoDistance;
 
@@ -115,6 +123,7 @@ namespace TimeToExplore.Player
         private bool _orbiting;
         private bool _zoomPending;
         private bool _zoomAnchorActive;
+        private bool _autoDistancePending;
         private Vector3 _zoomAnchorUnits;
         private Vector2 _zoomAnchorNdc;
         private float _zoomAnchorAspect = 1f;
@@ -151,6 +160,21 @@ namespace TimeToExplore.Player
             AutoTarget = body;
             AutoAim = body != null;
             AutoDistance = body != null;
+            _autoDistancePending = body != null;
+        }
+
+        /// <summary>
+        /// Capture a new framing distance from the current ship position. Called
+        /// once when framing starts, and again when a flight arrives; between
+        /// those events the distance is held so a moving target cannot keep
+        /// winding the zoom in.
+        /// </summary>
+        public void RecalculateFramingDistance(Vector3d shipPositionM)
+        {
+            if (AutoTarget == null) return;
+
+            AutoDistanceTargetUnits = AutoDistanceUnits(shipPositionM, AutoTarget);
+            _autoDistancePending = false;
         }
 
         /// <summary>Stop following; the player owns the view.</summary>
@@ -163,6 +187,7 @@ namespace TimeToExplore.Player
             AutoAim = false;
             AutoDistance = false;
             AutoTarget = null;
+            _autoDistancePending = false;
         }
 
         /// <summary>Place the view without a transition, for a reset or a start.</summary>
@@ -176,7 +201,8 @@ namespace TimeToExplore.Player
             if (body != null)
             {
                 Orbit.AimAlong(body.PositionM - shipPositionM);
-                Orbit.SnapDistance(Mathf.Clamp(AutoDistanceUnits(shipPositionM, body),
+                RecalculateFramingDistance(shipPositionM);
+                Orbit.SnapDistance(Mathf.Clamp(AutoDistanceTargetUnits,
                     OrbitCamera.MinDistanceUnits, OrbitCamera.MaxDistanceUnits));
             }
 
@@ -316,7 +342,13 @@ namespace TimeToExplore.Player
 
                 if (AutoDistance)
                 {
-                    Orbit.RequestDistance(AutoDistanceUnits(shipPositionM, AutoTarget));
+                    // Capture the framing distance on the first frame after
+                    // Frame/SnapTo. After that it is held: a flight approaching
+                    // its target gets a stable view, and the distance is
+                    // recalculated once on arrival instead of every frame.
+                    if (_autoDistancePending) RecalculateFramingDistance(shipPositionM);
+
+                    Orbit.RequestDistance(AutoDistanceTargetUnits);
                     Orbit.EaseDistance(deltaTime, AutoZoomRate);
                 }
             }
@@ -559,34 +591,58 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
-        /// Pull the camera in if the orbit would put it inside a body. The test
-        /// is done in metres against the model, so it follows the real radii at
-        /// the current date rather than a hand-tuned limit.
+        /// Pull the camera in if the orbit would put it inside a body. The ray
+        /// from the look-at point along the camera offset is tested against each
+        /// body's sphere in metres, and the camera stops just in front of the
+        /// first one it would enter. The result is a continuous function of the
+        /// orbit: grazing a body slides the camera along the ray instead of
+        /// stepping it inward by a fixed fraction, which is what made the view
+        /// jump as a body drifted past the camera.
         /// </summary>
         private Vector3 AvoidBodies(Vector3 offset, Vector3d lookAtPositionM)
         {
-            if (_model == null) return offset;
+            if (_model == null || !(UnitsPerMeter > 0f)) return offset;
 
             Vector3 direction = offset.normalized;
-            float distance = offset.magnitude;
+            double distanceM = offset.magnitude / UnitsPerMeter;
+            if (!(distanceM > 0.0)) return offset;
 
-            for (int i = 0; i < 8; i++)
+            Vector3d ray = Vector3d.FromUnity(direction);
+            if (ray.SqrMagnitude < 1e-12) return offset;
+            ray = ray.Normalized;
+
+            // Keep a margin outside the surface, so a body does not clip the
+            // near plane as the camera grazes it.
+            const double ClearanceFraction = 1.05;
+
+            foreach (BodyRuntime body in _model.Ordered)
             {
-                Vector3d cameraPositionM = lookAtPositionM
-                    + Vector3d.FromUnity(direction * distance) * (1.0 / UnitsPerMeter);
+                double radiusM = body.RadiusM;
+                if (!(radiusM > 0.0) || !double.IsFinite(radiusM)) continue;
 
-                BodyRuntime nearest = _model.FindNearest(cameraPositionM);
-                if (nearest == null || nearest.RadiusM <= 0.0) break;
+                double clearanceM = radiusM * ClearanceFraction;
+                Vector3d toBody = body.PositionM - lookAtPositionM;
+                double alongM = Vector3d.Dot(toBody, ray);
 
-                double clearance = Vector3d.Distance(cameraPositionM, nearest.PositionM)
-                                   - nearest.RadiusM;
-                if (clearance > nearest.RadiusM * 0.05) break;
+                // Only bodies in front of the look-at point along the camera
+                // ray can be entered by a camera beyond them.
+                if (alongM <= 0.0) continue;
 
-                distance *= 0.6f;
-                if (distance < OrbitCamera.MinDistanceUnits * 0.5f) break;
+                double perpendicularSq = toBody.SqrMagnitude - alongM * alongM;
+                double clearanceSq = clearanceM * clearanceM;
+                if (perpendicularSq >= clearanceSq) continue;
+
+                // The near intersection of the ray with the body's clearance
+                // sphere. It moves continuously with the orbit, so no step.
+                double halfChordM = System.Math.Sqrt(clearanceSq - perpendicularSq);
+                double nearM = alongM - halfChordM;
+                if (nearM > 0.0 && nearM < distanceM) distanceM = nearM;
             }
 
-            return direction * distance;
+            double minimumM = OrbitCamera.MinDistanceUnits / UnitsPerMeter;
+            distanceM = System.Math.Max(distanceM, minimumM);
+
+            return direction * (float)(distanceM * UnitsPerMeter);
         }
     }
 }
