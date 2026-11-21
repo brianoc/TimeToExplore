@@ -370,17 +370,16 @@ namespace TimeToExplore
         /// <summary>
         /// Plot a route for inspection without starting the flight. The preview
         /// never moves the ship; Begin flight replans from the current state.
+        /// The plan is built on the background planner (see
+        /// <see cref="FlightSession.PlotAsync"/>), and the HUD's per-frame
+        /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready.
         /// </summary>
         public void PlotRoute(BodyRuntime body)
         {
             if (body == null || Flight == null || Model == null) return;
             if (body.Gm <= 0.0) return;
 
-            TrajectoryPlan preview = Flight.Plot(body.Id, Clock.JulianDate);
-            if (preview == null) return;
-
-            ShowPlan(preview, body);
-            Rig?.Frame(body);
+            Flight.PlotAsync(body.Id, Clock.JulianDate);
         }
 
         /// <summary>Begin the plotted route. Replans from the current state and
@@ -426,6 +425,30 @@ namespace TimeToExplore
             ShowPlan(preview, Model?.Get(preview.TargetId));
         }
 
+        /// <summary>
+        /// Draw a finished background preview, on the main thread. The
+        /// planner worker hands its plan here once per HUD update; the HUD
+        /// never touches the worker, and nothing it produces is shown before
+        /// now. A failed build is logged and leaves the published preview in
+        /// place. Publishing draws the route the same way the synchronous
+        /// <see cref="PlotRoute"/> path always did; warp is raised by
+        /// <see cref="BeginGoTo"/>, not by a plot.
+        /// </summary>
+        public void ApplyPreviewIfReady()
+        {
+            if (Flight == null) return;
+
+            string failure = Flight.TakePreviewFailure();
+            if (!string.IsNullOrEmpty(failure))
+                Debug.LogWarning("Preview plan failed: " + failure);
+
+            if (!Flight.TryApplyCompletedPreview(out TrajectoryPlan preview)) return;
+
+            BodyRuntime target = Model?.Get(preview.TargetId);
+            ShowPlan(preview, target);
+            Rig?.Frame(target);
+        }
+
         /// <summary>How the nav computer brings the ship into orbit: the fast
         /// quintic capture, the cheap coasted conic one, or the conic coasts
         /// with one fixed-thrust capture burn and an impulse trim.</summary>
@@ -445,49 +468,43 @@ namespace TimeToExplore
 
         /// <summary>
         /// Switch the cruise profile. A plotted preview is rebuilt against the
-        /// new profile and redrawn; a live flight is left alone, because it
-        /// keeps the plan it was begun with. The camera is not re-framed: the
-        /// choice changes the crossing, not the viewer's aim.
+        /// new profile on the background planner — the HUD draws it through
+        /// <see cref="ApplyPreviewIfReady"/> — and a live flight is left alone,
+        /// because it keeps the plan it was begun with. The camera is not
+        /// re-framed: the choice changes the crossing, not the viewer's aim.
         /// </summary>
         public void SetCruiseProfile(CruiseStyle style)
         {
             if (Flight == null || Flight.CruiseProfile == style) return;
 
-            TrajectoryPlan preview = Flight.SetCruiseProfile(style);
-            if (preview == null) return;
-
-            ShowPlan(preview, Model?.Get(preview.TargetId));
+            Flight.SetCruiseProfile(style);
         }
 
         /// <summary>
         /// Switch the arrival style. A plotted preview is rebuilt against the
-        /// new style and redrawn; a live flight is left alone, because it keeps
-        /// the plan it was begun with. The camera is not re-framed: the choice
-        /// changes the arrival, not the viewer's aim.
+        /// new style on the background planner — the HUD draws it through
+        /// <see cref="ApplyPreviewIfReady"/> — and a live flight is left alone,
+        /// because it keeps the plan it was begun with. The camera is not
+        /// re-framed: the choice changes the arrival, not the viewer's aim.
         /// </summary>
         public void SetArrivalStyle(CaptureStyle style)
         {
             if (Flight == null || Flight.ArrivalStyle == style) return;
 
-            TrajectoryPlan preview = Flight.SetArrivalStyle(style);
-            if (preview == null) return;
-
-            ShowPlan(preview, Model?.Get(preview.TargetId));
+            Flight.SetArrivalStyle(style);
         }
 
         /// <summary>
-        /// Set the fixed-burn level. A fixed-thrust preview is rebuilt from the
-        /// pinned departure state and redrawn; any other style just remembers
-        /// the level for the next switch. A live flight is left alone.
+        /// Set the fixed-burn level. A fixed-thrust preview is rebuilt on the
+        /// background planner from the pinned departure state; any other style
+        /// just remembers the level for the next switch. A live flight is left
+        /// alone.
         /// </summary>
         public void SetBurnLevel(double levelG)
         {
             if (Flight == null) return;
 
-            TrajectoryPlan preview = Flight.SetBurnLevel(levelG);
-            if (preview == null) return;
-
-            ShowPlan(preview, Model?.Get(preview.TargetId));
+            Flight.SetBurnLevel(levelG);
         }
 
         /// <summary>Throw away a preview, leaving a live flight alone.</summary>

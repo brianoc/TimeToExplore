@@ -153,6 +153,7 @@ namespace TimeToExplore.Tests.EditMode
                 "an idle session has no flight panel");
 
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             Update();
 
             Assert.That(Child("FlightPanel").activeSelf, Is.True);
@@ -235,6 +236,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(jump.interactable, Is.True);
 
             route.onClick.Invoke(); // Plot route
+            WaitForPreview();
             Assert.That(_bootstrap.Flight.HasPreview, Is.True);
             Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
             Update();
@@ -282,6 +284,7 @@ namespace TimeToExplore.Tests.EditMode
                 "there is nothing to time before a route is plotted");
 
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             Update();
 
             Assert.That(group.activeSelf, Is.True, "a preview offers the trip-time control");
@@ -322,6 +325,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             _hud.OpenDetails();
 
             // Opening frame: the click that opened the screen cannot also choose.
@@ -343,7 +347,9 @@ namespace TimeToExplore.Tests.EditMode
 
             double quinticMinimum = _bootstrap.Flight.PreviewMinimumSeconds;
             conic.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Any(
+                arc => arc.Phase == FlightPhase.Coast),
+                "the conic rebuild publishes");
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
             Assert.That(_bootstrap.Flight.Preview.Arcs.Any(
@@ -360,7 +366,8 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("QuinticCaptureButton").color));
 
             quintic.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Count == 3,
+                "the quintic rebuild publishes");
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Quintic));
             Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(3),
@@ -376,6 +383,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             _hud.OpenDetails();
 
             Update();
@@ -386,7 +394,8 @@ namespace TimeToExplore.Tests.EditMode
             Update();
             Assert.That(fixedBurn.interactable, Is.True);
             fixedBurn.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn),
+                "the fixed-burn rebuild publishes");
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
             Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
@@ -408,12 +417,14 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             _hud.OpenDetails();
 
             Update();
             Update();
             ButtonNamed("FixedBurnButton").onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn),
+                "the fixed-burn rebuild publishes");
 
             Slider level = SliderNamed("BurnLevelSlider");
             Assert.That(level.minValue, Is.EqualTo(0f).Within(1e-6));
@@ -422,7 +433,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(TextNamed("BurnLevelValue").text, Does.Contain("0.30 g"));
 
             level.value = 0.5f;
-            Update();
+            PumpUntil(() =>
+                    System.Math.Abs(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2
+                        - 0.5 * TripPlanner.StandardGravityMps2) < 1e-6,
+                "the 0.5 g rebuild publishes");
 
             Assert.That(_bootstrap.Flight.BurnLevelG, Is.EqualTo(0.5).Within(1e-9));
             Assert.That(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2,
@@ -431,7 +445,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(TextNamed("BurnLevelValue").text, Does.Contain("0.50 g"));
 
             level.value = 0f;
-            Update();
+            PumpUntil(() => !_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn),
+                "the zero-level rebuild publishes");
 
             Assert.That(_bootstrap.Flight.BurnLevelG, Is.EqualTo(0.0));
             Assert.That(_bootstrap.Flight.Preview.FiniteBurnDeltaVMps, Is.EqualTo(0.0));
@@ -447,6 +462,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             _hud.OpenDetails();
 
             Update();
@@ -468,7 +484,8 @@ namespace TimeToExplore.Tests.EditMode
                 "the powered profile has no fixed burn to level");
 
             burnCoastBurn.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn),
+                "the burn–coast–burn rebuild publishes");
 
             Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.BurnCoastBurn));
             Assert.That(_bootstrap.Flight.CruiseProfile,
@@ -526,7 +543,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(SliderNamed("BurnLevelSlider").value, Is.EqualTo(0.3f).Within(1e-4));
 
             SliderNamed("BurnLevelSlider").value = 0.5f;
-            Update();
+            PumpUntil(() =>
+                    System.Math.Abs(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2
+                        - 0.5 * TripPlanner.StandardGravityMps2) < 1e-6,
+                "the burn-level rebuild publishes");
 
             Assert.That(_bootstrap.BurnLevelG, Is.EqualTo(0.5).Within(1e-9));
             Assert.That(_bootstrap.Flight.Preview.FiniteBurnAccelerationMps2,
@@ -534,7 +554,8 @@ namespace TimeToExplore.Tests.EditMode
                 "the commanded level is the level the profile is planned at");
 
             coast.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.All(arc => !arc.IsFiniteBurn),
+                "the coast rebuild publishes");
 
             Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.Coast));
             Assert.That(_bootstrap.Flight.Preview.Arcs.Any(arc => arc.IsFiniteBurn), Is.False,
@@ -543,8 +564,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Child("BurnLevelSlider").activeSelf, Is.False,
                 "an unpowered coast has no level to command");
 
+            TrajectoryPlan coastPlan = _bootstrap.Flight.Preview;
             powered.onClick.Invoke();
-            Update();
+            PumpUntil(() => _bootstrap.Flight.Preview != coastPlan,
+                "the torch rebuild publishes");
 
             Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.Powered));
             Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
@@ -560,6 +583,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             _hud.OpenDetails();
 
             Update();
@@ -568,7 +592,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
 
             ButtonNamed("BurnCoastBurnProfileButton").onClick.Invoke();
-            Update();
+            PumpUntil(() => _hud.RouteLegendCount == 3,
+                "the burn–coast–burn rebuild publishes");
 
             Assert.That(_hud.RouteLegendCount, Is.EqualTo(3),
                 "the profile draws a quintic break, fixed burns, and conic coasts");
@@ -586,7 +611,8 @@ namespace TimeToExplore.Tests.EditMode
                 "the departure burn and the brake share one legend row");
 
             ButtonNamed("CoastProfileButton").onClick.Invoke();
-            Update();
+            PumpUntil(() => _hud.RouteLegendCount == 2,
+                "the coast rebuild publishes");
 
             Assert.That(_hud.RouteLegendCount, Is.EqualTo(2),
                 "the unpowered coast loses the fixed-burn row");
@@ -594,7 +620,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
 
             ButtonNamed("PoweredProfileButton").onClick.Invoke();
-            Update();
+            PumpUntil(() => _hud.RouteLegendCount == 1,
+                "the torch rebuild publishes");
 
             Assert.That(_hud.RouteLegendCount, Is.EqualTo(1),
                 "the torch plan loses the coast row too");
@@ -612,6 +639,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             Update();
 
             Assert.That(_hud.RouteLegendVisible, Is.True);
@@ -628,10 +656,8 @@ namespace TimeToExplore.Tests.EditMode
                 "the legend stacks above the flight panel in the bottom-left corner");
 
             _bootstrap.SetArrivalStyle(CaptureStyle.FiniteBurn);
-            Update();
-
-            Assert.That(_hud.RouteLegendCount, Is.EqualTo(3),
-                "quintic departure/cruise, conic coasts, and the fixed burn");
+            PumpUntil(() => _hud.RouteLegendCount == 3,
+                "the fixed-burn legend row appears when the rebuild publishes");
             Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
             Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
             Assert.That(_hud.RouteLegendColour(1), Is.EqualTo(RouteColours.Conic));
@@ -664,6 +690,7 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
 
             _hud.OpenDetails();
             Update();
@@ -790,6 +817,30 @@ namespace TimeToExplore.Tests.EditMode
                     Assert.Fail("the background retime was never published");
                 System.Threading.Thread.Sleep(1);
             }
+        }
+
+        /// <summary>Pump the HUD's update until the route preview is published,
+        /// with a deadline so a broken worker fails instead of hanging.</summary>
+        private void WaitForPreview()
+        {
+            PumpUntil(() => _bootstrap.Flight.HasPreview,
+                "the background preview was never published");
+        }
+
+        /// <summary>Pump the HUD's update until <paramref name="condition"/>
+        /// holds — background plans publish on the worker, so a single Update
+        /// is not enough — with a deadline so a broken worker fails instead
+        /// of hanging.</summary>
+        private void PumpUntil(System.Func<bool> condition, string message)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (!condition())
+            {
+                Update();
+                if (watch.Elapsed.TotalSeconds > 20.0) Assert.Fail(message);
+                System.Threading.Thread.Sleep(1);
+            }
+            Update();
         }
 
         private static void Invoke(object target, string method)

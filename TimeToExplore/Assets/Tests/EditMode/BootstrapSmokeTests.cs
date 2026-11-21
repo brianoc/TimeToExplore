@@ -187,6 +187,7 @@ namespace TimeToExplore.Tests.EditMode
             double date = _bootstrap.Clock.JulianDate;
 
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
 
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_bootstrap.Flight.HasPreview, Is.True);
@@ -224,6 +225,7 @@ namespace TimeToExplore.Tests.EditMode
             Build();
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
 
             Assert.That(_bootstrap.Trajectory.ArcCount,
                 Is.EqualTo(_bootstrap.Flight.Preview.Arcs.Count));
@@ -235,7 +237,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.ArcLabel(0), Is.EqualTo("Quintic arc"));
             Assert.That(_bootstrap.Trajectory.ArcIsDashed(0), Is.False);
 
+            TrajectoryPlan quintic = _bootstrap.Flight.Preview;
             _bootstrap.SetArrivalStyle(CaptureStyle.Conic);
+            WaitForRebuild(quintic);
 
             Assert.That(_bootstrap.Trajectory.ArcCount, Is.EqualTo(5),
                 "departure, cruise, inbound coast, capture ellipse, parking");
@@ -251,7 +255,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.ArcColour(4),
                 Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(3)));
 
+            TrajectoryPlan conic = _bootstrap.Flight.Preview;
             _bootstrap.SetArrivalStyle(CaptureStyle.FiniteBurn);
+            WaitForRebuild(conic);
 
             Assert.That(_bootstrap.Trajectory.ArcCount, Is.EqualTo(6),
                 "the fixed burn splits the arrival into two conic runs");
@@ -273,6 +279,7 @@ namespace TimeToExplore.Tests.EditMode
         {
             Build();
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
             double later = _bootstrap.Clock.JulianDate + 0.05;
             _bootstrap.Clock.JulianDate = later;
 
@@ -297,6 +304,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(hud, Is.Not.Null);
             hud.OpenDetails();
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
 
             // The HUD builds its rows and the slider's range in its own Update,
             // which edit mode does not call for us.
@@ -337,6 +345,7 @@ namespace TimeToExplore.Tests.EditMode
         {
             Build();
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
             double staleDate = _bootstrap.Clock.JulianDate + 0.08;
 
             _bootstrap.Clock.JulianDate = staleDate;
@@ -353,6 +362,7 @@ namespace TimeToExplore.Tests.EditMode
         {
             Build();
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
 
             _bootstrap.DiscardPreview();
 
@@ -426,6 +436,7 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.Select(mars);
             _bootstrap.SetCruiseProfile(CruiseStyle.BurnCoastBurn);
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
 
             Assert.That(_bootstrap.CruiseProfile, Is.EqualTo(CruiseStyle.BurnCoastBurn));
             Assert.That(_bootstrap.Flight.HasPreview, Is.True);
@@ -526,6 +537,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Selected, Is.SameAs(mars));
 
             _bootstrap.PlotRoute(mars);
+            WaitForPreview();
             Assert.That(_bootstrap.Flight.HasPreview, Is.True);
             Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
@@ -700,6 +712,40 @@ namespace TimeToExplore.Tests.EditMode
                     Assert.Fail("the background retime was never published");
                 System.Threading.Thread.Sleep(1);
             }
+        }
+
+        /// <summary>Pump the background planner until the route preview is
+        /// published, with a deadline so a broken worker fails instead of
+        /// hanging. Publication redraws the route exactly as the HUD's
+        /// per-frame pump does, so the route's assertions see the plan.</summary>
+        private void WaitForPreview()
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (!_bootstrap.Flight.HasPreview)
+            {
+                _bootstrap.ApplyPreviewIfReady();
+                if (watch.Elapsed.TotalSeconds > 20.0)
+                    Assert.Fail("the background preview was never published");
+                System.Threading.Thread.Sleep(1);
+            }
+            _bootstrap.ApplyPreviewIfReady();
+        }
+
+        /// <summary>Pump the background planner until a rebuild publishes over
+        /// <paramref name="previous"/>, redrawing the route, with a deadline.
+        /// The published plan is a different instance than the one the style
+        /// change superseded.</summary>
+        private void WaitForRebuild(TrajectoryPlan previous)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (_bootstrap.Flight.Preview == previous)
+            {
+                _bootstrap.ApplyPreviewIfReady();
+                if (watch.Elapsed.TotalSeconds > 20.0)
+                    Assert.Fail("the background rebuild was never published");
+                System.Threading.Thread.Sleep(1);
+            }
+            _bootstrap.ApplyPreviewIfReady();
         }
     }
 }

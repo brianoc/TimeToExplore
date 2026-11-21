@@ -227,9 +227,11 @@ namespace TimeToExplore.UI
 
             if (PlayerControls.CancelPressed) CloseDetails();
 
-            // The retime worker hands its finished plan back here, on the main
-            // thread, before the panels read the preview. The slider only
-            // requests; nothing a frame draws comes from the worker.
+            // The planner worker hands its finished plans back here, on the
+            // main thread, before the panels read the preview. The worker
+            // only builds; nothing a frame draws comes from it: the preview
+            // the player sees is always a published plan.
+            _owner.ApplyPreviewIfReady();
             _owner.ApplyRetimeIfReady();
 
             UpdatePointer();

@@ -10,9 +10,8 @@ built from `main`.
   (style/cruise/burn changes through the same queue), `TryApplyCompletedPreview`
   and `TakePreviewFailure` publishers. The worker is now `PlannerLoop`
   (retimes + preview builds); the window cache and `_windowEpoch` are
-  `_retimeLock`-guarded.
-* Bootstrap: `PlotRoute` calls `Flight.PlotAsync`; new `ApplyPreviewIfReady`
-  pumps from HUD `Update`.
+  `_retimeLock`-guarded. — commit `1874e27`.
+* Bootstrap: `PlotRoute` calls `Flight.PlotAsync`; new `ApplyPreviewIfReady`.
 * HUD: `Update` pumps `ApplyPreviewIfReady` before `ApplyRetimeIfReady`.
 * Tests: async plot/rebuild coverage in `FlightSessionTests`; `WaitForPreview` /
   `WaitForRebuild` / `PumpUntil` pumps in `BootstrapSmokeTests` and
