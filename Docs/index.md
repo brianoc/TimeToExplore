@@ -19,7 +19,7 @@ bundle-relative paths that stay valid when a document moves.
 
 * [Game vision](/vision/game-vision.md) — the fantasy, the loop, and what the player actually does.
 * [Design pillars](/vision/design-pillars.md) — the six rules that settle design arguments.
-* [Flight model](/simulation/flight-model.md) — 10 m/s², brachistochrone travel, and the delta-v economy.
+* [Flight model](/simulation/flight-model.md) — 10 m/s², brachistochrone travel, the delta-v economy, and the first-pass fuel readout.
 * [Glossary](/glossary.md) — the shared words: the two camera views, the thrust and manoeuvre vocabulary, and the arrival geometry.
 
 # Vision
@@ -78,4 +78,5 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-013: A runtime uGUI HUD, and Input System New only](/decisions/adr-013-ugui-hud.md) — replace IMGUI with a code-built uGUI canvas, give uGUI an `InputSystemUIInputModule`, and drop the legacy backend.
 * [ADR-014: Transfer conics and the Oberth capture](/decisions/adr-014-keplerian-coast.md) — universal-variable propagation, a true-anomaly-parameterised coast, and an impulsive periapsis capture that parks lower and cheaper.
 * [ADR-015: Fixed-thrust burns and the hybrid capture](/decisions/adr-015-fixed-thrust-burns.md) — fly one long capture burn at a player-set level, trim its end state with an impulse for exactness, and keep the conic parking radius instead of raising it for the finite-burn loss.
-* [ADR-016: Zoom toward the pointer, and Space to go home](/decisions/adr-016-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, keep an anchored pan, and ease the view back to the ship in one second.
+* [ADR-016: Show what a journey costs in fuel, without a tank](/decisions/adr-016-fuel-readout.md) — charge the plan's delta-v through the rocket equation at 10,000 km/s and print the propellant, while the tank stays unlimited and mass constant.
+* [ADR-017: Zoom toward the pointer, and Space to go home](/decisions/adr-017-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, keep an anchored pan, and ease the view back to the ship in one second.

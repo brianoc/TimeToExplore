@@ -117,7 +117,7 @@ not matter. Local precision is untouched.
   anchored it under the pointer: the local view lands on the ship after a
   framing or a direct distance change, while a cursor zoom keeps the point the
   player put there. `Space` eases the view home in one second
-  ([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)).
+  ([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)).
 * `Space` centres the map on the ship and zooms back to the local view.
 
 # The rig, as built (step 2)
@@ -361,7 +361,7 @@ footer becomes **Plot route** / **Replot route**, **Begin flight**, **Jump
 ADR-008's "the camera always looks at the ship" is the settled rule this design
 bends: in the map the camera looks at `ship + pan`.
 [ADR-009](/decisions/adr-009-map-camera-pan.md) records the bend, its
-consequences, and its alternatives; [ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)
+consequences, and its alternatives; [ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)
 later made the pan live at every zoom, and [Selection and camera
 focus](/technical/selection-and-camera.md) and [The flight
 session](/technical/flight-session.md) describe how the scene uses it.

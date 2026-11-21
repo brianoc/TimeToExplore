@@ -1,6 +1,6 @@
 ---
 type: Decision Record
-title: "ADR-016: zoom toward the pointer, and Space to go home"
+title: "ADR-017: zoom toward the pointer, and Space to go home"
 description: Anchor the wheel zoom to the point under the pointer by moving the camera's look-at, and make Space ease the view back to the ship in one second.
 tags: [decision, camera, interaction, input, zoom]
 status: accepted

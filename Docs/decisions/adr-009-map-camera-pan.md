@@ -41,7 +41,7 @@ than one that changes reading as it pulls back.
    capped at 60 AU, and converted to render units once at the camera. In the
    local band the pan eases to zero, so the camera looks at the ship again and
    ADR-008 holds without an exception. Cursor-anchored zoom
-   ([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)) later made the pan
+   ([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)) later made the pan
    live at every zoom, so the local pan is now a real state that Space, a reset,
    and a frame unwind; the ease is skipped while the player holds a cursor
    anchor.
@@ -96,7 +96,7 @@ than one that changes reading as it pulls back.
 * ADR-008's "always looks at the ship" now carries a documented map exception;
   a reader has to hold both records.
 * The pan is real camera state at every zoom
-  ([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)). Future camera work —
+  ([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). Future camera work —
   chase framing, a cockpit, a cinematic jump — has to decide whether it respects
   the pan or clears it.
 * The 12-billion-km zoom ceiling and the 60 AU pan cap are gameplay limits, not

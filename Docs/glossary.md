@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # Glossary
@@ -20,7 +20,7 @@ The player's yaw and pitch are the angle, the ship sits at the render origin
 ship-centred whenever the pan is zero. A wheel zoom anchors the point under the
 pointer, so an off-centre zoom can leave another point at the centre; **Space**
 eases the view home and unwinds the pan
-([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)). Bodies outside the
+([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). Bodies outside the
 local neighbourhood fade to their true-scale dots; the **T** toggle forces true
 scale everywhere.
 
@@ -118,6 +118,27 @@ circularisation. A **Lambert coast** is the heliocentric middle chosen by
 `LambertSolver` from two positions and a time of flight; it is what
 **burn-and-coast** means in the flight model. A quintic with a flat middle is not
 a coast.
+
+### Fuel and propellant
+
+**Exhaust velocity** — the effective `v_e` of the torch, **10,000 km/s** (about
+3.3% of light speed). A balance value, not a modelled reactor;
+`FuelModel.ExhaustVelocityMps`. See
+[the flight model](/simulation/flight-model.md#the-fuel-readout).
+
+**Propellant** — the reaction mass a burn spends, quoted in tonnes. The ship's
+dry mass is 1,000 t by default (`ShipState.DefaultDryMassKg`).
+
+**Mass ratio** — `m_0 / m_f = exp(delta-v / v_e)`, the factor by which the ship
+mass changes over a delta-v. **Propellant fraction** — the propellant as a
+share of the departure mass, `1 - 1 / mass ratio`. These are the columns in the
+flight model's table.
+
+**Fuel readout** — the flight panel's `Fuel` row: the tonnes a journey would
+burn and that share of the departure mass. It is derived from the plan's
+delta-v, not simulated: the ship has no finite tank and its mass does not change
+in flight yet, so the row is a cost, not a budget
+([ADR-016](/decisions/adr-016-fuel-readout.md)).
 
 ### Manoeuvre model
 

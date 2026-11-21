@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # The problem
@@ -635,7 +635,9 @@ each impulsive periapsis or circularisation and at each fixed burn start, an
 arrival marker at the parking-orbit point, a flip marker where the along-track
 thrust changes direction, a countdown to the next arc boundary, a phase table with
 each leg's start, duration, and what the drive is doing, the arrival date,
-peak thrust for a torch plan, planned delta-v and the burn total, the live
+peak thrust for a torch plan, planned delta-v and the burn total, **the fuel
+readout** — the propellant a journey would burn and its share of the departure
+mass, with no tank limit — the live
 throttle, the `PROFILE` buttons, the trip-time slider, which re-solves the route
 and its arrival date as it moves, and the arrival-style buttons, which rebuild
 the preview as a fast quintic capture, a cheap conic coast, or the hybrid
@@ -651,7 +653,8 @@ every style; the hybrid's burn window is a boundary too.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
-against a budget (there is no budget yet), and the docking corridor.
+against a budget (the `Fuel` row shows the propellant a journey would burn, but
+there is no tank or budget yet), and the docking corridor.
 
 # Failure and rescue
 

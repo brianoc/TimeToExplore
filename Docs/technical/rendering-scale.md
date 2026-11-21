@@ -73,7 +73,7 @@ back at the ship whenever the look-at offset is zero. Orbiting therefore costs
 nothing in precision — the world is still projected from the ship — and it is
 what lets the player see the plan rather than sit inside it. A cursor-anchored
 wheel zoom moves the look-at offset
-([ADR-016](../decisions/adr-016-cursor-zoom-and-home.md)), which is still a
+([ADR-017](../decisions/adr-017-cursor-zoom-and-home.md)), which is still a
 camera pose and not a new coordinate space. Movement changes the ship's double
 position, which changes every body's relative render position next frame.
 

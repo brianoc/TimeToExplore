@@ -140,6 +140,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | Type | File | Responsibility |
 |---|---|---|
 | `ShipState` | `Scripts/Simulation/ShipState.cs` | Ship position, velocity, date, mass bookkeeping |
+| `FuelModel` | `Scripts/Simulation/FuelModel.cs` | First-pass propellant readout: the rocket equation at 10,000 km/s, mass ratio and propellant fraction |
 | `ThrustCommand` | `Scripts/Simulation/ThrustCommand.cs` | Thrust as an acceleration vector, with clamping |
 | `IGravityField` | `Scripts/Simulation/IGravityField.cs` | Prepare and evaluate a gravity field |
 | `GravityField` | `Scripts/Simulation/GravityField.cs` | Summed point-mass field over the catalogue, pruned and clamped |

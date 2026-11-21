@@ -159,7 +159,7 @@ doing the work, so the pan is live at every zoom, not only on the map; the ship
 drifts off-centre when the zoom is off-centre, which is the point of the
 gesture. The 60 AU pan cap still applies, so a corner anchor at the 12-billion-km
 ceiling can shift very slightly at the last notch. See
-[ADR-016](/decisions/adr-016-cursor-zoom-and-home.md).
+[ADR-017](/decisions/adr-017-cursor-zoom-and-home.md).
 
 **Space goes home.** A one-second smoothstep (`HomeTransition`) eases the
 distance geometrically to half the dominant body's SOI radius — the middle of
@@ -198,7 +198,7 @@ The one rule this bends is ADR-008's "the camera always looks at the ship". It
 looks at `ship + pan`, and the pan is now live at every zoom: the map's browsed
 centre and the local cursor anchor are the same state. The bend is recorded in
 [ADR-009](/decisions/adr-009-map-camera-pan.md) for the map and
-[ADR-016](/decisions/adr-016-cursor-zoom-and-home.md) for the cursor zoom.
+[ADR-017](/decisions/adr-017-cursor-zoom-and-home.md) for the cursor zoom.
 
 **Map input.** Right-drag orbits at every zoom, local and map. Left-drag pans,
 but only while `w > 0.5`; in the local band there is nothing to pan, so the

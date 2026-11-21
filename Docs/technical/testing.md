@@ -103,7 +103,8 @@ because Unity test assemblies cannot reference the predefined
 | `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
 | `PlanPathTests` | arc boundary walking, the flip point's sign change, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the conic flip staying in the powered arc, the periapsis and circularisation as plan boundaries, the hybrid arcs meeting the same flatness tolerance, and one finite burn with the trim and circularisation as the two impulses |
 | `RouteColourTests` | exactly three path types, one distinct colour each, solid for a quintic or fixed burn and dashed for a conic, distinct same-hue shades inside a run of one type, and the real quintic, conic, and hybrid plans: three gold quintics, three shaded conics, and a red burn that restarts the conic run |
-| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, a re-timed preview's flight time and later arrival, the conic Coast/Capture/Parking rows and the impulsive `Burns` row, the hybrid `Burns` row reading the fixed and trim delta-v at the chosen g level, status labels, countdown formatting |
+| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, the `Fuel` row, a re-timed preview's flight time, later arrival and lower fuel, the conic Coast/Capture/Parking rows and the impulsive `Burns` row, the hybrid `Burns` row reading the fixed and trim delta-v at the chosen g level, status labels, countdown formatting |
+| `FuelModelTests` | the rocket equation at the design exhaust velocity (1,000 t dry and a delta-v of 10,000 km/s needs 1,718.28 t), the mass ratio and propellant fraction, propellant rising faster than delta-v, a plan's readout matching its own delta-v and dry mass, and the burn level barely moving the fuel at a fixed trip time (12 days to Mars at 0.3 g against 1 g) |
 | `KeplerPropagatorTests` | universal-variable propagation against the elements path on circular and eccentric ellipses, the hyperbolic periapsis and its analytic speed, forward/backward round trip, energy and angular momentum over 40 steps, state ↔ conic elements, a circular conic arc, and its two-body reference acceleration |
 | `LambertSolverTests` | the zero-rev prograde short-way solve: propagating `v₁` onto `r₂`, a 90° circular quarter turn, a Hohmann-like transfer against the vis-viva speeds, a high-energy hyperbolic transfer, the short-way branch returned while the long way is refused, the 180° guard returning no solution instead of throwing, degenerate arguments throwing, and an epoch Earth→Mars coast landing at Mars |
 | `TransferConicTests` | the entry radius (the sphere of influence for a coast, the handover floor for a burn–coast–burn), an inbound coast to a low periapsis, the fall shortening as the entry radius comes in (Uranus 117.1323 d from the sphere against 0.02153 d from the 38,643.0 km floor) and as the entry speed rises (0.00623 d at 50 km/s), the periapsis capture burn being set by the entry speed and not the entry radius (6.3691 km/s at 5 km/s from either radius, 39.0952 at 50 km/s), the capture plane and prograde direction, the retrograde periapsis and prograde apoapsis burns, the conic parking radius below the gravity ceiling, and invalid geometries reported rather than built |
@@ -616,8 +617,10 @@ non-empty `parent` for orbits) and keep a regression test for it.
   dash texture. Its data sources (the plan's boundaries, flip, and adaptive
   chord flatness) are tested, but no test renders a frame.
 * Performance budgets for orbit-line updates and per-frame HUD text updates.
-* Fuel accounting, attitude dynamics, ring/atmosphere arrival models, and a
-  fixed-thrust *spiral* cruise. The Lambert coast, the prograde departure burn,
+* A finite fuel budget and mass-dependent acceleration (the first-pass
+  propellant readout exists, but it does not limit or change the ship);
+  attitude dynamics, ring/atmosphere arrival models, and a fixed-thrust
+  *spiral* cruise. The Lambert coast, the prograde departure burn,
   and the brake are covered; a slow continuous spiral that does not coast on a
   conic is not.
 * Continuous integration. The repository is not under version control yet;
