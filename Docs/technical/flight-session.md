@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
 ---
 
 # What this adds to the orrery
@@ -399,7 +399,12 @@ looks at `ship + look-at offset` — the ship whenever the offset is zero
 * a body passing close to the orbit slides the camera in front of it instead of
   stepping the view;
 * a ten-pixel ship marker sits at the origin, pointing along the thrust while
-  the drive is on and along the velocity when it is off.
+  the drive is on and along the velocity when it is off;
+* when the drive is on, a bright-green **thrust arrow** extends from the marker
+  along the commanded acceleration. It is a fixed apparent length, so it shows
+  direction rather than magnitude, and it disappears at zero thrust. During a
+  retrograde brake it points visibly opposite the direction of travel, and
+  against the route's gold/blue/red arcs its green is a separate reading.
 
 The view deliberately does **not** follow the thrust axis: a capture burns
 retrograde, and facing the burn would point the camera at empty space at the

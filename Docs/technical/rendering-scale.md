@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
 ---
 
 # The problem
@@ -142,6 +142,34 @@ moon, because both are clamped to the same minimum size. Labels and the HUD
 disambiguate. A future pass can use different marker shapes or colours for
 stations, asteroids, and moons.
 
+# The ship marker and thrust vector
+
+The ship is a point at the render origin with a placeholder marker: a capsule
+kept at a constant **10 px** apparent height. It points along the commanded
+thrust while the drive is on and along the velocity when it is off, so the ship
+always has a heading even though there is no attitude state yet.
+
+A marker alone cannot show thrust against the direction of travel: during a
+brake the capsule points retrograde, but so does a ship coasting backwards. The
+`ShipView` therefore draws a second object, a **thrust arrow**, from the ship
+along `ThrustCommand.Direction` whenever the commanded acceleration is above
+`1e-3 m/s²`:
+
+* The arrow is a **52 px** apparent length at every zoom, with a 12% standoff so
+  it clears the capsule. It uses the same pixel-to-world rule as the lines
+  (`LineWidth.WorldWidth`), so its size holds with the field of view, the
+  resolution, and a RenderTexture viewport.
+* Its length is deliberately **fixed**, not proportional to acceleration. The
+  question it answers is "which way is the drive pushing?", and a fixed arrow
+  is readable at a glance; the HUD carries the magnitude and throttle.
+* It is bright green (`#85FF9E`) so it is distinct from the route's gold quintic,
+  sky-blue conic, and red fixed-burn arcs, and it is hidden when the drive is
+  off or the ship marker is hidden.
+* The arrow is a unit-length mesh scaled by the apparent length: a slim shaft
+  and a cone head, emitted double-sided because the shared unlit shader culls
+  back faces. Direction comes from the transform's rotation, so the mesh is
+  independent of the camera pose.
+
 # Orbit lines
 
 Each planet and moon gets a `LineRenderer` with 161 points sampled from its
@@ -214,8 +242,8 @@ Three minimal URP shaders live in `Assets/Resources/Shaders/` so a runtime
   ambient so the night side is not pure black, per-body `_Color`, no textures,
   no normal maps, no shadows. It uses a `UniversalForward` pass and declares
   `RenderPipeline = UniversalPipeline`.
-* `TimeToExplore/Unlit` — flat `_Color`, used by the Sun, the ship marker, and
-  the plan markers.
+* `TimeToExplore/Unlit` — flat `_Color`, used by the Sun, the ship marker, the
+  thrust vector, and the plan markers.
 * `TimeToExplore/Line` — transparent, vertex-coloured, samples a `_MainTex` with
   `TRANSFORM_TEX` so the capture arc's tiled dash texture still works.
 

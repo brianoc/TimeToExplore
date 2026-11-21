@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
 ---
 
 # Glossary
@@ -81,6 +81,12 @@ mass, and the implementation holds acceleration. See
 **Throttle** — commanded acceleration divided by the design acceleration, 0..1.
 A fraction. Distinguish it from a **burn level**, which is absolute: 0.3 g is
 2.94 m/s².
+
+**Thrust vector** — the bright-green arrow at the ship marker that shows the
+*commanded acceleration's direction*. Its apparent length is fixed, so it is
+not a magnitude gauge; the throttle and the HUD carry that. It is hidden when
+the drive is off. See
+[Rendering at solar scale](/technical/rendering-scale.md#the-ship-marker-and-thrust-vector).
 
 **Burn** — an interval with the drive on. Qualify it: **impulsive**, **finite**,
 or **continuous**; **capture**, **circularisation**, **departure**, or **trim**.

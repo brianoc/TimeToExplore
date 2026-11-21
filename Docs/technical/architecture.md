@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
 ---
 
 # Shape of the prototype
@@ -214,7 +214,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline clipped to the camera plane, with a per-vertex width curve from the shared rule; never sized from the orbit radius |
 | `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, arrival, and target-arrival ghost markers |
-| `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
+| `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn; the bright-green thrust arrow, a fixed apparent length, hidden with the drive off |
 | `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, and the sun shader global; applies the shared marker minimum |
 | `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
@@ -343,7 +343,7 @@ they survive `Shader.Find` in a player build:
 | Shader | Used by | Responsibility |
 |---|---|---|
 | `TimeToExplore/BodyLit` | planets, moons, asteroids, stations | Lambert from the global `_SunPosition`, with `_Ambient` and per-body `_Color` |
-| `TimeToExplore/Unlit` | the Sun, the ship marker, plan markers | flat `_Color`, no lighting |
+| `TimeToExplore/Unlit` | the Sun, the ship marker, the thrust vector, plan markers | flat `_Color`, no lighting |
 | `TimeToExplore/Line` | orbit and trajectory `LineRenderer`s | vertex colour, alpha blending, tiled `_MainTex` for dashed arcs, and `fwidth` edge coverage for antialiasing without MSAA |
 | `TimeToExplore/Skybox` | the camera's skybox | the baked Milky Way band from `_MainTex` plus three procedural star layers, with per-material band and star gain |
 
