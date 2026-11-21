@@ -275,13 +275,16 @@ cue, not a separate legend entry. The legend stacks above the flight panel, whic
 owns the corner during a route, and it hides with the HUD on `H`.
 
 Line width follows the **camera distance**, not the path: `LineWidth` converts
-3 screen pixels to render units at the camera's depth, so the route stays a
-fine line from the departure neighbourhood to the 12-billion-km map ceiling. The
-earlier rule used the farthest point of the plan, which made the line
-225,000 km thick on a 1 AU trip and swallowed the view once the camera could
-orbit; a later world-unit cap silently faded the line to a third of a pixel at
-full-map zoom. The path is sampled from the plan, not integrated, so it costs
-the same whether the ship is next to it or an AU away.
+3 screen pixels to render units at the camera's depth. Every vertex then gets
+its own width through the `LineRenderer.widthCurve`: perspective thins the line
+with distance until it would fall below `LineWidth.DistanceFloorPixels` (2 px),
+and the far end holds that floor, so a route across the system stays readable
+instead of vanishing into the distance. The earlier rule used the farthest
+point of the plan, which made the line 225,000 km thick on a 1 AU trip and
+swallowed the view once the camera could orbit; a later world-unit cap silently
+faded the line to a third of a pixel at full-map zoom. The path is sampled from
+the plan, not integrated, so it costs the same whether the ship is next to it or
+an AU away.
 
 # The flight panel
 

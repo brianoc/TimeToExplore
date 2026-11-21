@@ -11,13 +11,14 @@ namespace TimeToExplore.Rendering
     /// and turned a planet's orbit into a ribbon as soon as the camera moved
     /// inside it.
     ///
-    /// The width is in render units at <em>one</em> depth, because a
-    /// <see cref="LineRenderer"/> has a single world width. Geometry nearer the
-    /// camera therefore draws slightly thicker and geometry farther away
-    /// slightly thinner, which is the natural perspective falloff. Exact
-    /// per-vertex screen width would need a custom line mesh; this rule keeps
-    /// the line a fine, consistent width at the distance the player is looking
-    /// at.
+    /// The base width is in render units at <em>one</em> depth. Used alone, that
+    /// makes geometry nearer the camera thicker and geometry farther away
+    /// thinner, which is natural perspective until the far half of an orbit or
+    /// a route drops below a pixel and vanishes. <see cref="SampleWorldWidth"/>
+    /// therefore gives every vertex its own width: perspective is unchanged
+    /// until a vertex would fall below <see cref="DistanceFloorPixels"/>, and
+    /// the floor holds it there. The <see cref="LineRenderer.widthCurve"/>
+    /// carries those per-vertex widths.
     /// </summary>
     public static class LineWidth
     {
@@ -29,6 +30,14 @@ namespace TimeToExplore.Rendering
         /// soft, half-transparent one.
         /// </summary>
         public const float Pixels = 3f;
+
+        /// <summary>
+        /// Apparent width a distant line holds, in screen pixels. Perspective
+        /// still thins a line until it reaches this width; below it the line
+        /// would start to disappear, so the floor keeps the far half of an
+        /// orbit or a route readable without turning it into a bold stroke.
+        /// </summary>
+        public const float DistanceFloorPixels = 2f;
 
         /// <summary>
         /// Apparent orbit-line width in the local view, in screen pixels. It is
@@ -84,6 +93,33 @@ namespace TimeToExplore.Rendering
         {
             float fieldOfView = camera != null ? camera.fieldOfView : 60f;
             return WorldWidth(depthUnits, fieldOfView, Screen.height);
+        }
+
+        /// <summary>
+        /// Per-vertex width for a line whose width at the look-at depth is
+        /// <paramref name="lookAtWorldWidth"/> (which draws
+        /// <paramref name="lookAtPixels"/> screen pixels there). Perspective
+        /// still thins the line with distance, but a vertex is never given less
+        /// than the width that draws <see cref="DistanceFloorPixels"/>, so the
+        /// far arc stays visible instead of fading to a sub-pixel thread. The
+        /// floor is capped by the line's own look-at width, so a line thinner
+        /// than the floor is not inflated.
+        /// </summary>
+        public static float SampleWorldWidth(float lookAtWorldWidth, float lookAtPixels,
+            float sampleDepthUnits, float fieldOfViewDegrees, float screenHeightPixels,
+            float floorPixels = DistanceFloorPixels)
+        {
+            if (!(lookAtWorldWidth > 0f) || float.IsInfinity(lookAtWorldWidth))
+                return Mathf.Max(lookAtWorldWidth, 0f);
+            if (!(sampleDepthUnits > 0f) || float.IsInfinity(sampleDepthUnits))
+                return lookAtWorldWidth;
+
+            float floor = Mathf.Clamp(floorPixels, 0f, Mathf.Max(lookAtPixels, 0f));
+            if (floor <= 0f) return lookAtWorldWidth;
+
+            float floorWidth = WorldWidth(sampleDepthUnits, fieldOfViewDegrees,
+                screenHeightPixels, floor);
+            return Mathf.Max(lookAtWorldWidth, floorWidth);
         }
 
         /// <summary>

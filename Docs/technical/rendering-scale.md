@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # The problem
@@ -176,8 +176,15 @@ Kepler ellipse.
   where the whole ellipse was framed; inside the orbit it became a
   screen-filling ribbon. The pixel form is also correct at other fields of view
   and resolutions, and needs no world-unit clamp that breaks at the map ceiling.
-  A `LineRenderer` has one world width for the whole ellipse, so the near and
-  far arcs share it and thin naturally with perspective.
+
+  Width is **per vertex**, written into `LineRenderer.widthCurve`. A vertex
+  keeps the camera-distance width until perspective would take it below
+  `LineWidth.DistanceFloorPixels` (2 px); from there its world width grows with
+  its own depth, so the far arc holds 2 px at the planet's 50% alpha instead of
+  fading to a sub-pixel thread. The near half is untouched: it keeps the same
+  world width and still thickens with proximity. The floor is capped by the
+  line's own look-at width, so a line already thinner than 2 px is not
+  inflated. The same rule applies to the plan line at its fixed 3 px.
 * Colour belongs to the body and does not change with the view.
   `OrbitColours` samples one warm-to-cool ramp by orbital rank, evenly spaced
   rather than by semi-major axis (which would collapse Mercury to Mars into the

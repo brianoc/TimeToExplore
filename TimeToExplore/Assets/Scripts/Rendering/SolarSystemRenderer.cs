@@ -137,12 +137,13 @@ namespace TimeToExplore.Rendering
             if (_sunView != null)
                 Shader.SetGlobalVector("_SunPosition", _sunView.transform.position);
 
-            // Every line shares one apparent width. The camera distance is the
-            // depth of the look-at plane; a LineRenderer cannot vary its width
-            // per vertex, so the near and far arcs of one ellipse still share
-            // one world width and fall off naturally with perspective. Orbit
-            // lines thicken with the map blend, from the local 3 px thread to
-            // the solar system view's 10 px stroke.
+            // Every line shares one apparent width at the look-at depth; each
+            // orbit vertex then gets the width that keeps perspective honest
+            // until it would fall below the distance floor. Orbit lines thicken
+            // with the map blend, from the local 3 px thread to the solar
+            // system view's 10 px stroke. The width varies per vertex through
+            // the curve, so the near and far arcs follow one camera-distance
+            // rule rather than an orbit-sized one.
             float lineDepth = cameraDistanceUnits > 0f
                 ? cameraDistanceUnits
                 : (_camera != null ? _camera.transform.position.magnitude : 0f);
@@ -153,14 +154,15 @@ namespace TimeToExplore.Rendering
             foreach (OrbitLine orbit in _planetOrbits)
             {
                 if (orbit == null) continue;
-                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits, lineWidth);
+                orbit.Refresh(shipPositionM, _camera, UnitsPerMeter, ShowOrbits,
+                    lineWidth, orbitPixels);
             }
 
             foreach (OrbitLine orbit in _moonOrbits)
             {
                 if (orbit == null) continue;
-                orbit.Refresh(shipPositionM, UnitsPerMeter, ShowOrbits && ShowMoonOrbits,
-                    lineWidth);
+                orbit.Refresh(shipPositionM, _camera, UnitsPerMeter,
+                    ShowOrbits && ShowMoonOrbits, lineWidth, orbitPixels);
             }
         }
     }
