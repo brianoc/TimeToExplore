@@ -12,59 +12,32 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 Terms used across the design bundle and the code. When a document and the code
 disagree, the concept that owns the term wins; this page only points at it.
 
-## Local view
+## Orbit camera
 
-The close camera around the ship, below the dominant body's sphere of influence.
-The player's yaw and pitch are the angle, the ship sits at the render origin
-([ADR-002](/decisions/adr-002-double-precision.md)), and the view is
-ship-centred whenever the pan is zero. A wheel zoom anchors the point under the
-pointer, so an off-centre zoom can leave another point at the centre; **Space**
-eases the view home and unwinds the pan
-([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). Bodies outside the
-local neighbourhood fade to their true-scale dots; the **T** toggle forces true
-scale everywhere.
+The one camera. The player's yaw and pitch are the angle, the ship sits at the
+render origin ([ADR-002](/decisions/adr-002-double-precision.md)), and the
+camera looks at `ship + look-at offset` — the ship itself when the offset is
+zero. Right-drag orbits, the wheel zooms from 2,000 km to 12 billion km, and
+the range never changes the pose
+([ADR-008](/decisions/adr-008-orbit-camera.md)). It is not a mode and there is
+no second view to switch to.
 
-The local view is one end of the single zoom, not a mode: it is the camera when
-`w = 0` in [the system map](/technical/system-map.md#one-zoom-two-readings-of-the-same-camera).
+## Look-at offset
 
-Related: **orbit camera** ([ADR-008](/decisions/adr-008-orbit-camera.md)) is the
-mechanism; **local view** is what the player sees when it is close.
-
-## Solar system view
-
-The top-down reading of the same camera: as the zoom crosses the local sphere of
-influence, the pose blends to looking straight down the ecliptic pole, left-drag
-pans, and the range opens to 12 billion km. It is also called the **map view**
-or **the map** in code and in the system-map concept. Markers keep a 6 px
-minimum so every planet and station stays clickable, the ship is labelled
-"YOU ARE HERE", and the planet orbit lines thicken from their local 3 px to a
-10 px coloured stroke without changing hue. In both views a line's far arc
-holds a 2 px floor rather than thinning away into the distance, and its near arc
-is capped at the line's own pixel width rather than widening into a ribbon.
-
-It is not a second camera and not a coordinate space: the world stays
-ship-relative and only the pose changes ([ADR-009](/decisions/adr-009-map-camera-pan.md)).
-The solar system view is `w = 1`.
-
-## Zoom blend (`w`)
-
-The continuous weight between the two views, from the camera distance `d` and
-the dominant body's sphere-of-influence radius `r`:
-
-```text
-x = clamp(ln(d / r) / ln(3), 0, 1)
-w = x²(3 − 2x)
-```
-
-`w = 0` is the local view, `w = 1` the solar system view. The pitch and the
-rotation are read through `w`, so no mode switch and no saved pose are needed.
+The camera's off-centre point, held in double-precision ecliptic metres and
+capped at 60 AU. A wheel notch anchors the point under the pointer and the rig
+solves the offset from it every frame, so the point stays put while the zoom
+eases ([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). **Space** unwinds
+it to zero and returns to the ship; a reset clears it. It also becomes the
+route's centre while a plotted route is framed.
 
 ## Dominant body and neighbourhood
 
 The **dominant body** is the smallest sphere of influence that contains the ship
-(the Moon inside the Earth, for example). Its SOI radius is the local scale `r`,
-also called the **neighbourhood**. Deep space, outside every SOI, falls back to
-1 million km.
+(the Moon inside the Earth, for example). Its SOI radius is the local radius
+`r`, also called the **neighbourhood**. Deep space, outside every SOI, falls back
+to 1 million km. `Space` returns to half `r`, so the ship lands in its own
+neighbourhood (`LocalScale`).
 
 ## Zoom tween
 
@@ -72,10 +45,8 @@ A wheel notch **requests** a camera distance; the camera eases to it over a
 short exponential tween (`OrbitCamera.EaseDistance`, 7/s by default) rather
 than jumping there. The point under the pointer is anchored on the look-at
 plane and the look-at is solved from it every frame, so the point stays under
-the pointer while the distance and the map blend move. Because the blend weight
-is derived from the camera distance, the solar system view's top-down tilt and
-the rotation sweep with the same tween instead of snapping. Directly assigning
-a distance (a reset, a snap-to, a test) places the camera immediately.
+the pointer while the distance moves. Directly assigning a distance (a reset, a
+snap-to, a test) places the camera immediately.
 
 ## Thrust and manoeuvre vocabulary
 
@@ -297,8 +268,7 @@ timing, or Δv. Say "reaches the same final orbit" when that is what is meant.
 ## See also
 
 * [Selection and camera focus](/technical/selection-and-camera.md) — the camera as built, and the debug jump.
-* [The system map and route preview](/technical/system-map.md) — the blend, pan, and route preview.
-* [ADR-008](/decisions/adr-008-orbit-camera.md) and [ADR-009](/decisions/adr-009-map-camera-pan.md) — why the camera is an orbit and how the map bends it.
+* [ADR-008](/decisions/adr-008-orbit-camera.md), [ADR-017](/decisions/adr-017-cursor-zoom-and-home.md), and [ADR-018](/decisions/adr-018-one-orbit-camera.md) — why the camera is an orbit, the pointer zoom, Space home, and the removal of the system map.
 * [Navigation and arrival](/simulation/navigation-and-arrival.md) — the capture geometry, parking orbit, and arrival styles as built.
 * [The flight model](/simulation/flight-model.md) — the drive, throttle, and the two travel regimes.
 * [ADR-006](/decisions/adr-006-quintic-plan.md), [ADR-014](/decisions/adr-014-keplerian-coast.md), and [ADR-015](/decisions/adr-015-fixed-thrust-burns.md) — the quintic, conic, and fixed-thrust decisions.

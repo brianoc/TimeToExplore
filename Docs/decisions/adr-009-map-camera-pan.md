@@ -1,11 +1,15 @@
 ---
 type: Decision Record
 title: "ADR-009: a blended system map that looks at ship + pan"
-description: Keep the orbit camera, blend it to a top-down map as the zoom crosses the local sphere of influence, and let the map look at a capped pan offset instead of at the ship.
+description: Superseded. The blended top-down system map was removed on 2026-11-21; see ADR-018.
 tags: [decision, camera, navigation, interaction, technical]
-status: accepted
+status: superseded
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
 ---
+
+> **Superseded by [ADR-018](/decisions/adr-018-one-orbit-camera.md).** The
+> blended map, its pan, and its comparison scene were removed on 2026-11-21.
+> This record is kept for the history of the decision.
 
 # Context
 

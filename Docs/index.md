@@ -49,8 +49,8 @@ bundle-relative paths that stay valid when a document moves.
 * [Input](/technical/input.md) — the input map, the Input System seam and uGUI input module, why Active Input Handling is New only, and the mouse and wheel rules.
 * [The flight session](/technical/flight-session.md) — plot a route, press Begin, watch the ship fly: ship ownership, the warp cap, the trajectory line, and the flight panel.
 * [Planning performance](/technical/planning-performance.md) — the two-tier model: a fast search-only gravity field in front of the unchanged full-field plan and flight, the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
-* [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it in debug flight.
-* [The system map and route preview](/technical/system-map.md) — the blended top-down map, map drawing and picking, the local aid fade, Plot route → Begin, and the frame-loop acceptance are built; the ADR/docs pass is next.
+* [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it, and how the one orbit camera zooms, frames, and returns home.
+* [The system map (removed)](/technical/system-map.md) — a historical record of the top-down comparison layer removed on 2026-11-21; the current camera is in Selection and camera focus.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
@@ -71,7 +71,7 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-006: quintic reference arcs for Go To](/decisions/adr-006-quintic-plan.md) — escape, cruise, and capture arcs matched in position, velocity, and acceleration.
 * [ADR-007: one owner for the ship, and an automatic warp cap](/decisions/adr-007-flight-director.md) — the flight session owns the ship; warp drops by clearance, local dynamics, and the next plan event.
 * [ADR-008: an orbit camera around the ship](/decisions/adr-008-orbit-camera.md) — keep the ship at the render origin, orbit the camera, and size the plan line from the camera distance.
-* [ADR-009: a blended system map that looks at ship + pan](/decisions/adr-009-map-camera-pan.md) — one zoom blends the orbit camera to a top-down map; the map may look at a capped pan offset instead of at the ship.
+* [ADR-009: a blended system map that looks at ship + pan](/decisions/adr-009-map-camera-pan.md) — superseded: one zoom blended the orbit camera to a top-down map, removed by ADR-018.
 * [ADR-010: Universal Render Pipeline for the prototype](/decisions/adr-010-urp-rendering.md) — move to URP 17.3.0 with three minimal runtime shaders and a deliberately cheap forward renderer.
 * [ADR-011: The Input System behind one seam](/decisions/adr-011-input-system.md) — `com.unity.inputsystem` 1.20.1, device polling through `PlayerControls`, and Active Input Handling **Both** because the HUD was IMGUI. (Superseded in part by ADR-013.)
 * [ADR-012: An assembly layout that enforces the layering](/decisions/adr-012-assembly-layout.md) — Core, Simulation, and Presentation runtime assemblies plus Editor and test assemblies, with the dependency direction checked by `AssemblyLayoutTests`.
@@ -79,4 +79,5 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-014: Transfer conics and the Oberth capture](/decisions/adr-014-keplerian-coast.md) — universal-variable propagation, a true-anomaly-parameterised coast, and an impulsive periapsis capture that parks lower and cheaper.
 * [ADR-015: Fixed-thrust burns and the hybrid capture](/decisions/adr-015-fixed-thrust-burns.md) — fly one long capture burn at a player-set level, trim its end state with an impulse for exactness, and keep the conic parking radius instead of raising it for the finite-burn loss.
 * [ADR-016: Show what a journey costs in fuel, without a tank](/decisions/adr-016-fuel-readout.md) — charge the plan's delta-v through the rocket equation at 10,000 km/s and print the propellant, while the tank stays unlimited and mass constant.
-* [ADR-017: Zoom toward the pointer, and Space to go home](/decisions/adr-017-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, keep an anchored pan, and ease the view back to the ship in one second.
+* [ADR-017: Zoom toward the pointer, and Space to go home](/decisions/adr-017-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, and ease the view back to the ship in one second.
+* [ADR-018: one orbit camera, no system map](/decisions/adr-018-one-orbit-camera.md) — remove the top-down map and its comparison scene, keep one 2,000 km–12 billion km orbit camera, and capture the framing distance once.

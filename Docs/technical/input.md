@@ -105,15 +105,13 @@ HUD reads the pointer and the left-click edge from the seam, projects the drawn
 markers, and calls `BodyPicker`. The EventSystem knows about panels; the seam
 knows about the world. No device is read twice for the same decision.
 
-The camera rig asks the same question before it acts on a drag. A left or right
-press over a raycast-target panel starts no pan and no orbit: the panel owns the
-gesture until the button is released, so dragging a slider past the panel's edge
-does not hand the pointer back to the camera halfway through. The reverse holds
-too — a press that starts in the world keeps its gesture when the pointer
-crosses a panel — and a pan that has not yet left the 4 px click slop is
-cancelled if the panel answers on a later frame, because the EventSystem can
-report the previous one. `UiInput` is therefore read from both sides of the HUD,
-picking and gestures, and neither reads a device for it.
+The camera rig asks the same question before it acts on a drag. A right press
+over a raycast-target panel starts no orbit: the panel owns the gesture until the
+button is released, so dragging a slider past the panel's edge does not hand the
+pointer back to the camera halfway through. The reverse holds too — a press that
+starts in the world keeps its gesture when the pointer crosses a panel.
+`UiInput` is therefore read from both sides of the HUD, picking and gestures, and
+neither reads a device for it.
 
 # The input map
 
@@ -136,7 +134,6 @@ picking and gestures, and neither reads a device for it.
 | `Shift` / `Ctrl` | free flight: ×10 / ×0.1 speed | `ShipController` |
 | `,` / `.` | free flight: decrease / increase speed | `ShipController` |
 | Right mouse drag | orbit the camera at every zoom, unless the press began on a panel | `ShipCameraRig` |
-| Left mouse drag | pan the map (`w > 0.5`), unless the press began on a panel | `ShipCameraRig` |
 | Mouse wheel | zoom the camera toward the pointer | `ShipCameraRig` |
 | Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
@@ -164,16 +161,12 @@ Vector2 axis = rawPixels * PlayerControls.LegacyMouseAxisSensitivity; // 0.1
 The camera's constants are unchanged, so the feel is unchanged:
 
 * `OrbitDegreesPerMouseUnit = 3` → **0.3° per raw pixel** of drag.
-* `PanPixelsPerMouseUnit = 10` → the map content follows the cursor at **1 px
-  per raw pixel**.
 
 While orbiting, the rig locks and hides the cursor as before, and releasing the
-right button unlocks and shows it. A map pan does not capture the cursor: the
-gesture follows the visible pointer. The HUD ignores the pointer while the
-cursor is locked, so an orbit drag never selects a body; and because the pan
-shares the left button, a body is selected only when the press and release stay
-inside `ClickSlopPixels` (4 px). A left press that moves further is a map pan
-and opens no details screen.
+right button unlocks and shows it. The HUD ignores the pointer while the cursor
+is locked, so an orbit drag never selects a body. A body is selected only when
+the press and release stay inside `ClickSlopPixels` (4 px); a left drag that
+travels further opens no details screen.
 
 # Wheel normalisation
 
@@ -181,10 +174,8 @@ and opens no details screen.
 notch**, while macOS reports about **1**. `PlayerControls.NormaliseScroll`
 divides by 120 only on `WindowsPlayer` and `WindowsEditor`; every other platform
 passes the value through. One notch therefore produces one
-`ZoomFactorPerStep` step (1.25×) on both ranges, and a trackpad's fractional
-scroll is still kept. `ShipCameraRig.WheelDistanceUnits` is untouched, so the
-local 5-billion-km clamp and the map's 12-billion-km ceiling still route by the
-blend weight.
+`ZoomFactorPerStep` step (1.25×), and a trackpad's fractional scroll is still
+kept. The single range clamps at 2,000 km and 12 billion km.
 
 The wheel belongs to the camera. Free-flight speed uses `,` and `.`; the two
 controls cannot fight.
@@ -240,16 +231,14 @@ fourth scans for an `OnGUI` method, `GUI.*` calls, `new GUIStyle`, and
 # What still needs a human
 
 The suite proves the mapping and the object graph, not the feel. In Play mode,
-check the right-drag orbit rate and the left-drag map pan at a few zoom levels,
-the cursor capture and release, one wheel notch on the target OS, that a notch
-keeps the point under the pointer at the screen edge and near the centre, that
-`Space` eases home from the map ceiling and from a panned local view in about a
-second, that `P` pauses, every panel
-button, that dragging the trip-time and burn-level sliders never pans the map or
-orbits the camera underneath, that a click on a panel does not also select the
-body behind it, that a left-drag that starts on a body pans without opening the
-details screen, and that the click which opens the details screen cannot press a
-button underneath.
+check the right-drag orbit rate at a few zoom levels, the cursor capture and
+release, one wheel notch on the target OS, that a notch keeps the point under the
+pointer at the screen edge and near the centre, that `Space` eases home from the
+outer ceiling and from an anchored off-centre view in about a second, that `P`
+pauses, every panel button, that dragging the trip-time and burn-level sliders
+never orbits the camera underneath, that a click on a panel does not also select
+the body behind it, and that the click which opens the details screen cannot
+press a button underneath.
 The `EventSystem`'s pointer-over-panel answer depends on the previous frame's
 raycast; the immediate panel-rect test covers the first frame, but a real
 pointer is still the human check. See
