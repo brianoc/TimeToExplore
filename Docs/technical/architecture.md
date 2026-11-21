@@ -207,31 +207,32 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 |---|---|---|
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
 | `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the four runtime shaders and the Sun-versus-lit choice |
-| `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
-| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight; `SampleWorldWidth` gives each vertex its width bounded to a 2 px distance floor and the line's own pixel width |
-| `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
+| `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | The 4.5 px minimum marker radius and its angular conversion |
+| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for orbit and plan lines; `SampleWorldWidth` gives each vertex its width bounded to a 2 px distance floor and the line's own pixel width |
+| `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one fixed colour |
 | `LineCameraClip` | `Scripts/Rendering/LineCameraClip.cs` | Clips a billboarded polyline to the longest run in front of the camera's near plane, so a segment that crosses behind the camera cannot project into a screen-filling polygon |
 | `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline clipped to the camera plane, with a per-vertex width curve from the shared rule; never sized from the orbit radius |
 | `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
-| `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, sun shader global; applies the per-body aid strength |
+| `SolarSystemRenderer` | `Scripts/Rendering/SolarSystemRenderer.cs` | Owns views, orbit lines, and the sun shader global; applies the shared marker minimum |
 | `SkyView` | `Scripts/Rendering/SkyView.cs` | Runtime skybox material from the baked band and the star shader; sets and restores the camera clear flags and `RenderSettings.skybox` |
 | `ShipController` | `Scripts/Player/ShipController.cs` | Debug free-flight movement; no camera ownership |
 | `PlayerControls` | `Scripts/Player/PlayerControls.cs` | The one input seam: device polling, intents, key table, mouse sensitivity, scroll normalisation |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
-| `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
-| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit at every zoom, left-drag map pan, wheel zoom toward the pointer, the one-second home transition, destination framing, blended pose, camera placement |
+| `CursorZoom` | `Scripts/Player/CursorZoom.cs` | Plain-C# pointer anchor: pointer-to-NDC, the look-at-plane point, the anchored look-at, and the 60 AU offset cap |
+| `LocalScale` | `Scripts/Player/LocalScale.cs` | Plain-C# dominant-body choice and local radius, used by `Space` home |
+| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit, wheel zoom toward the pointer, the one-second home transition, destination and route framing, camera placement, continuous body avoidance |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: importance-ordered hits and the repeated-click cycle |
-| `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
+| `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label-density rule by body kind and distance |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |
 | `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, details screen, and the route colour legend |
 | `UiInput` | `Scripts/UI/UiInput.cs` | The one EventSystem and the Input System UI module; the pointer-over-panel query |
-| `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, hotkeys, and the `EnableMapView` comparison switch |
-| `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu (shipped scene and system-map scene) |
+| `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, and hotkeys |
+| `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu for the shipped scene |
 
 # Composition and self-installation
 
@@ -253,13 +254,10 @@ The shipped scene is a convenience, not a requirement: the bootstrap still runs
 in an empty scene, which keeps the prototype easy to inspect while it is finding
 its shape.
 
-Two scenes exist for the system map comparison. `SolarSystem.unity` leaves the
-serialized `SolarSystemBootstrap.EnableMapView` switch off and keeps the current
-orbit camera; `SystemMap.unity` turns it on and the bootstrap passes it to
-`ShipCameraRig.MapEnabled`. Both hold only the camera and the bootstrap; the rig
-is added at runtime. `Tools > Time to Explore > Create System Map Scene`
-recreates the comparison scene. The switch is a development aid, not a gameplay
-mode, and is due to be removed or defaulted on once the map work is done.
+One scene, `Assets/Scenes/SolarSystem.unity`, holds only the camera and the
+bootstrap; the rig is added at runtime. `Tools > Time to Explore > Create Solar
+System Scene` recreates it. The old comparison scene and its switch were removed
+with the system map ([ADR-018](/decisions/adr-018-one-orbit-camera.md)).
 
 # The HUD
 
@@ -288,7 +286,7 @@ new body rewrites the same entries instead of rebuilding the panel. The route
 legend is pooled the same way: a fixed row of swatch and label widgets is filled
 from the visible plan's arc types (quintic, conic, fixed burn), one row per
 type, so the three conic arcs of a coasted arrival share a row while their
-shades differ on the map. It is rebuilt from `TrajectoryLine`, not from a
+shades differ on the route. It is rebuilt from `TrajectoryLine`, not from a
 hard-coded list, so the key always matches the drawn colours, and it stacks
 above the flight panel in the bottom-left corner.
 
@@ -361,24 +359,21 @@ Unity's own skybox path rather than a forward pass; the full design is in
 
 * ship-relative position,
 * true physical radius,
-* minimum apparent size (unless true scale is on), from the map blend's
-  4.5–6 px rule,
+* minimum apparent size (unless true scale is on), from the 4.5 px rule,
 * axial tilt and spin,
 * station cube rotation.
 
 Orbit lines sample the Kepler ellipse once per frame in the body's element frame,
 transform to the parent's frame, add the parent's current position, and then
 convert to ship-relative render coordinates. Every orbit line takes its width
-from `LineWidth`, which converts the blended apparent width — 3 px in the local
-view, 10 px in the solar system view — to render units at the camera distance
-and the viewport's FOV and height. Each vertex then gets its own width bounded
-to the 2 px distance floor at the far end and to the line's own pixel count at
-the near end: the floor keeps the far arc visible, and the ceiling stops a near
-arc from becoming a ribbon when the camera passes close to it. The ellipse is
-clipped at the camera plane first, so its behind-camera half is never
-billboarded. The orbit radius is not an input. Its colour comes from
-`OrbitColours`, one fixed warm-to-cool ramp sample per planet, so the local and
-solar system views draw the same hue.
+from `LineWidth`, which converts the shared 3 px apparent width to render units
+at the camera distance and the viewport's FOV and height. Each vertex then gets
+its own width bounded to the 2 px distance floor at the far end and to the
+line's own pixel count at the near end: the floor keeps the far arc visible, and
+the ceiling stops a near arc from becoming a ribbon when the camera passes close
+to it. The ellipse is clipped at the camera plane first, so its behind-camera
+half is never billboarded. The orbit radius is not an input. Its colour comes
+from `OrbitColours`, one fixed warm-to-cool ramp sample per planet.
 
 `TrajectoryLine` is the same idea for a plan, with three differences. Each arc
 is its own line, and `RouteColours` gives it a colour and dash style from the
@@ -420,8 +415,7 @@ The controller is an inspection tool now, not a flight model:
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |
 | Right mouse drag | orbit the camera around the ship, at every zoom |
-| Left mouse drag | pan the map (`w > 0.5`) |
-| Mouse wheel | zoom the camera toward the pointer (1.25× per notch; 12 billion km on the map side) |
+| Mouse wheel | zoom the camera toward the pointer (1.25× per notch; 2,000 km to 12 billion km) |
 | `Space` | ease the camera home to the ship |
 | `W A S D` | free flight: move forward/left/back/right |
 | `Q E` | free flight: move down/up |
@@ -438,15 +432,14 @@ The controller is an inspection tool now, not a flight model:
 | `L` | toggle labels |
 | `H` | toggle HUD |
 
-The camera orbits the ship and, in the local band, looks at it, so a flight and
-a debug jump can frame their destination without moving the eye into the plan
-([ADR-008](/decisions/adr-008-orbit-camera.md)). With the map switch on, the
-same rig blends the pose to a top-down system map as the zoom crosses the local
-sphere of influence: the map looks at `ship + pan` (the one bend of ADR-008,
-recorded in [ADR-009](/decisions/adr-009-map-camera-pan.md)), left-drag pans,
-the wheel reaches 12 billion km, and the player's remembered yaw and pitch are
-never overwritten. Auto-framing is suspended while the map is engaged. The full
-rules are in [The system map and route preview](/technical/system-map.md).
+The camera orbits the ship and looks at `ship + look-at offset` (the ship itself
+when the offset is zero), so a flight and a debug jump can frame their
+destination without moving the eye into the plan
+([ADR-008](/decisions/adr-008-orbit-camera.md)). The wheel zooms toward the
+pointer from 2,000 km to 12 billion km, the player's yaw and pitch are never
+overwritten, and `Space` eases the view home
+([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). The full rules are in
+[Selection and camera focus](/technical/selection-and-camera.md#the-camera).
 
 Free flight is deliberately simple and deliberately separate from the flight
 session: it cancels any plan and clears the velocity, because a teleport is not a
@@ -545,14 +538,14 @@ category; `--tests` filters on it. It covers the Kepler
 solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
-details and picking, the focus-transition easing, the orbit camera and its map
-blend (pose, input routing, pan, extended zoom, near plane), the map drawing
-rules and neighbourhood aid fade, the URP pipeline and shader wiring, the sky's
-texture and shader, the flight core (including the Lambert solver and both coast
-profiles), the input seam's key table and mouse
+details and picking, the focus-transition easing, the orbit camera and its
+single-range zoom, the cursor anchor, continuous body avoidance, the drawing
+rules, the URP pipeline and shader wiring, the sky's texture and shader, the
+flight core (including the Lambert solver and both coast profiles), the input
+seam's key table and mouse
 conversions, the uGUI HUD's object graph, content, and button wiring, the
-assembly layout graph, the scene's frame loop, and the same map-to-arrival
-flight through the real bootstrap.
+assembly layout graph, the scene's frame loop, and the same flight through
+the real bootstrap.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
 
@@ -595,13 +588,6 @@ deferred until the presentation code settles.
   would shave allocations when nothing changed. There is no PlayMode click
   coverage yet, so button hit areas and canvas scaling still need a human eye.
 * The scene is generated at runtime; there is no authored art scene.
-* The system map has its camera pose, markers, labels, picking, orbit-line
-  width, and neighbourhood-aware marker aid (milestone 2.5, steps 1–4), the
-  Plot route → Begin preview with its target-arrival ghost (step 5), the
-  frame-loop acceptance through the real bootstrap (step 6), and its decision
-  record ([ADR-009](/decisions/adr-009-map-camera-pan.md)). The `EnableMapView`
-  comparison switch is temporary; it also gates the aid fade so the shipped
-  scene keeps its old local look until the switch defaults on.
 * The rendering migration stops at the URP forward path: there is no
   post-processing, no SSAO, no shadow system, and no two-camera far field. Those
   remain future work, and the shaders are intentionally minimal.

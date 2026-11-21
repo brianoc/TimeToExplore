@@ -137,82 +137,53 @@ rather than a model; the camera can still be orbited inside a planet (it is
 pulled out, but as a rescue); there is no manual thrust; and a second Go To
 replans from scratch rather than correcting the existing plan.
 
-# Milestone 2.5 — the system map and route preview (done)
+# Milestone 2.5 — the route preview and the camera (done)
 
-**Goal: one continuous zoom from the ship to the whole system, a top-down map
-the player can pan and click, and a route they can see before they fly it.**
+**Goal: one continuous zoom from the ship to the whole system, and a route the
+player can see before they fly it.**
 
-Done in `Assets/Scripts/Player/`, `Assets/Scripts/UI/`, and the rendering layer.
-The design is [The system map and route preview](/technical/system-map.md); the
-camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
+The route preview is built and stays: **Plot route** draws the curve and the
+target-arrival ghost, the trip-time slider and the arrival-style buttons retime
+it, and **Begin flight** replans from the current state and flies it. The
+planner now has one crossing — **burn–coast–burn** — with a **Conic** or
+**`X g burn`** capture; the powered quintic cruise and the plain coast are
+retired. The details are in
+[The flight session](/technical/flight-session.md).
 
-1. The zoom-driven blend from the local orbit view to a top-down map at the
-   local sphere of influence, with the remembered angle restored on the way
-   back in, and panning on the map. **Steps 1–2 are done:** the plain-C#
-   `MapView` holds the blend, the dominant-body choice, the 12-billion-km
-   range, the map pose and clipping, and the 60 AU pan cap; `ShipCameraRig`
-   blends the pose, keeps right-drag as orbit, routes left-drag to pan on the
-   map, scales the pan from the camera distance, eases it home on re-entry,
-   suspends auto-framing on the map, and routes the wheel through the extended
-   range. `SystemMap.unity` and
-   the `EnableMapView` switch provide the side-by-side comparison.
-2. Map reading rules: bigger markers, label density by zoom,
-   importance-ordered picking, the map-only ship label, and the camera-distance
-   orbit width. **Step
-   3 is done:** `MarkerSizing` eases markers from 4.5 to 6 px, `BodyLabels`
-   applies the 5× parent-SOI moon window and the hover/selection-only
-   asteroids, `BodyPicker` ranks Sun/planet/station above moons and asteroids
-   on the map, and `OrbitLine` stops a distant orbit becoming a ribbon at close
-   map zoom.
-3. The local view stops inflating distant bodies; the marker aid becomes
-   neighbourhood-aware. **Step 4 is done:** `MarkerSizing.AidStrength` keeps
-   the aid full inside the dominant SOI, fades it to true scale by 3× along the
-   camera blend's log-distance band, lets the camera distance widen the
-   neighbourhood, and restores the full aid on the map.
-   `SolarSystemRenderer` applies the per-body strength, and `EnableMapView`
-   gates the fade so the shipped scene keeps its old look during the
-   comparison.
-4. **Plot route** draws the plan as a smooth preview curve with an arrival
-   ghost; **Begin** replans from the current state and flies it. The preview
-   is a promise of shape, not a contract: time passes between Plot and Begin.
-   **Step 5 is done:** `FlightSession.Plot` holds a preview on a copy of the
-   state without moving the ship; a 1% staleness window ages the panel and
-   **Replot** refreshes it; `TrajectoryLine` draws a ghost at the target's
-   arrival position; the details footer splits **Plot route** and **Begin
-   flight**, and the flight panel shows the PREVIEW rows. **Step 6 is done:**
-   `BootstrapSmokeTests` drives the real bootstrap from the map ceiling through
-   select, plot, Begin, and arrival in 3,939 frames, reproducing the scene
-   flight exactly (2026-11-19 10:29:02, 0.0 m, 0.0000 m/s, 3,898 km, e = 4.3 ×
-   10⁻⁹). **Step 7 is done:** [ADR-009](../decisions/adr-009-map-camera-pan.md)
-   records the blended map and the `ship + pan` look-at, and the camera,
-   flight-session, testing, and index concepts carry the finished layer.
-   **Post-2.5:** the preview carries a **trip-time slider**, so the player can
-   trade a longer trip for a gentler burn and less delta-v before pressing
-   Begin. It is a duration control over the existing torch plan. Beside it, the
-   **arrival-style** buttons switch between the conic capture and the hybrid
-   fixed-thrust capture, so the time/delta-v choice is now in the nav computer.
-   The **burn–coast–burn** profile later became the only crossing, which closed
-   the deferred coast-in-the-middle item below; the powered quintic cruise and
-   the plain coast were then retired.
+The top-down **system map** that this milestone also built was removed on
+**2026-11-21** ([ADR-018](../decisions/adr-018-one-orbit-camera.md)). It was a
+comparison layer, not a gameplay mode: one wheel can reach the whole system
+without leaving the ordinary orbit pose. `MapView`, `SystemMap.unity`,
+`EnableMapView`, the map pan, and the map-only marker, label, and line rules are
+gone. What remains from the camera work is the single 2,000 km–12 billion km
+range, the cursor-anchored wheel zoom, `Space` home, and one orbit pose at every
+distance.
+
+**The camera after the removal:**
+
+* one range and one pose: the wheel never tilts or slerps the view;
+* the framing distance is captured once when a plan, jump, or reset starts and
+  re-captured on arrival, so a moving target does not re-target the zoom every
+  frame;
+* body avoidance stops the camera at a body's clearance sphere continuously, so
+  a body drifting past the orbit slides the camera instead of stepping it;
+* `Space` still eases home in one second; the 60 AU look-at cap still bounds an
+  off-centre zoom.
 
 **Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
-the 12-billion-km map ceiling with the pose top-down (the distance and the tilt
-are eased, not snapped), and the reverse gesture returns to the exact remembered
-yaw, pitch, and rotation. From the map, Mars can
-be selected and plotted; the curve and the arrival ghost draw without flying,
-and Begin replans and arrives on the 3,898 km parking orbit in 4.44 days with
-0.0 m and 0.0000 m/s, 3,939 frames and 65.7 real seconds — the same numbers as
-the scene flight. The map's pan cap allows a browse to Jupiter's neighbourhood,
-importance-ordered picking lets a planet win an overlapping station and repeated
-clicks cycle the stack, and the local view fades distant bodies to true scale
-outside the Moon's sphere of influence; all three are unit-tested, and a real
-pointer click still needs a human frame.
+the 12-billion-km ceiling with the pose unchanged, and the reverse gesture
+returns to the exact remembered yaw, pitch, and rotation. Mars can be selected
+and plotted; the curve and the arrival ghost draw without flying, and Begin
+replans and arrives on the 3,898 km parking orbit in 4.44 days with 0.0 m and
+0.0000 m/s, 3,939 frames and 65.7 real seconds — the same numbers as the scene
+flight. Importance-ordered picking lets a planet win an overlapping station and
+repeated clicks cycle the stack.
 
-**Known gaps:** the `EnableMapView` comparison switch still gates the map (off in
-the shipped scene), the zoom tween is unit-tested but its feel and real pointer
-hits still need a PlayMode pass, the map keeps the player's yaw rather than
-offering north-up, and the 60 AU pan cap and 12-billion-km ceiling are fixed
-constants.
+**Known gaps:** the zoom tween's feel and real pointer hits still need a
+PlayMode pass, the camera keeps the player's yaw rather than offering a
+north-up option, and the 60 AU look-at cap and 12-billion-km ceiling are fixed
+constants. The automatic framing now settles on the parking orbit with a
+visible second zoom at arrival; its duration should be judged in play.
 
 # Milestone 3 — fuel and the delta-v economy
 
@@ -345,20 +316,17 @@ torch-ship fiction uses is flyable. The design is
 
 # Immediate next tasks
 
-1. Default `EnableMapView` on (or remove the switch) now that the comparison is
-   done, so the shipped scene gets the map and the neighbourhood aid fade. This
-   is the first small follow-up to milestone 2.5.
-2. Add the porkchop search now that a Lambert solve exists: sample departure and
-   arrival dates, draw the time/cost heat map, and let the profile choose
+1. Add the porkchop search now that a Lambert solve exists: sample departure and
+   arrival dates, draw the time/cost heat map, and let the coast profiles choose
    a window instead of planning "leave now".
-3. Add a mid-course correction that keeps the current plan instead of replanning
+2. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.
-4. Give warp a continuous scale so the drop near a body is smooth rather than a
+3. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-5. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
+4. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
    the frame order, the trajectory line, and the HUD are covered end to end.
-6. Add a fourth sky layer from a small catalogue of real bright stars
+5. Add a fourth sky layer from a small catalogue of real bright stars
    (RA/Dec/magnitude for the brightest few hundred), so the procedural field
    gains the navigable constellations it is missing
    ([The sky](/technical/sky.md)).

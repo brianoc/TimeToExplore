@@ -29,20 +29,20 @@ view matters most, and it was a fixed pose.
    root, no change to [ADR-002](adr-002-double-precision.md). The camera now
    *orbits* that origin: its position is the orbit offset in render units and it
    looks back at the ship. Precision is unchanged, because the world is still
-   projected from the ship. (The map pan gives the camera a look-at offset,
-   [ADR-009](adr-009-map-camera-pan.md), and cursor-anchored zoom makes that
-   offset live at every zoom, [ADR-017](adr-017-cursor-zoom-and-home.md); "looks
-   at the ship" is the offset-zero case.)
+   projected from the ship. (Cursor-anchored zoom gives the camera a look-at
+   offset, [ADR-017](adr-017-cursor-zoom-and-home.md); "looks at the ship" is
+   the offset-zero case.)
 2. **The orbit is the primary control.** Right-drag turns yaw and pitch (±85°),
-   the wheel zooms multiplicatively (1.25× per notch, 2,000 km to 5 billion km).
+   the wheel zooms multiplicatively (1.25× per notch, 2,000 km to 12 billion km).
    `OrbitCamera` is plain C#, so the limits, the zoom curve, and the slew are
    tested without a scene.
 3. **Framing is automatic until the player takes it.** A Go To, a debug jump, or
    a reset frames its destination. The aim and the distance follow separately,
    so a wheel zoom at the centre keeps the destination centred; only a drag stops
-   the aim. (A later change anchors the wheel to the pointer,
-   [ADR-017](adr-017-cursor-zoom-and-home.md), so an off-centre notch moves the
-   look-at with it.)
+   the aim. The framing distance is captured once when framing starts and again
+   on arrival, so a moving target does not re-target the zoom every frame.
+   (Cursor-anchored zoom also moves the look-at with an off-centre notch,
+   [ADR-017](adr-017-cursor-zoom-and-home.md).)
 4. **The auto distance is `clamp(0.6 × ship→target, 3 × target radius, 3.3 AU)`**,
    eased at 2.5/s. Far out it shows the whole plan; at arrival it sits three
    planetary radii back so the planet fills a useful part of the view.

@@ -14,9 +14,9 @@ The prototype rendered through the built-in render pipeline. Its only shader,
 global `_SunPosition`; the Sun, ship, and markers used `Unlit/Color`, and the
 orbit and trajectory lines used `Sprites/Default`.
 
-That is a dead end for the next rendering work. The system map, bloom on the
-Sun, a local shadow or lighting pass, and a two-camera far field all want a
-scriptable pipeline with a defined renderer, camera data, and shader library.
+That is a dead end for the next rendering work. Bloom on the Sun, a local
+shadow or lighting pass, and a two-camera far field all want a scriptable
+pipeline with a defined renderer, camera data, and shader library.
 Unity 6 still supports the built-in path, but it is the legacy path, and every
 new rendering feature arrives first in URP. Staying on it would have meant
 writing the same plumbing by hand in a second migration.
@@ -26,8 +26,9 @@ registry download. The prototype's needs are small: 137 primitives, about 30
 orbit lines, one plan line, and a HUD. It does not need a heavy pipeline; it
 needs a supported one.
 
-ADR-009 was taken by the system-map camera decision ([a blended map that looks
-at ship + pan](/decisions/adr-009-map-camera-pan.md)); this record does not
+The camera is an orbit camera with a cursor-anchored look-at offset
+([ADR-008](/decisions/adr-008-orbit-camera.md),
+[ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)); this record does not
 depend on it.
 
 # Decision

@@ -90,7 +90,7 @@ because Unity test assemblies cannot reference the predefined
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the star→planet→station→moon→asteroid rank, the ordered stack and its depth tie, the repeated-click cycle, smoothstep/slerp transition, approach offset |
-| `SceneSmokeTests` | the shipped and comparison scenes resolve the bootstrap; the shipped scene leaves the map switch off, the comparison scene turns it on; the catalogue resource imports; both cameras carry `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
+| `SceneSmokeTests` | the shipped scene resolves the bootstrap; the catalogue resource imports; its camera carries `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
 | `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; cheap settings (HDR off, MSAA 1, scale 1, no depth/opaque copy, no shadows); quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
 | `SkyboxTests` | the committed `Sky/milky_way` texture is 2048 × 1024 with no mip chain, is dark overall and has a bright band covering part of the sky, and the skybox shader is found under `Resources` with no compile errors; `SkyView` points `RenderSettings.skybox` at its material and clears the camera to `Skybox`, `Remove` restores the previous skybox and clear flags, and a missing texture or shader is refused without half-applying |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
@@ -111,14 +111,13 @@ because Unity test assemblies cannot reference the predefined
 | `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; a full-field burn crossing the sphere of influence matching an independent 20,000-step RK4 of the same field and thrust, its acceleration at a sample being the field plus the thrust rather than the two-body value, a short local burn agreeing with the two-body burn, and the reference body being a label (one inertial path, two local decompositions differing by exactly the two bodies' states); the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
 | `HandoverBandTests` | the handover band the fixed burns hand over inside: the floor scaling as `1/sqrt(a)` when halved (Earth and Jupiter unclamped, and Mercury's gravity floor under a clamped band), the ceiling being exactly `1.02 × SOI` per body and moving per body (Mercury 114,658.2 km against Uranus 52,795,223.9 km), the departure endpoint being the ceiling and the arrival endpoint the floor, the clamped floor sitting at or above the surface clearance on every planet, moon, and asteroid at 0.3 g and 1 g (Mercury and Mars at 1 g are the named cases, their gravity floors below the surface), the exactly three catalogue bodies whose band is empty at every level (Phobos, Deimos, Proteus) reported with the floor, the clamp, and the ceiling in the reason and refused by the planner before a chain is built, and the body-clearance gate accepting a 1 g burn that crosses Earth's sphere while clearing the planet by 821,258 km and refusing a 30 s burn 60 km up that grazes the surface |
 | `BurnCoastBurnTripPlannerTests` | the eight-arc profile — quintic break, prograde finite burn, Lambert coast, planetocentric approach, brake, conic capture — with the commanded level on both burns, the departure burn sized from the velocity change rather than a time share, the handover flown rather than impulsive, the capture chain entering at the arrival handover floor (Uranus 1 g 400 d: 38,643.0 km, a 1,860.2 s fall, a 6.369 km/s periapsis burn, every seam inside 1 km and 1 m/s), the coast ending on the target's handover ceiling (52,795,223.9 km at Uranus, within 10 m) with the planetocentric approach falling from it (7.544 d, 52.8 million km → 368,111 km, no burn, periapsis 84,354 km above the floor) and the fast Mercury trip keeping seven arcs because its brake starts outside the ceiling, the brake spending the rest of the handover, continuous position and velocity at every seam, every fixed burn clearing the body it works near, a flown arrival on the conic parking orbit and its three-orbit hold, a slow crossing closing cheaply (200 days to Mars at 11.86 km/s with a 27.3-hour approach) with the slow end set by the 179.4° coast, a time without a prograde short transfer rejected with its 180° reason, and the hybrid arrival keeping all three burns at the level; the two-tier break search — the fast departure-body-only peak against the full-field plan peak on Mercury 8 d and 12.3 d, Mars 90 d and the Mercury floor, the reported break peak and delta-v unchanged, the 5% screen certifying a near-limit fast peak with the full field and never accepting a full-field over-thrust break, and the just-below floors still rejected; every burn in a reported plan integrating the summed field (its acceleration is the field plus the thrust, the non-Sun term is there at each burn, and a Sun-only field moves the plan), the hybrid capture's injection burn included; and the floor search returning a real full-field chain inside the drive, which is the certification that stands in for the fast probes; and, for step 1's cheaper build, the six fixed-duration delta-v anchors pinned to four decimals (Mars 90 d 44.354, Mercury 8 d 557.038, Uranus 400 d 182.312, Mars 20 d 270.850, Mars 10 d 607.826, Uranus 35 d 1984.448) and the departure-burn-to-coast seam on Uranus 35 d at 1 g, where the solve integrates at 128 samples and the reported burn at 512; and, for step 2's probe search, the floor plan at Uranus 0.3 g, Mars 0.3 g, and Jupiter 0.3 g being **certified** — a finite clearance and a measured delta-v on every arc, and every seam inside 1 km and 1 m/s — against a `BuildProbeAtDuration` probe that reports an infinite clearance and zero delta-v on its coasted arcs; and, for step 3's pin retry, the Mars 0.3 g floor tracing exactly one `pin retry` line and no `floor probe` continuation, and certifying at 6.73042 d inside the gate |
-| `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, a zero-length frame completing the zoom, and the home transition (one second of smoothstep, exact endpoints, a zero-duration landing, and cancellation) |
+| `OrbitCameraTests` | pitch clamp, yaw wrap, zoom limits, shortest turn, slew rate, distance easing, a zoom request that eases over many frames and lands exactly, placing a distance cancelling a pending request, a zero-length frame completing the zoom, the near-clip rule, and the home transition (one second of smoothstep, exact endpoints, a zero-duration landing, and cancellation) |
 | `RouteFramingTests` | the bounding frame containing every sampled route point and the arrival ghost, the projected fit and its 12% margin being tighter than the bounding sphere, the route plane's normal and its 18° tilt, a straight route seen side-on rather than along it, the shortest-turn/log-distance transition's midpoints and exact endpoints, the rig easing the whole route on screen and landing the look-at on its centre, a wheel, drag, or Space cancelling the move, and a degenerate route leaving the view alone |
-| `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the shared 3 px line width staying a sliver of the distance, the map pose and its stored-pose round trip, the wheel tween and the top-down tilt that follows it, the cursor anchor's projected NDC on every frame of a real off-centre zoom, the anchored pan surviving in the local band, Space's one-second home to the exact local view with the remembered angle, a wheel or drag cancelling it, the button routing (right-drag orbits at every zoom; left-drag pans only on the map and is inert locally; a pan clears both auto flags), both zoom ceilings, the pan and its 60 AU cap, the exponential pan ease, the near plane at both ends of the blend, auto-framing suspended on the map, and the unchanged local view with the map off |
-| `MapViewTests` | the map blend endpoints and smoothstep midpoint, the zoom-out-and-back pose round trip, the Moon-inside-Earth dominant body at Gateway, the deep-space fallback, the pan cap, the extended zoom clamp, the top-down rotation and yaw-turning up vector, the blended rotation's agreement with the effective pitch, the local-to-map near-plane rule, the distance-scaled pan drag, the pan ease, the pointer-to-NDC conversion, and the look-at-plane anchor (pinned at a changed distance, and a centre pointer leaving the look-at alone) |
-| `MapDrawingTests` | the 4.5 px local and 6 px map marker minimum and its smooth blend, the true-scale override, the viewport angular conversion, the neighbourhood aid (full inside the SOI, monotonic to true scale at 3×, restored by the map, widened by the camera distance, disabled without a local scale), the always-on Sun/planet/station labels, the 5× parent-SOI moon window, the hidden full-system moons, the hover/selection-only asteroids, the unchanged local opening-shot labels, the map-only ship label, the line width: 3 px at every zoom, proportional to camera distance, and resolution-independent; the orbit-line pass: 3 px local to 10 px map with the blend clamped and monotonic, the thick line still resolution-independent, Mercury warm and Neptune cool, all eight planets distinct in orbital order, one planet taking the warm end, and the palette ignoring the view; and the bounded width: the far arc holding 2 px, the near arc capped at the line's own look-at width, the natural narrowing between them, the map orbit line keeping its 10 px ceiling, a vertex at or behind the camera having no width, a thinner line not being inflated, resolution independence, both real line renderers carrying a width key per vertex, a zoomed-in curved route staying between 2 and 3 px with no vertex behind the camera, and the camera-plane clip keeping the near-plane crossing and the longest of two visible runs |
+| `CameraRigTests` | the auto-framing distance at arrival and in cruise, the clamps, the follow flags, the captured-once framing distance and its arrival re-capture, the slew-rate turn when the framing target changes, continuous body avoidance, the shared 3 px line width staying a sliver of the distance, the zoom-out-and-back pose round trip, the wheel tween and the 12-billion-km ceiling, the cursor anchor's projected NDC on every frame of a real off-centre zoom, the anchor surviving after the tween, Space's one-second home with the remembered angle, a wheel or drag cancelling it, the button routing (right-drag orbits; a panel press starts nothing; a world press keeps its gesture across a panel), and the near plane |
+| `DrawingRulesTests` | the 4.5 px marker minimum and true-scale override, the viewport angular conversion, the Sun/planet/station always-on labels, the 2-million-km moon and 200,000-km asteroid windows, the selection always labelling, the 3 px line width at every zoom, proportional to camera distance and resolution-independent; the bounded width: the far arc holding 2 px, the near arc capped at the line's own look-at width, a vertex at or behind the camera having no width, a thinner line not being inflated, both real line renderers carrying a width key per vertex, a zoomed-in curved route staying between 2 and 3 px, and the camera-plane clip keeping the near-plane crossing and the longest of two visible runs; and Mercury warm, Neptune cool, eight distinct planet colours in orbital order |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
-| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, the map switch reaches the rig and raises the far clip, the same switch gates the neighbourhood aid fade, a plot draws the preview and arrival ghost without flying and eases the camera to the whole route, the route draws one coloured line per arc with same-type shades and the arrival-style switch redraws the conic and hybrid palettes, the trip-time slider requests a retime through the real HUD, holds the handle and the previous full-field preview while the plan lags, publishes the finished plan on the main thread without moving the ship, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the map ceiling and returns to the exact remembered angle, one wheel gesture eases to the map through the frame loop instead of snapping, and the full map acceptance — zoom out, select Mars, plot, Begin — arrives on the parking orbit through the bootstrap's own frame loop, the profile acceptance — plot, Begin, and arrive on the conic parking orbit through the same frame loop — plus the frame loop dropping a frame until the model, clock, and renderer exist and skipping a body view destroyed mid-teardown |
-| `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), Space as the camera home and `P` as pause, every other hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, the 4 px click slop that separates a click from a map pan, and null devices returning neutral values |
+| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, a plot draws the preview and arrival ghost without flying and eases the camera to the whole route, the route draws one coloured line per arc with same-type shades and the arrival-style switch redraws the conic and hybrid palettes, the trip-time slider requests a retime through the real HUD, holds the handle and the previous full-field preview while the plan lags, publishes the finished plan on the main thread without moving the ship, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the 12-billion-km ceiling and returns to the exact remembered angle, one wheel gesture eases through the frame loop instead of snapping, the Mars acceptance — select, plot, Begin — arrives on the parking orbit and re-captures the arrival framing distance through the bootstrap's own frame loop, the profile acceptance — plot, Begin, and arrive on the conic parking orbit through the same frame loop — plus the frame loop dropping a frame until the model, clock, and renderer exist and skipping a body view destroyed mid-teardown |
+| `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), Space as the camera home and `P` as pause, every other hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, the 4 px click slop that separates a click from a drag, and null devices returning neutral values |
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents (Space home, `P` pause), held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
@@ -191,11 +190,11 @@ the suggested initial warp of 10,000×:
 | Mid-cruise plan-event cap | 8,673 s (100,000×) |
 | Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 05:53, clock never ahead of the ship |
 
-`BootstrapSmokeTests` repeats the same flight through the real composition root,
-from the system map: 3,939 frames, 65.7 s, arrival 2026-11-19 10:29:02 UTC,
-0.0 m and 0.0000 m/s, 3,898 km and e = 4.3 × 10⁻⁹ at arrival. The identical
-counts are the point: the map is a camera pose, so the flight path does not
-depend on how the player found the target.
+`BootstrapSmokeTests` repeats the same flight through the real composition
+root: 3,939 frames, 65.7 s, arrival 2026-11-19 10:29:02 UTC, 0.0 m and
+0.0000 m/s, 3,898 km and e = 4.3 × 10⁻⁹ at arrival. The identical counts are
+the point: the camera is a pose, so the flight path does not depend on how the
+player found the target.
 
 The hybrid fixed-thrust arrival at 0.3 g = 2.942 m/s² has these measured
 anchors (the capture solver's ideal chain):
@@ -419,47 +418,34 @@ at the exact epoch: the long-trip solver is date-fragile, and a one-second shift
 can drop the Mars 90-day or Jupiter 230.6-day build into the same non-convergence
 hole as the known 60-day Mercury case.
 
-The map state has these anchors at the epoch: the Moon's SOI radius is 66,194 km
+The camera has these anchors at the epoch: the Moon's SOI radius is 66,194 km
 (the design quotes 66,200), so Gateway is inside it and the Moon is the
-dominant body there; the map zoom ceiling is 12,000,000 units (12 billion km,
-about 80 AU); the pan cap is 60 AU, or 8,975,872 units; the map pose's up
-vector at yaw 0 is `(0, 0, −1)` in Unity space; the map near plane at the
-ceiling is 12,000 units (12 million km); and the map far plane is 40,000,000
-units (40 billion km, about 267 AU). The pan ease is 3/s, so ten seconds leaves
-less than a metre of a 60 AU offset.
+dominant body there; the zoom ceiling is 12,000,000 units (12 billion km, about
+80 AU) and the floor is 0.002 units (2,000 km); the look-at offset cap is 60 AU,
+or 8,975,872 units; the near plane is 2% of the distance clamped to 0.0002–0.05
+units (200 m–50 km); and the far plane is 20,000,000 units (20 billion km,
+about 133 AU).
 
-The map drawing rules have these anchors: the marker radius is 4.5 px at
-`w = 0` and 6 px at `w = 1`; a moon labels while the camera is inside 5× its
-parent's SOI, which is 4,620,000 km for Earth's Moon (Earth SOI 924,000 km, so
-the boundary is about 4,620 render units) and therefore not at full-system
-zoom; the class rank puts the Sun, planets, and stations at 1 and moons and
-asteroids at 0; plan lines stay 3 px through `LineWidth`, which is
-`2 × depth × tan(fov/2) / viewportHeight × pixels` render units at the camera
-distance; and orbit lines use the same formula with the pixel count blended
-from 3 px at `w = 0` to 10 px at `w = 1`. Each vertex's width comes from
-`LineWidth.SampleWorldWidth`, which bounds the apparent width to
-`[DistanceFloorPixels, lookAtPixels]`: the far half of an orbit or route never
-falls below 2 px, the near half never exceeds the line's own pixel count, and a
-thinner line is neither inflated nor thickened. At 60° and 1080p a 3 px line is
-0.0032 × depth and a 10 px map orbit line is 0.0107 × depth; at 2160p the world
-width halves and the apparent widths stay 3 px and 10 px. The floor tests cover
-the far end holding 2 px, the near end capped at the line's own pixel width, the
-natural narrowing between them, a thinner line not being inflated, and
-resolution independence; both real line renderers are checked for a width key
-per vertex, and a curved route with the camera 800 units from its midpoint is
-checked to stay between 2 and 3 px with every interior vertex in front of the
-camera. `LineCameraClip` has direct tests for the interpolated near-plane
-crossing and for keeping the longer of two visible runs. The planet
-palette is anchored on Mercury `#FFA347` (warm orange) and Neptune `#B76BED`
-(cool purple), with eight distinct samples in orbital order and no dependence on
-the blend weight.
-
-The neighbourhood aid is anchored at Gateway, where the Moon's 66,194 km SOI is
-the local scale: the aid is full at the SOI edge, part-way down at 2× (132,388 km),
-and exactly zero at 3× (198,582 km). The map weight lerps it back to full, so a
-body an AU away is true-scale in the local view and a 6 px marker on the map.
-The neighbourhood is the larger of the SOI radius and the camera distance, and a
-non-positive or infinite radius disables the fade for the shipped scene.
+The drawing rules have these anchors: the marker radius is 4.5 px at every
+zoom; a moon labels inside 2 million km and an asteroid inside 200,000 km; the
+class rank puts the Sun, planets, and stations at 1 and moons and asteroids at
+0; and orbit and plan lines are 3 px through `LineWidth`, which is
+`2 × depth × tan(fov/2) / viewportHeight × 3` render units at the camera
+distance. Each vertex's width comes from `LineWidth.SampleWorldWidth`, which
+bounds the apparent width to `[DistanceFloorPixels, lookAtPixels]`: the far half
+of an orbit or route never falls below 2 px, the near half never exceeds the
+line's own pixel count, and a thinner line is neither inflated nor thickened. At
+60° and 1080p a 3 px line is 0.0032 × depth; at 2160p the world width halves and
+the apparent width stays 3 px. The floor tests cover the far end holding 2 px,
+the near end capped at the line's own pixel width, the natural narrowing between
+them, a thinner line not being inflated, and resolution independence; both real
+line renderers are checked for a width key per vertex, and a curved route with
+the camera 800 units from its midpoint is checked to stay between 2 and 3 px with
+every interior vertex in front of the camera. `LineCameraClip` has direct tests
+for the interpolated near-plane crossing and for keeping the longer of two
+visible runs. The planet palette is anchored on Mercury `#FFA347` (warm orange)
+and Neptune `#B76BED` (cool purple), with eight distinct samples in orbital
+order.
 
 The route preview uses the same Gateway→Mars plan, 4.44 days: the staleness
 window is `PreviewStaleFraction = 0.01` of the flight, about 3,836 s
@@ -516,11 +502,10 @@ The seam keeps the pre-migration feel with two explicit conversions:
 
 * **Mouse delta.** The legacy `Mouse X`/`Mouse Y` axes applied a 0.1
   sensitivity, so `axis = raw pixels × 0.1`. With `OrbitDegreesPerMouseUnit = 3`
-  that is 0.3° per raw pixel of orbit drag; with `PanPixelsPerMouseUnit = 10` it
-  is one screen pixel of map pan per raw pixel.
+  that is 0.3° per raw pixel of orbit drag.
 * **Wheel.** Windows reports 120 units per notch, macOS about 1.
   `NormaliseScroll` divides by 120 only on `WindowsPlayer`/`WindowsEditor`, so
-  one notch is one `ZoomFactorPerStep` (1.25×) step on both camera ranges. The
+  one notch is one `ZoomFactorPerStep` (1.25×) step within the single 2,000 km–12 billion km range. The
   step *requests* the distance; the camera eases to it at
   `ZoomEaseRatePerSecond`, so the input anchors still describe the request, not
   the frame's placement.

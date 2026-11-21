@@ -121,8 +121,7 @@ With 60° FOV, 4.5 pixels, and a 1080-pixel screen, `minAngular ≈ 0.00436 rad`
 (0.25°). A body smaller than that is scaled up until it is about 4.5 pixels
 across. The scale factor is smoothed so distant bodies do not pop.
 
-Examples with the full aid (on the map, or in the shipped scene while its map
-switch is off):
+Examples with the aid:
 
 | Body | Distance | True angular size | Scale factor | Rendered size |
 |---|---:|---:|---:|---:|
@@ -130,14 +129,9 @@ switch is off):
 | Ceres | 3 AU | 1.0 × 10⁻⁶ rad | ~4,000× | ~4.5 px |
 | 2 km station | 1.5 million km | 6.7 × 10⁻⁷ rad | ~6,500× | ~4.5 px |
 
-In the map build the aid is **local-aware**. `MarkerSizing.AidStrength` keeps it
-at full strength inside the dominant body's sphere of influence and fades it to
-true scale by three times that radius along the same log-distance band as the
-camera blend. The map weight restores the full aid, so a planet an AU away is a
-sub-pixel dot in the local view and a 6 px marker on the map. The neighbourhood
-also grows with the camera distance, so zooming out locally does not make the
-system vanish. The multiplications above remain the full-aid numbers; a body
-outside the local neighbourhood simply has no inflation applied.
+The aid is the same at every zoom: there is one camera and one range, and
+finding a distant body should not depend on a second view. The multiplications
+above are the full-aid numbers at any distance.
 
 This is a **marker aid**, not a physical size. It is essential for playability:
 without it, most of the catalogue is invisible. Press `T` to toggle true scale
@@ -158,24 +152,19 @@ Kepler ellipse.
 * The line is drawn in ship-relative render coordinates, so it moves with the
   world.
 * Width is one apparent-width rule shared with the plan line. `LineWidth`
-  converts a pixel count to render units at the camera's look-at depth.
-  **Plan lines stay at 3 px**, while orbit lines blend with the map weight:
+  converts a pixel count to render units at the camera's look-at depth. Both
+  orbit and plan lines are **3 px**:
 
   ```text
-  orbitPixels = lerp(3 px, 10 px, w)          // LineWidth.OrbitPixels
-  width       = 2 × depth × tan(fov / 2) / viewportHeight × orbitPixels
+  width = 2 × depth × tan(fov / 2) / viewportHeight × 3
   ```
 
-  The local view is therefore the same fine line as before, and the solar
-  system view draws a bold 10 px stroke as the zoom tilts toward the map. The
-  blend uses the same `w` as the camera pose, so the lines thicken through the
-  zoom tween instead of popping at the map threshold. The viewport height comes
-  from the camera, so the apparent width also holds when the camera renders
-  into a RenderTexture. The orbit's radius is not an input. The old rule
-  multiplied the orbit size, which was only correct at the single distance
-  where the whole ellipse was framed; inside the orbit it became a
-  screen-filling ribbon. The pixel form is also correct at other fields of view
-  and resolutions, and needs no world-unit clamp that breaks at the map ceiling.
+  The viewport height comes from the camera, so the apparent width also holds
+  when the camera renders into a RenderTexture. The orbit's radius is not an
+  input. The old rule multiplied the orbit size, which was only correct at the
+  single distance where the whole ellipse was framed; inside the orbit it became
+  a screen-filling ribbon. The pixel form is also correct at other fields of
+  view and resolutions, and needs no world-unit clamp at the outer ceiling.
 
   Width is **per vertex**, written into `LineRenderer.widthCurve`, and the
   apparent width is bounded at both ends. A vertex is never thinner than
@@ -189,8 +178,7 @@ Kepler ellipse.
   `[2 px, lookAtPixels]` band, with perspective still narrowing the line
   between its bounds. The floor is capped by the line's own look-at width, so a line
   already thinner than 2 px is neither inflated nor thickened. The same rule
-  applies to the plan line at its fixed 3 px, and to orbit lines through their
-  3→10 px map blend.
+  applies to both the plan line and the orbit lines at their shared 3 px.
 * **The camera plane is a clip, not a width.** A `LineRenderer` billboards its
   strip toward the view, so a segment with one end behind the camera has no
   consistent screen-space width; Unity still emits its quad, and the projected
@@ -211,7 +199,7 @@ Kepler ellipse.
   their planet.
 
 Asteroid orbits are not drawn by default; 100 ellipses would clutter the view
-and cost more than they add. The data is available if a later "belt map" mode
+and cost more than they add. The data is available if a later "belt view" mode
 wants them.
 
 # Materials and lighting

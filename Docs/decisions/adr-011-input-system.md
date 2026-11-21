@@ -65,10 +65,11 @@ HUD button would stop working. The documented workaround is **Both**.
 4. **Preserve the old feel with explicit conversions.**
    * The old `Mouse X`/`Mouse Y` axes applied the Input Manager's 0.1
      sensitivity. The seam multiplies the raw device delta by `0.1`, so the
-     rig's 3° per axis unit and 10 px per axis unit keep their meaning.
+     rig's 3° per axis unit keeps its meaning.
    * `Mouse.current.scroll.y` is 120 units per notch on Windows and about 1 on
      macOS. The seam divides by 120 only on `WindowsPlayer`/`WindowsEditor`, so
-     one notch remains one 1.25× zoom step. `WheelDistanceUnits` is unchanged.
+     one notch remains one 1.25× zoom step. The camera's range is unchanged in
+     feel.
    * Number keys use an explicit `Key.Digit1`…`Key.Digit0` table, not enum
      arithmetic; the bootstrap ignores an index past the clock's last scale, as
      the old loop did.
@@ -85,7 +86,7 @@ HUD button would stop working. The documented workaround is **Both**.
 
 * The project is on the supported input API, with a single place to add
   rebinding, gamepad support, or a device-aware prompt later.
-* Behaviour is preserved: orbit and pan rates, wheel steps, cursor capture,
+* Behaviour is preserved: orbit rate, wheel steps, cursor capture,
   free-flight axes, modifiers, speed keys, and the full hotkey map are the same.
 * The rest of the runtime has no input-backend dependency, so the seam can be
   replaced or tested in isolation. The guard test makes a regression loud.
@@ -128,12 +129,12 @@ seam when actions earn their keep.
 
 **Rewrite the HUD to uGUI or UI Toolkit in the same change.** It would allow
 **New** only and remove the legacy backend, but it is a UI migration with its
-own visual and layout risk. The map markers, labels, and hover prompt are
+own visual and layout risk. The body markers, labels, and hover prompt are
 already drawn in screen space; rebuilding them is a separate project.
 
 **Keep reading raw mouse pixels without the 0.1 factor.** Simpler arithmetic,
-but it would make the camera orbit ten times faster and a map pan ten times
-further. The 0.1 conversion is the compatibility layer, not a new tuning value.
+but it would make the camera orbit ten times faster. The 0.1 conversion is
+the compatibility layer, not a new tuning value.
 
 # Revisit when
 

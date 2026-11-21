@@ -233,7 +233,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void ClickSlopSeparatesAClickFromAMapPan()
+        public void ClickSlopSeparatesAClickFromADrag()
         {
             var press = new Vector2(100f, 100f);
 

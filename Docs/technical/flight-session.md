@@ -275,7 +275,7 @@ because a billboarded segment with one end behind the camera projects into a
 huge polygon however thin its world width is. The earlier rule used the farthest
 point of the plan, which made the line 225,000 km thick on a 1 AU trip and
 swallowed the view once the camera could orbit; a later world-unit cap silently
-faded the line to a third of a pixel at full-map zoom. The path is sampled from
+faded the line to a third of a pixel at the outer zoom. The path is sampled from
 the plan, not integrated, so it costs the same whether the ship is next to it or
 an AU away.
 
@@ -373,41 +373,38 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | `P` | Pause or resume |
 | `Space` | Ease the camera home to the ship |
 | `Esc` | Close the details screen and discard a preview / cancel a debug jump |
-| Right-drag, left-drag, wheel | Orbit, pan the map, and zoom |
+| Right-drag, wheel | Orbit and zoom |
 | `W A S D Q E`, `,` `.` | Debug free flight only (move and change speed) |
 
 # The camera
 
 The ship sits at the render origin, so the camera **orbits** that origin and
-looks at `ship + pan` — the ship whenever the pan is zero
+looks at `ship + look-at offset` — the ship whenever the offset is zero
 ([ADR-008](/decisions/adr-008-orbit-camera.md),
 [ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)):
 
 * right-drag turns yaw and pitch, clamped to ±85°;
 * the wheel zooms 1.25× per notch toward the pointer, from 2,000 km out to
-  5 billion km;
+  12 billion km;
 * a plan, a debug jump, or a reset frames its destination automatically, and the
-  aim and the distance follow separately, so a wheel zoom at the centre keeps
-  the planet centred and only a drag stops the aiming;
-* `Space` eases back to the ship in one second and unwinds the pan;
+  aim and the distance follow separately, so a manual zoom keeps the planet
+  centred and only a drag stops the aiming;
+* the framing distance is captured once when framing starts and re-captured on
+  arrival, so the moving ship does not re-target the zoom every frame;
+* `Space` eases back to the ship in one second and unwinds the look-at offset;
 * the auto distance is `clamp(0.6 × ship→target, 3 × radius, 3.3 AU)`, so it
   opens up over a whole plan and closes to three planetary radii at arrival;
-* the near plane scales with the orbit (2%, clamped to 200 km–50 km) so close
+* the near plane scales with the orbit (2%, clamped to 200 m–50 km) so close
   inspection does not cut a planet open;
+* a body passing close to the orbit slides the camera in front of it instead of
+  stepping the view;
 * a ten-pixel ship marker sits at the origin, pointing along the thrust while
   the drive is on and along the velocity when it is off.
 
 The view deliberately does **not** follow the thrust axis: a capture burns
 retrograde, and facing the burn would point the camera at empty space at the
-moment of arrival.
-
-With the map switch on, the same camera continues into the system map: the zoom
-blends the pose top-down, left-drag pans the map, the look-at
-becomes `ship + pan`, and the wheel reaches 12 billion km
-([The system map](/technical/system-map.md),
-[ADR-009](/decisions/adr-009-map-camera-pan.md)). The flight is unaffected: the
-plan is still owned by the session, and a flight running while the player browses
-the map is the same flight with a different camera.
+moment of arrival. The flight is unaffected by any camera input: the plan is
+still owned by the session.
 
 # Acceptance, measured
 
@@ -429,12 +426,11 @@ The budget never bound, but a starved-budget test with two substeps per frame
 proves the clamp: 400 frames reach only 2026-11-15 05:53 and the clock is never
 ahead of the ship.
 
-The same flight also runs through the real composition root, starting from the
-system map (`BootstrapSmokeTests`): select Mars on the map, plot, Begin, and let
-the bootstrap's own `Update`/`LateUpdate` run. It arrives at the same
-2026-11-19 10:29:02 UTC after 3,939 frames and 65.7 real seconds, with 0.0 m and
-0.0000 m/s and the 3,898 km parking orbit at e = 4.3 × 10⁻⁹. The map changes the
-camera, not the trajectory.
+The same flight also runs through the real composition root
+(`BootstrapSmokeTests`): select Mars, plot, Begin, and let the bootstrap's own
+`Update`/`LateUpdate` run. It arrives at the same 2026-11-19 10:29:02 UTC after
+3,939 frames and 65.7 real seconds, with 0.0 m and 0.0000 m/s and the 3,898 km
+parking orbit at e = 4.3 × 10⁻⁹.
 
 # Verification
 
@@ -470,7 +466,7 @@ easing. `CameraRigTests` covers the framing distance and the follow flags.
 runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit mode,
 including drawing the preview and its arrival ghost without flying, Begin
 replanning at the current date, discard leaving the ship alone, the full
-map-to-arrival acceptance (3,939 frames, 0.0 m and 0.0000 m/s, on the 3,898 km
+frame-loop acceptance (3,939 frames, 0.0 m and 0.0000 m/s, on the 3,898 km
 parking orbit), and the burn–coast–burn profile plotted and flown to the conic
 parking orbit through the same loop.
 

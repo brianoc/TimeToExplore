@@ -64,9 +64,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Selected?.Id, Is.EqualTo("earth"));
             Assert.That(_bootstrap.Rig.AutoTarget?.Id, Is.EqualTo("earth"),
                 "the opening shot frames Earth");
-            Assert.That(_bootstrap.EnableMapView, Is.False,
-                "the shipped path keeps the old camera by default");
-            Assert.That(_bootstrap.Rig.MapEnabled, Is.False);
         }
 
         [Test]
@@ -93,37 +90,6 @@ namespace TimeToExplore.Tests.EditMode
             // must skip it rather than throw once per frame.
             Assert.DoesNotThrow(() => Invoke("LateUpdate"));
             Assert.DoesNotThrow(() => Invoke("LateUpdate"));
-        }
-
-        [Test]
-        public void TheMapSwitchReachesTheRig()
-        {
-            Build(enableMapView: true);
-
-            Assert.That(_bootstrap.EnableMapView, Is.True);
-            Assert.That(_bootstrap.Rig.MapEnabled, Is.True);
-            Assert.That(_bootstrap.ViewCamera.farClipPlane,
-                Is.EqualTo(MapView.FarClipUnits),
-                "the map camera needs the larger far clip");
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void TheMapSwitchGatesTheNeighbourhoodAidFade(bool enableMapView)
-        {
-            Build(enableMapView);
-
-            if (!enableMapView)
-            {
-                Assert.That(_bootstrap.Renderer.LocalAidRadiusM, Is.Zero,
-                    "the shipped scene keeps the old full-strength aid");
-                return;
-            }
-
-            double moonSoiM = SphereOfInfluence.RadiusM(_bootstrap.Model.Get("moon"));
-            Assert.That(_bootstrap.Renderer.LocalAidRadiusM,
-                Is.EqualTo(moonSoiM).Within(1.0),
-                "Gateway's neighbourhood is the Moon's SOI");
         }
 
         [Test]
@@ -358,15 +324,15 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// Step 6 of the system map: one wheel gesture from the neighbourhood to
-        /// the whole system and back, through the real bootstrap. The pose is
-        /// blended, not saved and restored, so the remembered angle must come
-        /// back exactly.
+        /// One wheel gesture from the neighbourhood to the 12-billion-km
+        /// ceiling and back, through the real bootstrap. The zoom never writes
+        /// the player's yaw or pitch, so the remembered angle comes back
+        /// exactly and the pose never tilts.
         /// </summary>
         [Test]
-        public void ZoomingOutToTheMapAndBackRestoresTheExactAngleThroughTheBootstrap()
+        public void ZoomingToTheOuterCeilingAndBackRestoresTheExactAngleThroughTheBootstrap()
         {
-            Build(enableMapView: true);
+            Build();
             _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
 
             // The wheel takes the camera, so the opening auto-framing stops,
@@ -375,36 +341,32 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.Rig.Orbit.YawDegrees = 123.5f;
             _bootstrap.Rig.Orbit.PitchDegrees = -22.25f;
             _bootstrap.Rig.Orbit.DistanceUnits =
-                (float)(0.5 * MapView.LocalRadiusM(_bootstrap.Model, _bootstrap.ShipPositionM)
+                (float)(0.5 * LocalScale.RadiusM(_bootstrap.Model, _bootstrap.ShipPositionM)
                         * _bootstrap.UnitsPerMeter);
             Invoke("LateUpdate");
 
             float yaw = _bootstrap.Rig.Orbit.YawDegrees;
             float pitch = _bootstrap.Rig.Orbit.PitchDegrees;
             Quaternion localRotation = _bootstrap.Rig.PoseRotation;
-            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
 
-            // One gesture is many notches, each routed by the blend at the time
-            // it arrives, which is what the real wheel does over the band.
-            for (int i = 0; i < MapNotches; i++) ScrollOnce(1f);
+            RunZoom(ZoomNotches);
 
-            Assert.That(_bootstrap.Rig.IsMapSide, Is.True, "the gesture reaches the map");
-            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-5f));
             Assert.That(_bootstrap.Rig.Orbit.DistanceUnits,
-                Is.EqualTo(MapView.MaxDistanceUnits), "the map ceiling");
-            Assert.That(Vector3.Angle(_bootstrap.Rig.PoseRotation * Vector3.forward, Vector3.down),
-                Is.LessThan(1e-3f), "the map looks straight down the pole");
-            Assert.That(_bootstrap.ViewCamera.farClipPlane, Is.EqualTo(MapView.FarClipUnits));
+                Is.EqualTo(OrbitCamera.MaxDistanceUnits), "the 80 AU ceiling");
+            Assert.That(Vector3.Angle(_bootstrap.Rig.PoseRotation * Vector3.forward,
+                OrbitCamera.Direction(yaw, pitch) * -1f),
+                Is.LessThan(1e-2f), "the far view keeps the ordinary orbit pose");
+            Assert.That(_bootstrap.ViewCamera.farClipPlane,
+                Is.EqualTo(OrbitCamera.FarClipUnits));
 
-            for (int i = 0; i < MapNotches; i++) ScrollOnce(-1f);
+            RunZoom(-ZoomNotches);
 
-            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
             Assert.That(_bootstrap.Rig.Orbit.YawDegrees, Is.EqualTo(yaw));
             Assert.That(_bootstrap.Rig.Orbit.PitchDegrees, Is.EqualTo(pitch));
             Assert.That(Quaternion.Angle(_bootstrap.Rig.PoseRotation, localRotation),
                 Is.LessThan(1e-3f), "the exact remembered angle is back");
             Assert.That(_bootstrap.Rig.LookAtUnits.magnitude, Is.LessThan(1e-6f),
-                "the local view looks at the ship again");
+                "a centre zoom looks at the ship again");
         }
 
         /// <summary>
@@ -502,19 +464,15 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// Step 6's frame-loop acceptance: map, select Mars, plot, Begin, and
-        /// arrive — all through the real composition root. The existing
-        /// Gateway→Mars numbers must hold, so this is the scene-level version of
-        /// <c>SceneFlightTests</c>.
+        /// The frame-loop acceptance: select Mars, plot, Begin, and arrive — all
+        /// through the real composition root. The existing Gateway→Mars numbers
+        /// must hold, so this is the scene-level version of <c>SceneFlightTests</c>.
         /// </summary>
         [Test]
-        public void PlottingAndBeginningMarsFromTheMapArrivesOnTheParkingOrbit()
+        public void PlottingAndBeginningMarsArrivesOnTheParkingOrbit()
         {
-            Build(enableMapView: true);
+            Build();
             _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
-            _bootstrap.Rig.ClearAuto();
-            for (int i = 0; i < MapNotches; i++) ScrollOnce(1f);
-            Assert.That(_bootstrap.Rig.IsMapSide, Is.True, "the mission starts on the map");
 
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
@@ -526,8 +484,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
-            Assert.That(_bootstrap.Rig.IsMapSide, Is.True,
-                "plotting frames the target without yanking the map back");
 
             _bootstrap.BeginPlottedFlight();
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
@@ -557,8 +513,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.ArrivedJulianDate,
                 Is.EqualTo(plan.ArrivalJulianDate).Within(1e-6));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
-            Assert.That(_bootstrap.Rig.IsMapSide, Is.True,
-                "the map stays usable for the whole flight");
 
             double positionError = Vector3d.Distance(_bootstrap.Flight.State.PositionM,
                 plan.ArrivalState.PositionM);
@@ -585,35 +539,33 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(0.02), "the ship is on the parking orbit");
             Assert.That(eccentricity, Is.LessThan(0.03), "and the orbit is near-circular");
             Assert.That(_bootstrap.Flight.CurrentThrust.IsActive, Is.False, "the drive is off");
+            Assert.That(_bootstrap.Rig.AutoDistanceTargetUnits,
+                Is.EqualTo(_bootstrap.Rig.AutoDistanceUnits(
+                    _bootstrap.ShipPositionM, marsAtArrival)).Within(1.0),
+                "arrival re-captures the framing distance on the parking orbit");
         }
 
         /// <summary>
         /// The zoom is a request plus an ease, not a teleport: one gesture moves
-        /// the camera over many frames, and the map blend sweeps through its
-        /// band instead of snapping to the top-down pose.
+        /// the camera over many frames.
         /// </summary>
         [Test]
-        public void OneWheelGestureEasesToTheMapInsteadOfSnapping()
+        public void OneWheelGestureEasesInsteadOfSnapping()
         {
-            Build(enableMapView: true);
+            Build();
             _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
             _bootstrap.Rig.ClearAuto();
             _bootstrap.Rig.Orbit.YawDegrees = 40f;
             _bootstrap.Rig.Orbit.PitchDegrees = 10f;
-
-            double radiusM = MapView.LocalRadiusM(_bootstrap.Model, _bootstrap.ShipPositionM);
-            float localDistance = (float)(radiusM * _bootstrap.UnitsPerMeter);
-            _bootstrap.Rig.Orbit.DistanceUnits = localDistance;
+            _bootstrap.Rig.Orbit.DistanceUnits = 0.185f;
             Invoke("LateUpdate");
-            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f));
 
             _bootstrap.Rig.ApplyWheelSteps(6f);
-            Assert.That(_bootstrap.Rig.Orbit.DistanceUnits, Is.EqualTo(localDistance),
+            Assert.That(_bootstrap.Rig.Orbit.DistanceUnits, Is.EqualTo(0.185f),
                 "a wheel gesture requests a distance; the camera has not moved");
 
             int frames = 0;
-            bool sawIntermediateBlend = false;
-            float previousDistance = localDistance;
+            float previousDistance = 0.185f;
 
             while (!_bootstrap.Rig.Orbit.IsDistanceSettled && frames < 600)
             {
@@ -623,36 +575,36 @@ namespace TimeToExplore.Tests.EditMode
                     Is.GreaterThanOrEqualTo(previousDistance),
                     "the zoom eases outward through the frame loop");
 
-                float weight = _bootstrap.Rig.MapBlendWeight;
-                if (weight > 0.01f && weight < 0.99f) sawIntermediateBlend = true;
-
                 previousDistance = _bootstrap.Rig.Orbit.DistanceUnits;
                 frames++;
             }
 
             Assert.That(frames, Is.GreaterThan(1), "the zoom is a tween, not a snap");
             Assert.That(frames, Is.LessThan(600));
-            Assert.That(sawIntermediateBlend, Is.True, "the map blend sweeps through its band");
             Assert.That(_bootstrap.Rig.Orbit.DistanceUnits,
                 Is.EqualTo(_bootstrap.Rig.Orbit.TargetDistanceUnits));
-            Assert.That(_bootstrap.Rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-4f));
         }
 
         private const float FrameSeconds = 1f / 60f;
-        private const int MapNotches = 90;
+        private const int ZoomNotches = 90;
         private const int MaxFrames = 20_000;
 
-        /// <summary>One wheel notch through the rig's real routing, then the
-        /// camera frame that applies it.</summary>
-        private void ScrollOnce(float steps)
+        /// <summary>One continuous wheel gesture through the frame loop, until
+        /// the eased distance settles.</summary>
+        private void RunZoom(float notches)
         {
-            ShipCameraRig rig = _bootstrap.Rig;
-            rig.Orbit.DistanceUnits = rig.WheelDistanceUnits(
-                rig.Orbit.DistanceUnits, steps, rig.MapBlendWeight);
-            Invoke("LateUpdate");
+            _bootstrap.Rig.ApplyWheelSteps(notches);
+            int frames = 0;
+            while (!_bootstrap.Rig.Orbit.IsDistanceSettled && frames < 600)
+            {
+                Invoke("LateUpdate");
+                frames++;
+            }
+
+            Assert.That(frames, Is.LessThan(600), "the zoom must settle");
         }
 
-        private void Build(bool enableMapView = false)
+        private void Build()
         {
             _cameraObject = new GameObject("Test Camera");
             _cameraObject.tag = "MainCamera";
@@ -660,7 +612,6 @@ namespace TimeToExplore.Tests.EditMode
 
             _root = new GameObject("Test Bootstrap");
             _bootstrap = _root.AddComponent<SolarSystemBootstrap>();
-            _bootstrap.EnableMapView = enableMapView;
             Invoke("Awake");
         }
 

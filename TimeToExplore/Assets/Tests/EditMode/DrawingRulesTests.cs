@@ -9,12 +9,10 @@ using UnityEngine;
 
 namespace TimeToExplore.Tests.EditMode
 {
-    /// <summary>The map's reading rules: marker size, label density, ship label, line width.</summary>
+    /// <summary>The drawing rules: marker size, label density, and line width.</summary>
     [Category("presentation")]
-    public class MapDrawingTests
+    public class DrawingRulesTests
     {
-        private const float UnitsPerMeter = 1e-6f;
-        private const double CloseCameraM = 2.0e6; // 2,000 km, inside the Moon's SOI
 
         private SolarSystemModel _model;
 
@@ -27,31 +25,9 @@ namespace TimeToExplore.Tests.EditMode
         // ------------------------------------------------------------ marker size
 
         [Test]
-        public void TheLocalMarkerMinimumStaysAtFourAndAHalfPixels()
+        public void TheMarkerMinimumIsFourAndAHalfPixels()
         {
-            Assert.That(MarkerSizing.MinimumPixels(0f), Is.EqualTo(4.5f).Within(1e-6f));
-            Assert.That(MarkerSizing.MinimumPixels(-1f), Is.EqualTo(4.5f).Within(1e-6f));
-        }
-
-        [Test]
-        public void TheMapMarkerMinimumIsSixPixels()
-        {
-            Assert.That(MarkerSizing.MinimumPixels(1f), Is.EqualTo(6f).Within(1e-6f));
-            Assert.That(MarkerSizing.MinimumPixels(2f), Is.EqualTo(6f).Within(1e-6f));
-        }
-
-        [Test]
-        public void TheMarkerMinimumGrowsSmoothlyWithTheBlend()
-        {
-            Assert.That(MarkerSizing.MinimumPixels(0.5f), Is.EqualTo(5.25f).Within(1e-5f));
-
-            float previous = -1f;
-            for (int i = 0; i <= 100; i++)
-            {
-                float value = MarkerSizing.MinimumPixels(i / 100f);
-                Assert.That(value, Is.GreaterThanOrEqualTo(previous));
-                previous = value;
-            }
+            Assert.That(MarkerSizing.MinimumPixels, Is.EqualTo(4.5f).Within(1e-6f));
         }
 
         [Test]
@@ -81,181 +57,58 @@ namespace TimeToExplore.Tests.EditMode
                 "a degenerate screen height must not divide by zero");
         }
 
-        // ------------------------------------------------------- neighbourhood aid
-
-        [Test]
-        public void TheMarkerAidIsFullInsideTheLocalNeighbourhood()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 0.5 * moonSoiM, moonSoiM, 0f),
-                Is.EqualTo(1f).Within(1e-6f));
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, moonSoiM, moonSoiM, 0f),
-                Is.EqualTo(1f).Within(1e-6f),
-                "the SOI boundary itself is still the neighbourhood");
-        }
-
-        [Test]
-        public void TheMarkerAidFadesToTrueScaleBeyondTheNeighbourhood()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-
-            float halfwayOut = MarkerSizing.AidStrength(CloseCameraM, 2.0 * moonSoiM, moonSoiM, 0f);
-            Assert.That(halfwayOut, Is.GreaterThan(0f).And.LessThan(1f),
-                "the fade is gradual, not a step at the SOI edge");
-
-            Assert.That(
-                MarkerSizing.AidStrength(CloseCameraM,
-                    MarkerSizing.NeighbourhoodFadeRatio * moonSoiM, moonSoiM, 0f),
-                Is.EqualTo(0f).Within(1e-6f));
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, MapView.AstronomicalUnitM,
-                    moonSoiM, 0f),
-                Is.EqualTo(0f).Within(1e-6f),
-                "a planet an AU away renders at true scale");
-        }
-
-        [Test]
-        public void TheMarkerAidFallsMonotonicallyAcrossTheFadeBand()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-            float previous = 2f;
-
-            for (int i = 0; i <= 100; i++)
-            {
-                double ratio = 1.0 + 2.0 * i / 100.0;
-                float value = MarkerSizing.AidStrength(CloseCameraM, ratio * moonSoiM,
-                    moonSoiM, 0f);
-
-                Assert.That(value, Is.LessThanOrEqualTo(previous + 1e-6f));
-                previous = value;
-            }
-        }
-
-        [Test]
-        public void TheAidNeighbourhoodGrowsAsTheCameraZoomsOut()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-            double bodyM = 2.0 * moonSoiM;
-
-            float close = MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0f);
-            float wide = MarkerSizing.AidStrength(4.0 * moonSoiM, bodyM, moonSoiM, 0f);
-
-            Assert.That(close, Is.GreaterThan(0f).And.LessThan(1f));
-            Assert.That(wide, Is.EqualTo(1f).Within(1e-6f),
-                "a body inside the zoomed-out view keeps its marker");
-        }
-
-        [Test]
-        public void TheMapRestoresTheAidEverywhere()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-            double bodyM = MapView.AstronomicalUnitM;
-
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0f),
-                Is.EqualTo(0f).Within(1e-6f));
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 0.5f),
-                Is.EqualTo(0.5f).Within(1e-5f),
-                "the blend eases the aid back before the map is fully engaged");
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, bodyM, moonSoiM, 1f),
-                Is.EqualTo(1f).Within(1e-6f));
-        }
-
-        [Test]
-        public void AnUnknownNeighbourhoodKeepsTheOldFullAid()
-        {
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 1e13, 0.0, 0f),
-                Is.EqualTo(1f), "the shipped scene passes no local scale");
-            Assert.That(MarkerSizing.AidStrength(CloseCameraM, 1e13,
-                    double.PositiveInfinity, 0f),
-                Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void TheFadedAidStillYieldsToTrueScale()
-        {
-            double moonSoiM = SphereOfInfluence.RadiusM(_model.Get("moon"));
-            float strength = MarkerSizing.AidStrength(CloseCameraM,
-                MarkerSizing.NeighbourhoodFadeRatio * moonSoiM, moonSoiM, 0f);
-            float baseMinAngular = MarkerSizing.MinimumAngularSize(4.5f, 60f, 1080);
-
-            Assert.That(strength, Is.EqualTo(0f).Within(1e-6f));
-            Assert.That(BodyView.TargetScaleFactor(1e-9f, baseMinAngular * strength,
-                trueScale: false), Is.EqualTo(1f));
-            Assert.That(BodyView.TargetScaleFactor(1e-9f, baseMinAngular, trueScale: true),
-                Is.EqualTo(1f), "T bypasses the aid whether or not it is faded");
-        }
-
         // --------------------------------------------------------------- labels
 
         [Test]
-        public void TheMapAlwaysLabelsTheSunPlanetsAndStations()
+        public void TheSunPlanetsAndStationsAlwaysLabel()
         {
-            Assert.That(Label(_model.Get("sun"), 1e13, MapView.MaxDistanceUnits), Is.True);
-            Assert.That(Label(_model.Get("earth"), 1e13, MapView.MaxDistanceUnits), Is.True);
-            Assert.That(Label(_model.Get("gateway"), 1e13, MapView.MaxDistanceUnits), Is.True);
+            Assert.That(Label(_model.Get("sun"), 1e13), Is.True);
+            Assert.That(Label(_model.Get("earth"), 1e13), Is.True);
+            Assert.That(Label(_model.Get("gateway"), 1e13), Is.True);
         }
 
         [Test]
-        public void AMoonLabelsOnlyInsideItsParentsNeighbourhood()
+        public void AMoonLabelsInsideTwoMillionKilometres()
         {
             BodyRuntime moon = _model.Get("moon");
-            BodyRuntime earth = _model.Get("earth");
-            double parentSoiM = SphereOfInfluence.RadiusM(earth);
 
-            float boundaryUnits = (float)(BodyLabels.MoonNeighbourhoodFactor * parentSoiM
-                                          * UnitsPerMeter);
-
-            Assert.That(BodyLabels.InMoonNeighbourhood(moon, boundaryUnits * 0.99f, UnitsPerMeter),
-                Is.True);
-            Assert.That(BodyLabels.InMoonNeighbourhood(moon, boundaryUnits * 1.01f, UnitsPerMeter),
-                Is.False);
-
-            Assert.That(Label(moon, 1e9, boundaryUnits * 0.99f), Is.True);
-            Assert.That(Label(moon, 1e9, boundaryUnits * 1.01f), Is.False);
+            Assert.That(Label(moon, 0.99 * BodyLabels.MoonDistanceM), Is.True);
+            Assert.That(Label(moon, 1.01 * BodyLabels.MoonDistanceM), Is.False);
         }
 
         [Test]
-        public void TheFullSystemMapHidesMoons()
-        {
-            Assert.That(Label(_model.Get("moon"), 1e12, MapView.MaxDistanceUnits), Is.False,
-                "a moon one AU away must not clutter the full-system map");
-        }
-
-        [Test]
-        public void AnAsteroidLabelsOnlyOnHoverOrSelectionOnTheMap()
+        public void AnAsteroidLabelsInsideTwoHundredThousandKilometres()
         {
             BodyRuntime asteroid = _model.Get("ast_1");
 
-            Assert.That(BodyLabels.ShouldLabel(asteroid, 1e8, 5_000f, 1f,
-                hover: false, selected: false, UnitsPerMeter), Is.False);
-            Assert.That(BodyLabels.ShouldLabel(asteroid, 1e8, 5_000f, 1f,
-                hover: true, selected: false, UnitsPerMeter), Is.True);
-            Assert.That(BodyLabels.ShouldLabel(asteroid, 1e8, 5_000f, 1f,
-                hover: false, selected: true, UnitsPerMeter), Is.True);
+            Assert.That(Label(asteroid, 0.99 * BodyLabels.AsteroidDistanceM), Is.True);
+            Assert.That(Label(asteroid, 1.01 * BodyLabels.AsteroidDistanceM), Is.False);
         }
 
         [Test]
-        public void TheLocalOpeningShotKeepsItsOldLabels()
+        public void TheSelectionAlwaysLabels()
         {
-            // w = 0 is the shipped scene: the old distance thresholds, unchanged.
-            Assert.That(Label(_model.Get("moon"), 1e8, 185f, blendWeight: 0f), Is.True);
-            Assert.That(Label(_model.Get("moon"), 3e9, 185f, blendWeight: 0f), Is.False);
-            Assert.That(Label(_model.Get("ast_1"), 1e8, 185f, blendWeight: 0f), Is.True);
-            Assert.That(Label(_model.Get("ast_1"), 3e8, 185f, blendWeight: 0f), Is.False);
-            Assert.That(Label(_model.Get("earth"), 1e11, 185f, blendWeight: 0f), Is.True);
+            BodyRuntime asteroid = _model.Get("ast_1");
+
+            Assert.That(BodyLabels.ShouldLabel(asteroid, 1e13, selected: true), Is.True);
+            Assert.That(BodyLabels.ShouldLabel(_model.Get("moon"), 1e13, selected: false),
+                Is.False);
         }
 
         [Test]
-        public void TheShipIsLabelledOnlyOnTheMap()
+        public void TheOpeningShotLabelsTheMoonAndTheNearestAsteroid()
         {
-            Assert.That(BodyLabels.ShouldLabelShip(mapSide: true), Is.True);
-            Assert.That(BodyLabels.ShouldLabelShip(mapSide: false), Is.False);
+            Assert.That(Label(_model.Get("moon"), 1e8), Is.True);
+            Assert.That(Label(_model.Get("moon"), 3e9), Is.False);
+            Assert.That(Label(_model.Get("ast_1"), 1e8), Is.True);
+            Assert.That(Label(_model.Get("ast_1"), 3e8), Is.False);
+            Assert.That(Label(_model.Get("earth"), 1e11), Is.True);
         }
 
         // ---------------------------------------------------------- orbit lines
 
         [Test]
-        public void OrbitLinesCannotSwampTheNeighbourhoodAtCloseMapZoom()
+        public void OrbitLinesCannotSwampTheNeighbourhoodAtCloseZoom()
         {
             // The reported trap: Earth's orbit is 149,598 render units across,
             // but the camera at the Earth–Moon neighbourhood sits ~185 units
@@ -304,48 +157,6 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(uhd, Is.EqualTo(hd * 0.5f).Within(1e-4f));
             Assert.That(LineWidth.PixelsAt(uhd, 1_000f, 60f, 2160f),
                 Is.EqualTo(LineWidth.Pixels).Within(1e-3f));
-        }
-
-        [Test]
-        public void OrbitLinesAreThreePixelsInTheLocalViewAndTenOnTheMap()
-        {
-            Assert.That(LineWidth.OrbitPixels(0f), Is.EqualTo(3f).Within(1e-6f));
-            Assert.That(LineWidth.OrbitPixels(1f), Is.EqualTo(10f).Within(1e-6f));
-            Assert.That(LineWidth.OrbitPixels(0.5f), Is.EqualTo(6.5f).Within(1e-5f));
-        }
-
-        [Test]
-        public void TheOrbitWidthClampsOutsideTheBlend()
-        {
-            Assert.That(LineWidth.OrbitPixels(-1f), Is.EqualTo(3f).Within(1e-6f),
-                "a weight below zero is the local view");
-            Assert.That(LineWidth.OrbitPixels(2f), Is.EqualTo(10f).Within(1e-6f),
-                "a weight above one is the map");
-        }
-
-        [Test]
-        public void TheOrbitWidthGrowsSmoothlyThroughTheBlend()
-        {
-            float previous = -1f;
-            for (int i = 0; i <= 100; i++)
-            {
-                float pixels = LineWidth.OrbitPixels(i / 100f);
-                Assert.That(pixels, Is.GreaterThanOrEqualTo(previous));
-                previous = pixels;
-            }
-        }
-
-        [Test]
-        public void TheThickMapOrbitLineIsStillResolutionIndependent()
-        {
-            float width = LineWidth.WorldWidth(1_000f, 60f, 1080f,
-                LineWidth.OrbitPixels(1f));
-
-            Assert.That(LineWidth.PixelsAt(width, 1_000f, 60f, 1080f),
-                Is.EqualTo(10f).Within(1e-3f));
-            Assert.That(LineWidth.WorldWidth(1_000f, 60f, 2160f,
-                    LineWidth.OrbitPixels(1f)),
-                Is.EqualTo(width * 0.5f).Within(1e-4f));
         }
 
         [Test]
@@ -416,7 +227,7 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(LineWidth.PixelsAt(width, 1f, 60f, 1080f),
                 Is.EqualTo(mapPixels).Within(1e-3f),
-                "a bold map orbit line keeps its 10 px ceiling near the camera");
+                "a bold line keeps its own pixel ceiling near the camera");
         }
 
         [Test]
@@ -506,9 +317,9 @@ namespace TimeToExplore.Tests.EditMode
                 orbit.Initialise(earth, _model, Color.white, parent.transform);
 
                 float lookAtWidth = LineWidth.WorldWidth(cameraDistance,
-                    camera.fieldOfView, height, LineWidth.OrbitLocalPixels);
+                    camera.fieldOfView, height, LineWidth.Pixels);
                 orbit.Refresh(earth.PositionM, camera, unitsPerMeter, true,
-                    lookAtWidth, LineWidth.OrbitLocalPixels, cameraDistance);
+                    lookAtWidth, LineWidth.Pixels, cameraDistance);
 
                 line = orbitObject.GetComponent<LineRenderer>();
                 Assert.That(line, Is.Not.Null);
@@ -525,7 +336,7 @@ namespace TimeToExplore.Tests.EditMode
 
                     Assert.That(pixels,
                         Is.InRange(LineWidth.DistanceFloorPixels - 1e-3f,
-                            LineWidth.OrbitLocalPixels + 1e-3f),
+                            LineWidth.Pixels + 1e-3f),
                         $"orbit vertex {i} is {pixels} px wide");
                 }
             }
@@ -819,13 +630,13 @@ namespace TimeToExplore.Tests.EditMode
         public void TheOrbitColourDoesNotDependOnTheView()
         {
             // The palette is a function of the body's place in the ramp only;
-            // nothing in the mapping takes a blend weight, so both views draw
-            // the same colour. Only LineWidth.OrbitPixels reads the blend.
-            Color local = OrbitColours.Planet(2, 8);
-            Color map = OrbitColours.Planet(2, 8);
+            // nothing in the mapping takes the camera distance, so the colour
+            // is the same at every zoom.
+            Color first = OrbitColours.Planet(2, 8);
+            Color second = OrbitColours.Planet(2, 8);
 
-            Assert.That(map, Is.EqualTo(local));
-            Assert.That(local.a, Is.EqualTo(OrbitColours.PlanetAlpha).Within(1e-6f));
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(first.a, Is.EqualTo(OrbitColours.PlanetAlpha).Within(1e-6f));
         }
 
         [Test]
@@ -923,9 +734,7 @@ namespace TimeToExplore.Tests.EditMode
                     : 0.0;
         }
 
-        private bool Label(BodyRuntime body, double distanceToShipM, float cameraDistanceUnits,
-            float blendWeight = 1f) =>
-            BodyLabels.ShouldLabel(body, distanceToShipM, cameraDistanceUnits, blendWeight,
-                hover: false, selected: false, UnitsPerMeter);
+        private static bool Label(BodyRuntime body, double distanceToShipM) =>
+            BodyLabels.ShouldLabel(body, distanceToShipM, selected: false);
     }
 }

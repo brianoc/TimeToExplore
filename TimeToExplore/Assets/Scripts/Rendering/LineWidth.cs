@@ -25,11 +25,11 @@ namespace TimeToExplore.Rendering
     public static class LineWidth
     {
         /// <summary>
-        /// Apparent width of the orbit and plan lines, in screen pixels. Three
-        /// rather than one and a half: on a high-DPI display a 1.5 px world
-        /// line reads as a sub-pixel thread, and the extra pixel also lets the
-        /// shader's coverage feather leave a full-strength core instead of a
-        /// soft, half-transparent one.
+        /// Apparent line width in screen pixels, shared by orbit and plan
+        /// lines. Three rather than one and a half: on a high-DPI display a
+        /// 1.5 px world line reads as a sub-pixel thread, and the extra pixel
+        /// also lets the shader's coverage feather leave a full-strength core
+        /// instead of a soft, half-transparent one.
         /// </summary>
         public const float Pixels = 3f;
 
@@ -42,29 +42,6 @@ namespace TimeToExplore.Rendering
         public const float DistanceFloorPixels = 2f;
 
         /// <summary>
-        /// Apparent orbit-line width in the local view, in screen pixels. It is
-        /// the shared 3 px rule, unchanged.
-        /// </summary>
-        public const float OrbitLocalPixels = Pixels;
-
-        /// <summary>
-        /// Apparent orbit-line width in the solar system view, in screen pixels.
-        /// The planets are what the map is read by, so their orbits are drawn
-        /// as a bold stroke there instead of the local fine line.
-        /// </summary>
-        public const float OrbitMapPixels = 10f;
-
-        /// <summary>
-        /// Orbit-line width in pixels for a blend weight: 3 px in the local
-        /// view, 10 px in the solar system view, linear in between. The blend
-        /// uses the same weight as the camera pose, so the lines thicken as the
-        /// zoom tilts toward the map rather than popping at the map threshold.
-        /// The colour does not blend; it belongs to the body.
-        /// </summary>
-        public static float OrbitPixels(float mapBlendWeight) =>
-            Mathf.Lerp(OrbitLocalPixels, OrbitMapPixels, Mathf.Clamp01(mapBlendWeight));
-
-        /// <summary>
         /// Render-unit width that covers <paramref name="pixels"/> pixels at a
         /// view depth of <paramref name="depthUnits"/>.
         ///
@@ -73,7 +50,7 @@ namespace TimeToExplore.Rendering
         /// The old `0.0015 × distance` was a 60°/1080p approximation of a
         /// 1.5 px line; this form keeps the rule correct at other FOVs and
         /// resolutions and no longer needs a world-unit clamp that breaks at
-        /// the map ceiling.
+        /// the outer zoom ceiling.
         /// </summary>
         public static float WorldWidth(float depthUnits, float fieldOfViewDegrees,
             float screenHeightPixels, float pixels = Pixels)

@@ -65,7 +65,6 @@ namespace TimeToExplore.UI
         private static readonly Color WrapColour = new Color(0.76f, 0.82f, 0.89f);
         private static readonly Color LabelColour = new Color(0.85f, 0.92f, 1f, 0.92f);
         private static readonly Color SelectedLabelColour = new Color(1f, 0.85f, 0.4f);
-        private static readonly Color ShipLabelColour = new Color(0.86f, 0.90f, 0.96f);
         private static readonly Color BurnLabelColour = new Color(1f, 0.96f, 0.85f);
         private static readonly Color ParkBurnLabelColour = new Color(1f, 0.88f, 0.35f);
         private static readonly Color GhostLabelColour = new Color(0.62f, 0.78f, 1f);
@@ -75,8 +74,8 @@ namespace TimeToExplore.UI
         private static readonly Color FallbackAccent = new Color(0.55f, 0.75f, 1f);
 
         private const string HelpText =
-            "LMB select · LMB drag pans map · RMB drag orbits · wheel zoom · 1–7 warp\n" +
-            "Space ship · P pause · Tab target · R reset · Esc cancel · T true scale\n" +
+            "LMB select · RMB drag orbits · wheel zoom · 1–7 warp\n" +
+            "Space home · P pause · Tab target · R reset · Esc cancel · T true scale\n" +
             "O orbits · L labels · H HUD · ` free flight (WASD, , . speed) · X cancel";
 
         private SolarSystemBootstrap _owner;
@@ -313,9 +312,9 @@ namespace TimeToExplore.UI
 
             if (!released) return;
 
-            // The pan shares the left button, so a body is selected only when the
-            // press and release stayed inside the click slop. A drag is a pan and
-            // never opens the details screen.
+            // The left button still selects, so a body is chosen only when the
+            // press and release stayed inside the click slop. A drag never opens
+            // the details screen.
             if (_clickDragged) _pickCycle.Reset();
 
             BodyRuntime clicked = null;
@@ -961,19 +960,13 @@ namespace TimeToExplore.UI
             if (camera == null || _owner.Renderer == null) return;
 
             Vector3d shipPosition = _owner.ShipPositionM;
-            float blendWeight = _owner.Rig != null ? _owner.Rig.MapBlendWeight : 0f;
-            float cameraDistance = _owner.Rig != null ? _owner.Rig.Orbit.DistanceUnits : 0f;
-            bool mapSide = _owner.Rig != null && _owner.Rig.IsMapSide;
 
             foreach (BodyView view in _owner.Renderer.Views)
             {
                 BodyRuntime body = view.Body;
                 double distance = Vector3d.Distance(body.PositionM, shipPosition);
-                bool hovered = body == _hover;
                 bool selected = body == _owner.Selected;
-                if (!BodyLabels.ShouldLabel(body, distance, cameraDistance, blendWeight,
-                        hovered, selected, _owner.UnitsPerMeter))
-                    continue;
+                if (!BodyLabels.ShouldLabel(body, distance, selected)) continue;
 
                 Vector3 screen = camera.WorldToScreenPoint(view.transform.position);
                 if (screen.z <= 0f) continue;
@@ -984,10 +977,6 @@ namespace TimeToExplore.UI
                 PlaceLabel(text, selected ? SelectedLabelColour : LabelColour,
                     new Vector2(screen.x, screen.y), 9f, 9f);
             }
-
-            if (BodyLabels.ShouldLabelShip(mapSide))
-                DrawWorldLabel(camera, Vector3.zero, "YOU ARE HERE", ShipLabelColour,
-                    hideAtOrigin: false);
         }
 
         private void DrawTrajectoryLabels()

@@ -39,15 +39,6 @@ namespace TimeToExplore
         public bool ShowHud = true;
         public bool ShowLabels = true;
 
-        /// <summary>
-        /// Development switch for the system map. Off keeps today's orbit
-        /// camera; on enables the blended top-down pose, pan, and the extended
-        /// zoom. Serialized per scene so the comparison scene can opt in while
-        /// the shipped scene stays on the old camera. A later step removes the
-        /// switch (or defaults it on) once the comparison is done.
-        /// </summary>
-        public bool EnableMapView = false;
-
         /// <summary>Debug free flight. A flight owns the ship while it runs.</summary>
         public bool FreeFlight { get; private set; }
 
@@ -74,6 +65,7 @@ namespace TimeToExplore
         private readonly List<Vector3d> _routePoints = new List<Vector3d>();
         private GravityField _gravity;
         private TripPlanner _planner;
+        private bool _wasFlying;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
@@ -116,7 +108,6 @@ namespace TimeToExplore
             Flight = new FlightSession(Model, _gravity, _planner);
 
             Rig = gameObject.AddComponent<ShipCameraRig>();
-            Rig.MapEnabled = EnableMapView;
             Rig.Initialise(ViewCamera, Model, UnitsPerMeter);
 
             Focus = gameObject.AddComponent<CameraFocusDirector>();
@@ -140,20 +131,7 @@ namespace TimeToExplore
             Selected = Model.Get("earth") ?? Model.Sun;
 
             Renderer.Refresh(ShipPositionM, Clock.JulianDate,
-                Rig != null ? Rig.MapBlendWeight : 0f,
-                Rig != null ? Rig.Orbit.DistanceUnits : 0f,
-                LocalAidRadiusM());
-        }
-
-        /// <summary>
-        /// The local scale for the neighbourhood-aware marker aid, or 0 when the
-        /// map is off. The shipped scene keeps its old full-strength aid; the
-        /// map scene stops inflating bodies outside the dominant body's SOI.
-        /// </summary>
-        private double LocalAidRadiusM()
-        {
-            if (Rig == null || !Rig.MapEnabled) return 0.0;
-            return Rig.NeighbourhoodRadiusM;
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
         }
 
         /// <summary>
@@ -267,6 +245,16 @@ namespace TimeToExplore
                     BodyRuntime target = Model.Get(Flight.TargetId);
                     if (target != null && Rig.AutoTarget != target) Rig.Frame(target);
                 }
+
+                // The framing distance is captured when the flight starts, so
+                // the cruise view does not keep winding in as the ship
+                // approaches. Re-capture it once on arrival, so the camera
+                // settles on the parking orbit instead of holding the cruise
+                // distance. Both moves ease; neither snaps.
+                bool flying = Flight.IsFlying;
+                if (_wasFlying && !flying && Flight.Status == FlightStatus.Arrived)
+                    Rig?.RecalculateFramingDistance(ShipPositionM);
+                _wasFlying = flying;
             }
 
             if (Rig != null) Rig.Apply(ShipPositionM, FrameDeltaSeconds());
@@ -279,9 +267,7 @@ namespace TimeToExplore
             }
 
             Renderer.Refresh(ShipPositionM, Clock.JulianDate,
-                Rig != null ? Rig.MapBlendWeight : 0f,
-                Rig != null ? Rig.Orbit.DistanceUnits : 0f,
-                LocalAidRadiusM());
+                Rig != null ? Rig.Orbit.DistanceUnits : 0f);
             if (Trajectory != null) Trajectory.Refresh(ShipPositionM, ViewCamera);
         }
 

@@ -63,10 +63,10 @@ Rejected.
 **1 unit = 100,000 km.** Earth is 0.064 units; planets become dots and the
 minimum-size clamp dominates everywhere. Rejected.
 
-**Separate "map scale" and "local scale".** Compress the outer system on a map
-and switch to true scale near a body. Rejected for v0.1 because it breaks
-continuity and creates a visible seam. A future map mode could still use a
-different camera projection without changing the simulation.
+**Separate "overview scale" and "local scale".** Compress the outer system in
+an overview and switch to true scale near a body. Rejected for v0.1 because it
+breaks continuity and creates a visible seam. A future overview could still use
+a different camera projection without changing the simulation.
 
 **No minimum size.** Most of the catalogue is invisible, and navigation becomes
 guesswork. Rejected.
@@ -75,5 +75,5 @@ guesswork. Rejected.
 
 * the art pass introduces impostors and billboards,
 * a two-camera far field is needed,
-* the player needs a dedicated map view,
+* the camera needs a wider range or a second reading,
 * station and asteroid markers get distinct shapes or icons.

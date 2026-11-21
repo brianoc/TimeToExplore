@@ -151,7 +151,6 @@ MonoBehaviour:
   UnitsPerMeter: 0.000001
   ShowHud: 1
   ShowLabels: 1
-  EnableMapView: 0
   SubstepsPerFrame: 2000
 --- !u!4 &893225692
 Transform:

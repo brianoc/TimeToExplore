@@ -21,14 +21,34 @@ namespace TimeToExplore.Player
         /// <summary>Closest orbit: 2,000 km, enough to inspect a parking orbit.</summary>
         public const float MinDistanceUnits = 0.002f;
 
-        /// <summary>Farthest orbit: 5 billion km, about 33 AU.</summary>
-        public const float MaxDistanceUnits = 5_000_000f;
+        /// <summary>
+        /// Farthest orbit: 12 billion km, about 80 AU. It frames Neptune's
+        /// 4.5-billion-km orbit at 60° FOV with margin, so one gesture reaches
+        /// the whole catalogue.
+        /// </summary>
+        public const float MaxDistanceUnits = 12_000_000f;
 
         /// <summary>Starting orbit: 250,000 km, the Earth–Moon neighbourhood.</summary>
         public const float DefaultDistanceUnits = 0.25f;
 
         /// <summary>Starting pitch: a little above the ecliptic.</summary>
         public const float DefaultPitchDegrees = 14f;
+
+        /// <summary>Near plane as a fraction of the orbit distance.</summary>
+        public const float NearClipFraction = 0.02f;
+
+        /// <summary>Nearest near plane: 200 m (the closest zoom inside a parking orbit).</summary>
+        public const float MinNearClipUnits = 0.0002f;
+
+        /// <summary>Farthest near plane: 50 km.</summary>
+        public const float MaxNearClipUnits = 0.05f;
+
+        /// <summary>
+        /// Far plane: 20 billion km (about 133 AU). A 12-billion-km camera
+        /// plus a 60 AU look-at offset and the catalogue's 60 AU width still
+        /// fits, and the near:far ratio stays inside a float depth range.
+        /// </summary>
+        public const float FarClipUnits = 20_000_000f;
 
         public float YawDegrees;
         public float PitchDegrees = DefaultPitchDegrees;
@@ -41,10 +61,9 @@ namespace TimeToExplore.Player
         /// instead calls <see cref="RequestDistance"/> and lets the rig ease
         /// toward it with <see cref="EaseDistance"/>.
         ///
-        /// The caller owns the range: the rig routes a wheel through
-        /// <see cref="ZoomDistanceUnits"/> (local) or
-        /// <see cref="MapView.ZoomDistanceUnits"/> (map), so the map's higher
-        /// ceiling is not clamped away here.
+        /// A wheel zoom instead calls <see cref="RequestDistance"/> and lets
+        /// the rig ease toward it; assigning the distance places the camera
+        /// immediately and cancels any pending request.
         /// </summary>
         public float DistanceUnits
         {
@@ -70,8 +89,8 @@ namespace TimeToExplore.Player
 
         /// <summary>
         /// Unit vector from the ship to the camera for an arbitrary yaw and
-        /// pitch. The rig uses this with the map's effective pitch, while the
-        /// player's stored pitch is left alone.
+        /// pitch. Kept as a pure function so the route fit can test a candidate
+        /// pose without moving the camera.
         /// </summary>
         public static Vector3 Direction(float yawDegrees, float pitchDegrees)
         {
@@ -97,10 +116,7 @@ namespace TimeToExplore.Player
 
         /// <summary>
         /// Request a zoom without moving the camera: the distance eases there
-        /// while <see cref="EaseDistance"/> runs. The caller routes the range
-        /// through <see cref="ZoomDistanceUnits"/> or
-        /// <see cref="MapView.ZoomDistanceUnits"/>, so the map's higher ceiling
-        /// survives.
+        /// while <see cref="EaseDistance"/> runs.
         /// </summary>
         public void RequestDistance(float distanceUnits)
         {
@@ -124,9 +140,7 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
-        /// The local zoom curve as a pure function, clamped to the local range.
-        /// The rig routes map-side zoom through <see cref="MapView"/> instead,
-        /// whose ceiling is higher.
+        /// The zoom curve as a pure function, clamped to the orbit range.
         /// </summary>
         public static float ZoomDistanceUnits(float distanceUnits, float steps,
             float factorPerStep = 1.25f)
@@ -250,6 +264,18 @@ namespace TimeToExplore.Player
             degrees %= 360f;
             if (degrees < 0f) degrees += 360f;
             return degrees;
+        }
+
+        /// <summary>
+        /// The near plane for an orbit distance: 2% of the distance, clamped
+        /// to 200 m–50 km. Scaling with the orbit stops a moon being cut open
+        /// at the closest zoom, while the floor and ceiling keep the depth range
+        /// sane at both ends.
+        /// </summary>
+        public static float NearClipUnits(float distanceUnits)
+        {
+            return Mathf.Clamp(distanceUnits * NearClipFraction,
+                MinNearClipUnits, MaxNearClipUnits);
         }
     }
 }

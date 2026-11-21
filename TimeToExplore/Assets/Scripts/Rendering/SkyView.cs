@@ -12,7 +12,7 @@ namespace TimeToExplore.Rendering
     /// screen pixels at the prototype's 60-degree field of view.
     ///
     /// The sky is fixed in the ecliptic frame: the camera orbits through it and
-    /// the whole field turns with yaw, pitch, and the map blend. Travelling does
+    /// the whole field turns with yaw and pitch. Travelling does
     /// not shift it, because stars are effectively at infinity; there is no
     /// parallax between Earth and Neptune, which is correct at the scale the
     /// prototype renders. There is no sidereal time either, so the band's
