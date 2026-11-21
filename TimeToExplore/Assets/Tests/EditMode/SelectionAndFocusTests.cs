@@ -134,12 +134,14 @@ namespace TimeToExplore.Tests.EditMode
             };
 
             Assert.That(BodyPicker.Pick(targets, new Vector2(400f, 400f)), Is.Null);
+            Assert.That(BodyPicker.Pick(targets, new Vector2(400f, 400f), out int none), Is.Null);
+            Assert.That(none, Is.Zero);
             Assert.That(BodyPicker.Pick(new List<ScreenTarget>(), new Vector2(1f, 1f)), Is.Null);
             Assert.That(BodyPicker.Pick(null, new Vector2(1f, 1f)), Is.Null);
         }
 
         [Test]
-        public void TheNearestBodyWinsWhenMarkersOverlap()
+        public void TheNearestBodyWinsWithinOneRank()
         {
             BodyRuntime near = _model.Get("earth");
             BodyRuntime far = _model.Get("mars");
@@ -160,107 +162,217 @@ namespace TimeToExplore.Tests.EditMode
             var targets = new List<ScreenTarget> { Target(asteroid, new Vector2(50f, 50f), 0.5f, 100f) };
 
             Assert.That(BodyPicker.Pick(targets, new Vector2(55f, 50f)), Is.SameAs(asteroid));
-            Assert.That(BodyPicker.Pick(targets, new Vector2(55f, 50f), 0f), Is.Null);
+            Assert.That(BodyPicker.Pick(targets, new Vector2(55f, 50f),
+                minimumHitRadiusPixels: 0f), Is.Null);
         }
 
         [Test]
-        public void MajorBodiesOutrankMoonsWhenMarkersOverlapOnTheMap()
+        public void ImportanceRunsStarPlanetStationMoonAsteroid()
+        {
+            Assert.That(BodyPicker.PriorityOf(_model.Get("sun")),
+                Is.EqualTo(BodyPicker.StarBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("earth")),
+                Is.EqualTo(BodyPicker.PlanetBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("gateway")),
+                Is.EqualTo(BodyPicker.StationBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("moon")),
+                Is.EqualTo(BodyPicker.MoonBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(_model.Get("ast_1")),
+                Is.EqualTo(BodyPicker.AsteroidBodyPriority));
+            Assert.That(BodyPicker.PriorityOf(null),
+                Is.EqualTo(BodyPicker.UnknownBodyPriority));
+
+            Assert.That(BodyPicker.StarBodyPriority, Is.GreaterThan(BodyPicker.PlanetBodyPriority));
+            Assert.That(BodyPicker.PlanetBodyPriority, Is.GreaterThan(BodyPicker.StationBodyPriority));
+            Assert.That(BodyPicker.StationBodyPriority, Is.GreaterThan(BodyPicker.MoonBodyPriority));
+            Assert.That(BodyPicker.MoonBodyPriority, Is.GreaterThan(BodyPicker.AsteroidBodyPriority));
+            Assert.That(BodyPicker.AsteroidBodyPriority, Is.GreaterThan(BodyPicker.UnknownBodyPriority));
+        }
+
+        [Test]
+        public void APlanetOutranksANearerStation()
         {
             BodyRuntime earth = _model.Get("earth");
-            BodyRuntime moon = _model.Get("moon");
+            BodyRuntime station = _model.Get("gateway");
 
-            // The Moon is nearer, but it sits on top of Earth's marker at
-            // full-system zoom: the map reading is Earth.
+            // The station's marker is much nearer, but clicking a planet-shaped
+            // stack is how the player expects to reach the planet first.
             var targets = new List<ScreenTarget>
             {
-                Target(moon, new Vector2(200f, 200f), 6f, 40f, BodyPicker.MinorBodyPriority),
-                Target(earth, new Vector2(200f, 200f), 6f, 900f, BodyPicker.MajorBodyPriority)
+                Target(station, new Vector2(200f, 200f), 6f, 40f),
+                Target(earth, new Vector2(200f, 200f), 6f, 900f)
             };
 
-            Assert.That(
-                BodyPicker.Pick(targets, new Vector2(200f, 200f),
-                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
-                Is.SameAs(earth));
+            Assert.That(BodyPicker.Pick(targets, new Vector2(200f, 200f)), Is.SameAs(earth));
+            Assert.That(BodyPicker.Pick(targets, new Vector2(200f, 200f), out int count), Is.SameAs(earth));
+            Assert.That(count, Is.EqualTo(2));
         }
 
         [Test]
-        public void TheLocalPickerStillPrefersTheNearestMarker()
+        public void AStationOutranksANearerMoon()
         {
-            BodyRuntime earth = _model.Get("earth");
+            BodyRuntime station = _model.Get("gateway");
             BodyRuntime moon = _model.Get("moon");
+
             var targets = new List<ScreenTarget>
             {
-                Target(moon, new Vector2(200f, 200f), 6f, 40f, BodyPicker.MinorBodyPriority),
-                Target(earth, new Vector2(200f, 200f), 6f, 900f, BodyPicker.MajorBodyPriority)
+                Target(moon, new Vector2(200f, 200f), 6f, 40f),
+                Target(station, new Vector2(200f, 200f), 6f, 900f)
             };
 
-            // No class priority off the map: the nearest hit wins as before.
-            Assert.That(BodyPicker.Pick(targets, new Vector2(200f, 200f)), Is.SameAs(moon));
+            Assert.That(BodyPicker.Pick(targets, new Vector2(200f, 200f)), Is.SameAs(station));
         }
 
         [Test]
-        public void AMoonSeparatedFromItsPlanetIsSelectableOnTheMap()
+        public void AMoonSeparatedFromItsPlanetIsStillSelectable()
         {
             BodyRuntime earth = _model.Get("earth");
             BodyRuntime moon = _model.Get("moon");
 
             // Zoomed into the neighbourhood the markers no longer overlap, so
-            // the Moon is the only hit even with class priority on.
+            // the Moon is the only hit and rank has nothing to overrule.
             var targets = new List<ScreenTarget>
             {
-                Target(moon, new Vector2(100f, 100f), 6f, 40f, BodyPicker.MinorBodyPriority),
-                Target(earth, new Vector2(140f, 100f), 6f, 900f, BodyPicker.MajorBodyPriority)
+                Target(moon, new Vector2(100f, 100f), 6f, 40f),
+                Target(earth, new Vector2(140f, 100f), 6f, 900f)
             };
 
-            Assert.That(
-                BodyPicker.Pick(targets, new Vector2(100f, 100f),
-                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
-                Is.SameAs(moon));
+            Assert.That(BodyPicker.Pick(targets, new Vector2(100f, 100f)), Is.SameAs(moon));
         }
 
         [Test]
-        public void ClassPriorityStillPicksTheNearestOfTheSameClass()
+        public void OrderedHitsRunFromImportanceToDepth()
+        {
+            var targets = new List<ScreenTarget>
+            {
+                Target(_model.Get("ast_1"), new Vector2(200f, 200f), 12f, 5f),
+                Target(_model.Get("moon"), new Vector2(200f, 200f), 12f, 40f),
+                Target(_model.Get("gateway"), new Vector2(200f, 200f), 12f, 10f),
+                Target(_model.Get("earth"), new Vector2(200f, 200f), 12f, 900f),
+                Target(_model.Get("sun"), new Vector2(200f, 200f), 12f, 1e9f)
+            };
+            var hits = new List<ScreenTarget>();
+
+            BodyPicker.OrderedHits(targets, new Vector2(200f, 200f), hits);
+
+            Assert.That(hits.Count, Is.EqualTo(5));
+            Assert.That(hits[0].Body.Id, Is.EqualTo("sun"));
+            Assert.That(hits[1].Body.Id, Is.EqualTo("earth"));
+            Assert.That(hits[2].Body.Id, Is.EqualTo("gateway"));
+            Assert.That(hits[3].Body.Id, Is.EqualTo("moon"));
+            Assert.That(hits[4].Body.Id, Is.EqualTo("ast_1"));
+        }
+
+        [Test]
+        public void OrderedHitsBreakATieInRankByDepth()
         {
             BodyRuntime near = _model.Get("earth");
             BodyRuntime far = _model.Get("mars");
             var targets = new List<ScreenTarget>
             {
-                Target(far, new Vector2(200f, 200f), 14f, 900f, BodyPicker.MajorBodyPriority),
-                Target(near, new Vector2(204f, 200f), 14f, 40f, BodyPicker.MajorBodyPriority)
+                Target(far, new Vector2(200f, 200f), 14f, 900f),
+                Target(near, new Vector2(204f, 200f), 14f, 40f)
             };
+            var hits = new List<ScreenTarget>();
 
-            Assert.That(
-                BodyPicker.Pick(targets, new Vector2(202f, 200f),
-                    BodyPicker.MinimumHitRadiusPixels, classPriority: true),
-                Is.SameAs(near));
+            BodyPicker.OrderedHits(targets, new Vector2(202f, 200f), hits);
+
+            Assert.That(hits.Count, Is.EqualTo(2));
+            Assert.That(hits[0].Body, Is.SameAs(near));
+            Assert.That(hits[1].Body, Is.SameAs(far));
         }
 
         [Test]
-        public void ClassRanksSunPlanetsAndStationsAboveMoonsAndAsteroids()
+        public void RepeatedClicksCycleThroughTheStackAndWrap()
         {
-            Assert.That(BodyPicker.PriorityOf(_model.Get("sun")),
-                Is.EqualTo(BodyPicker.MajorBodyPriority));
-            Assert.That(BodyPicker.PriorityOf(_model.Get("earth")),
-                Is.EqualTo(BodyPicker.MajorBodyPriority));
-            Assert.That(BodyPicker.PriorityOf(_model.Get("gateway")),
-                Is.EqualTo(BodyPicker.MajorBodyPriority));
-            Assert.That(BodyPicker.PriorityOf(_model.Get("moon")),
-                Is.EqualTo(BodyPicker.MinorBodyPriority));
-            Assert.That(BodyPicker.PriorityOf(_model.Get("ast_1")),
-                Is.EqualTo(BodyPicker.MinorBodyPriority));
-            Assert.That(BodyPicker.PriorityOf(null),
-                Is.EqualTo(BodyPicker.MinorBodyPriority));
+            var hits = Stack(_model.Get("earth"), _model.Get("gateway"), _model.Get("moon"));
+            var pointer = new Vector2(200f, 200f);
+            var cycle = new PickCycle();
+
+            Assert.That(cycle.Peek(hits, pointer), Is.Zero);
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero);
+            Assert.That(cycle.Peek(hits, pointer), Is.EqualTo(1));
+            Assert.That(cycle.Advance(hits, pointer), Is.EqualTo(1));
+            Assert.That(cycle.Advance(hits, pointer), Is.EqualTo(2));
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero, "the fourth click wraps to the top");
         }
 
-        private static ScreenTarget Target(BodyRuntime body, Vector2 centre, float radius, float depth,
-            int priority = 0) =>
+        [Test]
+        public void ASingleHitStaysAtTheTop()
+        {
+            var hits = Stack(_model.Get("earth"));
+            var pointer = new Vector2(200f, 200f);
+            var cycle = new PickCycle();
+
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero);
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero);
+            Assert.That(cycle.Peek(hits, pointer), Is.Zero);
+        }
+
+        [Test]
+        public void MovingThePointerStartsAtTheTopAgain()
+        {
+            Assert.That(PickCycle.PointerSlopPixels, Is.EqualTo(PlayerControls.ClickSlopPixels),
+                "the cycle must use the same slop as click-versus-drag");
+
+            var hits = Stack(_model.Get("earth"), _model.Get("gateway"), _model.Get("moon"));
+            var cycle = new PickCycle();
+
+            Assert.That(cycle.Advance(hits, new Vector2(200f, 200f)), Is.Zero);
+            Assert.That(cycle.Advance(hits, new Vector2(201f, 200f)), Is.EqualTo(1));
+
+            // Four pixels is still the same spot; a larger move starts a new one.
+            Assert.That(cycle.Peek(hits, new Vector2(205f, 200f)), Is.EqualTo(2));
+            Assert.That(cycle.Peek(hits, new Vector2(206f, 200f)), Is.Zero);
+            Assert.That(cycle.Advance(hits, new Vector2(206f, 200f)), Is.Zero);
+        }
+
+        [Test]
+        public void AChangedStackStartsAtTheTopAgain()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            BodyRuntime station = _model.Get("gateway");
+            var pointer = new Vector2(200f, 200f);
+            var cycle = new PickCycle();
+
+            Assert.That(cycle.Advance(Stack(earth, station), pointer), Is.Zero);
+            Assert.That(cycle.Advance(Stack(earth, station), pointer), Is.EqualTo(1));
+
+            // The camera moved and the station is no longer under the pointer.
+            Assert.That(cycle.Advance(Stack(earth), pointer), Is.Zero);
+        }
+
+        [Test]
+        public void ClickingEmptySpaceResetsTheCycle()
+        {
+            var hits = Stack(_model.Get("earth"), _model.Get("gateway"));
+            var pointer = new Vector2(200f, 200f);
+            var cycle = new PickCycle();
+            var empty = new List<ScreenTarget>();
+
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero);
+            Assert.That(cycle.Advance(hits, pointer), Is.EqualTo(1));
+
+            Assert.That(cycle.Advance(empty, pointer), Is.EqualTo(-1));
+            Assert.That(cycle.Peek(hits, pointer), Is.Zero);
+            Assert.That(cycle.Advance(hits, pointer), Is.Zero);
+        }
+
+        private static List<ScreenTarget> Stack(params BodyRuntime[] bodies)
+        {
+            var hits = new List<ScreenTarget>();
+            for (int i = 0; i < bodies.Length; i++)
+                hits.Add(Target(bodies[i], new Vector2(200f, 200f), 12f, 10f * (i + 1)));
+            return hits;
+        }
+
+        private static ScreenTarget Target(BodyRuntime body, Vector2 centre, float radius, float depth) =>
             new ScreenTarget
             {
                 Body = body,
                 Centre = centre,
                 RadiusPixels = radius,
-                Depth = depth,
-                Priority = priority
+                Depth = depth
             };
 
         // -------------------------------------------------------------- transition
