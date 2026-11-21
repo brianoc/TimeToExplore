@@ -69,7 +69,13 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void EveryHotkeyEdgeMapsToItsOwnIntent()
         {
-            Assert.That(PlayerControls.ReadHotkeys(Held(Key.Space)).Pause, Is.True);
+            PlayerControls.Hotkeys home = PlayerControls.ReadHotkeys(Held(Key.Space));
+            Assert.That(home.Home, Is.True);
+            Assert.That(home.Pause, Is.False, "Space is the camera home, not pause");
+
+            PlayerControls.Hotkeys pause = PlayerControls.ReadHotkeys(Held(Key.P));
+            Assert.That(pause.Pause, Is.True);
+            Assert.That(pause.Home, Is.False, "P is pause, not the camera home");
 
             PlayerControls.Hotkeys tab = PlayerControls.ReadHotkeys(Held(Key.Tab));
             Assert.That(tab.CycleTarget, Is.True);
@@ -108,6 +114,7 @@ namespace TimeToExplore.Tests.EditMode
             PlayerControls.Hotkeys keys = PlayerControls.ReadHotkeys(Held());
 
             Assert.That(keys.ScaleIndex, Is.EqualTo(-1));
+            Assert.That(keys.Home, Is.False);
             Assert.That(keys.Pause, Is.False);
             Assert.That(keys.CycleTarget, Is.False);
             Assert.That(keys.FocusSelected, Is.False);
@@ -209,6 +216,7 @@ namespace TimeToExplore.Tests.EditMode
 
             PlayerControls.Hotkeys keys = PlayerControls.ReadHotkeys((Func<Key, bool>)null);
             Assert.That(keys.ScaleIndex, Is.EqualTo(-1));
+            Assert.That(keys.Home, Is.False);
             Assert.That(keys.Pause, Is.False);
             Assert.That(keys.CancelFocus, Is.False);
         }

@@ -68,11 +68,14 @@ double precision before the cast, so the result is accurate to float precision
 at the local distance.
 
 The ship is always at the origin. The camera **orbits** that origin instead of
-sitting on it: its position is the orbit offset in render units, and it always
-looks back at the ship. Orbiting therefore costs nothing in precision — the
-world is still projected from the ship — and it is what lets the player see the
-plan rather than sit inside it. Movement changes the ship's double position,
-which changes every body's relative render position next frame.
+sitting on it: its position is the orbit offset in render units, and it looks
+back at the ship whenever the look-at offset is zero. Orbiting therefore costs
+nothing in precision — the world is still projected from the ship — and it is
+what lets the player see the plan rather than sit inside it. A cursor-anchored
+wheel zoom moves the look-at offset
+([ADR-016](../decisions/adr-016-cursor-zoom-and-home.md)), which is still a
+camera pose and not a new coordinate space. Movement changes the ship's double
+position, which changes every body's relative render position next frame.
 
 See [ADR-002](../decisions/adr-002-double-precision.md) and
 [ADR-008](../decisions/adr-008-orbit-camera.md).

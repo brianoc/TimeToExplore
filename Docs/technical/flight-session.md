@@ -361,7 +361,9 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | `X` | Cancel the flight and discard any preview; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight and preview |
 | `R` | Reset the ship to Gateway, discard the preview, and set warp to 1× |
-| `1`–`7`, `Space` | Requested warp and pause; the policy may lower the request |
+| `1`–`7` | Requested warp; the policy may lower the request |
+| `P` | Pause or resume |
+| `Space` | Ease the camera home to the ship |
 | `Esc` | Close the details screen and discard a preview / cancel a debug jump |
 | Right-drag, left-drag, wheel | Orbit, pan the map, and zoom |
 | `W A S D Q E`, `,` `.` | Debug free flight only (move and change speed) |
@@ -369,13 +371,17 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 # The camera
 
 The ship sits at the render origin, so the camera **orbits** that origin and
-always looks back at it ([ADR-008](/decisions/adr-008-orbit-camera.md)):
+looks at `ship + pan` — the ship whenever the pan is zero
+([ADR-008](/decisions/adr-008-orbit-camera.md),
+[ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)):
 
 * right-drag turns yaw and pitch, clamped to ±85°;
-* the wheel zooms 1.25× per notch, from 2,000 km out to 5 billion km;
+* the wheel zooms 1.25× per notch toward the pointer, from 2,000 km out to
+  5 billion km;
 * a plan, a debug jump, or a reset frames its destination automatically, and the
-  aim and the distance follow separately, so a wheel zoom keeps the planet
-  centred and only a drag stops the aiming;
+  aim and the distance follow separately, so a wheel zoom at the centre keeps
+  the planet centred and only a drag stops the aiming;
+* `Space` eases back to the ship in one second and unwinds the pan;
 * the auto distance is `clamp(0.6 × ship→target, 3 × radius, 3.3 AU)`, so it
   opens up over a whole plan and closes to three planetary radii at arrival;
 * the near plane scales with the orbit (2%, clamped to 200 km–50 km) so close

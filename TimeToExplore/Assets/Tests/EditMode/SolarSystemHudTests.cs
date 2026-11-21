@@ -74,7 +74,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(module.actionsAsset, Is.Not.Null,
                 "the module must carry the default UI actions");
             Assert.That(systems[0].sendNavigationEvents, Is.False,
-                "Space, Enter, and the arrows are gameplay keys, not UI navigation");
+                "Space, P, Enter, and the arrows are gameplay keys, not UI navigation");
             Assert.That(systems[0].GetComponent<StandaloneInputModule>(), Is.Null,
                 "the legacy input module must not be added");
 

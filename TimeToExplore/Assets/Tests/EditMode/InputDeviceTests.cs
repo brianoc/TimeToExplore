@@ -19,6 +19,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Mouse.current, Is.Null);
 
             Assert.That(PlayerControls.ReadHotkeys().ScaleIndex, Is.EqualTo(-1));
+            Assert.That(PlayerControls.ReadHotkeys().Home, Is.False);
             Assert.That(PlayerControls.ReadHotkeys().Pause, Is.False);
             Assert.That(PlayerControls.PointerPosition, Is.EqualTo(Vector2.zero));
             Assert.That(PlayerControls.LeftClickPressed, Is.False);
@@ -36,8 +37,13 @@ namespace TimeToExplore.Tests.EditMode
             var keyboard = InputSystem.AddDevice<Keyboard>();
 
             Press(keyboard[Key.Space]);
-            Assert.That(PlayerControls.ReadHotkeys().Pause, Is.True);
+            Assert.That(PlayerControls.ReadHotkeys().Home, Is.True);
             Release(keyboard[Key.Space]);
+            Assert.That(PlayerControls.ReadHotkeys().Home, Is.False);
+
+            Press(keyboard[Key.P]);
+            Assert.That(PlayerControls.ReadHotkeys().Pause, Is.True);
+            Release(keyboard[Key.P]);
             Assert.That(PlayerControls.ReadHotkeys().Pause, Is.False);
 
             Press(keyboard[Key.Digit4]);

@@ -213,5 +213,65 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(orbit.DistanceUnits, Is.EqualTo(0.2f).Within(1e-6f));
             Assert.That(orbit.PitchDegrees, Is.LessThan(0f), "look up at the target");
         }
+
+        [Test]
+        public void TheHomeTransitionEasesBothEndpointsOverOneSecond()
+        {
+            var home = new HomeTransition();
+            var startPan = new Vector3d(1.0e10, -2.0e9, 3.0e9);
+            home.Begin(100f, 10f, startPan);
+
+            Assert.That(home.IsActive, Is.True);
+            Assert.That(home.DistanceUnitsAt, Is.EqualTo(100f).Within(1e-3f));
+            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(startPan.Magnitude).Within(1.0));
+            Assert.That(home.Progress, Is.EqualTo(0f));
+
+            // Half the duration is smoothstep's half: the endpoints move together,
+            // and the distance is the geometric mean of the two ends.
+            home.Advance(0.5f);
+            Assert.That(home.EasedProgress, Is.EqualTo(0.5f).Within(1e-5f));
+            Assert.That(home.DistanceUnitsAt, Is.EqualTo(Mathf.Sqrt(1000f)).Within(1e-3f));
+            Assert.That(home.PanMAt.Magnitude,
+                Is.EqualTo(0.5 * startPan.Magnitude).Within(1.0));
+
+            int frames = 1;
+            while (home.IsActive && frames < 600)
+            {
+                home.Advance(1f / 60f);
+                frames++;
+            }
+
+            Assert.That(frames, Is.InRange(30, 32), "the remaining half second");
+            Assert.That(home.EasedProgress, Is.EqualTo(1f));
+            Assert.That(home.DistanceUnitsAt, Is.EqualTo(10f).Within(1e-3f));
+            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(0.0));
+        }
+
+        [Test]
+        public void AHomeTransitionAtZeroDurationLandsImmediately()
+        {
+            var home = new HomeTransition { DurationSeconds = 0f };
+            home.Begin(100f, 10f, new Vector3d(1.0e10, 0.0, 0.0));
+
+            Assert.That(home.Advance(0f), Is.True);
+            Assert.That(home.IsActive, Is.False);
+            Assert.That(home.DistanceUnitsAt, Is.EqualTo(10f).Within(1e-3f));
+            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(0.0));
+        }
+
+        [Test]
+        public void CancellingTheHomeTransitionStopsItWhereItIs()
+        {
+            var home = new HomeTransition();
+            home.Begin(100f, 10f, new Vector3d(1.0e10, 0.0, 0.0));
+            home.Advance(0.25f);
+            float midway = home.DistanceUnitsAt;
+
+            home.Cancel();
+
+            Assert.That(home.IsActive, Is.False);
+            Assert.That(home.Advance(1f), Is.False);
+            Assert.That(home.DistanceUnitsAt, Is.EqualTo(midway));
+        }
     }
 }

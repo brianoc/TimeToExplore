@@ -634,6 +634,172 @@ namespace TimeToExplore.Tests.EditMode
                 "the local clamp still stops at 33 AU when the map is off");
         }
 
+        [Test]
+        public void ACursorZoomKeepsThePointUnderThePointerThroughTheTween()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+            float mapDistance = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+
+            _rig.Orbit.YawDegrees = 35f;
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = mapDistance;
+            _rig.Apply(shipM, 0f);
+            Assert.That(_rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-5f));
+
+            var screen = new Vector2(1920f, 1080f);
+            var pointer = new Vector2(1500f, 800f);
+            const float fieldOfView = 60f;
+            float aspect = screen.x / screen.y;
+            Vector2 ndc = MapView.PointerNdc(pointer, screen);
+
+            Vector3 anchor = MapView.CursorPointOnLookAtPlane(_rig.LookAtUnits,
+                _rig.PoseRotation, _rig.Orbit.DistanceUnits, ndc, fieldOfView, aspect);
+
+            _rig.ApplyWheelSteps(-4f, pointer, screen);
+            Assert.That(_rig.Orbit.DistanceUnits, Is.EqualTo(mapDistance),
+                "the notch only requests the zoom");
+
+            float previousDistance = _rig.Orbit.DistanceUnits;
+            int frames = 0;
+            while (!_rig.Orbit.IsDistanceSettled && frames < 600)
+            {
+                _rig.Apply(shipM, 1f / 60f);
+
+                Vector2 projected = NdcOf(anchor, _rig.PosePositionUnits,
+                    _rig.PoseRotation, fieldOfView, aspect);
+                Assert.That(projected.x, Is.EqualTo(ndc.x).Within(1e-3f),
+                    $"frame {frames}: the anchor stays under the pointer horizontally");
+                Assert.That(projected.y, Is.EqualTo(ndc.y).Within(1e-3f),
+                    $"frame {frames}: and vertically");
+
+                Assert.That(_rig.Orbit.DistanceUnits, Is.LessThan(previousDistance),
+                    "the zoom eases inward");
+                previousDistance = _rig.Orbit.DistanceUnits;
+                frames++;
+            }
+
+            Assert.That(frames, Is.GreaterThan(1), "the zoom is a tween, not a snap");
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.GreaterThan(0.0),
+                "zooming off-centre moved the look-at toward the pointer");
+            Assert.That(_rig.MapBlendWeight, Is.LessThan(MapView.PanThreshold),
+                "the test lands in the local band");
+
+            // The pan is the point the player anchored. The local pan-return
+            // must not pull it home while that anchor is held.
+            double anchoredPanM = _rig.Map.PanOffsetM.Magnitude;
+            for (int i = 0; i < 120; i++) _rig.Apply(shipM, 1f / 60f);
+
+            Assert.That(_rig.Map.PanOffsetM.Magnitude,
+                Is.EqualTo(anchoredPanM).Within(anchoredPanM * 1e-6));
+        }
+
+        [Test]
+        public void SpaceEasesTheViewHomeToTheShipInOneSecond()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Frame(_model.Get("mars"));
+            _rig.Orbit.YawDegrees = 37f;
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+            _rig.PanByDrag(200f, 0f);
+            _rig.Apply(shipM, 0f);
+
+            float startDistance = _rig.Orbit.DistanceUnits;
+            double startPanM = _rig.Map.PanOffsetM.Magnitude;
+            Assert.That(startPanM, Is.GreaterThan(0.0));
+            Assert.That(_rig.MapBlendWeight, Is.EqualTo(1f).Within(1e-5f));
+
+            _rig.HomeToShip(shipM);
+            Assert.That(_rig.IsHoming, Is.True);
+            Assert.That(_rig.Auto, Is.False, "home takes the view from the framing");
+
+            float previousDistance = startDistance;
+            double previousPanM = startPanM;
+            int frames = 0;
+            while (_rig.IsHoming && frames < 600)
+            {
+                _rig.Apply(shipM, 1f / 60f);
+
+                Assert.That(_rig.Orbit.DistanceUnits,
+                    Is.LessThanOrEqualTo(previousDistance),
+                    "the home zoom never runs outward");
+                Assert.That(_rig.Map.PanOffsetM.Magnitude,
+                    Is.LessThanOrEqualTo(previousPanM),
+                    "the pan unwinds monotonically");
+                Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(37f),
+                    "the remembered angle is kept");
+                Assert.That(_rig.Orbit.PitchDegrees, Is.EqualTo(10f));
+
+                previousDistance = _rig.Orbit.DistanceUnits;
+                previousPanM = _rig.Map.PanOffsetM.Magnitude;
+                frames++;
+            }
+
+            Assert.That(frames, Is.InRange(59, 62),
+                "about a second of frames, not a snap");
+            Assert.That(_rig.Orbit.DistanceUnits,
+                Is.EqualTo(_rig.HomeDistanceUnits(radiusM)).Within(1e-6f));
+            Assert.That(_rig.Map.PanOffsetM.Magnitude, Is.EqualTo(0.0));
+            Assert.That(_rig.LookAtUnits.magnitude, Is.EqualTo(0f).Within(1e-6f),
+                "the camera looks at the ship again");
+            Assert.That(_rig.MapBlendWeight, Is.EqualTo(0f).Within(1e-6f),
+                "the arrival is the local view");
+        }
+
+        [Test]
+        public void AWheelOrDragCancelsTheHomeTransition()
+        {
+            Vector3d shipM = _model.Get("gateway").PositionM;
+            double radiusM = MapView.LocalRadiusM(_model, shipM);
+
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = (float)(3.0 * radiusM * _rig.UnitsPerMeter);
+            _rig.Apply(shipM, 0f);
+
+            _rig.HomeToShip(shipM);
+            _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.IsHoming, Is.True);
+
+            _rig.ApplyWheelSteps(1f);
+            Assert.That(_rig.IsHoming, Is.False, "a wheel gesture takes the view back");
+
+            _rig.HomeToShip(shipM);
+            _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.IsHoming, Is.True);
+
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                RightPressed = true,
+                Pointer = new Vector2(100f, 100f)
+            }, mapSide: true);
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            {
+                Pointer = new Vector2(120f, 100f),
+                Delta = new Vector2(2f, 0f)
+            }, mapSide: true);
+
+            Assert.That(_rig.IsHoming, Is.False, "an orbit drag takes the view back");
+            _rig.ApplyDragInput(new ShipCameraRig.DragInput { RightReleased = true }, true);
+        }
+
+        /// <summary>The pointer-side NDC a point projects to from a given pose.</summary>
+        private static Vector2 NdcOf(Vector3 pointUnits, Vector3 cameraUnits,
+            Quaternion rotation, float fieldOfViewDegrees, float aspect)
+        {
+            Vector3 toPoint = pointUnits - cameraUnits;
+            float depth = Vector3.Dot(toPoint, rotation * Vector3.forward);
+            Assert.That(depth, Is.GreaterThan(0f), "the anchor is in front of the camera");
+
+            float halfHeight = Mathf.Tan(0.5f * fieldOfViewDegrees * Mathf.Deg2Rad);
+            return new Vector2(
+                Vector3.Dot(toPoint, rotation * Vector3.right) / (depth * halfHeight * aspect),
+                Vector3.Dot(toPoint, rotation * Vector3.up) / (depth * halfHeight));
+        }
+
         /// <summary>0° is straight down the pole, 90° is looking along the ecliptic.</summary>
         private static float TiltFromTopDown(Quaternion rotation) =>
             Vector3.Angle(rotation * Vector3.forward, Vector3.down);

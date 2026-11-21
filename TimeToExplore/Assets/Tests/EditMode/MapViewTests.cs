@@ -306,6 +306,67 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void ASceneFreePointerStillProducesAFiniteNdc()
+        {
+            var screen = new Vector2(1920f, 1080f);
+
+            Assert.That(MapView.PointerNdc(new Vector2(960f, 540f), screen),
+                Is.EqualTo(Vector2.zero));
+            Assert.That(MapView.PointerNdc(Vector2.zero, screen),
+                Is.EqualTo(new Vector2(-1f, -1f)));
+            Assert.That(MapView.PointerNdc(screen, screen),
+                Is.EqualTo(new Vector2(1f, 1f)));
+            Assert.That(MapView.PointerNdc(new Vector2(1440f, 810f), screen),
+                Is.EqualTo(new Vector2(0.5f, 0.5f)));
+
+            Assert.That(MapView.PointerNdc(new Vector2(10f, 10f), Vector2.zero),
+                Is.EqualTo(Vector2.zero), "a headless run has no view to anchor to");
+        }
+
+        [Test]
+        public void ACursorZoomPinsThePointOnTheLookAtPlane()
+        {
+            var rotation = Quaternion.Euler(22f, 35f, 0f);
+            var lookAt = new Vector3(10f, -5f, 3f);
+            var pointer = new Vector2(0.4f, -0.3f);
+            const float far = 100f;
+            const float near = 25f;
+            const float fieldOfView = 60f;
+            const float aspect = 1920f / 1080f;
+
+            Vector3 anchor = MapView.CursorPointOnLookAtPlane(lookAt, rotation, far,
+                pointer, fieldOfView, aspect);
+
+            Assert.That((MapView.AnchoredLookAtUnits(anchor, rotation, far, pointer,
+                    fieldOfView, aspect) - lookAt).magnitude, Is.LessThan(1e-4f),
+                "at the gesture's own distance the look-at is unchanged");
+
+            Vector3 closerLookAt = MapView.AnchoredLookAtUnits(anchor, rotation, near,
+                pointer, fieldOfView, aspect);
+
+            Assert.That((MapView.CursorPointOnLookAtPlane(closerLookAt, rotation, near,
+                    pointer, fieldOfView, aspect) - anchor).magnitude, Is.LessThan(1e-4f),
+                "the same point is on the same ray at the closer distance");
+            Assert.That((closerLookAt - lookAt).magnitude, Is.GreaterThan(1f),
+                "zooming off-centre moves the look-at toward the pointer");
+        }
+
+        [Test]
+        public void ACentrePointerLeavesTheLookAtAlone()
+        {
+            var rotation = Quaternion.Euler(10f, 200f, 0f);
+            var lookAt = new Vector3(-7f, 2f, 9f);
+
+            Vector3 anchor = MapView.CursorPointOnLookAtPlane(lookAt, rotation, 80f,
+                Vector2.zero, 60f, 1.5f);
+
+            Assert.That(anchor, Is.EqualTo(lookAt));
+            Assert.That(MapView.AnchoredLookAtUnits(anchor, rotation, 8f, Vector2.zero,
+                    60f, 1.5f),
+                Is.EqualTo(lookAt), "a centre zoom keeps the look-at at every distance");
+        }
+
+        [Test]
         public void ThePanEasesToTheShipRatherThanSnapping()
         {
             const float deltaTime = 1f / 60f;

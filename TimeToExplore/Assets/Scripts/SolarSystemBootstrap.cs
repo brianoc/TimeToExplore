@@ -287,6 +287,7 @@ namespace TimeToExplore
         private void HandleHotkeys()
         {
             PlayerControls.Hotkeys keys = PlayerControls.ReadHotkeys();
+            if (keys.Home) Rig?.HomeToShip(ShipPositionM);
             if (keys.Pause) Clock.TogglePause();
 
             if (keys.ScaleIndex >= 0 && keys.ScaleIndex < SimulationClock.TimeScales.Length)

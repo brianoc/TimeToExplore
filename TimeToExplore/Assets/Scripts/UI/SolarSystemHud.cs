@@ -77,8 +77,8 @@ namespace TimeToExplore.UI
 
         private const string HelpText =
             "LMB select · LMB drag pans map · RMB drag orbits · wheel zoom · 1–7 warp\n" +
-            "Space pause · Tab target · R reset · Esc cancel · T true scale · O orbits\n" +
-            "L labels · H HUD · ` free flight (WASD, , . speed) · X cancel";
+            "Space ship · P pause · Tab target · R reset · Esc cancel · T true scale\n" +
+            "O orbits · L labels · H HUD · ` free flight (WASD, , . speed) · X cancel";
 
         private SolarSystemBootstrap _owner;
         private bool _built;

@@ -56,6 +56,8 @@ namespace TimeToExplore.Player
         /// <summary>One-frame edge intents for the bootstrap and the HUD.</summary>
         public struct Hotkeys
         {
+            /// <summary>Space: ease the camera back to the ship.</summary>
+            public bool Home;
             public bool Pause;
             public int ScaleIndex; // -1 when no number key was pressed
             public bool CycleTarget;
@@ -212,7 +214,8 @@ namespace TimeToExplore.Player
             var hotkeys = new Hotkeys { ScaleIndex = -1 };
             if (pressed == null) return hotkeys;
 
-            hotkeys.Pause = pressed(Key.Space);
+            hotkeys.Home = pressed(Key.Space);
+            hotkeys.Pause = pressed(Key.P);
             for (int i = 0; i < ScaleKeys.Length; i++)
             {
                 if (!pressed(ScaleKeys[i])) continue;

@@ -80,7 +80,7 @@ Reference transit times at 1 g continuous thrust (see
 | Earth–Neptune | ~29 AU | 15.3 d | 22 min | 13 s |
 
 The high end is for crossing the outer system, not for docking. The prototype
-lets the player change warp at any time with keys 1–7 and pause with Space.
+lets the player change warp at any time with keys 1–7 and toggle pause with P.
 
 **Future rule:** warp should drop automatically when the ship is close to a
 body, when a planned burn is due, or when a collision is possible. Warping

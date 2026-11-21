@@ -46,8 +46,8 @@ namespace TimeToExplore.UI
             var system = host.AddComponent<EventSystem>();
 
             // The old IMGUI HUD was pointer-only. Leave navigation off so a
-            // selected button cannot be re-submitted by Space (pause), Enter,
-            // or the keyboard arrows, which are gameplay keys.
+            // selected button cannot be re-submitted by Space (camera home), P
+            // (pause), Enter, or the keyboard arrows, which are gameplay keys.
             system.sendNavigationEvents = false;
 
             var module = host.AddComponent<InputSystemUIInputModule>();

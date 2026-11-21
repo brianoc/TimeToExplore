@@ -41,7 +41,7 @@ There is no separate map key and no hard mode switch. Instead the camera
 of influence:
 
 * **Local view** — today's orbit camera around the ship: the player's yaw and
-  pitch, the ship at the centre.
+  pitch, and the ship at the centre when the pan is zero.
 * **Map view** — top-down, looking along the ecliptic north, the orbital
   circles laid out as circles, panning enabled.
 
@@ -113,10 +113,12 @@ not matter. Local precision is untouched.
 * The pan is a look-at offset in render units, capped at about 60 AU so the
   player cannot lose the system. The camera looks at `ship + pan`, not at the
   ship.
-* Zooming back into the local band eases the pan to zero: the local view is
-  always ship-centred, and the return trip lands on the ship, not on empty
-  space where the player left the map.
-* Clicking the ship marker recentres the map on the ship.
+* Returning to the local band eases a pan to zero at 3/s unless a wheel
+  anchored it under the pointer: the local view lands on the ship after a
+  framing or a direct distance change, while a cursor zoom keeps the point the
+  player put there. `Space` eases the view home in one second
+  ([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)).
+* `Space` centres the map on the ship and zooms back to the local view.
 
 # The rig, as built (step 2)
 
@@ -136,20 +138,25 @@ so it sits on the same great circle as the rotation; the order and the
 look-at point are described below.
 
 **Zoom ease.** A notch calls `ShipCameraRig.ApplyWheelSteps`, which requests a
-distance from the pending one (so a continuous gesture compounds) and eases the
-current distance toward it in `Apply`. Because `w` is computed from the eased
-distance every frame, the tilt, rotation, near plane, and marker/label aids all
-sweep with the zoom. The tween is therefore the transition from the solar
-system view to the local view and back: there is no separate animated pose. The
-local view still returns to the player's exact remembered yaw and pitch; only
-the effective pose blends. Only a wheel request keeps easing once the view is on
-the map side — the automatic framing stays suspended there.
+distance from the pending one (so a continuous gesture compounds), anchors the
+point under the pointer on the look-at plane, and eases the current distance
+toward the request in `Apply`. Because `w` is computed from the eased distance
+every frame, the tilt, rotation, near plane, and marker/label aids all sweep
+with the zoom. The tween is therefore the transition from the solar system view
+to the local view and back: there is no separate animated pose. The local view
+still returns to the player's exact remembered yaw and pitch; only the effective
+pose blends. Only a wheel request keeps easing once the view is on the map side —
+the automatic framing stays suspended there. On every frame the look-at is
+solved from the anchor (`MapView.AnchoredLookAtUnits`), so the point stays under
+the pointer while the pose tilts; the derived pan is kept rather than eased home
+while the anchor is held.
 
 | Input | Local (`w ≤ 0.5`) | Map (`w > 0.5`) |
 |---|---|---|
 | Right drag | Orbit; clears auto-aim | Orbit; clears auto-aim |
 | Left drag | Nothing | Pan; clears both auto flags |
-| Wheel | 1.25× per notch, eased, local 5-million-unit ceiling | 1.25× per notch, eased, map 12-million-unit ceiling |
+| Wheel | 1.25× per notch, eased toward the pointer, local 5-million-unit ceiling | 1.25× per notch, eased toward the pointer, map 12-million-unit ceiling |
+| Space | Ease home to the ship, local view | Ease home to the ship, local view |
 | Left click | Selection (unchanged) | Selection, when the press stayed inside the 4 px slop |
 
 **Pan scale.** The look-at moves by `2 · d · tan(fov/2) / screenHeight` units
@@ -160,9 +167,11 @@ pointer rather than run away from it. The input seam supplies the drag at ten
 pixels per axis unit: it scales the raw device delta by the old 0.1 sensitivity,
 so the pan still follows the cursor one pixel for one pixel.
 
-**Pan ease.** Returning to the local band starts an exponential decay of the
-pan at `PanReturnRatePerSecond` (3/s by default). It never snaps, and ten
-seconds of decay is well under a metre. A reset also clears the pan outright.
+**Pan ease.** Returning to the local band starts an exponential decay of an
+unanchored pan at `PanReturnRatePerSecond` (3/s by default). It never snaps, and
+ten seconds of decay is well under a metre. A pan anchored by a wheel gesture is
+kept, because it is the point under the pointer; `Space` starts the one-second
+home transition instead. A reset also clears the pan outright.
 
 **Look-at.** The map looks at `ship + pan`, with the pan held in double
 precision ecliptic metres and converted once at the camera. This is the one
@@ -349,10 +358,11 @@ footer becomes **Plot route** / **Replot route**, **Begin flight**, **Jump
   Go To with a preview in front of it.
 * **The debug jump** — stays for inspection.
 
-ADR-008's "the camera always looks at the ship" is the one settled rule this
-design bends: in the map the camera looks at `ship + pan`.
+ADR-008's "the camera always looks at the ship" is the settled rule this design
+bends: in the map the camera looks at `ship + pan`.
 [ADR-009](/decisions/adr-009-map-camera-pan.md) records the bend, its
-consequences, and its alternatives; [Selection and camera
+consequences, and its alternatives; [ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)
+later made the pan live at every zoom, and [Selection and camera
 focus](/technical/selection-and-camera.md) and [The flight
 session](/technical/flight-session.md) describe how the scene uses it.
 

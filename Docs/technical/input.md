@@ -89,8 +89,8 @@ demand:
    Input System's default UI actions, and navigation events are turned off.
 
 Navigation is off because the old IMGUI HUD was pointer-only. It keeps Space
-(pause), Enter, and the arrow keys from re-submitting whichever button was last
-clicked.
+(camera home), P (pause), Enter, and the arrow keys from re-submitting whichever
+button was last clicked.
 
 The HUD calls `UiInput.PointerOverUi()` — `EventSystem.current` plus
 `IsPointerOverGameObject()` — before world picking and hover. Because that answer
@@ -119,7 +119,8 @@ picking and gestures, and neither reads a device for it.
 
 | Input | Intent | Consumer |
 |---|---|---|
-| `Space` | pause / resume | `SolarSystemBootstrap` |
+| `Space` | ease the camera home to the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
+| `P` | pause / resume | `SolarSystemBootstrap` |
 | `1`–`7` | requested time warp 1× to 1,000,000× | `SolarSystemBootstrap` |
 | `Tab` | cycle planet/station target | `SolarSystemBootstrap` |
 | `F` | focus the selected body (debug jump) | `SolarSystemBootstrap` |
@@ -136,7 +137,7 @@ picking and gestures, and neither reads a device for it.
 | `,` / `.` | free flight: decrease / increase speed | `ShipController` |
 | Right mouse drag | orbit the camera at every zoom, unless the press began on a panel | `ShipCameraRig` |
 | Left mouse drag | pan the map (`w > 0.5`), unless the press began on a panel | `ShipCameraRig` |
-| Mouse wheel | zoom the camera | `ShipCameraRig` |
+| Mouse wheel | zoom the camera toward the pointer | `ShipCameraRig` |
 | Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 
@@ -240,7 +241,10 @@ fourth scans for an `OnGUI` method, `GUI.*` calls, `new GUIStyle`, and
 
 The suite proves the mapping and the object graph, not the feel. In Play mode,
 check the right-drag orbit rate and the left-drag map pan at a few zoom levels,
-the cursor capture and release, one wheel notch on the target OS, every panel
+the cursor capture and release, one wheel notch on the target OS, that a notch
+keeps the point under the pointer at the screen edge and near the centre, that
+`Space` eases home from the map ceiling and from a panned local view in about a
+second, that `P` pauses, every panel
 button, that dragging the trip-time and burn-level sliders never pans the map or
 orbits the camera underneath, that a click on a panel does not also select the
 body behind it, that a left-drag that starts on a body pans without opening the

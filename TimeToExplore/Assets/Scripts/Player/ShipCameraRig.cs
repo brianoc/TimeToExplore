@@ -6,14 +6,17 @@ namespace TimeToExplore.Player
 {
     /// <summary>
     /// Drives the view: right-drag orbits the ship and the system map, left-drag
-    /// pans the map, the wheel zooms, and a plan or a debug jump frames its
-    /// destination automatically until the player takes the camera back.
+    /// pans the map, the wheel zooms toward the pointer, and a plan or a debug
+    /// jump frames its destination automatically until the player takes the
+    /// camera back. Space eases the camera home to the ship.
     ///
     /// The wheel requests a distance rather than placing one: the camera eases
     /// to it over <see cref="ZoomEaseRatePerSecond"/> (see
     /// <see cref="OrbitCamera.EaseDistance"/>), and the map blend reads the
     /// eased distance, so the top-down-to-local tilt and the rotation sweep
-    /// with the zoom instead of snapping.
+    /// with the zoom instead of snapping. The point under the pointer on the
+    /// look-at plane is anchored, and the look-at is solved from it every frame,
+    /// so that point stays under the pointer through the whole tween.
     ///
     /// With <see cref="MapEnabled"/>, the pose blends from the local orbit to a
     /// top-down view as the camera distance crosses the local sphere of
@@ -23,7 +26,9 @@ namespace TimeToExplore.Player
     /// player's stored yaw and pitch are never overwritten, so zooming back in
     /// restores the exact remembered angle. The map looks at
     /// <c>ship + pan</c> rather than at the ship, which bends ADR-008; ADR-009
-    /// is deferred to the map's documentation step.
+    /// is deferred to the map's documentation step. The pan is now also the
+    /// mechanism for cursor-anchored zoom in the local band (ADR-016), so the
+    /// camera looks at <c>ship + pan</c> at every zoom.
     ///
     /// The ship never moves in the render frame, so orbiting is just placing
     /// the camera on a sphere around the origin; the world is untouched.
@@ -50,6 +55,19 @@ namespace TimeToExplore.Player
         public float ZoomEaseRatePerSecond = 7f;
 
         /// <summary>
+        /// How long Space's return home takes, in seconds. The zoom and the pan
+        /// unwind follow one smoothstep, so the view starts and ends at rest.
+        /// </summary>
+        public float HomeDurationSeconds = HomeTransition.DefaultDurationSeconds;
+
+        /// <summary>
+        /// The home view sits at this fraction of the local radius: comfortably
+        /// inside the blend band, so the arrival is exactly the local view
+        /// (<c>w = 0</c>), and far enough out to read the ship's neighbourhood.
+        /// </summary>
+        public const float HomeLocalRadiusFraction = 0.5f;
+
+        /// <summary>
         /// Development switch for the system map. Off is today's orbit camera,
         /// exactly: the local zoom clamp, the local near plane, and right-drag
         /// orbiting. The bootstrap sets it from its serialized
@@ -68,6 +86,12 @@ namespace TimeToExplore.Player
 
         /// <summary>The map side of the zoom: blend weight, range, and pan.</summary>
         public MapView Map { get; } = new MapView();
+
+        /// <summary>The eased return to the ship that Space starts.</summary>
+        public HomeTransition Home { get; } = new HomeTransition();
+
+        /// <summary>True while Space's home transition is easing the view back.</summary>
+        public bool IsHoming => Home.IsActive;
 
         /// <summary>
         /// Render units per metre. Held on <see cref="Map"/> so the blend, the
@@ -122,6 +146,11 @@ namespace TimeToExplore.Player
         private bool _panning;
         private bool _panEngaged;
         private bool _zoomPending;
+        private bool _zoomAnchorActive;
+        private Vector3 _zoomAnchorUnits;
+        private Vector2 _zoomAnchorNdc;
+        private float _zoomAnchorAspect = 1f;
+        private float _zoomAnchorFieldOfViewDegrees = 60f;
         private bool _uiOverLastFrame;
         private bool _cursorCaptured;
         private Vector2 _panPressPointer;
@@ -132,6 +161,8 @@ namespace TimeToExplore.Player
             _model = model;
             UnitsPerMeter = unitsPerMeter;
             _zoomPending = false;
+            _zoomAnchorActive = false;
+            Home.Cancel();
             Orbit.SnapDistance(Orbit.DistanceUnits);
 
             if (_camera != null)
@@ -144,6 +175,11 @@ namespace TimeToExplore.Player
         /// <summary>Frame a body and follow it until the player takes over.</summary>
         public void Frame(BodyRuntime body)
         {
+            // A new framing target takes the view over from the player's
+            // cursor-anchored zoom or home transition.
+            _zoomAnchorActive = false;
+            Home.Cancel();
+
             AutoTarget = body;
             AutoAim = body != null;
             AutoDistance = body != null;
@@ -152,6 +188,9 @@ namespace TimeToExplore.Player
         /// <summary>Stop following; the player owns the view.</summary>
         public void ClearAuto()
         {
+            _zoomAnchorActive = false;
+            Home.Cancel();
+
             AutoAim = false;
             AutoDistance = false;
             AutoTarget = null;
@@ -162,6 +201,8 @@ namespace TimeToExplore.Player
         {
             Frame(body);
             _zoomPending = false;
+            _zoomAnchorActive = false;
+            Home.Cancel();
             if (body != null)
             {
                 Orbit.AimAlong(body.PositionM - shipPositionM);
@@ -175,6 +216,43 @@ namespace TimeToExplore.Player
             ApplyToCamera(shipPositionM, localRadiusM);
         }
 
+        /// <summary>
+        /// Start the eased return to the ship: drop any framing, forget the
+        /// cursor anchor, then ease the distance to a local view while the pan
+        /// unwinds. Space calls this. The player's yaw and pitch are kept, so
+        /// the ship returns to the centre of the same remembered angle.
+        /// </summary>
+        public void HomeToShip(Vector3d shipPositionM)
+        {
+            // Take the view from the framing exactly as a drag does: clear the
+            // follow flags but keep AutoTarget, so an active flight's next
+            // frame does not re-claim the camera and cancel the transition.
+            AutoAim = false;
+            AutoDistance = false;
+            _zoomPending = false;
+            _zoomAnchorActive = false;
+
+            Home.DurationSeconds = Mathf.Max(0f, HomeDurationSeconds);
+            Home.Begin(Orbit.DistanceUnits,
+                HomeDistanceUnits(LocalRadiusM(shipPositionM)),
+                Map.PanOffsetM);
+        }
+
+        /// <summary>
+        /// The distance a home press targets: half the local radius, clamped to
+        /// the local orbit range. That lands inside the blend band's lower edge,
+        /// so the arrival is the local view and not a point on the map side.
+        /// </summary>
+        public float HomeDistanceUnits(double localRadiusM)
+        {
+            if (!(localRadiusM > 0.0) || double.IsInfinity(localRadiusM))
+                localRadiusM = MapView.DeepSpaceRadiusM;
+
+            double distanceM = HomeLocalRadiusFraction * localRadiusM;
+            return Mathf.Clamp((float)(distanceM * UnitsPerMeter),
+                OrbitCamera.MinDistanceUnits, OrbitCamera.MaxDistanceUnits);
+        }
+
         /// <summary>One frame: read input, follow the target, place the camera.</summary>
         public void Apply(Vector3d shipPositionM, float deltaTime)
         {
@@ -183,22 +261,41 @@ namespace TimeToExplore.Player
 
             HandleInput(MapBlendWeight);
 
-            // A wheel notch only requests a distance. Ease it before the rest of
-            // the frame reads the blend, so the map tilt, the rotation, and the
-            // near plane follow the zoom over one short tween instead of
-            // snapping with the notch.
-            if (_zoomPending && !Orbit.EaseDistance(deltaTime, ZoomEaseRatePerSecond))
-                _zoomPending = false;
+            // Space's return home owns the distance and the pan until it lands.
+            // One smoothstep drives both, so the zoom and the unwind start and
+            // stop together, at rest.
+            if (Home.IsActive)
+            {
+                bool arrived = Home.Advance(deltaTime);
+                Orbit.SnapDistance(Home.DistanceUnitsAt);
+                Map.SetPanM(Home.PanMAt);
 
-            // The wheel may have moved the distance, so re-read the blend
-            // before deciding what the rest of the frame should do.
+                if (arrived)
+                {
+                    Orbit.SnapDistance(Home.TargetDistanceUnits);
+                    Map.ClearPan();
+                }
+            }
+            else if (_zoomPending && !Orbit.EaseDistance(deltaTime, ZoomEaseRatePerSecond))
+            {
+                // A wheel notch only requests a distance. Ease it before the
+                // rest of the frame reads the blend, so the map tilt, the
+                // rotation, and the near plane follow the zoom over one short
+                // tween instead of snapping with the notch.
+                _zoomPending = false;
+            }
+
+            // The wheel or the home transition may have moved the distance, so
+            // re-read the blend before deciding what the rest of the frame
+            // should do.
             RefreshBlendWeight(localRadiusM);
             bool mapSide = IsMapSide;
 
             // A pending wheel zoom owns the distance until it settles; the
             // automatic framing resumes after that, and stays suspended on the
-            // map side exactly as before.
-            if (AutoTarget != null && !mapSide && !_zoomPending)
+            // map side exactly as before. The home transition owns the view
+            // outright.
+            if (!Home.IsActive && AutoTarget != null && !mapSide && !_zoomPending)
             {
                 Vector3d toTarget = AutoTarget.PositionM - shipPositionM;
 
@@ -213,7 +310,16 @@ namespace TimeToExplore.Player
             }
 
             RefreshBlendWeight(localRadiusM);
-            if (MapEnabled && !IsMapSide) Map.EasePan(deltaTime);
+
+            // A cursor-anchored zoom keeps the pan it has: the player put the
+            // point there, so easing it back to the ship would move it from
+            // under the pointer. Space is the way home.
+            if (MapEnabled && !IsMapSide && !_zoomAnchorActive && !Home.IsActive)
+                Map.EasePan(deltaTime);
+
+            // Solve the look-at from the anchor last, after the aim and the
+            // blend have moved, so the point stays pinned through the frame.
+            ApplyZoomAnchor();
 
             ApplyToCamera(shipPositionM, localRadiusM);
         }
@@ -301,6 +407,9 @@ namespace TimeToExplore.Player
         /// orbit the camera underneath it. The ownership lasts until the button
         /// is released, so pulling a slider past the panel's edge does not hand
         /// the gesture back to the camera halfway through.
+        ///
+        /// A gesture that actually moves cancels the home transition and
+        /// releases a cursor-anchored zoom: the player has taken the view back.
         /// </summary>
         public void ApplyDragInput(DragInput input, bool mapSide)
         {
@@ -339,12 +448,16 @@ namespace TimeToExplore.Player
             {
                 Orbit.Turn(x * OrbitDegreesPerMouseUnit, -y * OrbitDegreesPerMouseUnit);
                 AutoAim = false;
+                Home.Cancel();
+                _zoomAnchorActive = false;
             }
             else if (_panning && _panEngaged)
             {
                 PanByDrag(x * PanPixelsPerMouseUnit, y * PanPixelsPerMouseUnit);
                 AutoAim = false;
                 AutoDistance = false;
+                Home.Cancel();
+                _zoomAnchorActive = false;
             }
         }
 
@@ -386,19 +499,41 @@ namespace TimeToExplore.Player
             }, mapSide);
 
             float scroll = PlayerControls.WheelSteps;
-            if (Mathf.Abs(scroll) > 0.01f) ApplyWheelSteps(scroll);
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                // A panel keeps the pointer, so the wheel zooms about the
+                // look-at rather than anchoring to a spot on the panel.
+                Vector2 screen = ScreenPixels();
+                Vector2 pointer = overUi ? screen * 0.5f : PlayerControls.PointerPosition;
+                ApplyWheelSteps(scroll, pointer, screen);
+            }
         }
 
         /// <summary>
-        /// Route one wheel gesture through the blend and request its distance.
-        /// The pose eases to the request over
+        /// Route one wheel gesture through the blend and request its distance,
+        /// anchored at the screen centre. The pose eases to the request over
         /// <see cref="ZoomEaseRatePerSecond"/>, so the map tilt and the rotation
         /// blend rather than snapping. Exposed so the tween is testable without
         /// a device.
         /// </summary>
         public void ApplyWheelSteps(float steps)
         {
+            Vector2 screen = ScreenPixels();
+            ApplyWheelSteps(steps, screen * 0.5f, screen);
+        }
+
+        /// <summary>
+        /// Route one wheel gesture through the blend, request its distance, and
+        /// anchor the point under <paramref name="pointerPixels"/> so it stays
+        /// under the pointer through the tween. Pointer and screen are in the
+        /// Input System's bottom-left screen pixels. Exposed so the anchor is
+        /// testable without a device.
+        /// </summary>
+        public void ApplyWheelSteps(float steps, Vector2 pointerPixels, Vector2 screenPixels)
+        {
             if (steps == 0f) return;
+
+            Home.Cancel();
 
             // Compound on a pending request so a continuous gesture keeps its
             // 1.25x per notch; start from the placed distance when the last
@@ -408,9 +543,68 @@ namespace TimeToExplore.Player
                 ? Map.BlendWeight(from, NeighbourhoodRadiusM)
                 : 0f;
 
+            // Take the anchor from the pose on screen now, not from the
+            // distance being requested: that is the point the player is
+            // looking at. The look-at is solved from it every frame.
+            _zoomAnchorNdc = MapView.PointerNdc(pointerPixels, screenPixels);
+            _zoomAnchorFieldOfViewDegrees = FieldOfViewDegrees;
+            _zoomAnchorAspect = Aspect(screenPixels);
+            _zoomAnchorUnits = MapView.CursorPointOnLookAtPlane(Map.PanOffsetUnits,
+                CurrentRotation(),
+                Mathf.Max(Orbit.DistanceUnits, OrbitCamera.MinDistanceUnits),
+                _zoomAnchorNdc, _zoomAnchorFieldOfViewDegrees, _zoomAnchorAspect);
+            _zoomAnchorActive = true;
+
             Orbit.RequestDistance(WheelDistanceUnits(from, steps, weight));
             _zoomPending = !Orbit.IsDistanceSettled;
             AutoDistance = false;
+        }
+
+        /// <summary>
+        /// Solve the look-at from the anchored point for the current distance
+        /// and rotation, so the point stays under the pointer while the zoom
+        /// eases and the blend turns the pose. No-op without an anchor.
+        /// </summary>
+        private void ApplyZoomAnchor()
+        {
+            if (!_zoomAnchorActive) return;
+
+            Vector3 panUnits = MapView.AnchoredLookAtUnits(_zoomAnchorUnits,
+                CurrentRotation(),
+                Mathf.Max(Orbit.DistanceUnits, OrbitCamera.MinDistanceUnits),
+                _zoomAnchorNdc, _zoomAnchorFieldOfViewDegrees, _zoomAnchorAspect);
+
+            Map.SetPanM(Vector3d.FromUnity(panUnits) / UnitsPerMeter);
+        }
+
+        /// <summary>The pose rotation for the current blend weight.</summary>
+        private Quaternion CurrentRotation()
+        {
+            return MapEnabled
+                ? MapView.BlendRotation(Orbit.Rotation, Orbit.YawDegrees, MapBlendWeight)
+                : Orbit.Rotation;
+        }
+
+        /// <summary>
+        /// The camera's viewport in screen pixels. Falls back to the screen and
+        /// then to a 1920×1080 default, so a headless run still has a scale.
+        /// </summary>
+        private Vector2 ScreenPixels()
+        {
+            if (_camera != null && _camera.pixelWidth > 0 && _camera.pixelHeight > 0)
+                return new Vector2(_camera.pixelWidth, _camera.pixelHeight);
+
+            float width = Screen.width > 0 ? Screen.width : 1920f;
+            float height = Screen.height > 0 ? Screen.height : 1080f;
+            return new Vector2(width, height);
+        }
+
+        private float FieldOfViewDegrees => _camera != null ? _camera.fieldOfView : 60f;
+
+        private float Aspect(Vector2 screenPixels)
+        {
+            if (_camera != null && _camera.aspect > 0f) return _camera.aspect;
+            return screenPixels.y > 0f ? screenPixels.x / screenPixels.y : 1f;
         }
 
         private double LocalRadiusM(Vector3d shipPositionM)
@@ -430,9 +624,7 @@ namespace TimeToExplore.Player
 
         private void ApplyToCamera(Vector3d shipPositionM, double localRadiusM)
         {
-            Quaternion rotation = MapEnabled
-                ? MapView.BlendRotation(Orbit.Rotation, Orbit.YawDegrees, MapBlendWeight)
-                : Orbit.Rotation;
+            Quaternion rotation = CurrentRotation();
 
             float effectivePitch = MapEnabled
                 ? Map.EffectivePitchDegrees(Orbit.PitchDegrees, Orbit.DistanceUnits, localRadiusM)
@@ -441,8 +633,11 @@ namespace TimeToExplore.Player
             Vector3 offset = OrbitCamera.Direction(Orbit.YawDegrees, effectivePitch)
                              * Orbit.DistanceUnits;
 
-            Vector3 panUnits = MapEnabled ? Map.PanOffsetUnits : Vector3.zero;
-            Vector3d lookAtM = shipPositionM + (MapEnabled ? Map.PanOffsetM : Vector3d.Zero);
+            // The pan is live at every zoom: on the map it is the browsed
+            // centre, and in the local band it is the cursor-anchored offset
+            // the wheel put there. Space unwinds it to zero.
+            Vector3 panUnits = Map.PanOffsetUnits;
+            Vector3d lookAtM = shipPositionM + Map.PanOffsetM;
 
             // Avoidance is measured from the look-at point, so on the map it
             // pulls toward the panned centre rather than toward the ship.

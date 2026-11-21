@@ -114,8 +114,8 @@ replans from the current state before flying.
 # The camera
 
 The view is an **orbit camera** around the ship: right-drag orbits, left-drag
-pans on the map, the wheel zooms, and in the local band the camera looks at the
-ship at the render origin
+pans on the map, the wheel zooms toward the pointer, and the camera looks at
+`ship + pan` — the ship itself whenever the pan is zero
 ([ADR-008](/decisions/adr-008-orbit-camera.md)). That keeps the ship-relative
 float precision of [ADR-002](/decisions/adr-002-double-precision.md) — the world
 is still projected from the ship — while letting the player look at their own
@@ -125,9 +125,10 @@ vessel and at the plan from outside.
 km to 5 billion km. `ShipCameraRig` reads the input, places the camera, and does
 the automatic framing: a plan, a jump, or a reset turns the view toward its
 destination and eases the orbit distance to `clamp(0.6 × ship→target, 3 ×
-radius, 3.3 AU)`. The aim and the distance follow separately, so zooming keeps
-the destination centred; only a drag stops the aiming. If the orbit would put
-the camera inside a body, it is pulled in toward the origin it is looking at.
+radius, 3.3 AU)`. The aim and the distance follow separately, so a wheel zoom
+at the centre keeps the destination centred; only a drag stops the aiming. If
+the orbit would put the camera inside a body, it is pulled in toward the origin
+it is looking at.
 
 **Zoom is a tween.** A wheel notch does not place the camera: it requests a new
 distance (`OrbitCamera.RequestDistance`) and the rig eases the current distance
@@ -138,6 +139,27 @@ leaving the [solar system view](/technical/system-map.md) sweeps the top-down
 tilt and the rotation over the same short tween instead of snapping, and the
 player's stored yaw and pitch are still never written. A reset, a snap-to, or a
 direct distance assignment places the camera immediately.
+
+**Zoom goes toward the pointer.** The notch anchors the point under the cursor
+on the plane through the look-at point, and the rig solves the look-at from that
+anchor every frame of the tween (`MapView.CursorPointOnLookAtPlane` and
+`AnchoredLookAtUnits`). The anchored point therefore stays under the pointer
+while the distance eases and while the pose tilts into the map. This is the pan
+doing the work, so the pan is live at every zoom, not only on the map; the ship
+drifts off-centre when the zoom is off-centre, which is the point of the
+gesture. The 60 AU pan cap still applies, so a corner anchor at the 12-billion-km
+ceiling can shift very slightly at the last notch. See
+[ADR-016](/decisions/adr-016-cursor-zoom-and-home.md).
+
+**Space goes home.** A one-second smoothstep (`HomeTransition`) eases the
+distance geometrically to half the dominant body's SOI radius — the middle of
+the local band, so the arrival is exactly `w = 0` — and unwinds the pan to zero.
+The log-space distance keeps the perceived zoom rate even on a descent from the
+map ceiling. Yaw and pitch are kept, so the ship returns to the centre of the
+same remembered angle. The follow flags are cleared as a drag clears them, but
+the framing target is kept, so an active flight's follow does not re-claim the
+camera and cancel the transition. A wheel notch or a moving drag cancels it.
+`P` pauses.
 
 ## The blended map pose
 
@@ -155,15 +177,18 @@ distance. The pose becomes:
   yaw. The two rotations share a right axis, so the slerp is exactly a pitch
   turn.
 * **Position** — the orbit offset for the effective pitch, added to the
-  look-at point. In the map that point is `ship + pan`; in the local band the
-  pan has eased to zero, so it is the ship again.
+  look-at point. That point is always `ship + pan`; the pan is the map's
+  browsed centre on the map side and the cursor-anchored offset in the local
+  band. It is zero only when the local view has not been zoomed off-centre
+  (Space unwinds it).
 * **Round trip** — the player's yaw and pitch are never written, so zooming out
   and back returns the exact remembered angle without a saved pose.
 
-The one rule this bends is ADR-008's "the camera always looks at the ship". On
-the map it looks at `ship + pan`; in the local band the pan has eased to zero,
-so ADR-008 holds exactly there. The bend is recorded in
-[ADR-009](/decisions/adr-009-map-camera-pan.md).
+The one rule this bends is ADR-008's "the camera always looks at the ship". It
+looks at `ship + pan`, and the pan is now live at every zoom: the map's browsed
+centre and the local cursor anchor are the same state. The bend is recorded in
+[ADR-009](/decisions/adr-009-map-camera-pan.md) for the map and
+[ADR-016](/decisions/adr-016-cursor-zoom-and-home.md) for the cursor zoom.
 
 **Map input.** Right-drag orbits at every zoom, local and map. Left-drag pans,
 but only while `w > 0.5`; in the local band there is nothing to pan, so the
@@ -176,13 +201,15 @@ size (`2 · d · tan(fov/2) / screenHeight` per pixel) so the content follows th
 cursor at any zoom; the offset is in double-precision metres, capped at 60 AU.
 Selection shares the left button: a press that stays inside the 4 px click slop
 selects its body on release, while a press that moves further is a pan and
-never opens the details screen. Returning to the local band eases the pan to
-zero exponentially at 3/s, so the local view lands on the ship. A map pan
-clears the auto-framing flags, as an orbit drag clears auto-aim. While the map
-is engaged, auto-aim and auto-distance are suspended: the map keeps the
-player's yaw, and a wheel zoom cannot be silently pulled back to a framed
-target. The follow flags survive, so zooming back into the local band resumes
-the framing.
+never opens the details screen. A pan that no wheel anchored eases to zero when
+the view returns to the local band (3/s), so a framing or a direct distance
+change lands on the ship. A pan the wheel anchored under the pointer is kept,
+because pulling it home would move the point from under the cursor, and Space is
+the explicit way home. A map pan clears the auto-framing flags, as an orbit drag
+clears auto-aim. While the map is engaged, auto-aim and auto-distance are
+suspended: the map keeps the player's yaw, and a wheel zoom cannot be silently
+pulled back to a framed target. The follow flags survive, so zooming back into
+the local band resumes the framing.
 
 **Zoom and clipping.** The wheel is still multiplicative (1.25× per notch), but
 the distance is eased to the requested value rather than placed (see
@@ -258,7 +285,9 @@ second mapping.
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
 | Right mouse drag | Orbit the camera around the ship, at every zoom, unless the press began on a panel |
-| Mouse wheel | Zoom the camera (local 5 billion km, map 12 billion km), eased to the requested distance |
+| Mouse wheel | Zoom toward the pointer (local 5 billion km, map 12 billion km), eased to the requested distance |
+| `Space` | Ease the camera home to the ship in one second, ending in the local view |
+| `P` | Pause or resume the simulation clock |
 | `Tab` | Cycle planet/station targets without opening the screen |
 
 # Verification
@@ -277,6 +306,13 @@ second mapping.
   rate, and distance easing, the zoom request that eases over many frames and
   lands exactly, and the rig's framing distance, follow flags, and the smooth
   top-down tilt that follows a wheel tween;
+* the cursor anchor: the screen-to-NDC conversion, the look-at-plane point, the
+  exact pinned point at a changed distance, and a centre pointer leaving the
+  look-at alone; the rig's projected anchor on every frame of a real wheel
+  tween, and the anchored pan surviving in the local band;
+* the home transition: one second of smoothstep, exact endpoints, a
+  zero-duration landing, cancellation, the local arrival at `w = 0`, the
+  remembered angle, and a wheel or drag cancelling it;
 * the map pose: a finite top-down rotation, a horizontal up that turns with
   yaw, the blended rotation agreeing with the effective pitch, and the exact
   remembered-pose round trip;

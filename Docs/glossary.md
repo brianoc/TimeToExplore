@@ -16,9 +16,13 @@ disagree, the concept that owns the term wins; this page only points at it.
 
 The close camera around the ship, below the dominant body's sphere of influence.
 The player's yaw and pitch are the angle, the ship sits at the render origin
-([ADR-002](/decisions/adr-002-double-precision.md)), and the view is always
-ship-centred. Bodies outside the local neighbourhood fade to their true-scale
-dots; the **T** toggle forces true scale everywhere.
+([ADR-002](/decisions/adr-002-double-precision.md)), and the view is
+ship-centred whenever the pan is zero. A wheel zoom anchors the point under the
+pointer, so an off-centre zoom can leave another point at the centre; **Space**
+eases the view home and unwinds the pan
+([ADR-016](/decisions/adr-016-cursor-zoom-and-home.md)). Bodies outside the
+local neighbourhood fade to their true-scale dots; the **T** toggle forces true
+scale everywhere.
 
 The local view is one end of the single zoom, not a mode: it is the camera when
 `w = 0` in [the system map](/technical/system-map.md#one-zoom-two-readings-of-the-same-camera).
@@ -64,10 +68,12 @@ also called the **neighbourhood**. Deep space, outside every SOI, falls back to
 
 A wheel notch **requests** a camera distance; the camera eases to it over a
 short exponential tween (`OrbitCamera.EaseDistance`, 7/s by default) rather
-than jumping there. Because the blend weight is derived from the camera
-distance, the solar system view's top-down tilt and the rotation sweep with the
-same tween instead of snapping. Directly assigning a distance (a reset, a
-snap-to, a test) places the camera immediately.
+than jumping there. The point under the pointer is anchored on the look-at
+plane and the look-at is solved from it every frame, so the point stays under
+the pointer while the distance and the map blend move. Because the blend weight
+is derived from the camera distance, the solar system view's top-down tilt and
+the rotation sweep with the same tween instead of snapping. Directly assigning
+a distance (a reset, a snap-to, a test) places the camera immediately.
 
 ## Thrust and manoeuvre vocabulary
 

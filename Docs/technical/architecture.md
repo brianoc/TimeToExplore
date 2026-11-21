@@ -220,7 +220,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `PlayerControls` | `Scripts/Player/PlayerControls.cs` | The one input seam: device polling, intents, key table, mouse sensitivity, scroll normalisation |
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
 | `MapView` | `Scripts/Player/MapView.cs` | Plain-C# map state: blend weight, dominant body, top-down pose, map range, near/far rule, pan offset, drag scale, and ease |
-| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit at every zoom, left-drag map pan, wheel zoom on both ranges, destination framing, blended pose, camera placement |
+| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit at every zoom, left-drag map pan, wheel zoom toward the pointer, the one-second home transition, destination framing, blended pose, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: nearest locally, class-priority on the map |
@@ -414,7 +414,8 @@ The controller is an inspection tool now, not a flight model:
 | `` ` `` | Toggle debug free flight; cancels the flight |
 | Right mouse drag | orbit the camera around the ship, at every zoom |
 | Left mouse drag | pan the map (`w > 0.5`) |
-| Mouse wheel | zoom the camera (1.25× per notch; 12 billion km on the map side) |
+| Mouse wheel | zoom the camera toward the pointer (1.25× per notch; 12 billion km on the map side) |
+| `Space` | ease the camera home to the ship |
 | `W A S D` | free flight: move forward/left/back/right |
 | `Q E` | free flight: move down/up |
 | `Shift` / `Ctrl` | ×10 / ×0.1 speed |
@@ -422,7 +423,7 @@ The controller is an inspection tool now, not a flight model:
 | Left click a body | select it and open the details screen |
 | `Esc` | close the details screen and cancel a debug jump |
 | `1`–`7` | requested time warp 1× to 1,000,000× (the policy may lower it) |
-| `Space` | pause |
+| `P` | pause |
 | `Tab` | cycle planet/station target |
 | `R` | reset to Gateway and 1× |
 | `T` | toggle true scale |
