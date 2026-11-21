@@ -4,7 +4,7 @@ title: Working in a worktree
 description: "Rule 1 in practice: one agent, one branch, one worktree, with setup, verification, merge hotspots, and cleanup."
 tags: [technical, process, git, worktrees, agents]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # Working in a worktree
@@ -53,6 +53,21 @@ symlinked `Assets` and a private warm `Library`. The first run pays the import
 Worktrees have separate `.run-lock`s, so runs no longer queue behind each
 other. They still share one machine: parallel Unity instances contend for CPU
 and the license, so two full suites at once are slower than one after the other.
+
+## Publishing
+
+Only `main` is published, to `origin` (github.com/brianoc/TimeToExplore); the
+`work/*` branches stay local. Merging does not publish: a merge waits until the
+person testing says they are happy with that result, and then one `git push`
+from the main checkout sends every confirmed merge at once. They review in
+whatever order suits them, so a merge sitting unpushed is normal, and a mistake
+that reaches the remote is fixed forward on a new branch rather than rewritten.
+
+The remote is the `git@github.com:` SSH form on purpose. This machine's HTTPS
+credential helper belongs to a different GitHub account, while the SSH key
+resolves as the personal one, so an HTTPS remote would push under the wrong
+identity. A plain `git push` is enough because `main` tracks `origin/main`, and
+`git push origin main` works from a worktree, which cannot check out `main`.
 
 ## Merge hotspots
 
