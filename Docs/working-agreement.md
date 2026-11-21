@@ -40,14 +40,9 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
    interaction is what changed. A visual result the person asking cannot see is
    not finished. A plan may explicitly waive this when it changes no visible
    behaviour.
-6. **Push what the person testing has confirmed, not what has merged.** Only
-   `main` is published, to `origin`; the `work/*` branches stay local. Merging
-   does not push: a merge waits until the person says they are happy with that
-   result, and then one `git push` from the main checkout publishes every
-   confirmed merge at once. Reviews do not arrive in merge order, so push
-   whatever has been confirmed and leave the rest queued — never hold a merge
-   back waiting for its review. A mistake that reaches the remote is fixed
-   forward on a new branch, not rewritten out of the published history.
+6. **Push `main` only once the person testing has confirmed the result.** Reviews
+   do not arrive in merge order: publish what has been confirmed, leave the rest
+   queued, and keep the `work/*` branches local.
 7. **Run multi-step work as a caretaker with one sub-agent per step, and commit
    each step.** The caretaker keeps `HANDOFF.md` live and dispatches one
    self-contained sub-agent per step, in order. A step is not done until its
