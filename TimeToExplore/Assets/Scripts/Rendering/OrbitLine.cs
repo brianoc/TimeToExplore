@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using TimeToExplore.Core;
 
@@ -16,6 +17,9 @@ namespace TimeToExplore.Rendering
         private BodyRuntime _body;
         private SolarSystemModel _model;
         private Vector3d[] _buffer;
+        private readonly List<Vector3> _relative = new List<Vector3>();
+        private readonly List<Vector3> _run = new List<Vector3>();
+        private readonly List<Vector3> _visible = new List<Vector3>();
         private Keyframe[] _widthKeys;
         private AnimationCurve _widthCurve;
 
@@ -59,13 +63,15 @@ namespace TimeToExplore.Rendering
         /// orbit is framed, and becomes a screen-filling ribbon when the
         /// camera is inside it.
         ///
-        /// Each vertex carries its own width: the look-at width near the ship,
-        /// then the floor once perspective would take it below
-        /// <see cref="LineWidth.DistanceFloorPixels"/>. A single width per
-        /// ellipse made the far arc vanish into the distance.
+        /// Each vertex carries its own width, bounded to
+        /// <see cref="LineWidth.DistanceFloorPixels"/> at the far end and to the
+        /// line's own pixel width at the near end. The floor keeps the far arc
+        /// from vanishing into the distance; the ceiling stops the near arc
+        /// from turning into a ribbon when the camera is inside the orbit.
         /// </summary>
         public void Refresh(Vector3d shipPositionM, Camera camera, float unitsPerMeter,
-            bool visible, float lookAtWidthUnits, float lookAtPixels)
+            bool visible, float lookAtWidthUnits, float lookAtPixels,
+            float lookAtDepthUnits = 1f)
         {
             if (_line == null) return;
             _line.enabled = visible;
@@ -73,21 +79,35 @@ namespace TimeToExplore.Rendering
 
             _model.SampleOrbitWorld(_body, Samples, _buffer);
 
+            _relative.Clear();
+            for (int i = 0; i <= Samples; i++)
+                _relative.Add(((_buffer[i] - shipPositionM) * unitsPerMeter).ToUnity());
+
+            // As with the route line, the part of the ellipse behind the
+            // camera cannot be billboarded and would stretch into a wedge.
+            int count = LineCameraClip.Clip(_relative, camera, _run, _visible);
+            _line.positionCount = count;
+            _line.enabled = visible && count >= 2;
+            if (count < 2) return;
+
+            if (_widthKeys == null || _widthKeys.Length != count)
+                _widthKeys = new Keyframe[count];
+
             Vector3 cameraPosition = camera != null ? camera.transform.position : Vector3.zero;
             float fieldOfView = camera != null ? camera.fieldOfView : 60f;
             int viewportHeight = camera != null && camera.pixelHeight > 0
                 ? camera.pixelHeight
                 : Screen.height;
-            float denominator = Mathf.Max(Samples, 1);
+            float denominator = Mathf.Max(count - 1, 1);
 
-            for (int i = 0; i <= Samples; i++)
+            for (int i = 0; i < count; i++)
             {
-                Vector3 relative = ((_buffer[i] - shipPositionM) * unitsPerMeter).ToUnity();
+                Vector3 relative = _visible[i];
                 _line.SetPosition(i, relative);
 
                 float depth = camera != null
                     ? Vector3.Distance(relative, cameraPosition)
-                    : 0f;
+                    : lookAtDepthUnits;
                 _widthKeys[i] = new Keyframe(i / denominator,
                     LineWidth.SampleWorldWidth(lookAtWidthUnits, lookAtPixels, depth,
                         fieldOfView, viewportHeight));

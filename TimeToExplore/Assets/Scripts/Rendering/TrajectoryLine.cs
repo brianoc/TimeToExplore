@@ -23,6 +23,9 @@ namespace TimeToExplore.Rendering
             public LineRenderer Renderer;
             public Material Material;
             public readonly List<Vector3d> Points = new List<Vector3d>();
+            public readonly List<Vector3> RelativePoints = new List<Vector3>();
+            public readonly List<Vector3> VisibleRun = new List<Vector3>();
+            public readonly List<Vector3> VisiblePoints = new List<Vector3>();
             public Keyframe[] WidthKeys;
             public AnimationCurve WidthCurve;
             public Color Colour;
@@ -305,8 +308,10 @@ namespace TimeToExplore.Rendering
             // Width is apparent, not world-scaled: the same pixel rule as the
             // orbit lines. The base depth is the camera's distance to the ship
             // (the render origin), where the route is anchored. Each vertex
-            // then gets its own width from its own depth, so the far end stays
-            // visible.
+            // then gets its own width from its own depth, held between the
+            // 2 px distance floor and the 3 px route width, so the far end
+            // stays visible and a route that sweeps close to a zoomed-in
+            // camera stays a line rather than a ribbon.
             float baseDepth = camera != null
                 ? Mathf.Max(camera.transform.position.magnitude, 1e-4f)
                 : 1f;
@@ -320,7 +325,7 @@ namespace TimeToExplore.Rendering
             for (int i = 0; i < _activeLines.Count; i++)
             {
                 ArcLine arcLine = _activeLines[i];
-                SetPositions(arcLine, shipPositionM, camera, baseWidth);
+                SetPositions(arcLine, shipPositionM, camera, baseWidth, baseDepth);
 
                 if (arcLine.Dashed)
                 {
@@ -374,13 +379,22 @@ namespace TimeToExplore.Rendering
         }
 
         private void SetPositions(ArcLine arcLine, Vector3d shipPositionM, Camera camera,
-            float baseWidth)
+            float baseWidth, float baseDepth)
         {
             LineRenderer line = arcLine.Renderer;
             if (line == null) return;
 
             List<Vector3d> points = arcLine.Points;
-            int count = points.Count;
+            arcLine.RelativePoints.Clear();
+            for (int i = 0; i < points.Count; i++)
+                arcLine.RelativePoints.Add(((points[i] - shipPositionM) * _unitsPerMeter).ToUnity());
+
+            // Drop the part of the route behind the camera. A line that crosses
+            // the camera plane cannot be billboarded consistently, and Unity's
+            // stretched quad is the screen-filling wedge the player saw when
+            // zooming in past the route's near end.
+            int count = LineCameraClip.Clip(arcLine.RelativePoints, camera,
+                arcLine.VisibleRun, arcLine.VisiblePoints);
             bool visible = count >= 2;
             line.enabled = visible;
             if (!visible) return;
@@ -402,12 +416,12 @@ namespace TimeToExplore.Rendering
 
             for (int i = 0; i < count; i++)
             {
-                Vector3 relative = ((points[i] - shipPositionM) * _unitsPerMeter).ToUnity();
+                Vector3 relative = arcLine.VisiblePoints[i];
                 line.SetPosition(i, relative);
 
                 float depth = camera != null
                     ? Vector3.Distance(relative, cameraPosition)
-                    : 0f;
+                    : baseDepth;
                 arcLine.WidthKeys[i] = new Keyframe(i / denominator,
                     LineWidth.SampleWorldWidth(baseWidth, LineWidth.Pixels, depth,
                         fieldOfView, viewportHeight));

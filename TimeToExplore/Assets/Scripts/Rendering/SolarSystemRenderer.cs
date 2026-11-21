@@ -155,14 +155,14 @@ namespace TimeToExplore.Rendering
             {
                 if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, _camera, UnitsPerMeter, ShowOrbits,
-                    lineWidth, orbitPixels);
+                    lineWidth, orbitPixels, lineDepth);
             }
 
             foreach (OrbitLine orbit in _moonOrbits)
             {
                 if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, _camera, UnitsPerMeter,
-                    ShowOrbits && ShowMoonOrbits, lineWidth, orbitPixels);
+                    ShowOrbits && ShowMoonOrbits, lineWidth, orbitPixels, lineDepth);
             }
         }
     }

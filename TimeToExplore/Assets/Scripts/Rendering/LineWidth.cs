@@ -13,12 +13,14 @@ namespace TimeToExplore.Rendering
     ///
     /// The base width is in render units at <em>one</em> depth. Used alone, that
     /// makes geometry nearer the camera thicker and geometry farther away
-    /// thinner, which is natural perspective until the far half of an orbit or
-    /// a route drops below a pixel and vanishes. <see cref="SampleWorldWidth"/>
-    /// therefore gives every vertex its own width: perspective is unchanged
-    /// until a vertex would fall below <see cref="DistanceFloorPixels"/>, and
-    /// the floor holds it there. The <see cref="LineRenderer.widthCurve"/>
-    /// carries those per-vertex widths.
+    /// thinner. Natural perspective is right for a gently sloping orbit, but it
+    /// breaks at both ends: the far half of an orbit or a route drops below a
+    /// pixel and vanishes, while a route that passes close to the camera grows
+    /// into a screen-filling ribbon. <see cref="SampleWorldWidth"/> therefore
+    /// gives every vertex its own width and bounds the apparent result: no
+    /// vertex draws thinner than <see cref="DistanceFloorPixels"/> or thicker
+    /// than the line's declared pixel width. The
+    /// <see cref="LineRenderer.widthCurve"/> carries those per-vertex widths.
     /// </summary>
     public static class LineWidth
     {
@@ -99,11 +101,21 @@ namespace TimeToExplore.Rendering
         /// Per-vertex width for a line whose width at the look-at depth is
         /// <paramref name="lookAtWorldWidth"/> (which draws
         /// <paramref name="lookAtPixels"/> screen pixels there). Perspective
-        /// still thins the line with distance, but a vertex is never given less
-        /// than the width that draws <see cref="DistanceFloorPixels"/>, so the
-        /// far arc stays visible instead of fading to a sub-pixel thread. The
-        /// floor is capped by the line's own look-at width, so a line thinner
-        /// than the floor is not inflated.
+        /// still narrows the line with distance, but the apparent width is
+        /// bounded at both ends.
+        ///
+        /// * A vertex is never given less than the width that draws
+        ///   <see cref="DistanceFloorPixels"/>, so the far arc stays visible
+        ///   instead of fading to a sub-pixel thread.
+        /// * A vertex is never given more than the width that draws
+        ///   <paramref name="lookAtPixels"/> at its own depth, so a route that
+        ///   passes close to the camera cannot turn into a screen-filling
+        ///   ribbon. Without that ceiling, the old constant world width drew
+        ///   the near end at <c>lookAtPixels × lookAtDepth / depth</c>, which is
+        ///   unbounded as the depth goes to zero.
+        ///
+        /// The floor is capped by the line's own look-at width, so a line
+        /// thinner than the floor is neither inflated nor thickened.
         /// </summary>
         public static float SampleWorldWidth(float lookAtWorldWidth, float lookAtPixels,
             float sampleDepthUnits, float fieldOfViewDegrees, float screenHeightPixels,
@@ -111,15 +123,21 @@ namespace TimeToExplore.Rendering
         {
             if (!(lookAtWorldWidth > 0f) || float.IsInfinity(lookAtWorldWidth))
                 return Mathf.Max(lookAtWorldWidth, 0f);
-            if (!(sampleDepthUnits > 0f) || float.IsInfinity(sampleDepthUnits))
+            if (!(lookAtPixels > 0f) || float.IsInfinity(lookAtPixels))
                 return lookAtWorldWidth;
 
-            float floor = Mathf.Clamp(floorPixels, 0f, Mathf.Max(lookAtPixels, 0f));
-            if (floor <= 0f) return lookAtWorldWidth;
+            // A vertex at or behind the camera has no well-defined apparent
+            // width. Returning the look-at width here used to draw it at the
+            // full world size, which is exactly the ribbon this rule exists to
+            // prevent; a zero width tapers the line at the camera plane.
+            if (!(sampleDepthUnits > 0f) || float.IsInfinity(sampleDepthUnits))
+                return 0f;
 
-            float floorWidth = WorldWidth(sampleDepthUnits, fieldOfViewDegrees,
-                screenHeightPixels, floor);
-            return Mathf.Max(lookAtWorldWidth, floorWidth);
+            float floor = Mathf.Clamp(floorPixels, 0f, lookAtPixels);
+            float pixels = PixelsAt(lookAtWorldWidth, sampleDepthUnits,
+                fieldOfViewDegrees, screenHeightPixels);
+            pixels = Mathf.Clamp(pixels, floor, lookAtPixels);
+            return WorldWidth(sampleDepthUnits, fieldOfViewDegrees, screenHeightPixels, pixels);
         }
 
         /// <summary>

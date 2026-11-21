@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # The problem
@@ -177,14 +177,29 @@ Kepler ellipse.
   screen-filling ribbon. The pixel form is also correct at other fields of view
   and resolutions, and needs no world-unit clamp that breaks at the map ceiling.
 
-  Width is **per vertex**, written into `LineRenderer.widthCurve`. A vertex
-  keeps the camera-distance width until perspective would take it below
-  `LineWidth.DistanceFloorPixels` (2 px); from there its world width grows with
-  its own depth, so the far arc holds 2 px at the planet's 50% alpha instead of
-  fading to a sub-pixel thread. The near half is untouched: it keeps the same
-  world width and still thickens with proximity. The floor is capped by the
-  line's own look-at width, so a line already thinner than 2 px is not
-  inflated. The same rule applies to the plan line at its fixed 3 px.
+  Width is **per vertex**, written into `LineRenderer.widthCurve`, and the
+  apparent width is bounded at both ends. A vertex is never thinner than
+  `LineWidth.DistanceFloorPixels` (2 px), so the far arc holds 2 px at the
+  planet's 50% alpha instead of fading to a sub-pixel thread. A vertex is also
+  never wider than the line's own pixel count at its own depth, so the near
+  half cannot grow without limit: without that ceiling, a route or orbit
+  passing close to a zoomed-in camera drew a screen-filling ribbon, because a
+  constant world width subtends `pixels × lookAtDepth / depth` and the depth
+  can approach zero. The rule is therefore an apparent width clamped to the
+  `[2 px, lookAtPixels]` band, with perspective still narrowing the line
+  between its bounds. The floor is capped by the line's own look-at width, so a line
+  already thinner than 2 px is neither inflated nor thickened. The same rule
+  applies to the plan line at its fixed 3 px, and to orbit lines through their
+  3→10 px map blend.
+* **The camera plane is a clip, not a width.** A `LineRenderer` billboards its
+  strip toward the view, so a segment with one end behind the camera has no
+  consistent screen-space width; Unity still emits its quad, and the projected
+  result can fill the frame. `LineCameraClip` keeps the longest contiguous run
+  in front of the near plane and interpolates the crossing point, so no drawn
+  vertex is behind the camera. A vertex exactly on the plane gets zero width
+  rather than the look-at width, which tapers the strip instead of letting the
+  near end inherit a world size. This is why a route stays a line when the
+  player zooms in past its ship end.
 * Colour belongs to the body and does not change with the view.
   `OrbitColours` samples one warm-to-cool ramp by orbital rank, evenly spaced
   rather than by semi-major axis (which would collapse Mercury to Mars into the

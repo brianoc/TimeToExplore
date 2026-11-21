@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T21:00:00Z }
 ---
 
 # Shape of the prototype
@@ -209,9 +209,10 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
 | `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the four runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
-| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight; `SampleWorldWidth` gives each vertex its width and holds a 2 px distance floor |
+| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight; `SampleWorldWidth` gives each vertex its width bounded to a 2 px distance floor and the line's own pixel width |
 | `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
-| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with a per-vertex width curve from the shared rule; never sized from the orbit radius |
+| `LineCameraClip` | `Scripts/Rendering/LineCameraClip.cs` | Clips a billboarded polyline to the longest run in front of the camera's near plane, so a segment that crosses behind the camera cannot project into a screen-filling polygon |
+| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline clipped to the camera plane, with a per-vertex width curve from the shared rule; never sized from the orbit radius |
 | `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
@@ -371,10 +372,12 @@ transform to the parent's frame, add the parent's current position, and then
 convert to ship-relative render coordinates. Every orbit line takes its width
 from `LineWidth`, which converts the blended apparent width — 3 px in the local
 view, 10 px in the solar system view — to render units at the camera distance
-and the viewport's FOV and height. Each vertex then gets its own width:
-perspective holds until it would take the vertex below the 2 px distance floor,
-after which the floor keeps the far arc visible. The orbit radius is not an
-input, so the line can never become a ribbon. Its colour comes from
+and the viewport's FOV and height. Each vertex then gets its own width bounded
+to the 2 px distance floor at the far end and to the line's own pixel count at
+the near end: the floor keeps the far arc visible, and the ceiling stops a near
+arc from becoming a ribbon when the camera passes close to it. The ellipse is
+clipped at the camera plane first, so its behind-camera half is never
+billboarded. The orbit radius is not an input. Its colour comes from
 `OrbitColours`, one fixed warm-to-cool ramp sample per planet, so the local and
 solar system views draw the same hue.
 
@@ -391,8 +394,10 @@ own length; uniform sampling in time spent the budget on the straight cruise and
 left visible chords in the tight departure and capture turns. Each dashed arc
 uses a repeating alpha texture in `LineTextureMode.Tile`, with its own texture
 scale tied to the line width, so the dashes stay the same apparent length at any
-zoom. Its vertices take per-vertex widths from the same rule, so the far end
-holds the 2 px floor instead of fading out. `TimeToExplore/Line` feathers both
+zoom. It applies the same camera-plane clip as the orbit lines, then takes
+per-vertex widths from the same rule: the far end holds the 2 px floor instead
+of fading out, and the near end is capped at the route's 3 px instead of
+widening into a ribbon. `TimeToExplore/Line` feathers both
 strip edges over one screen pixel with `fwidth`, so geometric edges are
 antialiased even though the pipeline runs with MSAA off.
 
