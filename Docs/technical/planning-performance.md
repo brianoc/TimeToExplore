@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background retime.
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
@@ -95,32 +95,46 @@ buys no time
 plot reuses both; a changed departure date, or a place/teleport, clears the
 cache. This is what makes a repeat selection free rather than merely fast.
 
-# The background retime
+# The background planner
 
-The retime is one full-field `PlanAtDuration` build (95–125 ms at the epoch),
-which is over the 33 ms threshold the plan set for staying synchronous. It runs
-on **one managed worker thread** with latest-wins semantics:
+The planner runs background builds for **retimes** and **route plans**:
+
+* A retime is one full-field `PlanAtDuration` build (95–125 ms at the epoch),
+  which is over the 33 ms threshold the plan set for staying synchronous.
+* A first plot is the floor search (`Plan`) plus the window probes — the
+  1.28–3.03 s freeze the editor's first `Plot()` used to produce — and a
+  style, cruise-profile or burn-level change is the window floor plus one
+  full-field build when the player kept a longer flight time.
+
+Both run on **one managed worker thread** with latest-wins semantics:
 
 1. Moving the slider calls `FlightSession.RequestPreviewDuration(seconds)`. It
    clamps the duration to the preview window, stores it as the newest request
-   with a generation number, pulses the worker, and returns. The frame does not
-   wait.
+   with a generation number, pulses the worker, and returns. The frame does
+   not wait.
 2. The worker builds the plan with its **own** `TripPlanner` and `GravityField`.
    The simulation's field keeps a prepared active set and stays on the main
    thread; the worker reads only the catalogue (elements and `ComputeState`),
    never `FlightSession`'s `_gravity`, the integrator, or the autopilot.
+   The first plot goes through `FlightSession.PlotAsync`, and the style,
+   cruise-profile and burn-level changes through `SetArrivalStyle`,
+   `SetCruiseProfile` and `SetBurnLevel` — the same request queue.
 3. A build that finishes after a newer request arrived is discarded, and the
    newest request is built next. A drag therefore never queues work behind
-   stale plans.
+   stale plans; a second plot, rebuild or style change also makes the
+   outstanding builds stale, so the newest ask wins across the pipelines.
 4. `TryApplyCompletedRetime` publishes under the request lock, checked against
    the generation. `SolarSystemBootstrap.ApplyRetimeIfReady` is pumped once per
    frame by the HUD and hands the plan to the trajectory line and the report on
-   the main thread.
+   the main thread. `SolarSystemBootstrap.ApplyPreviewIfReady` pumps the
+   preview pipeline the same way and redraws the route — a preview publishes
+   on screen when it is ready, and a retime never moves the camera or the
+   route.
 
-The previous **full-field** preview stays on screen until the replacement lands.
-`PendingPreviewSeconds` keeps the handle and its label on the player's ask
-rather than snapping back to the older published plan. Nothing fast is ever
-shown.
+The previous **full-field** preview stays on screen until the replacement
+lands. `PendingPreviewSeconds` keeps the handle and its label on the player's
+ask rather than snapping back to the older published plan. Nothing fast is
+ever shown.
 
 `SetPreviewDuration` remains the synchronous, deterministic path for tests and
 callers that need a plan immediately; it builds the identical plan and cancels
@@ -788,7 +802,7 @@ sections record how each measurement was reached.
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
-| Retime | `FlightSession.RequestPreviewDuration`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `PendingPreviewSeconds`, `RetimeLoop`, `BuildRetime`, `StartRetimeWorker` |
+| Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetCruiseProfile`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 
 # Verification
@@ -802,7 +816,7 @@ plus every reported burn's acceleration being the summed field plus its thrust
 and a Sun-only field moving the plan.
 `FiniteBurnTests` covers the arc through an SOI against an independent RK4, the
 two-body agreement where the third bodies are negligible, and the reference body
-being a label. `FlightSessionTests` covers the cache and the background retime,
+being a label. `FlightSessionTests` covers the cache and the background planner,
 including latest-wins with a first build in flight, background equals
 synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, a retime to the floor

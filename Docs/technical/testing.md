@@ -99,7 +99,7 @@ because Unity test assemblies cannot reference the predefined
 | `ShipIntegratorTests` | orbit stability, Kepler agreement, kinematic thrust, the brachistochrone table, step-size independence, collision, step cap |
 | `TripPlannerTests` | arc chain and phases, exact arrival, seam continuity, flight-time envelope, Venus, Jupiter at the ceiling, the Moon, LEO departure, determinism, no mutation, the default quintic arrival style, the fixed-thrust style's default 0.3 g level, its clamp to the drive and the control range, and the conic parking radius, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
 | `FlightExecutionTests` | plan, fly, and arrive at Mars and Jupiter in stable orbits; feedback from a perturbed start; Mars back to Earth; the orrery is untouched |
-| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the hybrid arrival stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the powered `[minimum, 3 × minimum]` trip-time window and its clamp, retiming without moving the ship, and Begin keeping the chosen time), the preview-window cache (a repeat plot at the same date returns the same plan, another target misses, a burn-level change misses, and a changed departure date invalidates the cache), the background retime (the newest of two requests made while the first builds is published and the older build is dropped, the worker's plan equals the synchronous plan, the previous preview stays published until the new one is ready, a synchronous retime supersedes an outstanding ask, a discard drops an outstanding request, and Dispose joins the worker and refuses new work), and the idle coast that keeps the ship moving with the clock |
+| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic arrival applying its burns and arriving matched, the hybrid arrival stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the powered `[minimum, 3 × minimum]` trip-time window and its clamp, retiming without moving the ship, and Begin keeping the chosen time), the preview-window cache (a repeat plot at the same date returns the same plan, another target misses, a burn-level change misses, and a changed departure date invalidates the cache), the background retime (the newest of two requests made while the first builds is published and the older build is dropped, the worker's plan equals the synchronous plan, the previous preview stays published until the new one is ready, a synchronous retime supersedes an outstanding ask, a discard drops an outstanding request, and Dispose joins the worker and refuses new work), the background preview planner (the async plot and the async style rebuild publish through `TryApplyCompletedPreview`, `APlotAsyncPublishesTheFastestFeasiblePlan` matches the synchronous `Plot` through the shared window cache, the newest async plot wins, a failed async plot reports and publishes nothing, and a disposed session refuses new work), and the idle coast that keeps the ship moving with the clock |
 | `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
 | `PlanPathTests` | arc boundary walking, the flip point's sign change, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the conic flip staying in the powered arc, the periapsis and circularisation as plan boundaries, the hybrid arcs meeting the same flatness tolerance, and one finite burn with the trim and circularisation as the two impulses |
 | `RouteColourTests` | exactly three path types, one distinct colour each, solid for a quintic or fixed burn and dashed for a conic, distinct same-hue shades inside a run of one type, and the real quintic, conic, and hybrid plans: three gold quintics, three shaded conics, and a red burn that restarts the conic run |
@@ -380,22 +380,32 @@ active-set refresh and 1e-6 m/s pin cut the harness numbers to **0.31 s**,
 arrival entry radius did, and the Uranus floor moved again when the cheaper
 cadence changed the certified near-floor basin.
 
-The slider's retime runs off the main thread. On the same throwaway copy at the
-epoch, a synchronous `SetPreviewDuration` took 120 ms at 4.5 d and 97 ms at
-7.35 d to Mercury at 1 g, and 97–125 ms to Mars at 0.3 g over 9–15 d. With the
-full-field burns a retime is a **0.7–1.4 s** build in a .NET harness and a few
-seconds in the editor, so the latest-wins worker is what keeps the frame free.
-Request-to-publish on the background worker was the same build plus **2–4 ms**
-of handover: 99–124 ms at Mercury and 100–128 ms at Mars. The worker's plan
-equalled the synchronous plan exactly — flight time, arrival date, peak thrust,
-delta-v, clearance, and arc count. Twenty requests at 10 ms intervals (a 200 ms
-drag) published only the newest plan, 311 ms after the first request at Mercury
-and 324 ms at Mars; superseded builds were dropped, nothing queued, and the drag
-loop kept its 10 ms cadence because the main thread only enqueues and pumps. The
-first selection (floor and window) on this copy was 1.78 s at Mercury and 0.94 s
-at Mars, unchanged by the retime work. The two-tier boundary, the 5% screen and
-the worker's lifecycle are in
+The slider's retime and the route planning run off the main thread. On the same
+throwaway copy at the epoch, a synchronous `SetPreviewDuration` took 120 ms at
+4.5 d and 97 ms at 7.35 d to Mercury at 1 g, and 97–125 ms to Mars at 0.3 g over
+9–15 d. With the full-field burns a retime is a **0.7–1.4 s** build in a .NET
+harness and a few seconds in the editor, so the latest-wins worker is what
+keeps the frame free. Request-to-publish on the background worker was the same
+build plus **2–4 ms** of handover: 99–124 ms at Mercury and 100–128 ms at Mars.
+The worker's plan equalled the synchronous plan exactly — flight time, arrival
+date, peak thrust, delta-v, clearance, and arc count. Twenty requests at 10 ms
+intervals (a 200 ms drag) published only the newest plan, 311 ms after the
+first request at Mercury and 324 ms at Mars; superseded builds were dropped,
+nothing queued, and the drag loop kept its 10 ms cadence because the main
+thread only enqueues and pumps. The first selection (floor and window) on this
+copy was 1.78 s at Mercury and 0.94 s at Mars, unchanged by the retime work. The
+two-tier boundary, the 5% screen and the worker's lifecycle are in
 [Planning performance](/technical/planning-performance.md).
+
+The first plot and the style, cruise-profile and burn-level changes are async
+too: `FlightSessionTests` covers an async plot publishing the fastest feasible
+plan and matching the synchronous `Plot` through the shared window cache, the
+newest of two async plots winning, an async plot to an unknown target reporting
+the failure and publishing nothing, a refused plot after dispose, and the
+async rebuild behind a style switch (`ChangingTheArrivalStyleRebuildsThe
+PreviewAndLeavesTheShipStill`); the smoke suites pump the worker until the
+route publishes before asserting on the trajectory line and the HUD's route
+legend.
 
 The departure burn's delta-v is level-independent (it spends the coast's
 departure speed above escape); its duration is `1/level`, so 13.4 km/s is

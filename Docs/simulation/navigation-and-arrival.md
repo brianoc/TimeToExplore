@@ -257,9 +257,11 @@ free, and a changed date or a place/teleport clears the cache. Moving the handle
 does not block the frame: the newest duration goes to one background worker,
 which builds it with its own planner and gravity field; a build superseded by a
 newer request is dropped, and the previous full-field preview stays on screen
-until the finished plan is handed back on the main thread. Every plan the nav
-computer shows is the full-field build — the planner's fast search model only
-chooses a duration.
+until the finished plan is handed back on the main thread. The first plot and
+the style, cruise-profile and burn-level changes go through the same worker —
+the route-planning freeze the player used to feel is gone, and the route
+redraws when the plan is ready. Every plan the nav computer shows is the
+full-field build — the planner's fast search model only chooses a duration.
 
 On the powered profile the control only lengthens the torch plan. Every
 implemented quintic plan already peaks at about 97% of the drive, so the left end

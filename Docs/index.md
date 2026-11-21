@@ -48,7 +48,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Architecture](/technical/architecture.md) — how the Unity prototype is structured, from catalogue load to render frame.
 * [Input](/technical/input.md) — the input map, the Input System seam and uGUI input module, why Active Input Handling is New only, and the mouse and wheel rules.
 * [The flight session](/technical/flight-session.md) — plot a route, press Begin, watch the ship fly: ship ownership, the warp cap, the trajectory line, and the flight panel.
-* [Planning performance](/technical/planning-performance.md) — the two-tier model: a fast search-only gravity field in front of the unchanged full-field plan and flight, the 5% thrust screen, the floor cache, and the latest-wins background retime.
+* [Planning performance](/technical/planning-performance.md) — the two-tier model: a fast search-only gravity field in front of the unchanged full-field plan and flight, the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it in debug flight.
 * [The system map and route preview](/technical/system-map.md) — the blended top-down map, map drawing and picking, the local aid fade, Plot route → Begin, and the frame-loop acceptance are built; the ADR/docs pass is next.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.

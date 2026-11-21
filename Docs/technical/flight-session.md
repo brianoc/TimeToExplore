@@ -155,12 +155,26 @@ the full-field build; the fast search model is never shown.
 for tests and callers that need a plan immediately, and builds the same plan as
 the worker for the same inputs.
 
+The same worker builds **route plans**, not just retimes. `PlotAsync` plots a
+route without blocking the main thread: the floor plan and the trip-time window
+solve run on the worker with its own planner and gravity field, and the plan is
+published with `TryApplyCompletedPreview`, which the HUD pumps once per frame
+as part of `SolarSystemBootstrap.ApplyPreviewIfReady` — the route redraws when
+the plan is ready, and the previous preview stays on screen until then. A
+second plot replaces the first: the newest ask wins. The style, cruise-profile
+and burn-level changes go through the same pipeline — `SetArrivalStyle`,
+`SetCruiseProfile` and `SetBurnLevel` enqueue a background rebuild of the
+published preview (`RequestRebuild`), so the route updates off the main thread
+as well, and the published plan is the same full-field build the synchronous
+`Plot` produces.
+
 The retime worker has a lifecycle, not just a queue. `FlightSession` is
 `IDisposable`: `Dispose` stops the worker, drops the queue, and joins the thread
 for up to five seconds, and the bootstrap disposes the session on teardown. A
-disposed session refuses new requests, and the worker checks the stop flag
-before publishing. The synchronous path is still the equality reference: for the
-same duration the worker and `SetPreviewDuration` build the identical plan.
+disposed session refuses new requests (and refuses new preview builds with the
+same refusal), and the worker checks the stop flag before publishing. The
+synchronous path is still the equality reference: for the same duration the
+worker and `SetPreviewDuration` build the identical plan.
 [Planning performance](/technical/planning-performance.md) has the two-tier
 model, the 5% screen, the cache, and the measurements.
 
@@ -419,7 +433,7 @@ is `[minimum, 3 × minimum]` and clamps to it, retiming changes the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
 target or burn level misses, and a changed departure date invalidates the cache.
-It also covers the **background retime**: the second of two requests made while
+It also covers the **background planner**: the second of two requests made while
 the first is building is the plan that is published and the older build is
 dropped, the worker's plan equals the synchronous plan for the same duration,
 the previous preview stays published until the new plan is ready, a synchronous

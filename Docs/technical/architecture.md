@@ -108,14 +108,16 @@ graph and reads the `.asmdef` files as the source of truth. See
      markers and picks a body; the details screen updates from the same model
      state. uGUI owns the pointer over a panel, so a button press never also
      selects the body behind it.
-6. **Plot route** calls `TripPlanner.Plan` and draws the preview; the
-   **`PROFILE`** and **`ARRIVAL`** rows rebuild it against the chosen cruise
-   profile, capture style, or burn level; its **trip-time slider** requests a
-   retime with `TripPlanner.PlanAtDuration` inside that profile's window on a
-   background worker, and the HUD publishes the finished plan on the main
-   thread; **Begin flight** replans and hands the ship to the session. On
-   arrival the plan completes, the drive goes off, and the ship coasts in the
-   parking orbit.
+6. **Plot route** calls `FlightSession.PlotAsync`, which solves the floor
+   plan and the trip-time window with `TripPlanner.Plan` on a background
+   worker and draws the preview when it is ready; the **`PROFILE`** and
+   **`ARRIVAL`** rows rebuild it against the chosen cruise profile, capture
+   style, or burn level on the same worker (`FlightSession.SetArrivalStyle`
+   etc.), and its **trip-time slider** requests a retime with
+   `TripPlanner.PlanAtDuration` inside that profile's window on the worker as
+   well; the HUD publishes finished plans on the main thread, and **Begin
+   flight** replans and hands the ship to the session. On arrival the plan
+   completes, the drive goes off, and the ship coasts in the parking orbit.
 
 # Core types
 
@@ -160,7 +162,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `HandoverBand` | `Scripts/Simulation/HandoverBand.cs` | The handover floor (`0.4` of the drive, clamped to the body clearance), the `1.02 × SOI` ceiling, the two endpoints, and the empty-band reason |
 | `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (three cruise profiles and three arrival styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
-| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; re-times the preview synchronously or on a latest-wins background worker with its own planner and field, publishing the finished plan on the main thread; coasts an idle ship; the scene's flight loop |
+| `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes a coasting profile's slowest accepted trip; builds route plans synchronously or on the background worker — `PlotAsync`, style/cruise/burn-level rebuilds, the slider's re-time — with its own planner and field, publishing finished plans on the main thread; coasts an idle ship; the scene's flight loop |
 | `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
 
 The planner crosses in one of three profiles: the powered quintic (`Powered`, the
@@ -498,8 +500,11 @@ frame. Moving the handle enqueues the newest duration for one background worker,
 which builds it with its own planner and gravity field — the simulation's field
 is mutable and stays on the main thread. A superseded build is dropped, the
 previous full-field preview stays published until the replacement lands, and the
-HUD publishes the finished plan on the main thread. At the epoch a retime is
-99–124 ms to Mercury at 1 g and 100–128 ms to Mars at 0.3 g, and
+HUD publishes the finished plan on the main thread. The first plot and the
+style, cruise-profile and burn-level changes go through the same worker, so the
+route-planning freeze the player used to feel is gone; the first plot lands as
+its plan is ready, and the redraw is the only visible effect. At the epoch a
+retime is 99–124 ms to Mercury at 1 g and 100–128 ms to Mars at 0.3 g, and
 request-to-publish is that build plus 2–4 ms of handover; a 200 ms drag of
 twenty requests published one plan, the newest, with nothing queued.
 
