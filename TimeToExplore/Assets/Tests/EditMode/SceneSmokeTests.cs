@@ -11,7 +11,6 @@ namespace TimeToExplore.Tests.EditMode
     public class SceneSmokeTests
     {
         private const string ScenePath = "Assets/Scenes/SolarSystem.unity";
-        private const string MapScenePath = "Assets/Scenes/SystemMap.unity";
 
         [Test]
         public void ShippedSceneLoadsWithTheBootstrapAttached()
@@ -24,30 +23,6 @@ namespace TimeToExplore.Tests.EditMode
                 SolarSystemBootstrap bootstrap = FindBootstrap(scene);
                 Assert.That(bootstrap, Is.Not.Null,
                     "the scene lost its reference to SolarSystemBootstrap");
-                Assert.That(bootstrap.Model, Is.Null,
-                    "Awake should not run in edit mode");
-                Assert.That(bootstrap.EnableMapView, Is.False,
-                    "the shipped scene stays on the current camera");
-            }
-            finally
-            {
-                EditorSceneManager.CloseScene(scene, true);
-            }
-        }
-
-        [Test]
-        public void TheComparisonSceneTurnsTheMapSwitchOn()
-        {
-            Scene scene = EditorSceneManager.OpenScene(MapScenePath, OpenSceneMode.Additive);
-            try
-            {
-                Assert.That(scene.isLoaded, Is.True);
-
-                SolarSystemBootstrap bootstrap = FindBootstrap(scene);
-                Assert.That(bootstrap, Is.Not.Null,
-                    "the comparison scene lost its reference to SolarSystemBootstrap");
-                Assert.That(bootstrap.EnableMapView, Is.True,
-                    "the comparison scene opts in to the system map");
                 Assert.That(bootstrap.Model, Is.Null,
                     "Awake should not run in edit mode");
             }
@@ -66,11 +41,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(catalogue.text, Does.Contain("\"bodies\""));
         }
 
-        [TestCase(ScenePath)]
-        [TestCase(MapScenePath)]
-        public void SceneCamerasHaveUniversalAdditionalCameraData(string scenePath)
+        [Test]
+        public void SceneCameraHasUniversalAdditionalCameraData()
         {
-            Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
             try
             {
                 Camera camera = FindCamera(scene);

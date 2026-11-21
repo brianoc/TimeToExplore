@@ -27,13 +27,6 @@ namespace TimeToExplore.Rendering
 
         public IEnumerable<BodyView> Views => _views.Values;
 
-        /// <summary>
-        /// The local scale used by the last <see cref="Refresh"/>, in metres.
-        /// Zero means the neighbourhood fade is off and the aid is full
-        /// everywhere, as in the shipped scene while its map switch is off.
-        /// </summary>
-        public double LocalAidRadiusM { get; private set; }
-
         public void Initialise(SolarSystemModel model, Camera camera, float unitsPerMeter)
         {
             _model = model;
@@ -89,18 +82,13 @@ namespace TimeToExplore.Rendering
 
         /// <summary>
         /// Rebuild the frame: positions, marker sizes, and orbit lines.
-        /// <paramref name="localRadiusM"/> is the dominant body's SOI radius.
-        /// A non-positive or infinite value disables the neighbourhood fade
-        /// and keeps the old full-strength aid everywhere, which is what the
-        /// shipped scene passes while its map switch is off.
+        /// <paramref name="cameraDistanceUnits"/> is the orbit distance, which
+        /// sets the apparent line width.
         /// </summary>
         public void Refresh(Vector3d shipPositionM, double julianDate,
-            float mapBlendWeight = 0f, float cameraDistanceUnits = 0f,
-            double localRadiusM = 0.0)
+            float cameraDistanceUnits = 0f)
         {
             if (_model == null) return;
-
-            LocalAidRadiusM = localRadiusM;
 
             float fieldOfView = _camera != null ? _camera.fieldOfView : 60f;
 
@@ -112,12 +100,8 @@ namespace TimeToExplore.Rendering
                 ? _camera.pixelHeight
                 : Screen.height;
 
-            float minPixels = MarkerSizing.MinimumPixels(mapBlendWeight);
             float baseMinAngularSize = MarkerSizing.MinimumAngularSize(
-                minPixels, fieldOfView, viewportHeight);
-            double cameraDistanceM = UnitsPerMeter > 0f
-                ? cameraDistanceUnits / (double)UnitsPerMeter
-                : 0.0;
+                MarkerSizing.MinimumPixels, fieldOfView, viewportHeight);
 
             foreach (BodyView view in _views.Values)
             {
@@ -127,11 +111,7 @@ namespace TimeToExplore.Rendering
                 // throwing out of the frame loop.
                 if (view == null) continue;
 
-                double bodyDistanceM = Vector3d.Distance(view.Body.PositionM, shipPositionM);
-                float aidStrength = MarkerSizing.AidStrength(cameraDistanceM, bodyDistanceM,
-                    localRadiusM, mapBlendWeight);
-                view.Refresh(_camera, shipPositionM, julianDate, TrueScale,
-                    baseMinAngularSize * aidStrength);
+                view.Refresh(_camera, shipPositionM, julianDate, TrueScale, baseMinAngularSize);
             }
 
             if (_sunView != null)
@@ -139,30 +119,24 @@ namespace TimeToExplore.Rendering
 
             // Every line shares one apparent width at the look-at depth; each
             // orbit vertex then gets the width that keeps perspective honest
-            // until it would fall below the distance floor. Orbit lines thicken
-            // with the map blend, from the local 3 px thread to the solar
-            // system view's 10 px stroke. The width varies per vertex through
-            // the curve, so the near and far arcs follow one camera-distance
-            // rule rather than an orbit-sized one.
+            // until it would fall below the distance floor.
             float lineDepth = cameraDistanceUnits > 0f
                 ? cameraDistanceUnits
                 : (_camera != null ? _camera.transform.position.magnitude : 0f);
-            float orbitPixels = LineWidth.OrbitPixels(mapBlendWeight);
-            float lineWidth = LineWidth.WorldWidth(lineDepth, fieldOfView, viewportHeight,
-                orbitPixels);
+            float lineWidth = LineWidth.WorldWidth(lineDepth, fieldOfView, viewportHeight);
 
             foreach (OrbitLine orbit in _planetOrbits)
             {
                 if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, _camera, UnitsPerMeter, ShowOrbits,
-                    lineWidth, orbitPixels, lineDepth);
+                    lineWidth, LineWidth.Pixels, lineDepth);
             }
 
             foreach (OrbitLine orbit in _moonOrbits)
             {
                 if (orbit == null) continue;
                 orbit.Refresh(shipPositionM, _camera, UnitsPerMeter,
-                    ShowOrbits && ShowMoonOrbits, lineWidth, orbitPixels, lineDepth);
+                    ShowOrbits && ShowMoonOrbits, lineWidth, LineWidth.Pixels, lineDepth);
             }
         }
     }

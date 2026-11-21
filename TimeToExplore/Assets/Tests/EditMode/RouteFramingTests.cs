@@ -27,7 +27,6 @@ namespace TimeToExplore.Tests.EditMode
         {
             _root = new GameObject("Route Framing Test");
             _rig = _root.AddComponent<ShipCameraRig>();
-            _rig.MapEnabled = false;
             _rig.Initialise(null, null, UnitsPerMeter);
         }
 
@@ -47,12 +46,12 @@ namespace TimeToExplore.Tests.EditMode
 
             RouteFraming.Frame frame = RouteFraming.Compute(route, ship, null,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 37f, 22f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
 
             Assert.That(frame.IsValid, Is.True);
             Assert.That(frame.RadiusM, Is.EqualTo(8.0e10).Within(2.0e6),
                 "the bounding sphere reaches the far side of the circle");
-            Assert.That(Vector3d.Distance(frame.PanM, centre - ship), Is.LessThan(1.0));
+            Assert.That(Vector3d.Distance(frame.LookAtOffsetM, centre - ship), Is.LessThan(1.0));
 
             AssertEveryPointIsOnScreen(frame, route, ship);
         }
@@ -69,7 +68,7 @@ namespace TimeToExplore.Tests.EditMode
             // of the route plane, so the overview stays on that side.
             RouteFraming.Frame frame = RouteFraming.Compute(route, ship, null,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 20f, 65f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
 
             Assert.That(frame.IsValid, Is.True);
             Vector3 cameraOffset = OrbitCamera.Direction(frame.YawDegrees,
@@ -105,7 +104,7 @@ namespace TimeToExplore.Tests.EditMode
             var ship = route[0];
             RouteFraming.Frame frame = RouteFraming.Compute(route, ship, null,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 0f, 10f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
 
             Assert.That(frame.IsValid, Is.True);
             AssertEveryPointIsWithinMargin(frame, route, ship);
@@ -130,10 +129,10 @@ namespace TimeToExplore.Tests.EditMode
 
             RouteFraming.Frame withGhost = RouteFraming.Compute(route, ship, arrival,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 0f, 10f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
             RouteFraming.Frame withoutGhost = RouteFraming.Compute(route, ship, null,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 0f, 10f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
 
             Assert.That(withGhost.RadiusM, Is.GreaterThan(withoutGhost.RadiusM),
                 "the ghost extends the fitted bounds");
@@ -152,7 +151,7 @@ namespace TimeToExplore.Tests.EditMode
 
             RouteFraming.Frame frame = RouteFraming.Compute(route, route[0], null,
                 UnitsPerMeter, FieldOfViewDegrees, Aspect, 0f, 12f,
-                false, OrbitCamera.MaxDistanceUnits);
+                OrbitCamera.MaxDistanceUnits);
 
             Assert.That(frame.IsValid, Is.True, "a straight route still gets a frame");
             Vector3d offset = Vector3d.FromUnity(OrbitCamera.Direction(
@@ -180,7 +179,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(transition.PitchDegreesAt, Is.EqualTo(5f).Within(1e-4f));
             Assert.That(transition.DistanceUnitsAt, Is.EqualTo(31.6228f).Within(1e-3f),
                 "distance is geometric, so a 1000x zoom reads evenly");
-            Assert.That(Vector3d.Distance(transition.PanMAt,
+            Assert.That(Vector3d.Distance(transition.LookAtOffsetMAt,
                 (startPan + targetPan) * 0.5), Is.LessThan(1.0));
 
             Assert.That(transition.Advance(0.75f), Is.True);
@@ -188,7 +187,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(transition.YawDegreesAt, Is.EqualTo(10f).Within(1e-4f));
             Assert.That(transition.PitchDegreesAt, Is.EqualTo(30f).Within(1e-4f));
             Assert.That(transition.DistanceUnitsAt, Is.EqualTo(1000f).Within(1e-3f));
-            Assert.That(Vector3d.Distance(transition.PanMAt, targetPan),
+            Assert.That(Vector3d.Distance(transition.LookAtOffsetMAt, targetPan),
                 Is.LessThan(1e-6));
         }
 
@@ -216,7 +215,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(frames, Is.InRange(89, 92), "about a second and a half of frames");
             Assert.That(_rig.Orbit.DistanceUnits, Is.GreaterThan(startDistance),
                 "the view pulls back from the ship to the route");
-            Assert.That(Vector3d.Distance(_rig.Map.PanOffsetM, centre - ship),
+            Assert.That(Vector3d.Distance(_rig.LookAtOffsetM, centre - ship),
                 Is.LessThan(1.0), "the look-at lands on the route's centre");
             Assert.That(_rig.LookAtUnits, Is.Not.EqualTo(Vector3.zero));
 
@@ -248,19 +247,17 @@ namespace TimeToExplore.Tests.EditMode
             _rig.Apply(ship, 1f / 60f);
             Assert.That(_rig.IsFramingRoute, Is.True);
 
-            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput
             {
-                RightPressed = true,
-                Pointer = new Vector2(100f, 100f)
-            }, mapSide: false);
-            _rig.ApplyDragInput(new ShipCameraRig.DragInput
+                RightPressed = true
+            });
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput
             {
-                Pointer = new Vector2(120f, 100f),
                 Delta = new Vector2(2f, 0f)
-            }, mapSide: false);
+            });
 
             Assert.That(_rig.IsFramingRoute, Is.False, "an orbit drag takes the view back");
-            _rig.ApplyDragInput(new ShipCameraRig.DragInput { RightReleased = true }, false);
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput { RightReleased = true });
 
             _rig.FrameRoute(route, ship, null);
             _rig.Apply(ship, 1f / 60f);
@@ -312,7 +309,7 @@ namespace TimeToExplore.Tests.EditMode
             Vector3 offset = OrbitCamera.Direction(frame.YawDegrees, frame.PitchDegrees);
             AssertEveryPointIsOnScreen(new RoutePose
             {
-                PositionUnits = (frame.PanM * UnitsPerMeter).ToUnity()
+                PositionUnits = (frame.LookAtOffsetM * UnitsPerMeter).ToUnity()
                                 + offset * frame.DistanceUnits,
                 Rotation = Quaternion.LookRotation(-offset, Vector3.up),
                 DistanceUnits = frame.DistanceUnits
@@ -331,7 +328,7 @@ namespace TimeToExplore.Tests.EditMode
             Vector3 offset = OrbitCamera.Direction(frame.YawDegrees, frame.PitchDegrees);
             var pose = new RoutePose
             {
-                PositionUnits = (frame.PanM * UnitsPerMeter).ToUnity()
+                PositionUnits = (frame.LookAtOffsetM * UnitsPerMeter).ToUnity()
                                 + offset * frame.DistanceUnits,
                 Rotation = Quaternion.LookRotation(-offset, Vector3.up),
                 DistanceUnits = frame.DistanceUnits

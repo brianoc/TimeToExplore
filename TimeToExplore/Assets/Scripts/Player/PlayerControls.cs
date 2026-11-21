@@ -38,7 +38,7 @@ namespace TimeToExplore.Player
         /// <summary>
         /// Pointer movement, in pixels, that separates a click from a drag. A
         /// left press that stays inside this radius selects on release; one that
-        /// leaves it is a map pan and selects nothing.
+        /// leaves it selects nothing.
         /// </summary>
         public const float ClickSlopPixels = 4f;
 
@@ -80,7 +80,7 @@ namespace TimeToExplore.Player
 
         public static Vector2 PointerPosition => ReadPointer(Mouse.current);
 
-        /// <summary>Left button down this frame: starts a click or a map pan.</summary>
+        /// <summary>Left button down this frame: starts a click.</summary>
         public static bool LeftClickPressed => ReadLeftClick(Mouse.current);
 
         /// <summary>The left button is held: a click candidate may turn into a drag.</summary>
@@ -135,7 +135,7 @@ namespace TimeToExplore.Player
 
         /// <summary>
         /// True when the pointer has moved further than the click slop, in
-        /// pixels. The HUD uses it to tell a click on a body from a map pan that
+        /// pixels. The HUD uses it to tell a click on a body from a drag that
         /// happened to start on the body.
         /// </summary>
         public static bool ExceedsClickSlop(Vector2 pressPoint, Vector2 currentPoint,

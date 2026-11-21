@@ -18,9 +18,9 @@ namespace TimeToExplore.Rendering
     /// are tens of times further out. Even spacing gives all eight planets a
     /// colour a player can tell apart.
     ///
-    /// The colour is a property of the body, not of the view: the local view and
-    /// the solar system view draw the same hue at the same alpha. Only the width
-    /// blends with the zoom (see <see cref="LineWidth.OrbitPixels"/>).
+    /// The colour is a property of the body, not of the view: it is the same hue
+    /// at the same alpha at every zoom. Only the width follows the camera
+    /// distance (see <see cref="LineWidth"/>).
     ///
     /// Pure C#, so the ramp and the ordering are tested without a scene.
     /// </summary>
@@ -41,9 +41,8 @@ namespace TimeToExplore.Rendering
         public const float NeptuneValue = 0.94f;
 
         /// <summary>
-        /// Opacity shared by every planet orbit in both views. Half is enough
-        /// for a 3 px local line to read over the sky and lets the 10 px map
-        /// line layer without washing out the markers behind it.
+        /// Opacity shared by every planet orbit. Half is enough for a 3 px
+        /// line to read over the sky without washing out the markers behind it.
         /// </summary>
         public const float PlanetAlpha = 0.5f;
 

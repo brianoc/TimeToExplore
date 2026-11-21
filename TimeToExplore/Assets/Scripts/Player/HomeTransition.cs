@@ -5,11 +5,11 @@ namespace TimeToExplore.Player
 {
     /// <summary>
     /// A timed return to the ship: the orbit distance eases geometrically to a
-    /// local value while the map pan unwinds to zero. The distance is
-    /// interpolated in log space, so a descent from the map ceiling to the
-    /// local band changes the view at an even rate instead of doing nothing and
-    /// then collapsing at the end. Both follow one smoothstep, so the zoom and
-    /// the unwind start and end at rest. Plain C#, so the timing and the
+    /// local value while the look-at offset unwinds to zero. The distance is
+    /// interpolated in log space, so a descent from the outer zoom ceiling to
+    /// the local band changes the view at an even rate instead of doing nothing
+    /// and then collapsing at the end. Both follow one smoothstep, so the zoom
+    /// and the unwind start and end at rest. Plain C#, so the timing and the
     /// endpoints are verified without a scene.
     /// </summary>
     public sealed class HomeTransition
@@ -22,16 +22,16 @@ namespace TimeToExplore.Player
         public float EasedProgress { get; private set; }
         public float StartDistanceUnits { get; private set; }
         public float TargetDistanceUnits { get; private set; }
-        public Vector3d StartPanM { get; private set; }
+        public Vector3d StartLookAtOffsetM { get; private set; }
 
         private float _elapsedSeconds;
 
         public void Begin(float startDistanceUnits, float targetDistanceUnits,
-            Vector3d startPanM)
+            Vector3d startLookAtOffsetM)
         {
             StartDistanceUnits = startDistanceUnits;
             TargetDistanceUnits = targetDistanceUnits;
-            StartPanM = startPanM;
+            StartLookAtOffsetM = startLookAtOffsetM;
             _elapsedSeconds = 0f;
             Progress = 0f;
             EasedProgress = 0f;
@@ -59,7 +59,7 @@ namespace TimeToExplore.Player
 
         /// <summary>
         /// The orbit distance on this step, between the two endpoints. Log-space
-        /// so the perceived zoom rate is even across a map-to-local descent.
+        /// so the perceived zoom rate is even across a long descent.
         /// </summary>
         public float DistanceUnitsAt
         {
@@ -75,8 +75,8 @@ namespace TimeToExplore.Player
             }
         }
 
-        /// <summary>The look-at offset on this step, unwinding from the start pan.</summary>
-        public Vector3d PanMAt => StartPanM * (1.0 - EasedProgress);
+        /// <summary>The look-at offset on this step, unwinding from the start offset.</summary>
+        public Vector3d LookAtOffsetMAt => StartLookAtOffsetM * (1.0 - EasedProgress);
 
         /// <summary>Smoothstep: zero velocity at both ends, no overshoot.</summary>
         public static float Ease(float t)

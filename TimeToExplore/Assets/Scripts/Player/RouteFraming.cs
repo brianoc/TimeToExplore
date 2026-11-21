@@ -43,12 +43,12 @@ namespace TimeToExplore.Player
         /// </summary>
         public readonly struct Frame
         {
-            public Frame(Vector3d centreM, double radiusM, Vector3d panM,
+            public Frame(Vector3d centreM, double radiusM, Vector3d lookAtOffsetM,
                 float yawDegrees, float pitchDegrees, float distanceUnits)
             {
                 CentreM = centreM;
                 RadiusM = radiusM;
-                PanM = panM;
+                LookAtOffsetM = lookAtOffsetM;
                 YawDegrees = yawDegrees;
                 PitchDegrees = pitchDegrees;
                 DistanceUnits = distanceUnits;
@@ -61,7 +61,7 @@ namespace TimeToExplore.Player
             public double RadiusM { get; }
 
             /// <summary>The look-at offset from the ship, in ecliptic metres.</summary>
-            public Vector3d PanM { get; }
+            public Vector3d LookAtOffsetM { get; }
 
             public float YawDegrees { get; }
             public float PitchDegrees { get; }
@@ -74,9 +74,9 @@ namespace TimeToExplore.Player
                 && float.IsFinite(DistanceUnits)
                 && float.IsFinite(YawDegrees)
                 && float.IsFinite(PitchDegrees)
-                && double.IsFinite(PanM.x)
-                && double.IsFinite(PanM.y)
-                && double.IsFinite(PanM.z);
+                && double.IsFinite(LookAtOffsetM.x)
+                && double.IsFinite(LookAtOffsetM.y)
+                && double.IsFinite(LookAtOffsetM.z);
         }
 
         /// <summary>
@@ -87,7 +87,7 @@ namespace TimeToExplore.Player
         public static Frame Compute(IReadOnlyList<Vector3d> routePointsM,
             Vector3d shipPositionM, Vector3d? targetArrivalM, float unitsPerMeter,
             float fieldOfViewDegrees, float aspect, float currentYawDegrees,
-            float currentPitchDegrees, bool mapEnabled, float maxDistanceUnits)
+            float currentPitchDegrees, float maxDistanceUnits)
         {
             if (routePointsM == null || routePointsM.Count < 2) return default;
             if (!(unitsPerMeter > 0f) || !(fieldOfViewDegrees > 0f) ||
@@ -124,7 +124,7 @@ namespace TimeToExplore.Player
             float yaw = Mathf.Atan2(offset.x, offset.z) * Mathf.Rad2Deg;
 
             double distanceM = ProjectedDistance(routePointsM, targetArrivalM, centre,
-                yaw, pitch, mapEnabled, fieldOfViewDegrees, aspect);
+                yaw, pitch, fieldOfViewDegrees, aspect);
             if (!(distanceM > 0.0) || !double.IsFinite(distanceM)) return default;
 
             double distanceUnits = distanceM * unitsPerMeter;
@@ -140,13 +140,10 @@ namespace TimeToExplore.Player
         /// view with <see cref="FitMargin"/> to spare. Unlike a bounding-sphere
         /// fit, this measures the route projected onto the screen, so a long
         /// thin transfer fills the frame instead of leaving half of it empty.
-        /// All the rotations the map blend can place the camera in are tested and
-        /// the largest distance wins, so the fit does not depend on whether the
-        /// blend has already tilted the pose.
         /// </summary>
         private static double ProjectedDistance(IReadOnlyList<Vector3d> points,
             Vector3d? extra, Vector3d centre, float yawDegrees, float pitchDegrees,
-            bool mapEnabled, float fieldOfViewDegrees, float aspect)
+            float fieldOfViewDegrees, float aspect)
         {
             double halfVertical = 0.5 * fieldOfViewDegrees * Math.PI / 180.0;
             double tanVertical = Math.Tan(halfVertical);
@@ -154,31 +151,15 @@ namespace TimeToExplore.Player
             if (!(tanVertical > 0.0) || !(tanHorizontal > 0.0)) return 0.0;
 
             double limit = 1.0 / FitMargin;
-            Quaternion localRotation = Quaternion.LookRotation(
+            Quaternion rotation = Quaternion.LookRotation(
                 -OrbitCamera.Direction(yawDegrees, pitchDegrees), Vector3.up);
+            Vector3d offset = Vector3d.FromUnity(
+                OrbitCamera.Direction(yawDegrees, pitchDegrees));
+            Vector3d right = Vector3d.FromUnity(rotation * Vector3.right);
+            Vector3d up = Vector3d.FromUnity(rotation * Vector3.up);
 
-            int steps = mapEnabled ? 4 : 0;
-            double distanceM = 0.0;
-
-            for (int step = 0; step <= steps; step++)
-            {
-                float weight = steps == 0 ? 0f : (float)step / steps;
-                float effectivePitch = Mathf.Lerp(pitchDegrees,
-                    MapView.TopDownPitchDegrees, weight);
-                Quaternion rotation = steps == 0
-                    ? localRotation
-                    : MapView.BlendRotation(localRotation, yawDegrees, weight);
-
-                Vector3d offset = Vector3d.FromUnity(
-                    OrbitCamera.Direction(yawDegrees, effectivePitch));
-                Vector3d right = Vector3d.FromUnity(rotation * Vector3.right);
-                Vector3d up = Vector3d.FromUnity(rotation * Vector3.up);
-
-                distanceM = Math.Max(distanceM, DistanceForBasis(points, extra, centre,
-                    offset, right, up, limit, tanHorizontal, tanVertical));
-            }
-
-            return distanceM;
+            return DistanceForBasis(points, extra, centre,
+                offset, right, up, limit, tanHorizontal, tanVertical);
         }
 
         private static double DistanceForBasis(IReadOnlyList<Vector3d> points,

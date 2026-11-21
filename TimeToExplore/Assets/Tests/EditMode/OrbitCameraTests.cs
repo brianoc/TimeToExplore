@@ -223,7 +223,7 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(home.IsActive, Is.True);
             Assert.That(home.DistanceUnitsAt, Is.EqualTo(100f).Within(1e-3f));
-            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(startPan.Magnitude).Within(1.0));
+            Assert.That(home.LookAtOffsetMAt.Magnitude, Is.EqualTo(startPan.Magnitude).Within(1.0));
             Assert.That(home.Progress, Is.EqualTo(0f));
 
             // Half the duration is smoothstep's half: the endpoints move together,
@@ -231,7 +231,7 @@ namespace TimeToExplore.Tests.EditMode
             home.Advance(0.5f);
             Assert.That(home.EasedProgress, Is.EqualTo(0.5f).Within(1e-5f));
             Assert.That(home.DistanceUnitsAt, Is.EqualTo(Mathf.Sqrt(1000f)).Within(1e-3f));
-            Assert.That(home.PanMAt.Magnitude,
+            Assert.That(home.LookAtOffsetMAt.Magnitude,
                 Is.EqualTo(0.5 * startPan.Magnitude).Within(1.0));
 
             int frames = 1;
@@ -244,7 +244,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(frames, Is.InRange(30, 32), "the remaining half second");
             Assert.That(home.EasedProgress, Is.EqualTo(1f));
             Assert.That(home.DistanceUnitsAt, Is.EqualTo(10f).Within(1e-3f));
-            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(0.0));
+            Assert.That(home.LookAtOffsetMAt.Magnitude, Is.EqualTo(0.0));
         }
 
         [Test]
@@ -256,7 +256,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(home.Advance(0f), Is.True);
             Assert.That(home.IsActive, Is.False);
             Assert.That(home.DistanceUnitsAt, Is.EqualTo(10f).Within(1e-3f));
-            Assert.That(home.PanMAt.Magnitude, Is.EqualTo(0.0));
+            Assert.That(home.LookAtOffsetMAt.Magnitude, Is.EqualTo(0.0));
         }
 
         [Test]

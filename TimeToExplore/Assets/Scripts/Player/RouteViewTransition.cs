@@ -5,10 +5,10 @@ namespace TimeToExplore.Player
 {
     /// <summary>
     /// A timed move from the player's current view to the pose that frames a
-    /// plotted route. Yaw takes the shortest turn, pitch and pan interpolate
-    /// linearly, and distance interpolates in log space so a change of several
-    /// orders of magnitude reads as an even zoom rather than a jump. One
-    /// smoothstep drives all four, so the move starts and ends at rest.
+    /// plotted route. Yaw takes the shortest turn, pitch and the look-at offset
+    /// interpolate linearly, and distance interpolates in log space so a change
+    /// of several orders of magnitude reads as an even zoom rather than a jump.
+    /// One smoothstep drives all four, so the move starts and ends at rest.
     ///
     /// Plain C#, so the wrap, the log distance, the exact endpoints, and the
     /// cancellation are verified in EditMode without a scene.
@@ -28,23 +28,24 @@ namespace TimeToExplore.Player
         public float TargetPitchDegrees { get; private set; }
         public float StartDistanceUnits { get; private set; }
         public float TargetDistanceUnits { get; private set; }
-        public Vector3d StartPanM { get; private set; }
-        public Vector3d TargetPanM { get; private set; }
+        public Vector3d StartLookAtOffsetM { get; private set; }
+        public Vector3d TargetLookAtOffsetM { get; private set; }
 
         private float _elapsedSeconds;
 
         public void Begin(float startYawDegrees, float startPitchDegrees,
-            float startDistanceUnits, Vector3d startPanM, float targetYawDegrees,
-            float targetPitchDegrees, float targetDistanceUnits, Vector3d targetPanM)
+            float startDistanceUnits, Vector3d startLookAtOffsetM, float targetYawDegrees,
+            float targetPitchDegrees, float targetDistanceUnits,
+            Vector3d targetLookAtOffsetM)
         {
             StartYawDegrees = startYawDegrees;
             StartPitchDegrees = startPitchDegrees;
             StartDistanceUnits = startDistanceUnits;
-            StartPanM = startPanM;
+            StartLookAtOffsetM = startLookAtOffsetM;
             TargetYawDegrees = targetYawDegrees;
             TargetPitchDegrees = targetPitchDegrees;
             TargetDistanceUnits = targetDistanceUnits;
-            TargetPanM = targetPanM;
+            TargetLookAtOffsetM = targetLookAtOffsetM;
             _elapsedSeconds = 0f;
             Progress = 0f;
             EasedProgress = 0f;
@@ -94,8 +95,9 @@ namespace TimeToExplore.Player
             }
         }
 
-        public Vector3d PanMAt =>
-            StartPanM + (TargetPanM - StartPanM) * EasedProgress;
+        public Vector3d LookAtOffsetMAt =>
+            StartLookAtOffsetM +
+            (TargetLookAtOffsetM - StartLookAtOffsetM) * EasedProgress;
 
         /// <summary>Smoothstep: zero velocity at both ends, no overshoot.</summary>
         public static float Ease(float t)
