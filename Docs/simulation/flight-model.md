@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # The one big assumption
@@ -344,8 +344,8 @@ range ([navigation and arrival](navigation-and-arrival.md#the-trip-time-control)
 ## What the throttle is
 
 The drive is **throttleable from zero to 10 m/s²**. The plan's acceleration
-curve is the throttle setting, so the HUD can draw it and the future fuel model
-can charge for its integral. Thrust direction is instantaneous: there is no
+curve is the throttle setting, so the HUD can draw it and the fuel readout can
+charge for its integral. Thrust direction is instantaneous: there is no
 attitude dynamics or slew limit yet.
 
 The quintic plan uses a smooth ramp. The hybrid fixed-thrust arrival is the
@@ -383,10 +383,59 @@ For a torch with `v_e = 10,000 km/s` (about 3.3% of light speed):
 A 1,000-tonne ship that can brachistochrone to Neptune must be 730 tonnes
 propellant at departure. That is a tanker, not a courier. With a 5,000 km/s
 budget it can reach Jupiter one-way, Mars with a reserve, and the Moon
-comfortably; the outer system needs depots or a different ship.
+comfortably; the outer system needs depots or a different ship. (That 730 t is
+a share of a 1,000 t **departure** mass. The fuel readout below quotes a
+**dry** mass of 1,000 t, so its Neptune figure is larger: the same 73% share of
+a 3,742 t departure mass.)
 
 That is the intended progression: **the map opens up as fuel infrastructure
 improves**, and the Lagrange stations are the infrastructure.
+
+## The fuel readout
+
+The nav computer prints what a journey would burn. It is the rocket equation at
+the design's **10,000 km/s** effective exhaust velocity and the ship's dry mass
+— **1,000 t** by default:
+
+```text
+m_prop = m_dry (exp(delta-v / v_e) - 1)
+```
+
+At the epoch, using the measured plans above:
+
+| Route | Delta-v | Mass ratio | Propellant | Share of departure mass |
+|---|---:|---:|---:|---:|
+| Moon | 35 km/s | 1.0035 | 3.5 t | 0.3% |
+| Venus | 1,171 km/s | 1.1242 | 124 t | 11.1% |
+| Mars | 2,345 km/s | 1.2643 | 264 t | 20.9% |
+| Jupiter | 5,189 km/s | 1.6802 | 680 t | 40.5% |
+| Saturn | 6,515 km/s | 1.9184 | 918 t | 47.9% |
+| Neptune | 13,196 km/s | 3.7419 | 2,742 t | 73.3% |
+
+The flight panel's `Fuel` row reads the tonnes and the share, for example
+`264 t · 20.9% of departure mass`. It updates with the trip-time slider because
+the plan does. This is a **readout, not a budget**: the ship has no finite tank,
+its mass does not change in flight, and no plan is refused or stranded for
+fuel. A finite tank, mass-dependent acceleration, and the failure state are
+milestone 3 ([ADR-016](../decisions/adr-016-fuel-readout.md)).
+
+## Command thrust is not the fuel lever
+
+The player controls **trip time** and, on the fixed-burn profiles, the **burn
+level**. They are different kinds of cost. On the powered quintic the thrust
+profile *is* the curve, so the trip-time slider changes the curve and the
+delta-v follows; there is no separate thrust control to compare. On the
+burn–coast–burn profile a fixed burn's delta-v is `a · T`, and the duration `T`
+is solved from the velocity change the crossing needs, so raising `a` shortens
+the burn and leaves `a · T` nearly unchanged. **Three times the level is nearly
+the same propellant at a fixed trip time**: the same crossing flown with a
+shorter, harder burn.
+
+Journey time is therefore the fuel lever, and a steep one. The rocket equation
+is exponential in delta-v, and a powered plan's delta-v rises roughly as `1/T`
+towards the fast end, so a trip near the floor can need several times the
+propellant of a gentle one. That is the same fast-and-expensive against
+slow-and-cheap trade the nav computer already exposes, now with a mass on it.
 
 ## What the numbers imply for propulsion
 
@@ -510,7 +559,9 @@ These are more interesting than a hull-integrity bar.
 * Does fuel mass change handling and acceleration, or is acceleration held
   constant by throttling? The former is more honest; the latter is easier to fly.
   The current implementation assumes constant 10 m/s² and carries the mass as
-  bookkeeping only.
+  bookkeeping only. The first-pass fuel readout charges the plan's delta-v
+  through the rocket equation, but the ship's mass does not change and no tank
+  is limited ([ADR-016](../decisions/adr-016-fuel-readout.md)).
 * How much of the burn does the player manually fly? The implemented autopilot
   flies the whole plan and tracks it with light feedback; manual override and
   arrival hand-over are scene work.

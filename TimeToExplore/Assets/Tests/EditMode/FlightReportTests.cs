@@ -41,6 +41,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("m/s²"));
             Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("%"));
             Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Fuel")?.Value, Does.Contain("t"));
+            Assert.That(Find(rows, "Fuel")?.Value, Does.Contain("% of departure mass"));
             Assert.That(Find(rows, "Flight time"), Is.Not.Null);
             Assert.That(Find(rows, "Warp")?.Value, Is.EqualTo("x10,000"));
         }
@@ -90,6 +92,7 @@ namespace TimeToExplore.Tests.EditMode
                 Does.Match(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"));
             Assert.That(Find(rows, "Flight time"), Is.Not.Null);
             Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Fuel")?.Value, Does.Contain("% of departure mass"));
             Assert.That(Find(rows, "Throttle"), Is.Null, "a preview is not flying");
             Assert.That(Find(rows, "Note"), Is.Null);
 
@@ -103,6 +106,7 @@ namespace TimeToExplore.Tests.EditMode
         public void ARetimedPreviewReportsTheLongerFlightTime()
         {
             TrajectoryPlan fastest = _session.Plot("mars", _epoch);
+            string fastestFuel = FlightReport.FuelLabel(fastest);
             double chosen = 2.0 * _session.PreviewMinimumSeconds;
             _session.SetPreviewDuration(chosen);
 
@@ -114,6 +118,10 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(JulianDate.FormatShort(fastest.ArrivalJulianDate)),
                 "the arrival date slides with the chosen time");
             Assert.That(Find(rows, "Peak thrust")?.Value, Does.Contain("m/s²"));
+            Assert.That(Find(rows, "Fuel")?.Value, Is.Not.EqualTo(fastestFuel),
+                "a longer trip burns less fuel, so the readout moves");
+            Assert.That(_session.Preview.PropellantKg,
+                Is.LessThan(fastest.PropellantKg));
         }
 
         [Test]

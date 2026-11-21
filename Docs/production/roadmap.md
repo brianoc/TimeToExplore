@@ -118,8 +118,9 @@ Done in `Assets/Scripts/` and verified through the scene's frame loop:
   type — gold quintic, blue dashed conic, red fixed burn, shaded within a run of
   one type — with a flip marker at the thrust reversal and an arrival marker.
 * The flight panel is a phase table — departure, cruise, capture with dates and
-  durations, arrival date, flight time, peak thrust and throttle, delta-v — plus
-  the live phase, next-event countdown, throttle, and warp.
+  durations, arrival date, flight time, peak thrust and throttle, delta-v, and
+  the fuel readout — plus the live phase, next-event countdown, throttle, and
+  warp.
 * `WarpPolicy` drops the warp by clearance, local orbital timescale, and the next
   plan event, and the status panel says when it is holding the clock.
 * The frame has a 2,000-substep budget; if it runs out the clock is clamped to
@@ -217,10 +218,16 @@ constants.
 
 # Milestone 3 — fuel and the delta-v economy
 
+**First pass done (2026-11-21):** the nav computer prints what a journey would
+burn in a `Fuel` row — the rocket equation at 10,000 km/s and the 1,000 t dry
+mass, as tonnes and a share of the departure mass. It is a readout, not a
+budget: the tank is unlimited, mass is constant, and no plan is refused for
+fuel ([ADR-016](../decisions/adr-016-fuel-readout.md)). Remaining:
+
 * Charge `PlanArc.DeltaVMps` against a finite budget.
 * Make acceleration mass-dependent, or hold it constant by throttling.
 * Refuse a plan the budget cannot pay, and offer the cheap coasting alternative.
-* Add the fuel UI and the end-of-fuel failure state.
+* Add the tank level to the fuel readout and the end-of-fuel failure state.
 
 **Open design choice:** constant acceleration with decreasing mass (more honest)
 versus constant acceleration with throttling (easier to fly). The current

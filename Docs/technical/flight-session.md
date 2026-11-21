@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -298,6 +298,7 @@ PLAN
   Flight time   4.4 d
   Peak thrust   9.76 m/s² (98%)
   Delta-v       2,345 km/s
+  Fuel          264 t · 20.9% of departure mass
 NOW
   Status        Under way
   Phase         Departure
@@ -309,6 +310,13 @@ NOW
 
 Each phase row ends with what the drive is doing on that leg: `break`,
 `powered`, `prograde burn`, `drive off`, `brake`, or `capture burn`.
+
+The `Fuel` row is the first-pass readout: the rocket equation at 10,000 km/s
+and the ship's 1,000 t dry mass, as tonnes and a share of the departure mass.
+It is derived from the plan's delta-v, so it moves with the trip-time slider
+and barely moves when the burn level changes at a fixed trip time. It is not a
+budget — the tank is unlimited and the ship's mass does not change in flight
+([ADR-016](/decisions/adr-016-fuel-readout.md)).
 
 The header shows the target and the status, and the line under it is the
 countdown to the next action (`Arrival  T− 12m 04s`). On arrival the status
