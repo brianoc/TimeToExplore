@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Player;
@@ -348,6 +349,212 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void ADistantLineHoldsTheDistanceFloorInsteadOfVanishing()
+        {
+            const float lookAtDepth = 185f;
+            float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f);
+
+            // A single world width would put these vertices at 1, 0.3, and
+            // practically 0 pixels; the floor holds them at 2.
+            foreach (float multiple in new[] { 3f, 10f, 1_000f })
+            {
+                float depth = lookAtDepth * multiple;
+                float width = LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                    depth, 60f, 1080f);
+
+                Assert.That(LineWidth.PixelsAt(width, depth, 60f, 1080f),
+                    Is.EqualTo(LineWidth.DistanceFloorPixels).Within(1e-3f),
+                    $"{multiple} camera distances away");
+            }
+        }
+
+        [Test]
+        public void ADistantLineStillNarrowsUntilItReachesTheFloor()
+        {
+            const float lookAtDepth = 185f;
+            float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f);
+            float depth = lookAtDepth * 1.2f;
+
+            float width = LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                depth, 60f, 1080f);
+
+            Assert.That(LineWidth.PixelsAt(width, depth, 60f, 1080f),
+                Is.EqualTo(LineWidth.Pixels / 1.2f).Within(1e-3f),
+                "above the floor the natural perspective falloff still applies");
+        }
+
+        [Test]
+        public void TheNearHalfOfALineKeepsItsCurrentLook()
+        {
+            const float lookAtDepth = 185f;
+            float lookAtWidth = LineWidth.WorldWidth(lookAtDepth, 60f, 1080f);
+
+            // Nearer geometry keeps the same world width it has today, so it
+            // thickens with proximity exactly as it did before the floor.
+            foreach (float depth in new[] { 0.01f * lookAtDepth, 0.5f * lookAtDepth,
+                lookAtDepth })
+            {
+                Assert.That(LineWidth.SampleWorldWidth(lookAtWidth, LineWidth.Pixels,
+                        depth, 60f, 1080f),
+                    Is.EqualTo(lookAtWidth).Within(1e-6f), $"at {depth} units");
+            }
+        }
+
+        [Test]
+        public void TheFloorNeverInflatesAThinnerLine()
+        {
+            float onePixelWidth = LineWidth.WorldWidth(1_000f, 60f, 1080f, 1f);
+
+            float far = LineWidth.SampleWorldWidth(onePixelWidth, 1f, 1_000_000f,
+                60f, 1080f);
+
+            Assert.That(LineWidth.PixelsAt(far, 1_000_000f, 60f, 1080f),
+                Is.EqualTo(1f).Within(1e-3f),
+                "a line already thinner than the floor stays its own width");
+        }
+
+        [Test]
+        public void TheDistanceFloorIsResolutionIndependent()
+        {
+            float narrow = LineWidth.WorldWidth(185f, 60f, 1080f);
+            float wide = LineWidth.WorldWidth(185f, 60f, 2160f);
+
+            float farNarrow = LineWidth.SampleWorldWidth(narrow, 3f, 100_000f, 60f, 1080f);
+            float farWide = LineWidth.SampleWorldWidth(wide, 3f, 100_000f, 60f, 2160f);
+
+            Assert.That(LineWidth.PixelsAt(farNarrow, 100_000f, 60f, 1080f),
+                Is.EqualTo(LineWidth.DistanceFloorPixels).Within(1e-3f));
+            Assert.That(LineWidth.PixelsAt(farWide, 100_000f, 60f, 2160f),
+                Is.EqualTo(LineWidth.DistanceFloorPixels).Within(1e-3f));
+            Assert.That(farWide, Is.EqualTo(farNarrow * 0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void AnOrbitLineCarriesAPerVertexWidthCurve()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            var parent = new GameObject("Orbit Width Parent");
+            var orbitObject = new GameObject("Orbit Width Orbit");
+            var cameraObject = new GameObject("Orbit Width Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            LineRenderer line = null;
+
+            try
+            {
+                const float unitsPerMeter = 1e-6f;
+                const float cameraDistance = 185f;
+                camera.transform.position = new Vector3(0f, 0f, -cameraDistance);
+                camera.fieldOfView = 60f;
+                int height = ViewportHeight(camera);
+
+                OrbitLine orbit = orbitObject.AddComponent<OrbitLine>();
+                orbit.Initialise(earth, _model, Color.white, parent.transform);
+
+                float lookAtWidth = LineWidth.WorldWidth(cameraDistance,
+                    camera.fieldOfView, height, LineWidth.OrbitLocalPixels);
+                orbit.Refresh(earth.PositionM, camera, unitsPerMeter, true,
+                    lookAtWidth, LineWidth.OrbitLocalPixels);
+
+                line = orbitObject.GetComponent<LineRenderer>();
+                Assert.That(line, Is.Not.Null);
+                Assert.That(line.widthCurve.length, Is.EqualTo(line.positionCount),
+                    "every sampled vertex needs its own width key");
+
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float depth = Vector3.Distance(line.GetPosition(i),
+                        camera.transform.position);
+                    float pixels = LineWidth.PixelsAt(
+                        line.widthCurve.Evaluate(i / (float)(line.positionCount - 1)),
+                        depth, camera.fieldOfView, height);
+
+                    Assert.That(pixels,
+                        Is.GreaterThanOrEqualTo(LineWidth.DistanceFloorPixels - 1e-3f),
+                        $"orbit vertex {i} is only {pixels} px wide");
+                }
+            }
+            finally
+            {
+                if (line != null && line.sharedMaterial != null)
+                    UnityEngine.Object.DestroyImmediate(line.sharedMaterial);
+                UnityEngine.Object.DestroyImmediate(orbitObject);
+                UnityEngine.Object.DestroyImmediate(parent);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void ATrajectoryLineCarriesAPerVertexWidthCurve()
+        {
+            var lineObject = new GameObject("Trajectory Width Line");
+            var cameraObject = new GameObject("Trajectory Width Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            TrajectoryLine trajectory = null;
+
+            try
+            {
+                const float unitsPerMeter = 1e-6f;
+                const float cameraDistance = 185f;
+                camera.transform.position = new Vector3(0f, 0f, -cameraDistance);
+                camera.fieldOfView = 60f;
+                int height = ViewportHeight(camera);
+
+                double jd = _model.CurrentJulianDate;
+                var start = Vector3d.Zero;
+                var end = new Vector3d(1.0e14, 0.0, 0.0);
+                var arc = new PlanArc(FlightPhase.Cruise, "sun", jd, jd + 1.0,
+                    new StraightPath(start, end));
+                var plan = new TrajectoryPlan("mars", 10.0,
+                    new List<PlanArc> { arc },
+                    new ShipState(jd, start, Vector3d.Zero),
+                    new ShipState(jd + 1.0, end, Vector3d.Zero));
+
+                trajectory = lineObject.AddComponent<TrajectoryLine>();
+                trajectory.Initialise(unitsPerMeter);
+                trajectory.Show(plan, ZeroGravityField.Instance);
+                trajectory.Refresh(start, camera);
+
+                LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();
+                Assert.That(line, Is.Not.Null);
+                Assert.That(line.positionCount, Is.GreaterThanOrEqualTo(2));
+                Assert.That(line.widthCurve.length, Is.EqualTo(line.positionCount));
+
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    float depth = Vector3.Distance(line.GetPosition(i),
+                        camera.transform.position);
+                    float pixels = LineWidth.PixelsAt(
+                        line.widthCurve.Evaluate(i / (float)(line.positionCount - 1)),
+                        depth, camera.fieldOfView, height);
+
+                    Assert.That(pixels,
+                        Is.GreaterThanOrEqualTo(LineWidth.DistanceFloorPixels - 1e-3f),
+                        $"route vertex {i} is only {pixels} px wide");
+                }
+
+                float nearPixels = PixelsAtVertex(line, 0, camera, height);
+                Assert.That(nearPixels, Is.EqualTo(LineWidth.Pixels).Within(1e-2f),
+                    "the route still starts at the look-at width");
+
+                float farPixels = PixelsAtVertex(line, line.positionCount - 1, camera, height);
+                Assert.That(farPixels, Is.EqualTo(LineWidth.DistanceFloorPixels).Within(1e-2f),
+                    "the far end of the route holds the floor");
+            }
+            finally
+            {
+                if (trajectory != null)
+                {
+                    foreach (LineRenderer line in
+                        lineObject.GetComponentsInChildren<LineRenderer>(true))
+                        if (line.sharedMaterial != null)
+                            UnityEngine.Object.DestroyImmediate(line.sharedMaterial);
+                }
+                UnityEngine.Object.DestroyImmediate(lineObject);
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
         public void MercuryIsWarmAndNeptuneIsCool()
         {
             Color mercury = OrbitColours.Planet(0f);
@@ -410,6 +617,50 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         // ---------------------------------------------------------------- helper
+
+        private static int ViewportHeight(Camera camera) =>
+            camera != null && camera.pixelHeight > 0 ? camera.pixelHeight : Screen.height;
+
+        private static float PixelsAtVertex(LineRenderer line, int index, Camera camera,
+            int height)
+        {
+            float depth = Vector3.Distance(line.GetPosition(index),
+                camera.transform.position);
+            float u = line.positionCount > 1
+                ? index / (float)(line.positionCount - 1)
+                : 0f;
+            return LineWidth.PixelsAt(line.widthCurve.Evaluate(u), depth,
+                camera.fieldOfView, height);
+        }
+
+        /// <summary>A straight arc for the renderer tests: constant velocity and
+        /// no acceleration, so it tessellates to its two endpoints.</summary>
+        private sealed class StraightPath : IArcPath
+        {
+            private readonly Vector3d _start;
+            private readonly Vector3d _delta;
+
+            public StraightPath(Vector3d start, Vector3d end)
+            {
+                _start = start;
+                _delta = end - start;
+            }
+
+            public double DurationSeconds => 1.0;
+
+            public Vector3d PositionAt(double u) => _start + _delta * u;
+
+            public Vector3d VelocityAt(double u) => _delta;
+
+            public Vector3d AccelerationAt(double u) => Vector3d.Zero;
+
+            public double SecondsAt(double u) => u * DurationSeconds;
+
+            public double ParameterAtSeconds(double seconds) =>
+                DurationSeconds > 0.0
+                    ? System.Math.Clamp(seconds / DurationSeconds, 0.0, 1.0)
+                    : 0.0;
+        }
 
         private bool Label(BodyRuntime body, double distanceToShipM, float cameraDistanceUnits,
             float blendWeight = 1f) =>

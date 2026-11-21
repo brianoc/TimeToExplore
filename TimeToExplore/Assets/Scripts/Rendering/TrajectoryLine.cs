@@ -23,6 +23,8 @@ namespace TimeToExplore.Rendering
             public LineRenderer Renderer;
             public Material Material;
             public readonly List<Vector3d> Points = new List<Vector3d>();
+            public Keyframe[] WidthKeys;
+            public AnimationCurve WidthCurve;
             public Color Colour;
             public bool Dashed;
             public string Label;
@@ -244,7 +246,14 @@ namespace TimeToExplore.Rendering
             };
             line.material = material;
 
-            return new ArcLine { Renderer = line, Material = material };
+            var arcLine = new ArcLine
+            {
+                Renderer = line,
+                Material = material,
+                WidthCurve = new AnimationCurve(new Keyframe(0f, 1f))
+            };
+            line.widthCurve = arcLine.WidthCurve;
+            return arcLine;
         }
 
         /// <summary>Apply an arc's colour and dash style to a pooled line.</summary>
@@ -294,24 +303,30 @@ namespace TimeToExplore.Rendering
             if (_plan == null) return;
 
             // Width is apparent, not world-scaled: the same pixel rule as the
-            // orbit lines. The depth is the camera's distance to the ship
-            // (the render origin), which is where the route is anchored; on a
-            // panned map that is the true distance to the route.
-            float depth = camera != null
+            // orbit lines. The base depth is the camera's distance to the ship
+            // (the render origin), where the route is anchored. Each vertex
+            // then gets its own width from its own depth, so the far end stays
+            // visible.
+            float baseDepth = camera != null
                 ? Mathf.Max(camera.transform.position.magnitude, 1e-4f)
                 : 1f;
-            float width = LineWidth.WorldWidth(camera, depth);
+            float fieldOfView = camera != null ? camera.fieldOfView : 60f;
+            int viewportHeight = camera != null && camera.pixelHeight > 0
+                ? camera.pixelHeight
+                : Screen.height;
+            float baseWidth = LineWidth.WorldWidth(baseDepth, fieldOfView,
+                viewportHeight, LineWidth.Pixels);
 
             for (int i = 0; i < _activeLines.Count; i++)
             {
                 ArcLine arcLine = _activeLines[i];
-                SetPositions(arcLine.Renderer, arcLine.Points, shipPositionM, width);
+                SetPositions(arcLine, shipPositionM, camera, baseWidth);
 
                 if (arcLine.Dashed)
                 {
                     UpdateDashScale(arcLine.Material,
                         DashLengthUnits(arcLine.Points, shipPositionM),
-                        Mathf.Max(width * 8f, 1e-6f));
+                        Mathf.Max(baseWidth * 8f, 1e-6f));
                 }
             }
 
@@ -358,23 +373,48 @@ namespace TimeToExplore.Rendering
             marker.localScale = Vector3.one * size;
         }
 
-        private void SetPositions(LineRenderer line, List<Vector3d> points,
-            Vector3d shipPositionM, float width = 0f)
+        private void SetPositions(ArcLine arcLine, Vector3d shipPositionM, Camera camera,
+            float baseWidth)
         {
+            LineRenderer line = arcLine.Renderer;
             if (line == null) return;
 
-            bool visible = points.Count >= 2;
+            List<Vector3d> points = arcLine.Points;
+            int count = points.Count;
+            bool visible = count >= 2;
             line.enabled = visible;
             if (!visible) return;
 
-            line.positionCount = points.Count;
-            for (int i = 0; i < points.Count; i++)
+            line.positionCount = count;
+            if (arcLine.WidthKeys == null || arcLine.WidthKeys.Length != count)
             {
-                Vector3d relative = (points[i] - shipPositionM) * _unitsPerMeter;
-                line.SetPosition(i, relative.ToUnity());
+                // One key per point, so each vertex carries its own screen
+                // width. The array is reused while the point count is stable.
+                arcLine.WidthKeys = new Keyframe[count];
             }
 
-            if (width > 0f) line.widthMultiplier = width;
+            Vector3 cameraPosition = camera != null ? camera.transform.position : Vector3.zero;
+            float fieldOfView = camera != null ? camera.fieldOfView : 60f;
+            int viewportHeight = camera != null && camera.pixelHeight > 0
+                ? camera.pixelHeight
+                : Screen.height;
+            float denominator = Mathf.Max(count - 1, 1);
+
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 relative = ((points[i] - shipPositionM) * _unitsPerMeter).ToUnity();
+                line.SetPosition(i, relative);
+
+                float depth = camera != null
+                    ? Vector3.Distance(relative, cameraPosition)
+                    : 0f;
+                arcLine.WidthKeys[i] = new Keyframe(i / denominator,
+                    LineWidth.SampleWorldWidth(baseWidth, LineWidth.Pixels, depth,
+                        fieldOfView, viewportHeight));
+            }
+
+            arcLine.WidthCurve.SetKeys(arcLine.WidthKeys);
+            line.widthCurve = arcLine.WidthCurve;
         }
     }
 }

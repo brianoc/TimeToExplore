@@ -209,9 +209,9 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyView` | `Scripts/Rendering/BodyView.cs` | Primitive, material, scale, spin; the pure true-scale/minimum-size factor |
 | `RenderingShaders` | `Scripts/Rendering/RenderingShaders.cs` | Names of the four runtime shaders and the Sun-versus-lit choice |
 | `MarkerSizing` | `Scripts/Rendering/MarkerSizing.cs` | Minimum marker radius: 4.5 px local to 6 px map, the neighbourhood aid fade, and their angular conversion |
-| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight |
+| `LineWidth` | `Scripts/Rendering/LineWidth.cs` | One apparent width for every line, converted to render units at the camera depth, FOV, and viewport height: 3 px for plan lines, and for orbit lines 3 px local to 10 px map by the blend weight; `SampleWorldWidth` gives each vertex its width and holds a 2 px distance floor |
 | `OrbitColours` | `Scripts/Rendering/OrbitColours.cs` | The planet orbit palette: one warm-orange-to-cool-purple ramp sampled by orbital rank, so each planet keeps one colour in every view |
-| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with the shared apparent width; never sized from the orbit radius |
+| `OrbitLine` | `Scripts/Rendering/OrbitLine.cs` | Orbit polyline with a per-vertex width curve from the shared rule; never sized from the orbit radius |
 | `RouteColours` | `Scripts/Rendering/RouteColours.cs` | The route palette by path type: gold for a quintic, sky blue dashed for a conic, red for a fixed burn, with a darker or paler shade inside a run of the same type and the hue held fixed |
 | `TrajectoryLine` | `Scripts/Rendering/TrajectoryLine.cs` | One pooled, coloured line per plan arc through `RouteColours`; adaptive polyline; burn, flip, arrival, and target-arrival ghost markers |
 | `ShipView` | `Scripts/Rendering/ShipView.cs` | Placeholder ship marker at the origin, aligned with the burn |
@@ -371,11 +371,12 @@ transform to the parent's frame, add the parent's current position, and then
 convert to ship-relative render coordinates. Every orbit line takes its width
 from `LineWidth`, which converts the blended apparent width — 3 px in the local
 view, 10 px in the solar system view — to render units at the camera distance
-and the viewport's FOV and height. The orbit radius is not an input, so the line
-can never become a ribbon; the near and far arcs share the one world width and
-thin naturally with perspective. Its colour comes from `OrbitColours`, one
-fixed warm-to-cool ramp sample per planet, so the local and solar system views
-draw the same hue.
+and the viewport's FOV and height. Each vertex then gets its own width:
+perspective holds until it would take the vertex below the 2 px distance floor,
+after which the floor keeps the far arc visible. The orbit radius is not an
+input, so the line can never become a ribbon. Its colour comes from
+`OrbitColours`, one fixed warm-to-cool ramp sample per planet, so the local and
+solar system views draw the same hue.
 
 `TrajectoryLine` is the same idea for a plan, with three differences. Each arc
 is its own line, and `RouteColours` gives it a colour and dash style from the
@@ -390,9 +391,10 @@ own length; uniform sampling in time spent the budget on the straight cruise and
 left visible chords in the tight departure and capture turns. Each dashed arc
 uses a repeating alpha texture in `LineTextureMode.Tile`, with its own texture
 scale tied to the line width, so the dashes stay the same apparent length at any
-zoom. `TimeToExplore/Line` feathers both strip edges over one screen pixel with
-`fwidth`, so geometric edges are antialiased even though the pipeline runs with
-MSAA off.
+zoom. Its vertices take per-vertex widths from the same rule, so the far end
+holds the 2 px floor instead of fading out. `TimeToExplore/Line` feathers both
+strip edges over one screen pixel with `fwidth`, so geometric edges are
+antialiased even though the pipeline runs with MSAA off.
 
 # Input
 

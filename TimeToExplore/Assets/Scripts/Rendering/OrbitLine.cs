@@ -16,12 +16,15 @@ namespace TimeToExplore.Rendering
         private BodyRuntime _body;
         private SolarSystemModel _model;
         private Vector3d[] _buffer;
+        private Keyframe[] _widthKeys;
+        private AnimationCurve _widthCurve;
 
         public void Initialise(BodyRuntime body, SolarSystemModel model, Color colour, Transform parent)
         {
             _body = body;
             _model = model;
             _buffer = new Vector3d[Samples + 1];
+            _widthKeys = new Keyframe[Samples + 1];
 
             transform.SetParent(parent, false);
             name = body.Name + " Orbit";
@@ -38,6 +41,11 @@ namespace TimeToExplore.Rendering
             _line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _line.receiveShadows = false;
 
+            // One key per sampled vertex, so the width curve is the exact
+            // per-vertex screen-width rule rather than an approximation.
+            _widthCurve = new AnimationCurve(new Keyframe(0f, 1f));
+            _line.widthCurve = _widthCurve;
+
             Shader shader = Shader.Find(RenderingShaders.Line);
             _line.material = new Material(shader) { name = body.Name + " Orbit Material" };
             _line.startColor = colour;
@@ -50,22 +58,43 @@ namespace TimeToExplore.Rendering
         /// orbit's radius: an orbit-sized rule is only correct when the whole
         /// orbit is framed, and becomes a screen-filling ribbon when the
         /// camera is inside it.
+        ///
+        /// Each vertex carries its own width: the look-at width near the ship,
+        /// then the floor once perspective would take it below
+        /// <see cref="LineWidth.DistanceFloorPixels"/>. A single width per
+        /// ellipse made the far arc vanish into the distance.
         /// </summary>
-        public void Refresh(Vector3d shipPositionM, float unitsPerMeter, bool visible,
-            float widthUnits)
+        public void Refresh(Vector3d shipPositionM, Camera camera, float unitsPerMeter,
+            bool visible, float lookAtWidthUnits, float lookAtPixels)
         {
             if (_line == null) return;
             _line.enabled = visible;
             if (!visible) return;
 
             _model.SampleOrbitWorld(_body, Samples, _buffer);
+
+            Vector3 cameraPosition = camera != null ? camera.transform.position : Vector3.zero;
+            float fieldOfView = camera != null ? camera.fieldOfView : 60f;
+            int viewportHeight = camera != null && camera.pixelHeight > 0
+                ? camera.pixelHeight
+                : Screen.height;
+            float denominator = Mathf.Max(Samples, 1);
+
             for (int i = 0; i <= Samples; i++)
             {
-                Vector3d relative = (_buffer[i] - shipPositionM) * unitsPerMeter;
-                _line.SetPosition(i, relative.ToUnity());
+                Vector3 relative = ((_buffer[i] - shipPositionM) * unitsPerMeter).ToUnity();
+                _line.SetPosition(i, relative);
+
+                float depth = camera != null
+                    ? Vector3.Distance(relative, cameraPosition)
+                    : 0f;
+                _widthKeys[i] = new Keyframe(i / denominator,
+                    LineWidth.SampleWorldWidth(lookAtWidthUnits, lookAtPixels, depth,
+                        fieldOfView, viewportHeight));
             }
 
-            _line.widthMultiplier = Mathf.Max(widthUnits, 0f);
+            _widthCurve.SetKeys(_widthKeys);
+            _line.widthCurve = _widthCurve;
         }
 
         public void SetColour(Color colour)

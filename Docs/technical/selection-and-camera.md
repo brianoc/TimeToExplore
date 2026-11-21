@@ -82,9 +82,11 @@ while the local view keeps its old thresholds:
   "YOU ARE HERE" on the map side only.
 * **Orbit lines.** `LineWidth` turns a pixel count into render units at the
   camera distance, with no orbit-sized term: 3 px in the local view, blending to
-  10 px in the solar system view. A distant orbit can never become a ribbon.
-  Each planet's colour is fixed by `OrbitColours` (warm orange Mercury to cool
-  purple Neptune) and is identical in both views; moons stay neutral grey.
+  10 px in the solar system view. Each vertex then keeps the natural perspective
+  falloff until it reaches the 2 px `DistanceFloorPixels`, so the far arc stays
+  visible without becoming a ribbon. Each planet's colour is fixed by
+  `OrbitColours` (warm orange Mercury to cool purple Neptune) and is identical
+  in both views; moons stay neutral grey.
 
 # The details screen
 
