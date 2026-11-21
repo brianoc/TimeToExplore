@@ -4,7 +4,7 @@ title: Selection and camera focus
 description: How clicking a body opens its details screen and how the camera flies to it.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # Why selection exists
@@ -31,18 +31,27 @@ Picking is done in screen space against the **drawn marker**:
    drawn radius, so the minimum-apparent-size aid — including the map's 6 px
    minimum — flows into picking.
 3. Give every marker a minimum hit radius of 9 pixels.
-4. Locally, choose the hit with the smallest camera distance, so a near moon
-   wins over the planet behind it.
-5. On the map, choose the highest class first — Sun, planet, or station above
-   moon or asteroid — and use the camera distance only to break a tie within a
-   class. A moon or asteroid whose marker does not overlap a major body is the
-   only hit, so it stays selectable as the view zooms into its neighbourhood.
+4. Collect **every** marker whose hit radius contains the pointer.
+5. Order the hits by importance: **star, planet, station, moon, asteroid**.
+   Camera distance only breaks a tie within one rank, so a nearer station
+   beside a planet cannot steal the planet, and a nearer moon cannot steal a
+   station.
+6. A click selects the most important hit. **Clicking again at the same spot**
+   (within the 4 px click slop) selects the next hit in the list and wraps at
+   the end, so every body in a stack is reachable without moving the pointer.
+   A click elsewhere, or a stack that changes as the camera moves, starts
+   again from the most important hit.
+7. A marker that is not covered by another is the only hit regardless of rank,
+   so a moon or asteroid separated from its parent stays selectable as the
+   view zooms into its neighbourhood.
 
-`BodyPicker` owns steps 4–5 as a pure function over a list of `ScreenTarget`
-values, which keeps it testable without a camera or a scene. The renderer and
-camera only feed it coordinates. `ScreenTarget.Priority` carries the class
-rank; the local HUD leaves `classPriority` off, so the shipped picker rule is
-exactly the pre-map one.
+`BodyPicker` owns the rank ladder, `OrderedHits`, and `PickCycle` as pure
+functions over a list of `ScreenTarget` values, which keeps them testable
+without a camera or a scene. The renderer and camera only feed it coordinates.
+`ScreenTarget.Priority` is gone: the rank is derived from the body's catalogue
+kind in one place, so the local view and the map share the same rule. The hover
+prompt names the body the **next** click would select and says how many objects
+are stacked under the pointer.
 
 The pointer is ignored when the cursor is locked for mouse look, and whenever
 `EventSystem.current.IsPointerOverGameObject()` says it is over a raycast-target
@@ -50,7 +59,8 @@ panel — the status panel, the details screen, the flight panel, or one of thei
 buttons. A click on a panel is therefore swallowed by uGUI and never reaches the
 world. The click that opens the details screen cannot also press a button in it:
 the buttons are non-interactable during the frame the panel appears, whichever
-order the EventSystem and the HUD update in.
+order the EventSystem and the HUD update in. A press over a panel also resets
+the click cycle.
 
 # Map drawing
 
@@ -229,11 +239,11 @@ gameplay mode, and a later step removes it or defaults it on.
 
 Map drawing, picking, the local marker-aid fade, the route preview, and the
 frame-loop acceptance are built (steps 3–6): the 6 px map minimum, the
-zoom-aware labels, the "YOU ARE HERE" ship label, class-priority picking, the
-camera-distance orbit width, the neighbourhood falloff that stops the local view
-inflating distant bodies, the **Plot route → Begin flight** preview with its
-target-arrival ghost, and the map-to-arrival acceptance through the real
-bootstrap.
+zoom-aware labels, the "YOU ARE HERE" ship label, importance-ordered picking
+with repeated-click cycling, the camera-distance orbit width, the
+neighbourhood falloff that stops the local view inflating distant bodies, the
+**Plot route → Begin flight** preview with its target-arrival ghost, and the
+map-to-arrival acceptance through the real bootstrap.
 
 # The focus transition (debug jump)
 
@@ -279,6 +289,7 @@ second mapping.
 | Input | Action |
 |---|---|
 | Left click a body | Select it and open the details screen (release inside the 4 px slop) |
+| Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
 | Left mouse drag | Pan the map (`w > 0.5`); inert in the local band, and inert when the press began on a panel |
 | **Plot route …** button | Plan the route and draw the preview without flying |
 | **Begin flight** button | Replan from the current state and fly it |
@@ -298,7 +309,12 @@ second mapping.
 * Earth's gravity, escape velocity, mass, and light time against reference
   values;
 * the picker returns the body under the pointer, ignores empty space, prefers
-  the nearer body when markers overlap, and applies the minimum hit radius;
+  the nearer body within one rank, and applies the minimum hit radius;
+* importance runs star, planet, station, moon, asteroid, and a planet outranks
+  a nearer station while a station outranks a nearer moon;
+* `OrderedHits` returns the whole stack in that order, breaking a same-rank tie
+  by depth, and `PickCycle` walks it, wraps, keeps a single hit at the top, and
+  starts again when the pointer moves or the stack changes;
 * smoothstep acceleration and deceleration, exact arrival at the duration,
   midpoint position, cancellation, and zero duration;
 * the approach offset's eight-radius and 5,000 km rules and its lit-side bias;

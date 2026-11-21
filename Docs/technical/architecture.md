@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # Shape of the prototype
@@ -223,7 +223,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit at every zoom, left-drag map pan, wheel zoom toward the pointer, the one-second home transition, destination framing, blended pose, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
-| `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: nearest locally, class-priority on the map |
+| `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: importance-ordered hits and the repeated-click cycle |
 | `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label density and the map-only ship label |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |

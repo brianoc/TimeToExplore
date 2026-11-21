@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-19T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
 ---
 
 # Current state — milestone 0
@@ -157,8 +157,9 @@ camera decision is [ADR-009](../decisions/adr-009-map-camera-pan.md). In order:
    suspends auto-framing on the map, and routes the wheel through the extended
    range. `SystemMap.unity` and
    the `EnableMapView` switch provide the side-by-side comparison.
-2. Map reading rules: bigger markers, label density by zoom, class-priority
-   picking, the map-only ship label, and the camera-distance orbit width. **Step
+2. Map reading rules: bigger markers, label density by zoom,
+   importance-ordered picking, the map-only ship label, and the camera-distance
+   orbit width. **Step
    3 is done:** `MarkerSizing` eases markers from 4.5 to 6 px, `BodyLabels`
    applies the 5× parent-SOI moon window and the hover/selection-only
    asteroids, `BodyPicker` ranks Sun/planet/station above moons and asteroids
@@ -203,9 +204,10 @@ be selected and plotted; the curve and the arrival ghost draw without flying,
 and Begin replans and arrives on the 3,898 km parking orbit in 4.44 days with
 0.0 m and 0.0000 m/s, 3,939 frames and 65.7 real seconds — the same numbers as
 the scene flight. The map's pan cap allows a browse to Jupiter's neighbourhood,
-class-priority picking lets the planet win an overlapping hit, and the local view
-fades distant bodies to true scale outside the Moon's sphere of influence; the
-first two are unit-tested, and a real pointer click still needs a human frame.
+importance-ordered picking lets a planet win an overlapping station and repeated
+clicks cycle the stack, and the local view fades distant bodies to true scale
+outside the Moon's sphere of influence; all three are unit-tested, and a real
+pointer click still needs a human frame.
 
 **Known gaps:** the `EnableMapView` comparison switch still gates the map (off in
 the shipped scene), the zoom tween is unit-tested but its feel and real pointer

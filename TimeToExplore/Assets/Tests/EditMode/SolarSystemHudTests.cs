@@ -709,12 +709,12 @@ namespace TimeToExplore.Tests.EditMode
             BodyView victim = _bootstrap.Renderer.Views.First();
             Object.DestroyImmediate(victim.gameObject);
 
-            // The renderer still lists the destroyed view. Picking at the centre
-            // of the screen must skip it instead of throwing from every frame.
-            MethodInfo pick = typeof(SolarSystemHud).GetMethod("PickAt",
+            // The renderer still lists the destroyed view. Collecting targets
+            // for the pointer must skip it instead of throwing from every frame.
+            MethodInfo collect = typeof(SolarSystemHud).GetMethod("CollectTargets",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(pick, Is.Not.Null, "SolarSystemHud.PickAt is missing");
-            Assert.DoesNotThrow(() => pick.Invoke(_hud, new object[] { new Vector2(960f, 540f) }));
+            Assert.That(collect, Is.Not.Null, "SolarSystemHud.CollectTargets is missing");
+            Assert.DoesNotThrow(() => collect.Invoke(_hud, null));
         }
 
         [Test]

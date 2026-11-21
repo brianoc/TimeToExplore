@@ -171,10 +171,14 @@ namespace TimeToExplore.UI
         private bool _detailsOpen;
         private bool _detailsOpenedThisFrame;
         private BodyRuntime _hover;
+        private int _hoverHitCount;
         private BodyRuntime _clickBody;
         private Vector2 _clickPressPointer;
         private bool _clickDragged;
         private readonly List<ScreenTarget> _targets = new List<ScreenTarget>();
+        private readonly List<ScreenTarget> _hoverHits = new List<ScreenTarget>();
+        private readonly List<ScreenTarget> _clickHits = new List<ScreenTarget>();
+        private readonly PickCycle _pickCycle = new PickCycle();
 
         // --- Public API ---------------------------------------------------------
 
@@ -259,6 +263,7 @@ namespace TimeToExplore.UI
         private void UpdatePointer()
         {
             _hover = null;
+            _hoverHitCount = 0;
 
             Vector2 screen = PlayerControls.PointerPosition;
             bool pressed = PlayerControls.LeftClickPressed;
@@ -269,6 +274,7 @@ namespace TimeToExplore.UI
             if (pressed)
             {
                 _clickBody = null;
+                _clickHits.Clear();
                 _clickPressPointer = screen;
                 _clickDragged = false;
             }
@@ -281,6 +287,7 @@ namespace TimeToExplore.UI
             // With the cursor locked for mouse look there is no pointer to aim.
             if (Cursor.lockState != CursorLockMode.None)
             {
+                if (pressed) _pickCycle.Reset();
                 if (released) _clickBody = null;
                 return;
             }
@@ -290,21 +297,43 @@ namespace TimeToExplore.UI
             // the panel rects are tested immediately as well.
             if (UiInput.PointerOverUi() || PointerOverPanel(screen))
             {
+                if (pressed) _pickCycle.Reset();
                 if (released) _clickBody = null;
                 return;
             }
 
             Vector2 pointer = PlayerControls.ToGuiPointer(screen, Screen.height);
-            _hover = PickAt(pointer);
+            PickHitsAt(pointer, _hoverHits);
+            _hoverHitCount = _hoverHits.Count;
 
-            if (pressed) _clickBody = _hover;
+            // Hover names the body the next click would select, so the prompt
+            // follows the cycle instead of always naming the top target.
+            int next = _pickCycle.Peek(_hoverHits, pointer);
+            _hover = next >= 0 ? _hoverHits[next].Body : null;
+
+            if (pressed)
+            {
+                // A click on empty space ends the cycle; a click on this stack
+                // keeps it, and the release advances it.
+                if (_hoverHits.Count == 0) _pickCycle.Reset();
+                _clickHits.AddRange(_hoverHits);
+                _clickBody = _hover;
+            }
 
             if (!released) return;
 
             // The pan shares the left button, so a body is selected only when the
             // press and release stayed inside the click slop. A drag is a pan and
             // never opens the details screen.
-            BodyRuntime clicked = _clickDragged ? null : _clickBody;
+            if (_clickDragged) _pickCycle.Reset();
+
+            BodyRuntime clicked = null;
+            if (!_clickDragged && _clickHits.Count > 0)
+            {
+                int index = _pickCycle.Advance(_clickHits, _clickPressPointer);
+                if (index >= 0) clicked = _clickHits[index].Body;
+            }
+
             _clickBody = null;
             if (clicked == null) return;
 
@@ -330,12 +359,19 @@ namespace TimeToExplore.UI
         private bool HasFlightPanel =>
             _owner?.Flight != null && (_owner.Flight.Plan != null || _owner.Flight.HasPreview);
 
-        private BodyRuntime PickAt(Vector2 pointer)
+        private void PickHitsAt(Vector2 pointer, List<ScreenTarget> hits)
         {
-            Camera camera = _owner.ViewCamera;
-            if (camera == null || _owner.Renderer == null) return null;
+            CollectTargets();
+            BodyPicker.OrderedHits(_targets, pointer, hits);
+        }
 
+        private void CollectTargets()
+        {
             _targets.Clear();
+
+            Camera camera = _owner.ViewCamera;
+            if (camera == null || _owner.Renderer == null) return;
+
             foreach (BodyView view in _owner.Renderer.Views)
             {
                 // A view destroyed by a scene teardown is fake-null; skip it.
@@ -356,14 +392,9 @@ namespace TimeToExplore.UI
                     Body = view.Body,
                     Centre = new Vector2(screen.x, Screen.height - screen.y),
                     RadiusPixels = radius,
-                    Depth = world.magnitude,
-                    Priority = BodyPicker.PriorityOf(view.Body)
+                    Depth = world.magnitude
                 });
             }
-
-            bool classPriority = _owner.Rig != null && _owner.Rig.IsMapSide;
-            return BodyPicker.Pick(_targets, pointer, BodyPicker.MinimumHitRadiusPixels,
-                classPriority);
         }
 
         private void Refresh()
@@ -1064,11 +1095,22 @@ namespace TimeToExplore.UI
 
         private void DrawHover()
         {
-            if (_hover == null || _hover == _owner.Selected) return;
+            if (_hover == null) return;
+
+            // A lone selected body has nothing more to say; a stack still
+            // advertises that another click will reach the next object.
+            if (_hover == _owner.Selected && _hoverHitCount <= 1) return;
+
+            string prompt = _hover == _owner.Selected
+                ? _hoverHitCount + " here — click again to cycle"
+                : "LMB  " + _hover.Name;
+
+            if (_hover != _owner.Selected && _hoverHitCount > 1)
+                prompt += "   ·   " + _hoverHitCount + " here — click again to cycle";
 
             // The prompt sits just below and right of the pointer, and is placed
             // from the bottom-left screen point so it does not depend on IMGUI.
-            PlaceLabel("LMB  " + _hover.Name, BodyColour(_hover),
+            PlaceLabel(prompt, BodyColour(_hover),
                 PlayerControls.PointerPosition, 14f, -12f);
         }
 
