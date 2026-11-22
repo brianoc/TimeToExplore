@@ -57,7 +57,13 @@ namespace TimeToExplore.Tests.EditMode
             var pipeline = GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
             Assert.That(pipeline, Is.Not.Null);
 
-            Assert.That(pipeline.supportsHDR, Is.False, "HDR is not required");
+            Assert.That(pipeline.supportsHDR, Is.True,
+                "the sky's brightest stars write above 1.0 (Sirius and the " +
+                "catalogue peak near 2.4 against a band peak of 0.55), and HDR " +
+                "is what lets the display tell them apart");
+            Assert.That(pipeline.hdrColorBufferPrecision,
+                Is.EqualTo(HDRColorBufferPrecision._32Bits),
+                "the cheap 32-bit HDR buffer is chosen over 64-bit RGBA16F");
             Assert.That(pipeline.msaaSampleCount, Is.EqualTo(1), "MSAA must be off");
             Assert.That(pipeline.renderScale, Is.EqualTo(1f).Within(1e-6f),
                 "render scale must be 1");

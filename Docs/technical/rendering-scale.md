@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:31:17Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:34:46Z }
 ---
 
 # The problem
@@ -258,21 +258,27 @@ Stations and asteroids use the same lit shader as planets; a cube with a
 day/night terminator reads surprisingly well. `material.color` and `_Color`
 remain the contract: every shader that the C# code colours declares `_Color`.
 
-The pipeline asset keeps the cost down: render scale 1, MSAA off, HDR off, no
-depth or opaque texture, no main or additional shadows, no soft shadows, URP
-main and additional lights disabled, and no post-processing volume.
-`UniversalAdditionalCameraData` is on both scene cameras with post-processing
-and depth/colour texture requests off, and a black serialized clear that the
-bootstrap switches to `Skybox` at runtime. The renderer does carry URP's
-`PostProcessData` (the package's `Runtime/Data/PostProcessData.asset`), so the
-post-processing shaders exist in a build; a renderer without it skips every
-effect silently, with no warning. The bloom passes are therefore present but
-idle: HDR is off, the camera has post-processing off, and there is no volume
-effect, so nothing runs yet.
+The pipeline asset keeps the cost down: render scale 1, MSAA off, no depth or
+opaque texture, no main or additional shadows, no soft shadows, URP main and
+additional lights disabled, and no post-processing volume. HDR is the
+deliberate exception: it is on, in URP's **32-bit R11G11B10** colour buffer
+(`m_HDRColorBufferPrecision: 0`) rather than 64-bit RGBA16F, and MSAA stays off.
+The sky earns it. It writes up to about 2.4 in HDR units, so clamping at 1.0
+makes Sirius, Vega, and Rigel identical white blobs; the band peaks at 0.55 and
+stays below the bloom threshold. HDR is what lets the display tell those
+brightnesses apart. The visible bloom itself is still off until the camera and
+volume steps land: `UniversalAdditionalCameraData` is on both scene cameras with
+post-processing and depth/colour texture requests off, and a black serialized
+clear that the bootstrap switches to `Skybox` at runtime. The renderer does
+carry URP's `PostProcessData` (the package's
+`Runtime/Data/PostProcessData.asset`), so the post-processing shaders exist in a
+build; a renderer without it skips every effect silently, with no warning. The
+bloom passes are therefore present but idle: the camera has post-processing off
+and there is no volume effect, so nothing runs yet.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
-bloom, and the far-field camera stack without changing the scale rules.
+and the far-field camera stack without changing the scale rules.
 
 # What breaks at this scale
 
@@ -314,8 +320,10 @@ bloom, and the far-field camera stack without changing the scale rules.
    Venus, Titan, and the gas giants.
 6. **Local lighting** for stations and ships: running lights, docking guides,
    radiators.
-7. **Post-processing** for bloom on the Sun, stations, and the brightest stars,
-   used sparingly.
+7. **Post-processing.** Bloom for the brightest stars has started: HDR and the
+   renderer's `PostProcessData` are in place, and the camera and volume are
+   next. Bloom on the Sun and stations is still future work, to be used
+   sparingly.
 
 The scale rules—double simulation, ship-relative render, minimum apparent size—
 should survive all of these. They are the load-bearing decisions.
