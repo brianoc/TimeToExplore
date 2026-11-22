@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T00:00:00Z }
 ---
 
 # The problem
@@ -71,6 +71,11 @@ t0 ── break ──► departure burn ──► coast ──► approach ─�
 * **Capture** is the conic or hybrid chain onto the parking orbit.
 * A trip that starts inside the target's sphere of influence is a single
   quintic capture arc. Gateway to the Moon is one arc of 1.6 hours.
+
+That chain is one choice from a wider menu. The other families a real mission
+can fly — Hohmann, bi-elliptic, low-energy, gravity assist, low-thrust spiral —
+and where the profile sits among them are in the
+[glossary's route families](/glossary.md#route-families).
 
 Every seam is continuous in position and velocity, and the plan finishes at the
 parking orbit's position and velocity at the instant the last arc ends, so
