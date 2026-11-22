@@ -84,6 +84,28 @@ namespace TimeToExplore.Tests.EditMode
                 "no renderer features, so no intermediate texture is needed");
         }
 
+        /// <summary>
+        /// URP skips every post-processing pass when the renderer has no
+        /// <c>PostProcessData</c>: the effect is enabled, the volume is live,
+        /// and nothing happens, with no warning in the console. The renderer
+        /// must therefore carry the package's data even while HDR and post
+        /// processing stay off, so that turning them on cannot silently do
+        /// nothing.
+        /// </summary>
+        [Test]
+        public void TheRendererCarriesThePostProcessData()
+        {
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(
+                RendererAssetPath);
+
+            Assert.That(renderer, Is.Not.Null, RendererAssetPath + " is missing");
+            Assert.That(renderer.postProcessData, Is.Not.Null,
+                "the renderer has no post-process data, which disables every " +
+                "URP post-processing pass silently (bloom included)");
+            Assert.That(renderer.postProcessData.name, Is.EqualTo("PostProcessData"),
+                "the renderer's post-process data is not URP's package asset");
+        }
+
         [Test]
         public void QualityLevelsDoNotOverrideTheGraphicsDefault()
         {

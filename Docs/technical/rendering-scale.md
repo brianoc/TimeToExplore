@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:31:17Z }
 ---
 
 # The problem
@@ -263,7 +263,12 @@ depth or opaque texture, no main or additional shadows, no soft shadows, URP
 main and additional lights disabled, and no post-processing volume.
 `UniversalAdditionalCameraData` is on both scene cameras with post-processing
 and depth/colour texture requests off, and a black serialized clear that the
-bootstrap switches to `Skybox` at runtime.
+bootstrap switches to `Skybox` at runtime. The renderer does carry URP's
+`PostProcessData` (the package's `Runtime/Data/PostProcessData.asset`), so the
+post-processing shaders exist in a build; a renderer without it skips every
+effect silently, with no warning. The bloom passes are therefore present but
+idle: HDR is off, the camera has post-processing off, and there is no volume
+effect, so nothing runs yet.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
