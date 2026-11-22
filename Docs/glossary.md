@@ -1,10 +1,10 @@
 ---
 type: Glossary
 title: Glossary
-description: "The words the design bundle and the code share: camera views, thrust profiles, manoeuvre models, and arrival geometry."
+description: "The words the design bundle and the code share: route families, camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T00:00:00Z }
 ---
 
 # Glossary
@@ -47,6 +47,30 @@ than jumping there. The point under the pointer is anchored on the look-at
 plane and the look-at is solved from it every frame, so the point stays under
 the pointer while the distance moves. Directly assigning a distance (a reset, a
 snap-to, a test) places the camera immediately.
+
+## Route families
+
+How a real mission crosses space is a trade of time against propellant, and the
+prototype flies one family rather than the menu. The families, so a reader does
+not mistake the profile for the only option:
+
+| Family | Shape | Trade |
+|---|---|---|
+| **Hohmann transfer** | one burn onto an ellipse tangent to both orbits, a half-lap coast, one burn to circularise | cheapest propellant, slow, needs a launch window |
+| **Lambert transfer** | a solver picks the conic between two positions in a chosen time; Hohmann is one case of it | any date and duration, costing more as the geometry worsens |
+| **Bi-elliptic** | three burns with a detour past the target | beats Hohmann only for very large outward changes |
+| **Low-energy** | winds along the weak-stability boundary, borrowing third-body gravity | almost free, months slow, fragile |
+| **Gravity assist** | steals momentum from a passing body | large speed for free, timing dictated by the planets |
+| **Low-thrust spiral** | continuous milli-g thrust, spiralling outward | efficient, very slow |
+| **Brachistochrone (torch)** | burn hard to the flip, burn hard to stop | weeks not months, ruinous propellant |
+| **Aerocapture** | sheds speed in an atmosphere | saves propellant, needs air and a heat shield |
+| **Direct descent** | no orbit, land | the simplest plan, the hardest flying |
+
+The prototype's **burn–coast–burn** profile is a brachistochrone with the middle
+coast left in, its Lambert coast the solver at its centre; the trip-time slider
+slides along that trade. **Insertion** is the arrival half — the burn that lets
+the target capture you — and is not a route. Say *Hohmann transfer* (for Walter
+Hohmann, 1925) and *insertion*; "Hoffman insertion" is neither.
 
 ## Thrust and manoeuvre vocabulary
 

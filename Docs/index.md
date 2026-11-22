@@ -20,7 +20,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Game vision](/vision/game-vision.md) — the fantasy, the loop, and what the player actually does.
 * [Design pillars](/vision/design-pillars.md) — the six rules that settle design arguments.
 * [Flight model](/simulation/flight-model.md) — 10 m/s², brachistochrone travel, the delta-v economy, and the first-pass fuel readout.
-* [Glossary](/glossary.md) — the shared words: the two camera views, the thrust and manoeuvre vocabulary, and the arrival geometry.
+* [Glossary](/glossary.md) — the shared words: the route families and the family the profile belongs to, the one orbit camera, the thrust and manoeuvre vocabulary, and the arrival geometry.
 
 # Vision
 
