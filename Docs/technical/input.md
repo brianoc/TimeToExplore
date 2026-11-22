@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Input
-description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, and the mouse and wheel rules.
+description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, the legacy mouse dispatcher, and the mouse and wheel rules.
 tags: [technical, input, unity, controls, ui]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
@@ -74,6 +74,29 @@ Editor recompiles `Unity.RenderPipelines.Core.Runtime` with the new defines and
 the exceptions stop. The source guard cannot catch this: the C# is clean and
 `activeInputHandler` is correct; the stale artifact lives in
 `Library/ScriptAssemblies`.
+
+## The legacy dispatcher's (0,0) mouse
+
+Unity's legacy mouse dispatcher, `SendMouseEvents`, is the old `OnMouseEnter`,
+`OnMouseOver`, `OnMouseDown` path. It still runs every frame in play mode even
+though the backend is off. With no legacy mouse to read, `UpdateMouse` assigns
+`default`, so the dispatcher asks the view camera for a ray from **(0,0)** every
+frame. The native ray builder treats the frustum corner as outside and logs,
+once per camera per frame:
+
+```text
+Screen position out of view frustum (screen pos 0.000000, 0.000000) (Camera rect ...)
+UnityEngine.Camera:ScreenPointToRay (...)
+UnityEngine.SendMouseEvents:DoSendMouseEvents (int)
+```
+
+It is engine noise: no button is down, the ray hits nothing, and no runtime
+script defines `OnMouse*`. `SolarSystemBootstrap.EnsureCamera` sets
+`ViewCamera.eventMask = 0`, which means "this camera sends no legacy mouse
+events"; the dispatcher then skips the camera before it builds the ray.
+`eventMask` does not affect rendering, so `cullingMask` is untouched, and world
+picking still goes through `PlayerControls`. `BootstrapSmokeTests` pins both
+halves of that contract (event mask zero, culling mask intact).
 
 # The uGUI input path
 
@@ -238,7 +261,8 @@ outer ceiling and from an anchored off-centre view in about a second, that `P`
 pauses, every panel button, that dragging the trip-time and burn-level sliders
 never orbits the camera underneath, that a click on a panel does not also select
 the body behind it, and that the click which opens the details screen cannot
-press a button underneath.
+press a button underneath. On entering play mode the Console should also stay
+free of the legacy dispatcher's *Screen position out of view frustum* warning.
 The `EventSystem`'s pointer-over-panel answer depends on the previous frame's
 raycast; the immediate panel-rect test covers the first frame, but a real
 pointer is still the human check. See

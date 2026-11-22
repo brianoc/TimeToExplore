@@ -163,6 +163,17 @@ namespace TimeToExplore
             ViewCamera.nearClipPlane = 0.05f;
             ViewCamera.farClipPlane = 20_000_000f;
             ViewCamera.fieldOfView = 60f;
+
+            // Unity's legacy mouse dispatcher (SendMouseEvents, the OnMouse*
+            // path) runs every frame even with Active Input Handling on the
+            // Input System only. With the legacy backend off it has no position
+            // to read, substitutes (0,0), then asks each camera for a ray from
+            // that frustum corner and warns there once per camera per frame:
+            // "Screen position out of view frustum". No OnMouse* handler exists
+            // and world picking goes through PlayerControls, so this camera
+            // sends no legacy mouse events. eventMask only gates that old path;
+            // cullingMask still renders every layer.
+            ViewCamera.eventMask = 0;
         }
 
         /// <summary>
