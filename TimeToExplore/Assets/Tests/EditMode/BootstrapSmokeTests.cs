@@ -8,6 +8,7 @@ using TimeToExplore.Rendering;
 using TimeToExplore.Simulation;
 using TimeToExplore.UI;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -59,6 +60,12 @@ namespace TimeToExplore.Tests.EditMode
                 "which otherwise warns every frame with Input System-only input");
             Assert.That(_bootstrap.ViewCamera.cullingMask, Is.Not.Zero,
                 "the opt-out is the mouse event mask, not rendering");
+            Assert.That(
+                _bootstrap.ViewCamera.GetUniversalAdditionalCameraData()
+                    .renderPostProcessing,
+                Is.True,
+                "a bare camera defaults to post-processing off, so the bloom " +
+                "would silently never run on the runtime camera");
 
             _bootstrap.Model.ComputeState(_bootstrap.Model.Get("gateway"),
                 _bootstrap.Clock.JulianDate, out Vector3d gateway, out _);

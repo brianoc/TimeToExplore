@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:34:46Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:37:44Z }
 ---
 
 # The problem
@@ -266,15 +266,15 @@ deliberate exception: it is on, in URP's **32-bit R11G11B10** colour buffer
 The sky earns it. It writes up to about 2.4 in HDR units, so clamping at 1.0
 makes Sirius, Vega, and Rigel identical white blobs; the band peaks at 0.55 and
 stays below the bloom threshold. HDR is what lets the display tell those
-brightnesses apart. The visible bloom itself is still off until the camera and
-volume steps land: `UniversalAdditionalCameraData` is on both scene cameras with
-post-processing and depth/colour texture requests off, and a black serialized
-clear that the bootstrap switches to `Skybox` at runtime. The renderer does
-carry URP's `PostProcessData` (the package's
-`Runtime/Data/PostProcessData.asset`), so the post-processing shaders exist in a
-build; a renderer without it skips every effect silently, with no warning. The
-bloom passes are therefore present but idle: the camera has post-processing off
-and there is no volume effect, so nothing runs yet.
+brightnesses apart. The visible bloom itself is still off until the volume step
+lands: the shipped scene has one camera, the runtime camera is that same camera,
+and its `UniversalAdditionalCameraData` has post-processing on but depth and
+colour texture requests off, with a black serialized clear that the bootstrap
+switches to `Skybox` at runtime. The renderer does carry URP's
+`PostProcessData` (the package's `Runtime/Data/PostProcessData.asset`), so the
+post-processing shaders exist in a build; a renderer without it skips every
+effect silently, with no warning. The bloom passes are therefore present but
+idle: there is no Volume and no volume effect yet, so nothing runs.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
@@ -313,9 +313,8 @@ and the far-field camera stack without changing the scale rules.
    spheres up close.
 3. **Instanced asteroid belt** with per-instance colour and size.
 4. ~~**Starfield** with real bright stars and the Milky Way; currently the
-   background is black.~~ Done: a generated Milky Way band plus procedural
-   stars ([The sky](/technical/sky.md)). Real bright-star positions are still a
-   follow-up.
+   background is black.~~ Done: a generated Milky Way band, procedural stars,
+   and the real bright-star catalogue ([The sky](/technical/sky.md)).
 5. **Rings for Saturn and Uranus**, and a tenuous atmosphere shell for Earth,
    Venus, Titan, and the gas giants.
 6. **Local lighting** for stations and ships: running lights, docking guides,

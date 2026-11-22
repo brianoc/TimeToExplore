@@ -4,7 +4,8 @@
   "references": [
     "TimeToExplore.Core",
     "TimeToExplore.Simulation",
-    "TimeToExplore.Presentation"
+    "TimeToExplore.Presentation",
+    "Unity.RenderPipelines.Universal.Runtime"
   ],
   "includePlatforms": [
     "Editor"
