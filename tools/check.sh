@@ -143,6 +143,18 @@ then
 fi
 echo "Sky output matches the committed texture (2048x1024)."
 
+# 4b. Bright-star catalogue --------------------------------------------------
+step "Bright-star catalogue reproducibility"
+STARS="$WORK/bright_stars.json"
+"$PYTHON" tools/generate_bright_stars.py --out "$STARS" >/dev/null \
+    || fail "bright-star generator"
+if ! cmp -s "$STARS" TimeToExplore/Assets/Resources/Sky/bright_stars.json; then
+    echo "The committed star catalogue differs from a fresh generation." >&2
+    diff -u TimeToExplore/Assets/Resources/Sky/bright_stars.json "$STARS" | head -60 >&2 || true
+    fail "bright-star catalogue is not reproducible"
+fi
+echo "Bright-star catalogue is byte-identical to a fresh generation."
+
 # 5. Tooling tests ----------------------------------------------------------
 step "Tooling tests"
 "$PYTHON" -m unittest discover -s tools -p 'test_*.py' -q || fail "tooling tests"

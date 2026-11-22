@@ -55,7 +55,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.
-* [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, and the galactic frame behind the orrery.
+* [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, the real bright stars behind the constellations, and the galactic frame.
 
 # Production
 

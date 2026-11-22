@@ -338,10 +338,9 @@ remain human checks ([Testing and verification](/technical/testing.md#unity-play
    correction would keep the plotted curve instead of solving a new one.
 3. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-4. Add a fourth sky layer from a small catalogue of real bright stars
-   (RA/Dec/magnitude for the brightest few hundred), so the procedural field
-   gains the navigable constellations it is missing
-   ([The sky](/technical/sky.md)).
+4. Label a handful of constellations, or draw faint asterism outlines, now that
+   the real stars are in place
+   ([The sky](/technical/sky.md#the-real-stars)).
 
 # Risks
 

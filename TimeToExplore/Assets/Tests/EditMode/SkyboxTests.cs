@@ -162,5 +162,240 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(made, Is.Not.Null);
             Object.DestroyImmediate(made);
         }
+
+        // --- Bright stars ---------------------------------------------------
+
+        private static BrightStarFile CommittedCatalogue()
+        {
+            TextAsset asset = Resources.Load<TextAsset>(StarCatalogue.Resource);
+            Assert.That(asset, Is.Not.Null,
+                "missing Resources/Sky/bright_stars.json; " +
+                "run tools/generate_bright_stars.py");
+            return StarCatalogue.Parse(asset.text);
+        }
+
+        [Test]
+        public void TheBrightStarCatalogueIsCommittedAndPlausible()
+        {
+            BrightStarFile file = CommittedCatalogue();
+
+            Assert.That(file.stars, Is.Not.Null);
+            Assert.That(file.stars.Length, Is.GreaterThan(400),
+                "the constellation figures need a few hundred stars");
+
+            BrightStar sirius = null;
+            foreach (BrightStar star in file.stars)
+            {
+                Assert.That(star.magnitude, Is.LessThanOrEqualTo(file.magnitudeLimit + 1e-4f),
+                    $"{star.bayer} is brighter than the catalogue cut");
+                float length = Mathf.Sqrt(star.x * star.x + star.y * star.y + star.z * star.z);
+                Assert.That(length, Is.EqualTo(1f).Within(1e-3f),
+                    $"{star.bayer} has a direction that is not a unit vector");
+                if (star.bayer == "Alp CMa") sirius = star;
+            }
+
+            Assert.That(sirius, Is.Not.Null, "Sirius must be in the catalogue");
+            Assert.That(sirius.magnitude, Is.EqualTo(-1.46f).Within(0.01f),
+                "Sirius is the brightest star in the sky; a catalogue that " +
+                "disagrees is reading the wrong column");
+            Assert.That(file.magnitudeLimit, Is.EqualTo(StarCatalogue.MagnitudeLimit),
+                "the generator's cutoff and the encoder's must agree");
+        }
+
+        [Test]
+        public void TheSkyUvMatchesTheShaderMapping()
+        {
+            // u = atan2(z, x) / 2pi + 0.5, v = asin(y) / pi + 0.5, the mapping the
+            // band's generator and the shader both use.
+            AssertNearly(StarCatalogue.SkyUv(Vector3.right), new Vector2(0.5f, 0.5f));
+            AssertNearly(StarCatalogue.SkyUv(Vector3.up), new Vector2(0.5f, 1f));
+            AssertNearly(StarCatalogue.SkyUv(Vector3.down), new Vector2(0.5f, 0f));
+            AssertNearly(StarCatalogue.SkyUv(Vector3.forward), new Vector2(0.75f, 0.5f));
+            AssertNearly(StarCatalogue.SkyUv(Vector3.back), new Vector2(0.25f, 0.5f));
+        }
+
+        [Test]
+        public void TheStarMapIsPointFilteredAndUnmipmapped()
+        {
+            Texture2D map = StarCatalogue.Build(CommittedCatalogue());
+            try
+            {
+                Assert.That(map.width, Is.EqualTo(StarCatalogue.Columns));
+                Assert.That(map.height, Is.EqualTo(StarCatalogue.Rows));
+                Assert.That(map.format, Is.EqualTo(TextureFormat.RGBAHalf));
+                Assert.That(map.mipmapCount, Is.EqualTo(1),
+                    "the map is sampled at LOD 0, so it must have no mip chain");
+                Assert.That(map.filterMode, Is.EqualTo(FilterMode.Point),
+                    "bilinear filtering would blend empty cells into stars");
+                Assert.That(map.wrapModeU, Is.EqualTo(TextureWrapMode.Repeat));
+                Assert.That(map.wrapModeV, Is.EqualTo(TextureWrapMode.Clamp));
+            }
+            finally
+            {
+                Object.DestroyImmediate(map);
+            }
+        }
+
+        [Test]
+        public void EveryCatalogueStarGetsItsOwnCell()
+        {
+            BrightStarFile file = CommittedCatalogue();
+            Texture2D map = StarCatalogue.Build(file);
+            try
+            {
+                Color[] pixels = map.GetPixels();
+                int occupied = 0;
+                foreach (Color pixel in pixels)
+                {
+                    if (pixel.b > 0f) occupied++;
+                }
+
+                Assert.That(occupied, Is.EqualTo(file.stars.Length),
+                    "a star was lost: two stars share a cell, which the generator " +
+                    "is meant to have merged away");
+            }
+            finally
+            {
+                Object.DestroyImmediate(map);
+            }
+        }
+
+        [Test]
+        public void SiriusLandsInTheCellItsDirectionPointsAt()
+        {
+            BrightStarFile file = CommittedCatalogue();
+            BrightStar sirius = null;
+            foreach (BrightStar star in file.stars)
+            {
+                if (star.bayer == "Alp CMa") { sirius = star; break; }
+            }
+            Assert.That(sirius, Is.Not.Null);
+
+            Texture2D map = StarCatalogue.Build(file);
+            try
+            {
+                Vector2 uv = StarCatalogue.SkyUv(new Vector3(sirius.x, sirius.y, sirius.z));
+                int column = Mathf.Clamp(Mathf.FloorToInt(uv.x * StarCatalogue.Columns), 0, StarCatalogue.Columns - 1);
+                int row = Mathf.Clamp(Mathf.FloorToInt(uv.y * StarCatalogue.Rows), 0, StarCatalogue.Rows - 1);
+
+                Color cell = map.GetPixel(column, row);
+                Assert.That(cell.b, Is.GreaterThan(0f), "Sirius is not in its own cell");
+
+                float decodedU = (column + cell.r) / StarCatalogue.Columns;
+                float decodedV = (row + cell.g) / StarCatalogue.Rows;
+                Assert.That(decodedU, Is.EqualTo(uv.x).Within(0.5f / StarCatalogue.Columns),
+                    "the stored fraction must land within half a texel");
+                Assert.That(decodedV, Is.EqualTo(uv.y).Within(0.5f / StarCatalogue.Rows));
+            }
+            finally
+            {
+                Object.DestroyImmediate(map);
+            }
+        }
+
+        [Test]
+        public void TwoStarsInOneCellKeepTheBrighterOne()
+        {
+            // Two directions inside the same cell, a bright and a faint.
+            Vector2 cellUv = new Vector2(0.3f, 0.6f);
+            Vector3 bright = DirectionFromUv(cellUv + new Vector2(0.0001f, 0.0001f));
+            Vector3 faint = DirectionFromUv(cellUv + new Vector2(0.0003f, 0.0002f));
+
+            var file = new BrightStarFile
+            {
+                stars = new[]
+                {
+                    new BrightStar { hr = 1, bayer = "faint", magnitude = 3.9f, bv = 0.6f,
+                        x = faint.x, y = faint.y, z = faint.z },
+                    new BrightStar { hr = 2, bayer = "bright", magnitude = 0.5f, bv = 0.6f,
+                        x = bright.x, y = bright.y, z = bright.z },
+                }
+            };
+
+            Texture2D map = StarCatalogue.Build(file);
+            try
+            {
+                int column = Mathf.Clamp(Mathf.FloorToInt(cellUv.x * StarCatalogue.Columns), 0, StarCatalogue.Columns - 1);
+                int row = Mathf.Clamp(Mathf.FloorToInt(cellUv.y * StarCatalogue.Rows), 0, StarCatalogue.Rows - 1);
+                Color cell = map.GetPixel(column, row);
+
+                Assert.That(cell.b, Is.EqualTo(StarCatalogue.BrightnessCode(0.5f)).Within(1e-3f),
+                    "the brighter star must win the cell, whatever the order");
+            }
+            finally
+            {
+                Object.DestroyImmediate(map);
+            }
+        }
+
+        [Test]
+        public void TheCodesAreMonotonicAndLeaveZeroForAnEmptyCell()
+        {
+            Assert.That(StarCatalogue.BrightnessCode(StarCatalogue.MagnitudeLimit),
+                Is.EqualTo(1f / 255f).Within(1e-6f),
+                "the faintest star is one step above empty");
+            Assert.That(StarCatalogue.BrightnessCode(-3f), Is.EqualTo(1f),
+                "anything brighter than the span saturates");
+            Assert.That(StarCatalogue.BrightnessCode(0f),
+                Is.GreaterThan(StarCatalogue.BrightnessCode(3f)));
+            Assert.That(StarCatalogue.ColourCode(0.65f), Is.EqualTo(0.4375f).Within(0.01f),
+                "a solar B-V sits just below the middle of the colour ramp");
+            Assert.That(StarCatalogue.BrightnessCode(StarCatalogue.MagnitudeLimit),
+                Is.GreaterThan(0f), "zero means an empty cell, never a star");
+        }
+
+        [Test]
+        public void TheShaderAndTheCatalogueAgreeOnTheCellGrid()
+        {
+            string path = Path.Combine(
+                Application.dataPath, "Resources", "Shaders", "TimeToExploreSkybox.shader");
+            string source = File.ReadAllText(path);
+
+            Assert.That(source, Does.Contain(
+                    "StarMapColumns = " + StarCatalogue.Columns + ".0"),
+                "the shader's column count drifted from StarCatalogue.Columns");
+            Assert.That(source, Does.Contain(
+                    "StarMapRows = " + StarCatalogue.Rows + ".0"),
+                "the shader's row count drifted from StarCatalogue.Rows");
+            Assert.That(source, Does.Contain("_StarMap"),
+                "the shader must declare the bright-star map");
+        }
+
+        [Test]
+        public void TheSkyViewCarriesTheBrightStarsAndReleasesThem()
+        {
+            _skyObject = new GameObject("Sky");
+            SkyView sky = _skyObject.AddComponent<SkyView>();
+            sky.Initialise(_camera);
+
+            Assert.That(sky.StarMap, Is.Not.Null);
+            Assert.That(sky.Material.GetTexture("_StarMap"), Is.SameAs(sky.StarMap));
+            Assert.That(sky.Material.GetFloat("_CatalogueGain"), Is.EqualTo(1f));
+
+            Texture2D map = sky.StarMap;
+            sky.Remove();
+
+            Assert.That(sky.StarMap, Is.Null);
+            Assert.That(map == null, Is.True, "the runtime star map must be destroyed");
+            Assert.That(sky.Texture, Is.Not.Null,
+                "the band is a Resources asset and must survive");
+        }
+
+        private static Vector3 DirectionFromUv(Vector2 uv)
+        {
+            float longitude = (uv.x - 0.5f) * 2f * Mathf.PI;
+            float latitude = (uv.y - 0.5f) * Mathf.PI;
+            float cosLat = Mathf.Cos(latitude);
+            return new Vector3(
+                cosLat * Mathf.Cos(longitude),
+                Mathf.Sin(latitude),
+                cosLat * Mathf.Sin(longitude));
+        }
+
+        private static void AssertNearly(Vector2 actual, Vector2 expected)
+        {
+            Assert.That(actual.x, Is.EqualTo(expected.x).Within(1e-5f));
+            Assert.That(actual.y, Is.EqualTo(expected.y).Within(1e-5f));
+        }
     }
 }

@@ -34,22 +34,11 @@ import os
 import numpy as np
 from PIL import Image
 
-# --- Galactic frame -------------------------------------------------------
+from skyframe import galactic_matrix
 
-# J2000.0 equatorial coordinates, degrees.
-GALACTIC_NORTH_RA = 192.85948
-GALACTIC_NORTH_DEC = 27.12825
-GALACTIC_CENTRE_RA = 266.40499
-GALACTIC_CENTRE_DEC = -28.93617
-
-# Obliquity of the ecliptic, degrees (J2000.0).
-OBLIQUITY = 23.4392911
-
-# The opening camera looks along azimuth -90 degrees (yaw 0, pitch 14). Spin the
-# whole sky about the ecliptic pole so the galactic centre sits there: the game
-# has no sidereal time, so this azimuth is a composition choice. The band's
-# 60-degree tilt to the ecliptic is the part that comes from the real sky.
-BULGE_AZIMUTH_DEGREES = -86.0
+# The galactic frame, the obliquity, and the composition spin all live in
+# tools/skyframe.py, shared with the bright-star generator so the two halves of
+# the sky cannot drift apart.
 
 # --- Look -----------------------------------------------------------------
 
@@ -59,53 +48,6 @@ BACKGROUND = np.array([0.0055, 0.0070, 0.0110], dtype=np.float64)
 BAND_PEAK = 0.55
 BAND_WARM = np.array([1.00, 0.90, 0.72], dtype=np.float64)
 BAND_COOL = np.array([0.80, 0.87, 1.00], dtype=np.float64)
-
-
-def _equatorial(ra_deg: float, dec_deg: float) -> np.ndarray:
-    ra = math.radians(ra_deg)
-    dec = math.radians(dec_deg)
-    return np.array(
-        [math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)],
-        dtype=np.float64,
-    )
-
-
-def _ecliptic_from_equatorial(vector: np.ndarray) -> np.ndarray:
-    """Rotate an equatorial unit vector into the ecliptic frame (y = north)."""
-    eps = math.radians(OBLIQUITY)
-    x_axis = np.array([1.0, 0.0, 0.0])
-    y_axis = np.array([0.0, -math.sin(eps), math.cos(eps)])
-    z_axis = np.cross(x_axis, y_axis)
-    return np.array(
-        [vector @ x_axis, vector @ y_axis, vector @ z_axis], dtype=np.float64
-    )
-
-
-def galactic_matrix() -> np.ndarray:
-    """World (ecliptic) direction -> galactic (x = centre, z = north pole)."""
-    north = _ecliptic_from_equatorial(
-        _equatorial(GALACTIC_NORTH_RA, GALACTIC_NORTH_DEC)
-    )
-    centre = _ecliptic_from_equatorial(
-        _equatorial(GALACTIC_CENTRE_RA, GALACTIC_CENTRE_DEC)
-    )
-    x_axis = centre - np.dot(centre, north) * north
-    x_axis /= np.linalg.norm(x_axis)
-    y_axis = np.cross(north, x_axis)
-    y_axis /= np.linalg.norm(y_axis)
-
-    # The unspun sky: where does the galactic centre sit in world azimuth?
-    axes = np.stack([x_axis, y_axis, north])
-    centre_world = axes[0]
-    centre_azimuth = math.degrees(math.atan2(centre_world[2], centre_world[0]))
-    spin = math.radians(BULGE_AZIMUTH_DEGREES - centre_azimuth)
-
-    # Sampling direction -> unspun sky direction: rotate by -spin about +Y.
-    cos_s, sin_s = math.cos(spin), math.sin(spin)
-    spin_back = np.array(
-        [[cos_s, 0.0, -sin_s], [0.0, 1.0, 0.0], [sin_s, 0.0, cos_s]]
-    )
-    return axes @ spin_back
 
 
 def directions(width: int) -> tuple[np.ndarray, int]:

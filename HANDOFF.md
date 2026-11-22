@@ -1,8 +1,7 @@
 # Handoff
 
-**No active handoff.** The system map is gone: one orbit camera runs from 2,000
-km to 12 billion km, the wheel still zooms toward the pointer, `Space` still
-eases home, and the framing distance is captured once and re-captured on
-arrival. History is in [the update log](Docs/log.md); the reasoning is in
-[ADR-018](Docs/decisions/adr-018-one-orbit-camera.md) and
-[Selection and camera focus](Docs/technical/selection-and-camera.md#the-camera).
+**No active handoff.** The sky now carries the 509 brightest real stars through
+a cell lookup, so Orion and the Plough sit where they belong, and the band's
+composition spin finally matches the number in the code (−86°). History is in
+[the update log](Docs/log.md); the reasoning is in
+[The sky](Docs/technical/sky.md#the-real-stars).
