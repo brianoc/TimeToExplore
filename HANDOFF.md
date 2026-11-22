@@ -1,21 +1,22 @@
 # Handoff
 
-**Plan: make the brightest stars glow (HDR + bloom). Steps 1–3 done; step 4
-(the default volume profile: Bloom + Neutral Tonemapping) next.**
+**Plan: make the brightest stars glow (HDR + bloom). Steps 1–4 done; step 5
+(retune the procedural beacons, then capture and compare) next.**
 
-Steps 1–3 are committed on `work/sky-bloom`; `git log -3` shows them (`Assign
+Steps 1–4 are committed on `work/sky-bloom`; `git log -4` shows them (`Assign
 URP post-process data to the renderer`, `Turn on HDR for the brightest stars`,
-`Run post-processing on the scene and runtime camera`). Each commit holds its
-code, tests, concept update, `Docs/log.md` entry, and this file. Steps 4–6
-below are still open.
+`Run post-processing on the scene and runtime camera`, `Bloom the brightest
+stars through the default volume profile`). Each commit holds its code, tests,
+concept update, `Docs/log.md` entry, and this file. Steps 5–6 below are still
+open.
 
 ## Why
 
 A real star now writes up to about 2.4 in HDR units. With HDR off, as it was
 before this plan, the display clamps that to flat white and Sirius, Vega, and
 Rigel all have the same blobby core. HDR plus a bloom threshold around 1.0
-gives the brightest few a glow and lets the band (peak 0.55) stay out of it. The star shader needs no
-change: nothing saturates `gain`. The HUD is a Screen Space Overlay canvas, so
+gives the brightest few a glow and lets the band (peak 0.55) stay out of it.
+The star shader needs no change: nothing saturates `gain`. The HUD is a Screen Space Overlay canvas, so
 it draws after post-processing and cannot be smeared — that is the usual reason
 bloom is a bad idea in a UI-heavy scene, and it does not apply here.
 
@@ -39,18 +40,22 @@ bloom is a bad idea in a UI-heavy scene, and it does not apply here.
    `SolarSystemBootstrap.EnsureCamera` sets
    `ViewCamera.GetUniversalAdditionalCameraData().renderPostProcessing = true`.
    Presentation and Editor gained the
-   `Unity.RenderPipelines.Universal.Runtime` asmdef reference. No visible change:
-   no Volume yet.
-4. **A Volume with Bloom.** Next. There is none in the scene and
-   `Assets/DefaultVolumeProfile.asset` has `components: []`. Use the pipeline's
-   default profile: Bloom with a threshold near 1.0, plus a Tonemapping override
-   (Neutral) or the cores become white discs. Verify with a capture, not by
-   assuming the pass ran.
+   `Unity.RenderPipelines.Universal.Runtime` asmdef reference. No visible change
+   until the profile landed in step 4.
+4. **Bloom and tonemapping. Done.** `Assets/DefaultVolumeProfile.asset` is the
+   bloom home: URP registers it in its global settings, so it is global, needs no
+   scene Volume object, and reaches the capture tool and the tests too. Bloom
+   threshold 1.0, intensity 0.6, scatter 0.65, Gaussian, no lens dirt; Neutral
+   Tonemapping. `RenderingPipelineTests.TheDefaultVolumeProfileBloomsAboveTheBandAndTonemapsTheHighlights`
+   guards it. The EditMode assembly gained
+   `Unity.RenderPipelines.Core.Runtime` for the volume types.
 5. **The cheapness guard.** Done with step 2: `ThePipelineStaysCheap` asserts
    HDR is on and the buffer is 32-bit; the other cheapness rules are untouched.
-6. **Retune.** The procedural beacons have gain 2.2, so they bloom alongside the
-   real stars; lower their gain so Sirius stays the special one. Check the Sun's
-   marker and the orbit lines, which may also exceed 1. Then capture and compare.
+6. **Retune and show it. Next.** The procedural beacons have gain 2.2, so they
+   bloom alongside the real stars; lower their gain so Sirius stays the special
+   one. Check the Sun's marker and the orbit lines, which may also exceed 1.
+   Then capture and compare — bloom is now a visible change, so this step owes
+   screenshots (or a short video), not just a green suite.
 
 ## Stop and ask before crossing this line
 
@@ -62,10 +67,10 @@ and re-shooting. Do this branch in Gamma and show the result first.
 
 ## Verification
 
-* While iterating: `tools/check.sh --tests presentation,smoke`. Last result on
-  the step-3 commit: 0 failed, 0 skipped (`All checks passed in 184 s`, warm
-  cache). It also runs the fast gates.
-* Fast only: `tools/check.sh --fast` — passed on the step-3 commit (6 s).
+* While iterating: `tools/check.sh --tests presentation`. Last result on the
+  step-4 commit: 0 failed, 0 skipped (`All checks passed in 85 s`, warm cache).
+  It also runs the fast gates.
+* Fast only: `tools/check.sh --fast` — passed on the step-4 commit (6 s).
 * Before finishing: `tools/check.sh` — last full result at `63a5e47` was
   EditMode and PlayMode green, 0 failed, 0 skipped, 598 s. The caretaker runs
   it at the end of the plan.
@@ -79,11 +84,14 @@ and re-shooting. Do this branch in Gamma and show the result first.
 * A null `postProcessData` fails silently — HDR and a Volume will appear to do
   nothing. That was step 1's bug, and the new test now catches it.
 * HDR alone changes nothing visible without bloom and a tonemapper; the display
-  still clamps at 1.0. HDR is on and the camera runs post-processing now — do
-  not conclude "HDR did not work" before the Volume lands in step 4.
+  still clamps at 1.0. All of it is wired now, so a missing halo points at the
+  profile, the camera flag, or the renderer's `postProcessData` — the three
+  silent failures this branch already fixed.
 * A URP camera defaults to `renderPostProcessing` off, silently. Keep the scene
   YAML, the scene builder, and `EnsureCamera` in step; `SceneSmokeTests` and
   `BootstrapSmokeTests` guard the first and third.
+* The bloom is global through the default profile. Do not add a scene Volume;
+  it would double the effect and add an object the tests then have to keep.
 * Bloom thresholds are in HDR units here: band peak 0.55, catalogue stars up to
   ~2.4, procedural beacons ~2.2.
 * The skybox is a `Background`-queue pass, so it does bloom — that is the point.

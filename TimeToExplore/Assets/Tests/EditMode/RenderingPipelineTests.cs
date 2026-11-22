@@ -112,6 +112,47 @@ namespace TimeToExplore.Tests.EditMode
                 "the renderer's post-process data is not URP's package asset");
         }
 
+        /// <summary>
+        /// The pipeline's default volume profile is the bloom home: URP applies
+        /// it to every camera with post-processing on, so the scene needs no
+        /// Volume object, and the offscreen capture tool and the tests get the
+        /// same effect. HDR alone only widens the buffer; without this profile
+        /// the brightest star still clips flat at white.
+        /// </summary>
+        [Test]
+        public void TheDefaultVolumeProfileBloomsAboveTheBandAndTonemapsTheHighlights()
+        {
+            const string profilePath = "Assets/DefaultVolumeProfile.asset";
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
+
+            Assert.That(profile, Is.Not.Null, profilePath + " is missing");
+            Assert.That(
+                GraphicsSettings.GetRenderPipelineSettings<URPDefaultVolumeProfileSettings>()
+                    .volumeProfile,
+                Is.SameAs(profile),
+                "the pipeline's default volume profile is not the shipped one, " +
+                "so its bloom never reaches a camera");
+
+            Assert.That(profile.TryGet(out Bloom bloom), Is.True,
+                "the default profile has no Bloom override");
+            Assert.That(bloom.active, Is.True, "the Bloom override is disabled");
+            Assert.That(bloom.threshold.overrideState, Is.True,
+                "bloom threshold must be overridden, not left at the default");
+            Assert.That(bloom.threshold.value, Is.InRange(0.8f, 1.2f),
+                "the band peaks at 0.55 and must stay out of the bloom");
+            Assert.That(bloom.intensity.overrideState, Is.True);
+            Assert.That(bloom.intensity.value, Is.GreaterThan(0.05f),
+                "a near-zero intensity would make the bloom invisible");
+            Assert.That(bloom.scatter.overrideState, Is.True);
+            Assert.That(bloom.highQualityFiltering.value, Is.False,
+                "bicubic upsampling is not needed at 1080p");
+
+            Assert.That(profile.TryGet(out Tonemapping tonemapping), Is.True,
+                "the default profile has no Tonemapping override");
+            Assert.That(tonemapping.mode.value, Is.EqualTo(TonemappingMode.Neutral),
+                "HDR highlights need a shoulder or the cores become white discs");
+        }
+
         [Test]
         public void QualityLevelsDoNotOverrideTheGraphicsDefault()
         {

@@ -4,7 +4,7 @@ title: The sky
 description: The baked Milky Way, the procedural stars, and the galactic frame behind the orrery.
 tags: [technical, rendering, skybox, stars, milky-way]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:44:36Z }
 ---
 
 # What the player sees
@@ -243,10 +243,14 @@ direction's angle.
 
 One skybox pass, one texture fetch for the band, and at most one fetch per layer
 where a star exists. The texture is 2048 × 1024, about 6–8 MiB in memory
-uncompressed. The pipeline already renders with HDR off, so a bright star clips
-to white instead of blooming; that is acceptable for the prototype and is the
-reason the beacons stay small. [Post-processing](/technical/rendering-scale.md)
-can add bloom later, and the sky will take it well.
+uncompressed. The pipeline renders HDR in URP's 32-bit R11G11B10 buffer, and the
+default volume profile blooms above a threshold of 1.0 with Neutral tonemapping.
+The band peaks at 0.55, so it stays out of the bloom and keeps its gradients;
+the brightest catalogue stars write up to about 2.4, so Sirius, Vega, and Rigel
+carry a halo while faint stars stay points. The tonemapper gives the brightest
+cores a shoulder because the display still ends at white. The bloom's cost is a
+downsampled chain in the post-processing pass, not in the skybox pass. Details
+are in [Rendering at solar scale](/technical/rendering-scale.md).
 
 The band's peak is deliberately below the brightness of the HUD panels and the
 markers. If a label ever gets lost over the bulge, lower `BAND_PEAK` in the
