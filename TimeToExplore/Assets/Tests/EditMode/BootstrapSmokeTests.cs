@@ -54,6 +54,11 @@ namespace TimeToExplore.Tests.EditMode
                 "the sky texture and shader must resolve from Resources");
             Assert.That(_bootstrap.ViewCamera.clearFlags,
                 Is.EqualTo(CameraClearFlags.Skybox));
+            Assert.That(_bootstrap.ViewCamera.eventMask, Is.Zero,
+                "the view camera must opt out of the legacy OnMouse* dispatcher, " +
+                "which otherwise warns every frame with Input System-only input");
+            Assert.That(_bootstrap.ViewCamera.cullingMask, Is.Not.Zero,
+                "the opt-out is the mouse event mask, not rendering");
 
             _bootstrap.Model.ComputeState(_bootstrap.Model.Get("gateway"),
                 _bootstrap.Clock.JulianDate, out Vector3d gateway, out _);
