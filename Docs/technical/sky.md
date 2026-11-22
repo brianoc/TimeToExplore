@@ -4,7 +4,7 @@ title: The sky
 description: The baked Milky Way, the procedural stars, and the galactic frame behind the orrery.
 tags: [technical, rendering, skybox, stars, milky-way]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:44:36Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:49:25Z }
 ---
 
 # What the player sees
@@ -156,7 +156,7 @@ Three layers are summed:
 |---|---:|---:|---:|---:|---|
 | Dust | 300 | 0.35% | 5.0 × 10⁻⁴ | 0.60 | ~1 px, barely visible |
 | Field | 90 | 1.0% | 9.0 × 10⁻⁴ | 1.10 | ~2 px, the common star |
-| Beacons | 26 | 3.0% | 1.8 × 10⁻³ | 2.20 | ~4 px, the few that draw the eye |
+| Beacons | 26 | 3.0% | 1.8 × 10⁻³ | 1.30 | ~4 px, the few that draw the eye |
 
 The lattice is far below one pixel at these scales, so the pattern reads as
 random. `_BandGain`, `_StarGain`, and `_CatalogueGain` on the material scale the
@@ -164,7 +164,10 @@ three sources without regenerating anything, and they are separate dials on
 purpose: thinning the procedural field must not take Sirius with it. The beacons
 layer thinned from 5% to 3% when the real stars arrived: a random four-pixel
 point competing with Sirius is a lie the eye notices, and the real stars now
-carry that role.
+carry that role. Its gain came down from 2.20 to 1.30 once bloom went live, so
+most beacons stay under the 1.0 threshold and only an occasional bright one
+crosses it faintly; Sirius and the other first-magnitude catalogue stars keep
+the halo to themselves.
 
 # The real stars
 
@@ -219,8 +222,8 @@ catalogue has a radius of about half one.
 Size and brightness both follow from the magnitude. Flux falls 2.512× per
 magnitude, so the blue channel becomes brightness with a single `exp2`; the
 radius grows as roughly the sixth root of that brightness, so a mag-4 star is a
-point about a pixel across and Sirius is three pixels of clipped white and a
-halo. Colour is a B–V ramp from blue-white through white to amber, the way the
+point about a pixel across and Sirius is a few pixels wide, tonemapped just
+below white, with a bloom halo. Colour is a B–V ramp from blue-white through white to amber, the way the
 eye reads colour temperature at low light.
 
 The core is deliberately flat-topped rather than peaked. A star almost never
@@ -252,6 +255,14 @@ cores a shoulder because the display still ends at white. The bloom's cost is a
 downsampled chain in the post-processing pass, not in the skybox pass. Details
 are in [Rendering at solar scale](/technical/rendering-scale.md).
 
+The rendered result, judged from the offscreen captures rather than from numbers
+alone: the band stays smooth and unhaloed, with its mottling and its dark lanes
+intact; Sirius, Vega, and Rigel carry a soft halo some sixty pixels across
+while the faint catalogue stars stay single points; the procedural beacons are
+mostly points, with only an occasional one faintly aglow. The bright cores
+are no longer clipped — tonemapping trades the flat white disc for a small
+gradient — so the constellation shapes still read and nothing blooms into mush.
+
 The band's peak is deliberately below the brightness of the HUD panels and the
 markers. If a label ever gets lost over the bulge, lower `BAND_PEAK` in the
 generator or set `_BandGain` below 1 on the material; do not repaint the sky.
@@ -281,8 +292,11 @@ with the committed files: pixels for the texture, bytes for the JSON.
 
 Because the look is a judgement and not an assertion, `Assets/Editor/CaptureSky.cs`
 renders the real material offscreen for review — the opening view, Orion, the
-Plough, and a catalogue-only pass that isolates the real stars from the
-procedural field:
+Plough, a catalogue-only pass that isolates the real stars from the procedural
+field, and a bloom pair (`sky-opening-bloom.png`, `sky-orion-bloom.png`) that
+renders the same views through HDR and post-processing into a half-float target,
+with the pipeline's default volume profile supplying Bloom and Neutral
+tonemapping:
 
 ```bash
 SKY_CAPTURE_DIR="$PWD/Screenshots/sky" python3 tools/unity_guard.py \
@@ -291,6 +305,9 @@ SKY_CAPTURE_DIR="$PWD/Screenshots/sky" python3 tools/unity_guard.py \
     -executeMethod TimeToExplore.EditorTools.CaptureSky.Capture \
     -logFile /tmp/sky-capture.log -quit
 ```
+
+The bloom shots render through the graphics device, so the command deliberately
+omits `-nographics`; the test suites can use it, the captures cannot.
 
 The look itself is judged from the generator's statistics and a perspective
 preview, not from a test. The camera is still the authority: if the band is in

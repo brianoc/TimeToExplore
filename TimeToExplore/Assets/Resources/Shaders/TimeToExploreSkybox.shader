@@ -225,7 +225,7 @@ Shader "TimeToExplore/Skybox"
 
                 half3 stars = StarLayer(direction, 300.0, 0.0035, 0.00050, 0.60, 8.0, 11.0)
                             + StarLayer(direction, 90.0, 0.0100, 0.00090, 1.10, 6.0, 37.0)
-                            + StarLayer(direction, 26.0, 0.0300, 0.00180, 2.20, 4.0, 71.0);
+                            + StarLayer(direction, 26.0, 0.0300, 0.00180, 1.30, 4.0, 71.0);
 
                 // The two gains are separate dials: thinning the procedural
                 // field must not take Sirius with it.
