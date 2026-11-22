@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # Current state — milestone 0
@@ -314,6 +314,20 @@ torch-ship fiction uses is flyable. The design is
   6.73042 days to Mars at 0.3 g (1,171.6 km/s), and an over-thrust plan carries an
   `InfeasibleReason` naming the arc and the peak it needs.
 
+# Done: PlayMode suite (2026-11-22)
+
+The PlayMode suite drives the runtime-created `SolarSystemBootstrap` inside
+Unity's own player loop: no lifecycle method is called by reflection, the HUD
+and renderer are the shipped `MonoBehaviour`s, and the assertions read the real
+`LineRenderer` and `Text` objects. It covers the frame order (model and clock in
+`Update`, body views and trajectory in `LateUpdate`), the HUD's frame pump
+publishing an async preview and a slider retime into the trajectory line, the
+route legend and flight panel, and Begin and Cancel through the real buttons.
+`tools/check.sh` now runs EditMode and PlayMode as separate Unity invocations;
+the PlayMode suite is about half a minute on the warm project. It runs under
+`-nographics`, so rendered pixels and a real pointer through the EventSystem
+remain human checks ([Testing and verification](/technical/testing.md#unity-playmode-suite)).
+
 # Immediate next tasks
 
 1. Add the porkchop search now that a Lambert solve exists: sample departure and
@@ -324,9 +338,7 @@ torch-ship fiction uses is flyable. The design is
    correction would keep the plotted curve instead of solving a new one.
 3. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-4. Add a PlayMode suite that drives the real bootstrap and the real renderer, so
-   the frame order, the trajectory line, and the HUD are covered end to end.
-5. Add a fourth sky layer from a small catalogue of real bright stars
+4. Add a fourth sky layer from a small catalogue of real bright stars
    (RA/Dec/magnitude for the brightest few hundred), so the procedural field
    gains the navigable constellations it is missing
    ([The sky](/technical/sky.md)).

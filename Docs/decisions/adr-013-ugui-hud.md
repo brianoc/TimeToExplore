@@ -4,7 +4,7 @@ title: "ADR-013: A runtime uGUI HUD, and Input System New only"
 description: Replace the IMGUI HUD with a runtime-built uGUI canvas, give uGUI an InputSystemUIInputModule, and move Active Input Handling from Both to New only.
 tags: [decision, ui, input, unity, technical]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # Context
@@ -118,11 +118,13 @@ pressing a button in it.
 * **Canvas scaling changes pixels above and below 1080p.** IMGUI used raw screen
   pixels; the uGUI reference keeps the old sizes at 1920×1080 and scales them
   with the window. Panel text and spacing at other resolutions need a human eye.
-* **There is no PlayMode click coverage yet.** The EditMode tests invoke
-  `Button.onClick` directly and assert the guard, but they do not deliver a real
-  pointer through the EventSystem. Button hit areas, hover feedback, the
-  pointer-over-panel answer on the first frame, and cursor capture still need a
-  Play mode pass.
+* **The PlayMode suite covers the HUD's frames, not a real pointer.** Since
+  2026-11-22 the PlayMode suite builds the HUD inside Unity's player loop, pumps
+  the async preview, invokes the real button `UnityEvent`s after the one-frame
+  guard, and checks the live `Text` and `LineRenderer` objects. It still does not
+  deliver a pointer through the `EventSystem`, so button hit areas, hover
+  feedback, the pointer-over-panel answer on the first frame, and cursor capture
+  still need a Play mode pass.
 * **Legacy `Text` is not a text-layout engine.** Long body descriptions are
   clipped to their 30-pixel box, as IMGUI clipped them; there is no TMP
   auto-size, rich text, or SDF crispness. That is acceptable at these sizes and

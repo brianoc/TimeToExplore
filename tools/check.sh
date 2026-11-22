@@ -2,17 +2,19 @@
 #
 # One-command verification for Time to Explore.
 #
-#   tools/check.sh                       # docs, data, and the full Unity suite
+#   tools/check.sh                       # docs, data, and both Unity suites
 #   tools/check.sh --fast                # everything except Unity (a few seconds)
 #   tools/check.sh --tests flight        # the fast gates plus one test category
 #   tools/check.sh --tests core,smoke    # any comma-separated categories
+#   tools/check.sh --tests playmode      # the PlayMode suite only
 #   tools/check.sh --reset               # drop the warm test project first
 #   tools/check.sh --keep                # keep the generator temp directory
 #
-# Test categories: core, flight, presentation, smoke. The Unity suite runs in a
-# persistent project under .cache/test-project with a symlinked Assets folder and
-# its own Library, so the package import is paid once instead of every run. The
-# first run after --reset rebuilds it (adds roughly half a minute).
+# Test categories: core, flight, presentation, smoke are EditMode; playmode is
+# the PlayMode suite. A bare run executes both platforms. The Unity suites run in
+# a persistent project under .cache/test-project with a symlinked Assets folder
+# and its own Library, so the package import is paid once instead of every run.
+# The first run after --reset rebuilds it (adds roughly half a minute).
 #
 # Unity runs under tools/unity_guard.py, which stops it if it stalls, exceeds its
 # time budget, or enters the known cloud-endpoint retry loop at shutdown. Results
@@ -150,23 +152,28 @@ if (( FAST )); then
     exit 0
 fi
 
-# 6. Unity EditMode tests ---------------------------------------------------
+# 6. Unity EditMode and PlayMode tests --------------------------------------
 CATEGORIES=""
+RUN_EDITMODE=1
+RUN_PLAYMODE=1
 if [[ -n "$TESTS" ]]; then
+    RUN_EDITMODE=0
+    RUN_PLAYMODE=0
     IFS=',;' read -r -a requested <<< "$TESTS"
     for category in "${requested[@]}"; do
         category="${category//[[:space:]]/}"
         [[ -z "$category" ]] && continue
         case "$category" in
-            core|flight|presentation|smoke) ;;
-            *) fail "unknown test category: $category (choose core, flight, presentation, smoke)" ;;
+            core|flight|presentation|smoke) RUN_EDITMODE=1 ;;
+            playmode) RUN_PLAYMODE=1 ;;
+            *) fail "unknown test category: $category (choose core, flight, presentation, smoke, playmode)" ;;
         esac
         CATEGORIES="${CATEGORIES:+$CATEGORIES;}$category"
     done
     [[ -z "$CATEGORIES" ]] && fail "--tests needs at least one category"
 fi
 
-step "Unity EditMode tests${CATEGORIES:+ ($CATEGORIES)}"
+step "Unity tests${CATEGORIES:+ ($CATEGORIES)}"
 
 UNITY_BIN="${UNITY_BIN:-}"
 if [[ -z "$UNITY_BIN" ]]; then
@@ -177,8 +184,6 @@ fi
 
 CACHE="${TTE_TEST_CACHE:-$ROOT/.cache/test-project}"
 PROJECT="$CACHE/TimeToExplore"
-UNITY_LOG="$CACHE/unity.log"
-RESULTS="$CACHE/results.xml"
 ASSETS="$ROOT/TimeToExplore/Assets"
 
 if (( RESET )); then
@@ -206,50 +211,57 @@ fi
 rm -rf "$PROJECT/Packages" "$PROJECT/ProjectSettings"
 cp -R TimeToExplore/Packages "$PROJECT/Packages"
 cp -R TimeToExplore/ProjectSettings "$PROJECT/ProjectSettings"
-rm -f "$RESULTS" "$UNITY_LOG"
 
 echo "Unity: $UNITY_BIN"
 echo "Test project: $PROJECT$([[ -d "$PROJECT/Library" ]] || echo ' (first run: building the asset cache)')"
 
-UNITY_ARGS=(
-    -batchmode
-    -nographics
-    -projectPath "$PROJECT"
-    -runTests
-    -testPlatform EditMode
-    -testResults "$RESULTS"
-    -logFile "$UNITY_LOG"
-)
-[[ -n "$CATEGORIES" ]] && UNITY_ARGS+=(-testCategory "$CATEGORIES")
+run_unity_suite() {
+    local platform="$1" label="$2" stall="$3" budget="$4"
+    local slug
+    slug="$(printf '%s' "$platform" | tr '[:upper:]' '[:lower:]')"
+    local UNITY_LOG="$CACHE/unity-$slug.log"
+    local RESULTS="$CACHE/results-$slug.xml"
 
-# Unity writes no per-test progress to the log, so the whole EditMode run is one
-# silent stretch (about twelve minutes for a full suite on a warm project). The
-# window must cover it; the time budget still bounds a real hang.
-set +e
-"$PYTHON" tools/unity_guard.py \
-    --log "$UNITY_LOG" \
-    --stall-seconds 1200 \
-    --timeout-seconds 1800 \
-    --shutdown-grace 20 \
-    -- "$UNITY_BIN" "${UNITY_ARGS[@]}"
-UNITY_STATUS=$?
-set -e
+    step "$label${CATEGORIES:+ ($CATEGORIES)}"
+    rm -f "$RESULTS" "$UNITY_LOG"
 
-if (( UNITY_STATUS == 124 )); then
-    echo "The guard stopped Unity; reading whatever results it had already written." >&2
-fi
+    local UNITY_ARGS=(
+        -batchmode
+        -nographics
+        -projectPath "$PROJECT"
+        -runTests
+        -testPlatform "$platform"
+        -testResults "$RESULTS"
+        -logFile "$UNITY_LOG"
+    )
+    [[ -n "$CATEGORIES" ]] && UNITY_ARGS+=(-testCategory "$CATEGORIES")
 
-if [[ ! -f "$RESULTS" ]]; then
-    echo "--- Unity log tail ---" >&2
-    tail -60 "$UNITY_LOG" >&2 || true
-    fail "Unity produced no test results (exit $UNITY_STATUS)"
-fi
+    set +e
+    "$PYTHON" tools/unity_guard.py \
+        --log "$UNITY_LOG" \
+        --stall-seconds "$stall" \
+        --timeout-seconds "$budget" \
+        --shutdown-grace 20 \
+        -- "$UNITY_BIN" "${UNITY_ARGS[@]}"
+    local UNITY_STATUS=$?
+    set -e
 
-if ! "$PYTHON" - "$RESULTS" <<'PY'
+    if (( UNITY_STATUS == 124 )); then
+        echo "The guard stopped Unity; reading whatever results it had already written." >&2
+    fi
+
+    if [[ ! -f "$RESULTS" ]]; then
+        echo "--- Unity log tail ---" >&2
+        tail -60 "$UNITY_LOG" >&2 || true
+        fail "$label produced no test results (exit $UNITY_STATUS)"
+    fi
+
+    if ! "$PYTHON" - "$RESULTS" "$label" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
 root = ET.parse(sys.argv[1]).getroot()
+label = sys.argv[2]
 cases = [element for element in root.iter() if element.tag == "test-case"]
 failed = [case for case in cases if case.get("result") not in ("Passed", "Skipped", "Inconclusive")]
 skipped = [case for case in cases if case.get("result") == "Skipped"]
@@ -262,13 +274,26 @@ for case in failed[:20]:
         if element is not None and element.text:
             print("  " + element.text.strip().splitlines()[0])
 
-print(f"Unity EditMode: {len(cases)} tests, {len(failed)} failed, {len(skipped)} skipped")
+print(f"{label}: {len(cases)} tests, {len(failed)} failed, {len(skipped)} skipped")
 sys.exit(1 if failed or not cases else 0)
 PY
-then
-    echo "--- Unity log tail ---" >&2
-    tail -40 "$UNITY_LOG" >&2 || true
-    fail "Unity EditMode tests failed (exit $UNITY_STATUS)"
+    then
+        echo "--- Unity log tail ---" >&2
+        tail -40 "$UNITY_LOG" >&2 || true
+        fail "$label tests failed (exit $UNITY_STATUS)"
+    fi
+}
+
+if (( RUN_EDITMODE )); then
+    # Unity writes no per-test progress to the log, so the whole EditMode run is
+    # one silent stretch. The window covers it; the time budget bounds a hang.
+    run_unity_suite EditMode "Unity EditMode" 1200 1800
+fi
+
+if (( RUN_PLAYMODE )); then
+    # The PlayMode suite starts the player loop and waits for a real preview
+    # build, so it has its own log and budget.
+    run_unity_suite PlayMode "Unity PlayMode" 900 1200
 fi
 
 printf '\nAll checks passed in %d s.\n' "$SECONDS"

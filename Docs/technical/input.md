@@ -4,7 +4,7 @@ title: Input
 description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, the legacy mouse dispatcher, and the mouse and wheel rules.
 tags: [technical, input, unity, controls, ui]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # Two readers, one contract
@@ -239,8 +239,9 @@ covers the pure helpers and the null case; `InputDeviceTests` feeds a virtual
 `Keyboard` and `Mouse` through `InputTestFixture` to prove the device edges
 arrive as intents. The fixture is documented as a Play mode tool, but it works
 in EditMode for direct state reads because it queues device state and updates
-the Input System itself; it does not run the player loop, so frame order is
-covered by the source guard and the bootstrap tests, not by input simulation.
+the Input System itself; it does not run the player loop. Frame order is covered
+by the PlayMode suite, which drives the real bootstrap, but it does not inject
+pointer events into the EventSystem.
 
 The guard test scans `Assets/Scripts` for `UnityEngine.Input` and for legacy
 `Input.Get…`/`Input.mouse…` calls, excluding only `PlayerControls.cs`. A second

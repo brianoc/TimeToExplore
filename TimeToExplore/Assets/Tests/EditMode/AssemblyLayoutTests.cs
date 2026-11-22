@@ -28,11 +28,12 @@ namespace TimeToExplore.Tests.EditMode
         private const string Presentation = "TimeToExplore.Presentation";
         private const string EditorAssembly = "TimeToExplore.Editor";
         private const string Tests = "TimeToExplore.Tests.EditMode";
+        private const string PlayModeTests = "TimeToExplore.Tests.PlayMode";
 
         /// <summary>Layer order; an assembly may only reference an earlier one.</summary>
         private static readonly string[] Layers =
         {
-            Core, Simulation, Presentation, EditorAssembly, Tests
+            Core, Simulation, Presentation, EditorAssembly, Tests, PlayModeTests
         };
 
         private static readonly string[] PresentationFolders =
@@ -144,6 +145,31 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void PlayModeAssemblyRunsOnEveryPlatformAndReferencesTheRuntime()
+        {
+            AsmdefFile tests = Load("Tests/PlayMode/TimeToExplore.Tests.PlayMode.asmdef");
+
+            Assert.That(tests.Json.name, Is.EqualTo(PlayModeTests));
+            Assert.That(IncludePlatforms(tests.Json), Is.Empty,
+                "a PlayMode suite must be compiled for the player, not editor-only");
+            Assert.That(tests.Json.excludePlatforms ?? Array.Empty<string>(), Is.Empty);
+            Assert.That(ProjectReferences(tests.Json),
+                Is.EquivalentTo(new[] { Core, Simulation, Presentation }),
+                "the PlayMode suite compiles against all three runtime assemblies");
+            CollectionAssert.Contains(References(tests.Json), "UnityEngine.UI");
+            CollectionAssert.Contains(References(tests.Json), "UnityEngine.TestRunner");
+            CollectionAssert.Contains(References(tests.Json), "UnityEditor.TestRunner");
+            CollectionAssert.DoesNotContain(References(tests.Json), EditorAssembly,
+                "play mode drives the runtime, not the scene builder");
+
+            Assert.That(tests.Json.overrideReferences, Is.True);
+            CollectionAssert.Contains(tests.Json.precompiledReferences ?? Array.Empty<string>(),
+                "nunit.framework.dll");
+            CollectionAssert.Contains(tests.Json.defineConstraints ?? Array.Empty<string>(),
+                "UNITY_INCLUDE_TESTS");
+        }
+
+        [Test]
         public void EveryProjectReferenceNamesAKnownAssembly()
         {
             foreach (AsmdefFile definition in Assemblies())
@@ -159,7 +185,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void EveryLayerHasExactlyOneAssembly()
+        public void TheAssemblyFolderHasExactlyTheExpectedDefinitions()
         {
             string[] expected =
             {
@@ -167,11 +193,13 @@ namespace TimeToExplore.Tests.EditMode
                 "Scripts/Core/TimeToExplore.Core.asmdef",
                 "Scripts/Simulation/TimeToExplore.Simulation.asmdef",
                 "Scripts/TimeToExplore.Presentation.asmdef",
-                "Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef"
+                "Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef",
+                "Tests/PlayMode/TimeToExplore.Tests.PlayMode.asmdef"
             };
 
             Assert.That(AllAsmdefPaths(), Is.EquivalentTo(expected),
-                "one assembly definition per layer; a duplicate or stray one changes the compile graph");
+                "each layer has one runtime assembly and one test suite; " +
+                "a duplicate or stray asmdef changes the compile graph");
 
             foreach (string folder in PresentationFolders)
             {
@@ -253,7 +281,7 @@ namespace TimeToExplore.Tests.EditMode
         {
             int rank = Array.IndexOf(Layers, assemblyName);
             Assert.That(rank, Is.GreaterThanOrEqualTo(0),
-                $"'{assemblyName}' is not one of the five project assemblies");
+                $"'{assemblyName}' is not one of the known project assemblies");
             return rank;
         }
 

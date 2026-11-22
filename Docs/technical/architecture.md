@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # Shape of the prototype
@@ -50,7 +50,8 @@ clock and asks the session to reach it.
 
 # Assembly layout
 
-The code is split into five assembly definitions, and the compile graph encodes
+The code is split into six assembly definitions — four runtime layers and two
+test suites — and the compile graph encodes
 the layer rule **Core ← Simulation ← Presentation ← Editor/Tests**: an assembly
 may only reference an assembly to its left. The direction is enforced by Unity
 (and by `AssemblyLayoutTests`), not by convention.
@@ -62,6 +63,7 @@ may only reference an assembly to its left. The direction is enforced by Unity
 | `TimeToExplore.Presentation` | `Assets/Scripts/TimeToExplore.Presentation.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `Unity.InputSystem`, `UnityEngine.UI` | all |
 | `TimeToExplore.Editor` | `Assets/Editor/TimeToExplore.Editor.asmdef` | `TimeToExplore.Core`, `TimeToExplore.Simulation`, `TimeToExplore.Presentation` | Editor only |
 | `TimeToExplore.Tests.EditMode` | `Assets/Tests/EditMode/TimeToExplore.Tests.EditMode.asmdef` | Core, Simulation, Presentation, `TimeToExplore.Editor`, URP, Input System, Unity UI, test runner | Editor only |
+| `TimeToExplore.Tests.PlayMode` | `Assets/Tests/PlayMode/TimeToExplore.Tests.PlayMode.asmdef` | Core, Simulation, Presentation, Unity UI, test runner | all platforms |
 
 `Presentation` covers `Assets/Scripts/Player/`, `Assets/Scripts/Rendering/`,
 `Assets/Scripts/UI/`, and the root `SolarSystemBootstrap` on purpose. Those
@@ -525,16 +527,19 @@ moved. A dirty-flag or lower update rate (5–10 Hz) is an easy win.
 Automated verification is one command:
 
 ```bash
-tools/check.sh              # docs, catalogue, both generators, Unity EditMode tests
-tools/check.sh --tests core # one test category
-tools/check.sh --fast       # skip Unity for a few-second loop
+tools/check.sh                    # docs, catalogue, both generators, Unity EditMode + PlayMode
+tools/check.sh --tests core       # one EditMode test category
+tools/check.sh --tests playmode   # the PlayMode suite only
+tools/check.sh --fast             # skip Unity for a few-second loop
 ```
 
-The Unity suite lives in `Assets/Tests/EditMode/` and runs in `.cache/test-project`,
-a persistent project with `Assets` symlinked to the real folder and its own warm
-`Library`, so it is safe with the editor open and the package import is paid
-once. Each test class carries a `core`, `flight`, `presentation`, or `smoke`
-category; `--tests` filters on it. It covers the Kepler
+The EditMode suite lives in `Assets/Tests/EditMode/` and the PlayMode suite in
+`Assets/Tests/PlayMode/`. Both run in `.cache/test-project`, a persistent project
+with `Assets` symlinked to the real folder and its own warm `Library`, so they
+are safe with the editor open and the package import is paid once. Each EditMode
+class carries a `core`, `flight`, `presentation`, or `smoke` category and the
+PlayMode class carries `playmode`; `--tests` filters on it. The EditMode suite
+covers the Kepler
 solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
@@ -548,6 +553,14 @@ assembly layout graph, the scene's frame loop, and the same flight through
 the real bootstrap.
 See [Testing and verification](/technical/testing.md) for the test matrix,
 numerical reference values, and conventions.
+
+The PlayMode suite covers what EditMode cannot: the runtime-created bootstrap
+inside Unity's own player loop, simulation before presentation in one frame, the
+real renderer's body views and orbit lines, the HUD's frame pump publishing an
+async preview into the real trajectory `LineRenderer`s, the trip-time retime,
+and Begin and Cancel through the real HUD buttons. It runs under `-nographics`,
+so it asserts component state and projected screen positions rather than
+framebuffer pixels.
 
 The orbital maths is also checked outside Unity at the epoch against known
 values:
@@ -564,9 +577,6 @@ The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
 project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
 Render Pipeline, the Input System package, uGUI, and Active Input Handling set to
 **Input System Package (New)**.
-
-The next layer is PlayMode tests for the renderer, bootstrap, and HUD; they are
-deferred until the presentation code settles.
 
 # Known limitations
 
@@ -585,8 +595,9 @@ deferred until the presentation code settles.
 * No save/load.
 * The HUD is uGUI built at runtime and updates its text every frame. The object
   graph is stable, but a panel's text is re-evaluated per frame; a dirty flag
-  would shave allocations when nothing changed. There is no PlayMode click
-  coverage yet, so button hit areas and canvas scaling still need a human eye.
+  would shave allocations when nothing changed. The PlayMode suite drives the
+  frame pump and the button events, but no test sends a real pointer through the
+  EventSystem, so button hit areas and canvas scaling still need a human eye.
 * The scene is generated at runtime; there is no authored art scene.
 * The rendering migration stops at the URP forward path: there is no
   post-processing, no SSAO, no shadow system, and no two-camera far field. Those

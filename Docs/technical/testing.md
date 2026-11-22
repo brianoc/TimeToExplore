@@ -4,20 +4,21 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # One command
 
 ```bash
-tools/check.sh                    # everything, including the Unity suite
+tools/check.sh                    # everything, including both Unity suites
 tools/check.sh --fast             # docs, generators, and tooling (a few seconds)
 tools/check.sh --tests flight     # the fast gates plus one test category
+tools/check.sh --tests playmode   # the PlayMode suite only
 tools/check.sh --tests core,smoke # any comma-separated categories
 tools/check.sh --reset            # drop the warm test project first
 ```
 
-`check.sh` runs six gates in order:
+`check.sh` runs seven gates in order:
 
 | Gate | Tool | What it proves |
 |---|---|---|
@@ -26,15 +27,19 @@ tools/check.sh --reset            # drop the warm test project first
 | Catalogue generator | `tools/generate_solar_system.py --offline --output …` | The committed JSON is byte-identical to a fresh generation |
 | Sky generator | `tools/generate_skybox.py --out …` | The committed `milky_way.png` is pixel-identical to a fresh generation |
 | Tooling | `tools/test_unity_guard.py` | The guard stops a stuck run and passes through a real exit code |
-| Runtime | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock |
+| Runtime (EditMode) | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock, the scene's frame loop |
+| Player loop (PlayMode) | Unity PlayMode suite | The runtime-built bootstrap, renderer, trajectory line, and HUD through Unity's own frames |
 
-The Unity tests carry one category each: `core`, `flight`, `presentation`, or
-`smoke`. `--tests` narrows the Unity gate to the categories named; the fast
-gates still run. A `core` or `presentation` run is a few seconds and the flight
-category is the bulk of a full run, which takes about **three minutes** on the
-warm project (187 s measured on the first-plot branch). The burn–coast–burn plan
-is still the expensive part — its fixed burns integrate the summed field — but a
-certified build is no longer fifteen seconds in the editor.
+The EditMode tests carry one category each: `core`, `flight`, `presentation`, or
+`smoke`; the PlayMode suite carries `playmode`. `--tests` narrows the Unity gate
+to the categories named; the fast gates still run. A `core` or `presentation`
+run is a few seconds and the flight category is the bulk of a full run, which
+takes about **three minutes** on the warm project (187 s measured on the
+first-plot branch). The burn–coast–burn plan is still the expensive part — its
+fixed burns integrate the summed field — but a certified build is no longer
+fifteen seconds in the editor. The PlayMode suite is separate and takes about
+**half a minute** on the warm project. A bare `tools/check.sh` runs both
+platforms; `--tests` with only EditMode categories skips the PlayMode launch.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -47,28 +52,30 @@ about half a minute on the first run. The cache is gitignored and never contains
 edited sources.
 
 Unity runs under `tools/unity_guard.py`, which stops it when it writes nothing
-to the log for eight minutes, exceeds a thirty-minute budget, repeats a Unity
+to the log for its stall window, exceeds its time budget, repeats a Unity
 cloud-endpoint lookup, or starts shutting down and does not finish. Shutdown
 hangs are the known failure: batch Unity can finish the tests, write
-`results.xml`, and then retry DNS lookups forever. `check.sh` still reads the
-results that were written, so a hang at the end does not throw away a completed
-run. The log is `.cache/test-project/unity.log`. The stall window is **twenty
-minutes** because Unity writes no per-test progress to the log. It was set when
-a full EditMode run was one silent stretch of about fifteen minutes and the
-eight-minute window killed healthy runs; the suite now finishes in about three,
-so the window is deliberately generous rather than tight. The time budget still
-stops a real hang. For any
-other batch run, such as a capture helper or a scene builder, use the same
-wrapper:
+`results-<platform>.xml`, and then retry DNS lookups forever. `check.sh` still
+reads the results that were written, so a hang at the end does not throw away a
+completed run. Logs are `.cache/test-project/unity-editmode.log` and
+`unity-playmode.log`. The EditMode stall window is **twenty minutes** because
+Unity writes no per-test progress to the log; it was set when a full run was one
+silent stretch of about fifteen minutes. The PlayMode window is **fifteen
+minutes**. Their time budgets are thirty and twenty minutes. The windows are
+deliberately generous rather than tight; the budget still stops a real hang.
+
+For any other batch run, such as a capture helper or a scene builder, use the
+same wrapper:
 
 ```bash
 python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
 ```
 
-A full run takes about three minutes with the warm project (187 s measured on
-the first-plot branch); the `flight` category is the bulk of it. `--fast` is the
-loop to use while editing docs, Python tools, or catalogue data. The Unity suite
-is the gate for any C# change.
+A full run takes about three minutes for EditMode plus half a minute for
+PlayMode with the warm project (187 s measured on the first-plot branch); the
+`flight` category is the bulk of the EditMode time. `--fast` is the loop to use
+while editing docs, Python tools, or catalogue data. The Unity suites are the
+gate for any C# change.
 
 # Unity EditMode suite
 
@@ -121,7 +128,7 @@ because Unity test assemblies cannot reference the predefined
 | `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), Space as the camera home and `P` as pause, every other hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, the 4 px click slop that separates a click from a drag, and null devices returning neutral values |
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents (Space home, `P` pause), held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
-| `AssemblyLayoutTests` | the five `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor and tests are Editor-only and reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
+| `AssemblyLayoutTests` | the six `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor is Editor-only, the EditMode suite is Editor-only and the PlayMode suite is all-platform, both test suites reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
 | `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the profile's *Quintic arc*, *Fixed burn*, and *Conic arc* rows, collapsing its conic arcs into one row, stacking above the flight panel, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and requesting a retime through its `onValueChanged` while the handle and label keep the player's ask and the finished plan is published on the main thread, the two arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the conic capture), the `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider running from 0.05 to 1 g and rebuilding the preview at 0.5 g with the minimum clamped, the profile's own 6.73–20.19 day window and its report rows through the shared level control, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
 The suite deliberately tests the shipped catalogue as well as the maths, so a
@@ -136,6 +143,36 @@ EditMode does not advance `Time.deltaTime`, so `SolarSystemBootstrap` exposes a
 alone, and the frame-loop acceptance supplies a fixed 1/60 s step. The test
 still calls the real `Update`/`LateUpdate`, so the frame order, the warp policy,
 the clock clamp, and the arrival are the shipped ones.
+
+# Unity PlayMode suite
+
+The PlayMode suite lives in `Assets/Tests/PlayMode/` behind the all-platform
+`TimeToExplore.Tests.PlayMode` assembly and carries the `playmode` category. It
+does not build the composition root by hand: entering play mode runs
+`SolarSystemBootstrap.AutoCreate`, and the test methods only `yield return null`
+into Unity's player loop. Unity calls `Awake`, `Update`, and `LateUpdate`; the
+HUD is the runtime-built uGUI canvas; the renderer and trajectory line are the
+same `MonoBehaviour`s the player sees. `check.sh` runs it as a second Unity
+invocation (`-testPlatform PlayMode`) with its own log and results file.
+
+| File | Covers |
+|---|---|
+| `BootstrapPlayModeTests` | `RuntimeInitializeOnLoad` creates the `Time to Explore` root; the renderer builds one view per renderable body; every body view and every visible orbit `LineRenderer` carries the frame's model state and `ShowOrbits` reaches the real lines on the next frame; the HUD canvas is live and its status clock is rewritten from the frame clock; a frame probe sees the model advanced in `Update` while the body views still hold the previous frame, then matching in `LateUpdate`, with the clock held between the phases and exactly one step per frame; the real details panel's route button passes its one-frame opening guard, plots through the async planner and the HUD's per-frame pump, and the flight panel and route legend appear; every arc is an enabled `LineRenderer` with positions, one width key per vertex, the arc's own colour, and most of the framed route inside the camera's view; the ghost marks Mars at the arrival date; the trip-time slider requests a retime through its real `onValueChanged` and the HUD publishes it; `ShowHud` and `ShowLabels` take effect on the following frame; Begin through the real button starts the flight, the clock clamp holds across frames, and Cancel clears the route and the panel |
+| `FrameOrderProbe` | a helper that runs after the bootstrap in both phases, so the test can read what `Update` produced before `LateUpdate` drew it |
+| `LateUpdateProbe` | a helper that runs a callback at the end of a frame, because a `[UnityTest]` coroutine resumes in the `Update` phase and cannot otherwise read state drawn later in that frame |
+
+The deterministic step comes from the same `DeltaTimeSeconds` seam: the PlayMode
+setup supplies one second per frame at 1×. That keeps a preview, its retime, and
+the HUD assertions to about half a minute while still using Unity's real frame
+order, real `Time.frameCount`, real component lifecycle, and real `LineRenderer`
+and `Text` objects. Nothing in the suite calls `Update` or `LateUpdate` by
+reflection.
+
+The suite deliberately stops at component state and projected screen positions.
+`-nographics` has no rendered pixels to read, and no synthetic pointer is sent
+through the `EventSystem`; the real button `UnityEvent`s are invoked after the
+HUD makes them interactable. The rendered frame, pointer hit areas, and canvas
+scaling away from 1080p remain human checks.
 
 # Numerical references at the epoch
 
@@ -584,31 +621,35 @@ non-empty `parent` for orbits) and keep a regression test for it.
    the JSON or building states by hand.
 4. Assert physical relationships (vis-viva, energy, geometry) rather than
    re-running the implementation's own formula.
-5. Give the class a `[Category]` from the list above, so focused runs include it.
-6. Do not write files under `Assets` from a test: the test project's `Assets` is
+5. Use PlayMode when the assertion depends on Unity's lifecycle or frame order:
+   the auto-created bootstrap, an `Update` before `LateUpdate` handoff, the HUD
+   building or pumping, or a real `LineRenderer`/`Text` object. Use EditMode for
+   everything else; it is much cheaper. Supply the `DeltaTimeSeconds` seam
+   rather than waiting real time, and use `FrameOrderProbe` or
+   `LateUpdateProbe` to read state at the end of a frame.
+6. Give the class a `[Category]` from the list above (`playmode` in the PlayMode
+   suite), so focused runs include it.
+7. Do not write files under `Assets` from a test: the test project's `Assets` is
    a symlink to the real folder.
-7. Run `tools/check.sh` and report the command and result.
+8. Run `tools/check.sh` and report the command and result.
 
 # Not covered yet
 
-* PlayMode tests for the renderer, bootstrap, and HUD. These need a scene and
-  graphics, and are the next layer once the presentation code settles. The frame
-  loop is covered in EditMode by `SceneFlightTests`, which reproduces the
-  bootstrap's order of operations, and the wiring is covered by
-  `BootstrapSmokeTests`, which invokes the real `Awake`/`Update`/`LateUpdate` in
-  edit mode. `SolarSystemHudTests` invokes the real HUD `Update` and each
-  button's `onClick` directly, but no test delivers a real pointer through the
-  EventSystem or renders a frame. What remains is the actual canvas render, the
-  button hit areas, pointer-over-panel on the first frame, cursor capture, and
-  canvas scaling away from 1080p. The URP migration has the same gap:
-  `RenderingPipelineTests` proves the pipeline and shaders are configured, but not
-  what a frame looks like.
+* Rendered pixels. The PlayMode suite runs under `-nographics`, so it checks the
+  real renderer objects, their positions, widths, colours, and projected screen
+  positions, not the framebuffer. What a frame looks like, the line shader's
+  `fwidth` coverage, and the dash texture still need eyes or a capture run. The
+  URP migration has the same gap: `RenderingPipelineTests` proves the pipeline
+  and shaders are configured, and the PlayMode suite proves the objects are
+  submitted with the right transform, but not the final image.
+* A real pointer through the `EventSystem`. The PlayMode suite invokes the real
+  `Button.onClick` events after the HUD makes them interactable, so the
+  one-frame guard and the handler wiring are covered, but button hit areas,
+  hover feedback, pointer-over-panel on the first frame, cursor capture, and
+  canvas scaling away from 1080p still need a Play mode pass.
 * Screen-space picking at the edges of the view and on a moving camera; the
-  pure picker is tested, but the projection step and the pointer-over-panel
-  decision need a PlayMode scene.
-* The trajectory line's rendered pixels, the shader's `fwidth` coverage, and the
-  dash texture. Its data sources (the plan's boundaries and adaptive
-  chord flatness) are tested, but no test renders a frame.
+  pure picker is tested and the PlayMode suite runs the frame loop, but no test
+  delivers a real pointer to the projection step.
 * Performance budgets for orbit-line updates and per-frame HUD text updates.
 * A finite fuel budget and mass-dependent acceleration (the first-pass
   propellant readout exists, but it does not limit or change the ship);
@@ -616,5 +657,6 @@ non-empty `parent` for orbits) and keep a regression test for it.
   *spiral* cruise. The Lambert coast, the prograde departure burn,
   and the brake are covered; a slow continuous spiral that does not coast on a
   conic is not.
-* Continuous integration. The repository is not under version control yet;
-  when it is, `tools/check.sh` is the single CI entry point.
+* Continuous integration. The repository is under version control and `main` is
+  published, but no CI pipeline runs yet; when one does, `tools/check.sh` is its
+  single entry point.

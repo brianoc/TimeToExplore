@@ -51,7 +51,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Planning performance](/technical/planning-performance.md) — the two-tier model: a fast search-only gravity field in front of the unchanged full-field plan and flight, the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it, and how the one orbit camera zooms, frames, and returns home.
 * [The system map (removed)](/technical/system-map.md) — a historical record of the top-down comparison layer removed on 2026-11-21; the current camera is in Selection and camera focus.
-* [Testing and verification](/technical/testing.md) — the one-command check suite, test matrix, and numerical reference values.
+* [Testing and verification](/technical/testing.md) — the one-command check suite, the EditMode and PlayMode test matrices, and numerical reference values.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.

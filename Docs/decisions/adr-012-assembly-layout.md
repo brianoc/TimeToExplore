@@ -1,10 +1,10 @@
 ---
 type: Decision Record
 title: "ADR-012: An assembly layout that enforces the layering"
-description: Split the Unity runtime into Core, Simulation, and Presentation assemblies, put editor tooling behind its own Editor assembly, and let the test assembly prove the graph.
+description: Split the Unity runtime into Core, Simulation, and Presentation assemblies, put editor tooling behind its own Editor assembly, and let the test assemblies prove the graph.
 tags: [decision, architecture, unity, technical, testing]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
 ---
 
 # Context
@@ -29,7 +29,7 @@ should say the same thing.
 
 # Decision
 
-1. **Five assemblies, one per layer.**
+1. **Six assemblies: one per layer and two test suites.**
 
    | Assembly | Folder | Project references | Platforms |
    |---|---|---|---|
@@ -38,13 +38,16 @@ should say the same thing.
    | `TimeToExplore.Presentation` | `Assets/Scripts/` (covers `Player/`, `Rendering/`, `UI/`, and the root bootstrap) | Core, Simulation | all |
    | `TimeToExplore.Editor` | `Assets/Editor/` | Core, Simulation, Presentation | Editor only |
    | `TimeToExplore.Tests.EditMode` | `Assets/Tests/EditMode/` | Core, Simulation, Presentation, Editor | Editor only |
+   | `TimeToExplore.Tests.PlayMode` | `Assets/Tests/PlayMode/` | Core, Simulation, Presentation | all platforms |
 
    The rule is **Core ← Simulation ← Presentation ← Editor/Tests**: an assembly
    may only reference an assembly to its left. `Core` has no project references,
    `Simulation` references only `Core`, `Presentation` adds `Unity.InputSystem`
-   for the `PlayerControls` seam, and the two editor-only assemblies sit at the
-   top. The test assembly also references `TimeToExplore.Editor` so it can prove
-   the editor assembly compiles and resolves its scene builder.
+   for the `PlayerControls` seam, and the editor tooling sits at the top. The
+   EditMode suite also references `TimeToExplore.Editor` so it can prove the
+   editor assembly compiles and resolves its scene builder. The PlayMode suite
+   is all-platform because it must enter the player loop, but it still only
+   references the three runtime assemblies and the test runner.
 
 2. **The existing runtime assembly is renamed, not replaced.** The asmdef and its
    `.meta` moved from `TimeToExplore.Runtime.asmdef` to
@@ -62,9 +65,10 @@ should say the same thing.
    "the Unity-facing half of the prototype".
 
 4. **The layer graph is a test.** `AssemblyLayoutTests` parses every `.asmdef`
-   under `Assets/` as the source of truth and asserts the five-assembly set, the
+   under `Assets/` as the source of truth and asserts the six-assembly set, the
    forward-reference ban, Core's empty reference list, the Input System reference
-   in Presentation, the Editor-only platforms, unique GUIDs, and the compiled
+   in Presentation, the EditMode suite's Editor-only platforms and the PlayMode
+   suite's all-platform setting, unique GUIDs, and the compiled
    assembly name of representative types (`SolarSystemModel`, `FlightSession`,
    `SolarSystemBootstrap`, `PlayerControls`, `SolarSystemSceneBuilder`). A stray
    or duplicate asmdef under `Assets/Scripts` fails the same suite.
@@ -89,12 +93,12 @@ should say the same thing.
   flight core" claim is enforced by the compiler.
 * The editor scene builder is now a real assembly with explicit references, so
   editor-only code cannot leak into a player build.
-* The test assembly is a consumer of the graph, not a special case: if the
+* The test assemblies are consumers of the graph, not a special case: if the
   layout drifts, the suite says which assembly broke the rule.
 
 **Negative**
 
-* Five asmdefs and five `.meta` files to keep in sync, and any new folder of
+* Six asmdefs and six `.meta` files to keep in sync, and any new folder of
   runtime code has to choose a home. The test's exact-set assertion makes that
   choice explicit.
 * Unity does not make assembly references transitive, so each consumer lists

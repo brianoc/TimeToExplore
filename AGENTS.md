@@ -104,11 +104,11 @@ stays in the concepts and ADRs.
 - Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.
   It validates the OKF bundle, the catalogue schema, both generators'
   reproducibility, and the guard's unit tests in a few seconds.
-- Run `tools/check.sh` before finishing any C# change. Its Unity suite runs in
-  `.cache/test-project` with `Assets` symlinked to the real folder and its own
+- Run `tools/check.sh` before finishing any C# change. Its Unity suites run in
+  `.cache/test-project` with `Assets` symlinked to the real folder and their own
   warm `Library`, so the open editor is untouched and the import is paid once.
-  `--tests core|flight|presentation|smoke` narrows a run; `--reset` rebuilds the
-  cache.
+  `--tests core|flight|presentation|smoke` narrows the EditMode run;
+  `--tests playmode` runs the PlayMode suite; `--reset` rebuilds the cache.
 - Do not force-close a Unity editor that has the project open. Use a temporary
   copy of the project for other batch-mode work; `check.sh` already isolates its
   own runs.
