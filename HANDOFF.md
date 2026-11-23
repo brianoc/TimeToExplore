@@ -33,12 +33,17 @@ only what is done, what is next, and the traps.
    re-timing to the old number landed in the gap and rejected the flight. The
    flight acceptance anchors that began at the old floor are re-baselined. The
    range stays gapped until step 5.
-5. **Short coast and the handover — NEXT.** Try the pinned coast path inside the
-   gap first; if it builds, wire it as the retime branch. If it does not, extend
-   the burn-only seam with a non-negative coast and solve the branch. Verify the
-   two branches agree on delta-v, seams, and feasibility at the crossing point,
-   then re-sweep the window end to end.
-6. **Fuel versus delta-v — LATER.** Compare `PropellantKg` /
+5. **Short coast and the handover — DONE (this commit).** The gap between the
+   burn-only minimum and the coast floor is filled by a **short-coast crossing**:
+   the burn-only seam with a heliocentric conic coast of duration `c` between the
+   departure burn and the brake, the requested total an input and the brake's
+   duration the remainder. At `c = 0` it reduces to the burn-only seam. The
+   pinned coast path was measured first and did **not** build at any of the three
+   gap midpoints: the break needed 68.3 (Mercury 1 g, 3.1 d), 10.0 (Mars 0.3 g,
+   6.6 d), and 664.6 m/s² (Jupiter 0.3 g, 12.8 d) against a 9.7 m/s² drive. Every
+   slider duration from the minimum to the window's maximum now builds. See
+   [the short coast](Docs/simulation/burn-coast-burn.md#the-short-coast).
+6. **Fuel versus delta-v — NEXT.** Compare `PropellantKg` /
    `PropellantFraction` and delta-v for the pin on/off at fixed trip times and at
    each floor, and for the burn-only versus coast minimum.
 
@@ -48,18 +53,70 @@ command here.
 
 ## Current state
 
-Steps 1–3 are committed and accepted, and step 4 is in this commit. Step 4 makes
-`Begin` fly the plan the preview showed. The product decision is in force:
-**the burn-only crossing is the nav computer's minimum trip time**, while the
-coast floor is still the default `Plan()` used by the fixed-duration anchors.
-`Plan()`, `PlanAtDuration`, and the pin's default are unchanged, so every
-documented anchor still passes: the anchor test pins Mercury 8 d 557.0380, Mars
-90 d 44.3543, Uranus 400 d 182.3124, and the other three fixed-duration totals.
+Steps 1–5 are committed and accepted. Step 5 filled the gap: every slider
+duration from the burn-only minimum to the maximum now builds. The product
+decision is in force: **the burn-only crossing is the nav computer's minimum
+trip time**, and `Begin` flies the previewed plan. The coast floor is still the
+default `Plan()` used by the fixed-duration anchors; `Plan()`, `PlanFastest`, and
+the pin's default are otherwise unchanged, so every documented anchor still
+passes: the anchor test pins Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus
+400 d 182.3124, and the other three fixed-duration totals.
 
-The range between the burn-only minimum and the coast floor is a **known gap**:
-`PlanAtDuration` cannot build those durations yet, so a slider request there
-returns a stretched or infeasible plan and the panel's `Note` says so. Step 5
-fills it. Nothing in the window fakes a plan for the gap.
+The range between the burn-only minimum and the coast floor is now a **measured,
+buildable short-coast family**. `PlanAtDuration` uses it only for a duration the
+coast path refuses for being squeezed — the departure burn cannot be placed, the
+chain does not close, or the break is over-thrust — and leaves the Lambert
+reason in place for a coast with no prograde short-way transfer. At the
+advertised minimum it returns the burn-only plan; below the minimum the old
+refusal stands. The next step is the fuel-versus-delta-v comparison; no design
+change is queued.
+
+### The step-5 measurement (epoch 2026-11-15, Gateway, conic capture)
+
+The pinned coast path was expected to be the smallest change, so it was measured
+first. It does not build the gap. `PlanAtDuration` at the midpoints with
+`PinBreakToCommandAcceleration` **false / true**:
+
+| Target | Level | Midpoint | Pin | Feasible | Peak | Reason |
+|---|---|---:|---|---:|---:|---|
+| Mercury | 1 g | 3.1 d | off / on | no / no | 68.3 / 26.9 m/s² | departure break over the 10.0 m/s² drive |
+| Mars | 0.3 g | 6.6 d | off / on | no / no | 10.03 / — | break over the drive; pinned path cannot place the burn |
+| Jupiter | 0.3 g | 12.8 d | off / on | no / no | 664.6 / 6.99 × 10⁹ m/s² | break over the drive |
+
+The coast path gives the break too little time because it allocates a real coast
+(1.03 d at Mercury 3.1 d), so the break has to command far more than the drive.
+The short-coast seam closes all three:
+
+| Target | Level | Midpoint | Δv | Coast | Burn | Brake | Worst seam |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Mercury | 1 g | 3.10 d | **2,023 km/s** | 0.5438 d | 1.1312 d / 948.0 km/s | 1.0786 d / 904.0 | **3.7 m / 4.0 × 10⁻⁵ m/s** |
+| Mars | 0.3 g | 6.60 d | **1,333 km/s** | 1.1232 d | 2.4115 d / 613.0 | 2.4576 d / 624.7 | **26.4 m / 7.6 × 10⁻⁵ m/s** |
+| Jupiter | 0.3 g | 12.80 d | **2,540 km/s** | 2.4953 d | 4.7611 d / 1,210.2 | 4.8021 d / 1,220.7 | **0.7 m / 7.8 × 10⁻⁷ m/s** |
+
+Each is seven arcs (break → departure burn → conic coast → brake → conic capture)
+and its total is exactly the request. The ends are unchanged: Mercury
+3.044696 d / 2,433 km/s and the 3.216099 d / 1,766 km/s floor; Mars 6.495014 /
+1,592 and 6.730422 / 1,172; Jupiter 12.542796 / 3,109 and 13.072112 / 2,271.
+
+The continuity curve (total → delta-v, km/s):
+
+| Target | Minimum | +60 s | 25% | 50% | 75% | Floor |
+|---|---:|---:|---:|---:|---:|---:|
+| Mercury 1 g | 2,433 | 2,383 | 2,068 | 1,936 | 1,841 | 1,766 |
+| Mars 0.3 g | 1,592 | 1,569 | 1,394 | 1,319 | 1,195 | 1,172 |
+| Jupiter 0.3 g | 3,109 | 3,076 | 2,689 | 2,533 | 2,420 | 2,271 |
+
+Delta-v falls monotonically as the coast takes more of the crossing. The branch
+switch is not free: the last short-coast probe spends **75 km/s** more than the
+Lambert floor at Mercury and **149** at Jupiter, because the short coast is one
+conic carrying the whole crossing while the Lambert path chooses the transfer.
+The "no hole" sweep builds the minimum, +1 s, +60 s, the quartiles, floor − 1 s,
+the floor, and floor + 0.05 d for all three cases, with each plan's total the
+request (within the moving-target loop's 2 s at the minimum itself).
+
+Below the minimum the old refusal is unchanged: Mercury 3.0 d needs 44.2 m/s²,
+Mars 6.4 d needs 531.1, both above the 10.0 m/s² drive. The slow end still
+refuses on the Lambert geometry (Mars 305 d, 179.4°).
 
 ### The step-3 measurement (epoch 2026-11-15, Gateway → Mercury at 1 g)
 
@@ -141,9 +198,9 @@ Two deliberate consequences, both recorded in the concept docs:
   `Fuel` row to the flying plan: **173 t / 14.7%** for the burn-only minimum
   against the coast floor's 124.3 t.
 
-The gap is still open: a duration between the burn-only minimum and the coast
-floor comes back stretched or infeasible, and Begin's retime path reports it.
-Step 5 fills it.
+Step 5 closes the gap: a duration between the burn-only minimum and the coast
+floor now builds as the short coast, at the measured delta-v above, so Begin's
+retime path and the slider no longer meet a hole.
 
 ## Verification
 
@@ -157,20 +214,22 @@ tools/check.sh                 # full EditMode + PlayMode before the step's comm
 
 Last results (this commit):
 
-- `tools/check.sh --fast` — **PASSED** (OKF bundle 44 concepts, catalogue 137
-  bodies, both generators byte-identical, bright-star catalogue, tooling tests).
-- `tools/check.sh --tests flight` — **PASSED** in 649 s: flight EditMode
-  category, 0 failed, 0 skipped. The new Begin tests are
-  `BeginningAtTheBurnOnlyMinimumFliesThePreviewedPlan`,
-  `BeginningAtACoastFloorTargetFliesTheCoastFloor`,
-  `BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum`, and
-  `TheFuelReadoutFollowsTheFlyingPlanAfterBegin`; the Mars anchor is now the
-  6.49501 d burn-only minimum.
-- `tools/check.sh` — **PASSED** in 918 s: EditMode and PlayMode, 0 failed, 0
-  skipped. The fixed-duration anchor test is in that run, so Mercury 8 d
-  557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124 and the other three still
-  pass with `Plan()` and `PlanAtDuration` untouched. The real-HUD PlayMode Begin
-  test passes with the at-minimum rule.
+- `tools/check.sh --fast` — **PASSED** in 6 s (OKF bundle 44 concepts, catalogue
+  137 bodies, both generators byte-identical, bright-star catalogue, tooling
+  tests).
+- `tools/check.sh --tests flight` — **PASSED** in 912 s: 251 flight EditMode
+  tests, 0 failed, 0 skipped. The new tests are
+  `TheShortCoastBuildsInsideTheGap`,
+  `TheShortCoastFamilyIsContinuousAcrossTheGap`,
+  `EverySliderDurationFromTheMinimumToTheCoastFloorBuilds`, and
+  `ARetimeInsideTheGapBuildsTheShortCoast`. The tests that used 3.19 d (Mercury)
+  or 6.6 d (Mars) as a gap refusal now probe 3.0 d / 6.4 d, below the burn-only
+  minimum; their intent is unchanged.
+- `tools/check.sh` — **PASSED** in 1176 s: EditMode 559 tests and PlayMode 6
+  tests, 0 failed, 0 skipped. The fixed-duration anchor test is in that run, so
+  Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124 and the other
+  three still pass with `Plan()` untouched, and the real-HUD PlayMode Begin test
+  still passes with the at-minimum rule.
 
 ## Traps
 
@@ -187,10 +246,25 @@ Last results (this commit):
   main thread outside the existing preview worker. The window cache still keys
   on departure date, target, burn level, and arrival style; a repeat plot at the
   same key is free.
-- **The gap is not a bug to paper over.** A retime between the burn-only minimum
-  and the coast floor comes back stretched or infeasible on purpose. Step 5
-  fills it with the short coast; do not make the slider clamp or substitute a
-  plan there.
+- **The gap is a buildable family now.** `PlanAtDuration` retries a coast
+  refusal as the short coast only when the refusal is a squeeze (the departure
+  burn cannot be placed, the chain does not close, or the break is over-thrust)
+  or the plan is over-thrust. A Lambert geometry refusal keeps its reason — that
+  is the slow end. Do not make the fallback unconditional: Mars 305/400 d must
+  still refuse with "no prograde short-way ... 180 deg", and the tests assert it.
+- **The short coast never touches `Plan()`.** Its floor search and the fixed
+  anchors still call `Build` directly; the fallback lives in `PlanAtDuration`.
+  Do not move it into `Build` or into `BuildBurnCoastBurn`: that would let the
+  floor search walk below its certified floor and move every documented anchor.
+- **At the minimum the branch returns the burn-only plan.** A rebuilt short coast
+  at exactly the advertised minimum can sit a hair outside the chain gate
+  (Mercury measured 1,359.6 m / 0.8 m/s) because the moving-target loop's own 2 s
+  date tolerance moves the chain. The branch returns the plan `PlanFastest`
+  advertises instead; the no-hole test probes the minimum and expects that plan.
+- **The short coast costs about 4–5 s per gap retime** on top of the failed
+  coast attempt and the burn-only seed. It runs on the background retime worker;
+  do not put it on the main thread. Above the coast floor the coast path builds,
+  so the retime there does not pay for it.
 - The **fixed-date** `PlanBurnOnly(ship, target, arrivalJulianDate)` builds the
   chain once and its arrival lands where the solved brake ends (about 0.17 d
   from the supplied date on Mercury). Use the moving-target overload for a plan.
@@ -222,34 +296,43 @@ Last results (this commit):
   against the chain entry (102 m / 0.209 m/s). The moving-target rebuild closes
   tighter (2.2 m / 9.9 × 10⁻⁶ m/s). Do not re-tighten the solver's tolerance
   without re-measuring.
-- Keep the documented floors and delta-v anchors. `Plan()` and
-  `PlanAtDuration` are untouched in this step; only the preview minimum, the
-  trip-time label, and the Mars/Mercury/Jupiter window ends moved.
+- Keep the documented floors and delta-v anchors. `Plan()` is untouched; only
+  the preview minimum, the trip-time label, the Mars/Mercury/Jupiter window
+  ends, and the gap's `PlanAtDuration` branch moved.
 - Update `Docs/log.md` under the current `YYYY-MM-DD` heading and this handoff in
   the same commit as the work. Run `tools/validate_okf.py` (or `check.sh --fast`)
   after the doc edits.
 - Do not merge into `main` and do not push. A finished step is a commit on
   `work/burn-only-profile`.
 
-## Step 5 notes
+## Step 5 notes (done)
 
-- **Try the existing path first.** `BuildBurnCoastBurn` with
-  `PinBreakToCommandAcceleration = true` may already build a short coast inside
-  the gap: the break is pinned and the coast is the slack, so the block may be the
-  default allocation, not the Lambert solver. Test `PlanAtDuration` at the gap's
-  midpoint (Mercury ~3.1 d, Mars ~6.6 d, Jupiter ~12.8 d) with the pin on and
-  report the failure reason before writing a new solver.
-- **If it builds,** wire the pinned path as the retime branch for durations below
-  the coast floor and lower `MinimumCoastSeconds` only as far as the measured
-  plans need. The floor search must still return the coast floor above the gap.
-- **If it does not,** extend the burn-only seam with a non-negative coast: the
-  forward burn, a conic of the slack duration, and the backward brake. The
-  Lambert solve at a short coast is the risk; use the seam's state at `c = 0` as
-  the seed and report the conditioning rather than hiding it.
-- **Continuity.** At the crossing point, measure delta-v, seams, and feasibility
-  on both branches; do not assume they agree. Re-sweep the window end to end and
-  confirm every slider duration from the minimum to the maximum builds.
-- **Fuel (step 6).** `TrajectoryPlan.PropellantKg` and `PropellantFraction` are
-  the numbers; compare the pin on/off at fixed trip times and at each floor, and
-  the burn-only versus coast minimum. Do not answer the fuel question from
-  delta-v alone.
+- **The pinned coast path was tried first and does not build the gap.** At the
+  three midpoints the break needs 68.3 / 10.0 / 664.6 m/s² against a 9.7 m/s²
+  drive (pin off), and even pin-on it cannot place the burn at Mars or gets a
+  degenerate break at Jupiter. The coast path allocates a real coast, so the
+  break is squeezed. The conic seam was the right change.
+- **The seam lives in `BuildShortCoast` / `TrySolveShortCoastSeam` /
+  `EvaluateShortCoastSeam`**, seeded from `BuildBurnOnly`'s solved ray, burn, and
+  brake directions through the new out-parameter overloads of `BuildBurnOnly`
+  and `PlanBurnOnlyMovingTarget`. It reuses `BurnOnlyNorm`, the tangents, the
+  damped Newton, and the gate; do not fork a second solver.
+- **The brake's duration is derived**, not an unknown: it is
+  `T − break − burn − c − capture`. The break is solved with the generous
+  burn-only cap, so the coast and brake absorb the requested total. A trial that
+  leaves the brake less than a second is refused.
+- **`c` below one second is stepped, not conic.** `ConicArc` needs a positive
+  duration and its end anomaly can wrap to a full revolution at a tiny step, so
+  the sub-arc coast uses the two-body series `r + vc + ½ac²`, `v + ac`, which is
+  exact to well under a millimetre over a second and makes the branch smooth
+  through `c = 0`. The reported plan omits a coast arc shorter than
+  `MinimumArcSeconds`.
+- **The seam's own conditioning is fine**: the Newton takes 11–12 passes from
+  the seed, the worst residual is tens of metres, and the reported plans close
+  inside the gate at all probes. The 1 km / 1 m/s gate is unchanged.
+- **Fuel (step 6, next).** `TrajectoryPlan.PropellantKg` and
+  `PropellantFraction` are the numbers; compare the pin on/off at fixed trip
+  times and at each floor, and the burn-only versus coast minimum. Do not answer
+  the fuel question from delta-v alone. The short coast's midpoint delta-v is
+  between the two old branches (Mercury 2,023 km/s, Mars 1,333, Jupiter 2,540),
+  so the fuel readout should interpolate the same way, but measure it.

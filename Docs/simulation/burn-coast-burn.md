@@ -343,9 +343,10 @@ with the coast taken out. It is the fastest shape this profile can fly at a
 given level, and the most expensive. Since step 3 it is the **nav computer's
 minimum trip time** whenever it beats the coast floor
 (`TripPlanner.PlanFastest`), and **Begin flies it** when the preview's minimum is
-that plan; `Plan()` and `PlanAtDuration` stay on the coast path, so the
-profile's floors, windows, and fixed-duration delta-v anchors in this document
-are unchanged.
+that plan. `Plan()` stays on the coast path, so the profile's floors, windows,
+and fixed-duration delta-v anchors in this document are unchanged;
+`PlanAtDuration` uses the short coast only for a duration the coast path refuses
+between this minimum and the floor.
 
 The seam is solved as one system. The break is pinned to the commanded
 acceleration; the departure burn starts where it ends — the departure ceiling,
@@ -421,27 +422,94 @@ minimum: **12.54–37.63 d** against the old 13.07–39.22 d. Mercury's is
 
 ## The gap
 
-The burn-only minimum is below the coast floor, and `PlanAtDuration` cannot
-build any duration **between** them yet: it allocates the arcs for a coast that
-must last at least `MinimumCoastSeconds`, so a request in the gap comes back
-stretched or infeasible. The slider does not hide that — the window's minimum is
-the burn-only plan, its upper range is still `PlanAtDuration`, and a request
-inside the gap is reported with the planner's own `InfeasibleReason` in the
-panel. The **short-coast regime** that fills the gap, by letting the seam carry a
-non-negative coast so the floor search can walk across the boundary, is the next
-step. Until it lands, `Plan()` and `PlanAtDuration` keep every documented floor
-and delta-v anchor on the coast path.
+The burn-only minimum is below the coast floor, so the range between them is
+not a coast trip the Lambert path can build: `BuildBurnCoastBurn` allocates a
+coast of at least `MinimumCoastSeconds`, and a duration in the gap squeezes the
+break until it commands far more than the drive. Before step 5 a request there
+came back over-thrust or stretched and the panel said so. The **short-coast
+branch** now fills it.
 
-Two smaller consequences are deliberate for this step. The crossing always ends
-on the **conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does
-not change the drawn minimum's shape — a retime above the floor does. And
-`FlightSession.Begin` now solves its base plan with `PlanFastest`, so beginning
-at a burn-only minimum flies the no-coast plan the preview drew; at a
-coast-floor target the base is the coast floor. A preview that sat at its
-minimum flies the fresh minimum, because the clock may have moved and the old
-number can sit in the gap. A chosen duration above that base retimes with
-`PlanAtDuration`, including inside the gap, where it comes back stretched or
-infeasible until the short coast lands.
+## The short coast
+
+The short-coast crossing is the burn-only seam with a **heliocentric conic coast
+of duration `c` between the departure burn and the brake**. It is not a Lambert
+solve: the coast is the conic the forward burn's end state defines, propagated
+for `c` about the Sun, and its end state must equal the backward brake's start
+state. The requested total `T` is an input, and the brake's duration is
+`T − break − burn − c − capture`. That leaves six unknowns — the escape ray (two
+angles), the departure burn's duration, the coast's duration, and the brake's
+direction (two angles) — against the six seam components. At `c = 0` the conic
+is a point and the system is the burn-only seam again, so the family is
+continuous by construction.
+
+`PlanAtDuration` hands a coast refusal to this branch only when the refusal is
+the trip time squeezing the coast path — the departure burn cannot be placed or
+the chain does not close — or when the break is over-thrust. A refusal from the
+coast's own geometry (no prograde short-way transfer) is a different answer and
+keeps its Lambert reason: the slow end is still the coast. `Plan()`, its floor
+search, and every fixed-duration anchor never take this branch, and a request
+below the burn-only minimum keeps the coast path's refusal. At the minimum
+itself the branch returns the **burn-only plan**: the coast is zero, and the
+moving-target loop's own two-second date tolerance is enough to leave a rebuilt
+brake marginally outside the chain gate, so the advertised minimum is returned
+as the plan it is.
+
+Measured at the epoch (2026-11-15) from Gateway, conic capture. The burn-only
+minimum and the coast floor are the two ends of each row; the middle row is the
+gap's midpoint:
+
+| Target | Level | Burn-only minimum | Gap midpoint | Coast floor | Δv | Worst seam |
+|---|---|---:|---:|---:|---:|---:|
+| Mercury | 1 g | 3.044696 d, 2,433 km/s | **3.10 d** | 3.216099 d, 1,766 km/s | **2,023 km/s** | 3.7 m / 4.0 × 10⁻⁵ m/s |
+| Mars | 0.3 g | 6.495014 d, 1,592 km/s | **6.60 d** | 6.730422 d, 1,172 km/s | **1,333 km/s** | 26.4 m / 7.6 × 10⁻⁵ m/s |
+| Jupiter | 0.3 g | 12.542796 d, 3,109 km/s | **12.80 d** | 13.072112 d, 2,271 km/s | **2,540 km/s** | 0.7 m / 7.8 × 10⁻⁷ m/s |
+
+Each midpoint is a seven-arc plan — break → departure burn → conic coast → brake
+→ the conic capture — and its total is exactly the requested duration. Mercury's
+3.10 d build spends 0.3098 d on the break (167.9 km/s), 1.1312 d on the
+departure burn (948.0), 0.5438 d coasting, and 1.0786 d on the brake (904.0);
+Mars's 6.60 d build is 0.5581 d (91.9 km/s), 2.4115 d (613.0), 1.1232 d coast,
+and 2.4576 d (624.7). Jupiter's coast is 2.4953 d. The coast is real: its
+duration is hours to days, not a seam.
+
+The family's measured shape at Mercury 1 g, in days and km/s:
+
+| Total | Branch | Δv | Coast |
+|---:|---|---:|---:|
+| 3.044696 (minimum) | burn-only, `c = 0` | 2,433 | 0 |
+| 3.045391 (+60 s) | short coast | 2,383 | 1,627 s |
+| 3.087547 | short coast | 2,068 | 41,300 s |
+| 3.130398 | short coast | 1,936 | 58,659 s |
+| 3.173249 | short coast | 1,841 | 72,076 s |
+| 3.216099 (floor) | coast (Lambert) | 1,766 | 0.9677 d |
+
+The delta-v falls smoothly as the coast takes more of the crossing, and the two
+branches meet inside the gate at the floor. Mars 0.3 g runs 1,592 → 1,569 →
+1,394 / 1,319 / 1,195 → 1,172 km/s and Jupiter 0.3 g 3,109 → 3,076 → 2,689 /
+2,533 / 2,420 → 2,271 the same way. The branch switch is not free — Mercury's
+last short-coast probe spends 75 km/s more than the Lambert floor, and Jupiter's
+149 km/s more — because the short coast is a single conic that has to carry the
+whole crossing, while the floor lets the coast solver choose the transfer. That
+difference is the price of the gap's freedom to ask for any duration; it is
+measured, not hidden.
+
+The range now has **no hole**: for Mercury 1 g, Mars 0.3 g, and Jupiter 0.3 g,
+every probe from the advertised minimum to the coast floor and a little above it
+builds, and each plan's total is the duration asked for. Below the minimum the
+old refusal stands (Mercury 3.0 d: the break needs 44.2 m/s², above the
+10.0 m/s² drive; Mars 6.4 d: 531.1 m/s²). The slow end still refuses on the
+Lambert geometry (Mars 305 d: 179.4°).
+
+Two smaller consequences are deliberate. The crossing always ends on the
+**conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does not
+change the drawn minimum's shape — a retime above the floor does. And
+`FlightSession.Begin` solves its base plan with `PlanFastest`, so beginning at a
+burn-only minimum flies the no-coast plan the preview drew; at a coast-floor
+target the base is the coast floor. A preview that sat at its minimum flies the
+fresh minimum, because the clock may have moved and the old number can sit a few
+seconds above the new minimum. A chosen duration above that base retimes with
+`PlanAtDuration`, including inside the gap, where it now builds the short coast
+instead of reporting a refusal.
 
 The break's available time is circular here too — the total is the answer — so
 this step gives it a generous cap: twice the kinematic duration of the climb to
@@ -479,10 +547,10 @@ floor spends 0.97 d coasting for free, and the burn-only crossing spends it
 thrusting. It is fast enough to be the nav computer's minimum at a high level,
 and too expensive to replace the coast at a fixed trip time.
 
-What this does **not** do: it does not add the short coast that would let the
-floor search walk across the boundary, so the range between the burn-only
-minimum and the coast floor is a known gap. It changes no default `Plan()`
-floor, window, or delta-v anchor.
+The short coast fills what this section left open: the range between the
+burn-only minimum and the coast floor is now a buildable family, and the coast
+floor itself still comes from the unchanged coast path. No default `Plan()`
+floor, window, or delta-v anchor moved.
 
 # The burns in the summed field
 

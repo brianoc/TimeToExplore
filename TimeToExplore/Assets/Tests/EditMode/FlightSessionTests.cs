@@ -299,8 +299,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(preview.Arcs[2].IsFiniteBurn, Is.True);
 
             // A duration above the coast floor still builds the coast path. The
-            // range between the burn-only minimum and the floor is the known gap
-            // that step 4 fills; the slider does not fake a plan for it.
+            // range between the burn-only minimum and the floor is the short-coast
+            // regime, which the planner now builds; a retime anywhere in the
+            // window is feasible.
             double above = coastFloor.FlightTimeSeconds
                            + 0.5 * JulianDate.SecondsPerDay;
             TrajectoryPlan slower = _session.SetPreviewDuration(above);
@@ -309,6 +310,49 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(slower.FlightTimeSeconds, Is.EqualTo(above).Within(1.0));
             Assert.That(slower.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
                 Is.True, "a retime above the floor is the coasting profile");
+        }
+
+        [Test]
+        public void ARetimeInsideTheGapBuildsTheShortCoast()
+        {
+            _session.BurnLevelG = 1.0;
+            _session.Plot("mercury", _epoch);
+
+            double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan coastFloor = _planner.Plan(
+                _session.State.WithJulianDate(_epoch), "mercury");
+            double requested = 0.5 * (minimum + coastFloor.FlightTimeSeconds);
+            TrajectoryPlan retimed = _session.SetPreviewDuration(requested);
+
+            TestContext.WriteLine(
+                $"gap retime {requested / JulianDate.SecondsPerDay:F5} d against the " +
+                $"burn-only minimum {minimum / JulianDate.SecondsPerDay:F5} d and the " +
+                $"coast floor {coastFloor.FlightTimeDays:F5} d: " +
+                $"feasible {retimed.IsFeasible}, {retimed.FlightTimeDays:F5} d, " +
+                $"{retimed.DeltaVMps / 1000.0:F0} km/s, {retimed.Arcs.Count} arcs");
+
+            Assert.That(retimed.IsFeasible, Is.True, retimed.InfeasibleReason);
+            Assert.That(retimed.FlightTimeSeconds, Is.EqualTo(requested).Within(1.0),
+                "the slider's requested total is the plan's total");
+            Assert.That(retimed.FlightTimeSeconds,
+                Is.GreaterThan(_session.PreviewMinimumSeconds),
+                "the retime is above the burn-only minimum");
+            Assert.That(retimed.FlightTimeSeconds,
+                Is.LessThan(coastFloor.FlightTimeSeconds),
+                "and below the coast floor: it is the gap");
+            Assert.That(retimed.Arcs.Count, Is.EqualTo(7),
+                "break, departure burn, conic coast, brake, and the capture chain");
+
+            for (int i = 0; i < retimed.Arcs.Count - 1; i++)
+            {
+                PlanArc left = retimed.Arcs[i];
+                PlanArc right = retimed.Arcs[i + 1];
+                Assert.That(Vector3d.Distance(left.Path.PositionAt(1.0),
+                    right.Path.PositionAt(0.0)), Is.LessThan(1e3), $"seam {i} position");
+                Assert.That((left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps
+                    - right.Path.VelocityAt(0.0)).Magnitude, Is.LessThan(1.0),
+                    $"seam {i} velocity");
+            }
         }
 
         [Test]

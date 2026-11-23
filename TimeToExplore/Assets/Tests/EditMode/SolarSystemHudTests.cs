@@ -666,7 +666,7 @@ namespace TimeToExplore.Tests.EditMode
             };
             TrajectoryPlan rejected = planner.PlanAtDuration(
                 FlightFixture.ShipAt(_bootstrap.Model, "gateway"), "mercury",
-                3.19 * JulianDate.SecondsPerDay);
+                3.0 * JulianDate.SecondsPerDay);
             Assert.That(rejected.IsFeasible, Is.False);
             Assert.That(rejected.InfeasibleReason, Does.Contain("departure break"));
 

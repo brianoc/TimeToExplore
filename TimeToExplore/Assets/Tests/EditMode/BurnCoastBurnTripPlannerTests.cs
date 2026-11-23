@@ -791,10 +791,12 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThanOrEqualTo(fastest.MaxAccelerationMps2 * (1.0 + 1e-6)));
             AssertChainCloses(fastest);
 
-            // A little below the floor is the same geometry with the break
-            // working harder than the drive allows.
+            // A little below the floor is now inside the short-coast range, so
+            // it builds. Below the burn-only minimum the crossing cannot be
+            // stretched to less than its own burn time: the break has to work
+            // harder than the drive allows, and that is the refusal.
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mercury",
-                3.19 * JulianDate.SecondsPerDay);
+                3.0 * JulianDate.SecondsPerDay);
             TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
 
             Assert.That(tooFast.IsFeasible, Is.False);
@@ -1069,7 +1071,9 @@ namespace TimeToExplore.Tests.EditMode
             double limit = _planner.MaxAccelerationMps2 * _planner.ThrustMargin;
 
             // 4 d sits on the drive limit, the floor is just below it (3.22 d
-            // with the floor entry), and 3.19 d is the rejected just-under case.
+            // with the floor entry), 3.19 d is now a short-coast build inside the
+            // gap, and 3.0 d is the rejected just-under case below the burn-only
+            // minimum.
             foreach (double days in new[] { 4.0, 3.25, 3.19 })
             {
                 TrajectoryPlan plan = _planner.PlanAtDuration(ship, "mercury",
@@ -1098,9 +1102,9 @@ namespace TimeToExplore.Tests.EditMode
             }
 
             TrajectoryPlan refused = _planner.PlanAtDuration(ship, "mercury",
-                3.19 * JulianDate.SecondsPerDay);
+                3.0 * JulianDate.SecondsPerDay);
             Assert.That(refused.IsFeasible, Is.False,
-                "the just-below-floor trip still rejects");
+                "a trip below the burn-only minimum still rejects");
         }
 
         /// <summary>The floor search may probe with the cheap model, but the
@@ -1225,7 +1229,7 @@ namespace TimeToExplore.Tests.EditMode
             AssertChainCloses(fastest);
 
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
-                6.6 * JulianDate.SecondsPerDay);
+                6.4 * JulianDate.SecondsPerDay);
             TestContext.WriteLine($"just under: {tooFast}, reason: {tooFast.InfeasibleReason}");
 
             Assert.That(tooFast.IsFeasible, Is.False);
@@ -1778,6 +1782,193 @@ namespace TimeToExplore.Tests.EditMode
             }
 
             return feasible / JulianDate.SecondsPerDay;
+        }
+
+        /// <summary>
+        /// Step 5: the short-coast crossing fills the range between the burn-only
+        /// minimum and the coast floor. At the gap midpoints the demanded total is
+        /// an input, and the plan is the break → departure burn → heliocentric
+        /// conic coast → brake → capture chain: the burn-only system with a coast
+        /// of duration <c>c</c> between the two burns, and the brake's duration
+        /// the remaining time. No Lambert solve. Measured at the epoch from
+        /// Gateway: Mercury 1 g at 3.10 d closes its seam to 3.7 m and
+        /// 4.0 × 10⁻⁵ m/s, Mars 0.3 g at 6.60 d to 26 m and 7.6 × 10⁻⁵ m/s, and
+        /// Jupiter 0.3 g at 12.80 d to 0.7 m and 7.8 × 10⁻⁷ m/s, each within the
+        /// 1 km / 1 m/s gate and each exactly the requested total.
+        /// </summary>
+        [TestCase("mercury", 1.0, 3.1)]
+        [TestCase("mars", 0.3, 6.6)]
+        [TestCase("jupiter", 0.3, 12.8)]
+        public void TheShortCoastBuildsInsideTheGap(string targetId, double level,
+            double days)
+        {
+            _planner.BurnLevelG = level;
+            _planner.PinBreakToCommandAcceleration = false;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan plan = _planner.PlanAtDuration(ship, targetId,
+                days * JulianDate.SecondsPerDay);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.FlightTimeSeconds,
+                Is.EqualTo(days * JulianDate.SecondsPerDay).Within(1.0),
+                "the requested total is an input, not an output");
+            Assert.That(plan.PeakThrustMps2,
+                Is.LessThanOrEqualTo(plan.MaxAccelerationMps2 * (1.0 + 1e-6)));
+
+            // break → departure burn → conic coast → brake → the conic capture.
+            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(plan.Arcs[0].Path, Is.InstanceOf<Quintic>());
+            Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(plan.Arcs[2].Path, Is.InstanceOf<ConicArc>());
+            Assert.That(((ConicArc)plan.Arcs[2].Path).Centre, Is.SameAs(_model.Sun));
+            Assert.That(plan.Arcs[3].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[3].IsFiniteBurn, Is.True);
+            Assert.That(((FiniteBurnArc)plan.Arcs[3].Path).IsRetrograde, Is.True);
+
+            Assert.That(plan.Arcs[2].DurationSeconds, Is.GreaterThan(3_600.0),
+                "the gap midpoint carries a real short coast, not a seam");
+            Assert.That(plan.DeltaVMps, Is.GreaterThan(0.0));
+            Assert.That(double.IsFinite(plan.DeltaVMps), Is.True);
+
+            AssertChainCloses(plan);
+        }
+
+        /// <summary>
+        /// Step 5 continuity: the short-coast family meets the burn-only crossing
+        /// at zero coast and the coast floor at its own end. At each probe the
+        /// requested total is the plan's total, the delta-v is finite, and every
+        /// seam closes. The measured shape at Mercury 1 g is
+        /// 2,433 km/s at the 3.044696 d burn-only minimum, 2,383 at +60 s, 2,068 /
+        /// 1,936 / 1,841 at the quartiles, and 1,766 km/s at the 3.216099 d coast
+        /// floor: the coast buys back delta-v smoothly across the gap and the two
+        /// branches meet inside the gate at the floor. Mars 0.3 g runs 1,592 →
+        /// 1,569 → 1,394 / 1,319 / 1,195 → 1,172 and Jupiter 0.3 g 3,109 → 3,076
+        /// → 2,689 / 2,533 / 2,420 → 2,271 the same way.
+        /// </summary>
+        [TestCase("mercury", 1.0)]
+        [TestCase("mars", 0.3)]
+        [TestCase("jupiter", 0.3)]
+        public void TheShortCoastFamilyIsContinuousAcrossTheGap(string targetId,
+            double level)
+        {
+            _planner.BurnLevelG = level;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.PlanFastest(ship, targetId);
+            TrajectoryPlan coast = _planner.Plan(ship, targetId);
+            Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
+            Assert.That(coast.IsFeasible, Is.True, coast.InfeasibleReason);
+
+            double minimum = fastest.FlightTimeSeconds;
+            double floor = coast.FlightTimeSeconds;
+            Assert.That(floor, Is.GreaterThan(minimum),
+                "this target has a gap between the burn-only minimum and the floor");
+
+            double[] probes =
+            {
+                minimum,
+                minimum + 60.0,
+                minimum + 0.25 * (floor - minimum),
+                minimum + 0.50 * (floor - minimum),
+                minimum + 0.75 * (floor - minimum),
+                floor
+            };
+
+            var deltas = new List<double>();
+            foreach (double seconds in probes)
+            {
+                TrajectoryPlan plan = _planner.PlanAtDuration(ship, targetId, seconds);
+                TestContext.WriteLine(
+                    $"{targetId} {level} g at {seconds / JulianDate.SecondsPerDay:F6} d " +
+                    $"({(seconds - minimum) / JulianDate.SecondsPerDay:+0.000000;-0.000000} " +
+                    $"from the minimum): feasible {plan.IsFeasible}, total " +
+                    $"{plan.FlightTimeDays:F6} d, dv {plan.DeltaVMps / 1000.0:F1} km/s, " +
+                    $"arcs {plan.Arcs.Count}");
+
+                Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+                double tolerance = Math.Abs(seconds - minimum) < 1e-6 ? 5.0 : 1.0;
+                Assert.That(plan.FlightTimeSeconds, Is.EqualTo(seconds).Within(tolerance),
+                    "the plan's total is the requested total");
+                Assert.That(double.IsFinite(plan.DeltaVMps), Is.True);
+                AssertChainCloses(plan);
+                deltas.Add(plan.DeltaVMps);
+            }
+
+            // The three mid-gap probes are all short-coast builds, and delta-v
+            // falls as the coast takes more of the crossing.
+            Assert.That(deltas[4], Is.LessThan(deltas[3]),
+                "the short coast buys back delta-v as the trip lengthens");
+            Assert.That(deltas[3], Is.LessThan(deltas[2]));
+            Assert.That(deltas[2], Is.LessThan(deltas[1]));
+
+            // Every probe spends between the coast floor's delta-v and the
+            // burn-only minimum's, which are the family's two ends.
+            double floorDeltaV = coast.DeltaVMps;
+            double minimumDeltaV = fastest.DeltaVMps;
+            foreach (double deltaV in deltas)
+            {
+                Assert.That(deltaV, Is.LessThanOrEqualTo(minimumDeltaV * 1.02),
+                    "no probe spends more than the burn-only crossing");
+                Assert.That(deltaV, Is.GreaterThanOrEqualTo(floorDeltaV * 0.98),
+                    "no probe spends less than the coast floor");
+            }
+        }
+
+        /// <summary>
+        /// Step 5's "no hole" test: every duration from the advertised minimum to
+        /// the coast floor and a little above it builds, and each plan's total is
+        /// the duration asked for. The probes are the burn-only minimum, the
+        /// minute above it (where the coast is still a hair), the gaps's
+        /// quartiles, the old coast floor, and a duration above it — the slider's
+        /// whole range, with no exception between the two old branches.
+        /// </summary>
+        [TestCase("mercury", 1.0)]
+        [TestCase("mars", 0.3)]
+        [TestCase("jupiter", 0.3)]
+        public void EverySliderDurationFromTheMinimumToTheCoastFloorBuilds(
+            string targetId, double level)
+        {
+            _planner.BurnLevelG = level;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            TrajectoryPlan fastest = _planner.PlanFastest(ship, targetId);
+            TrajectoryPlan coast = _planner.Plan(ship, targetId);
+            double minimum = fastest.FlightTimeSeconds;
+            double floor = coast.FlightTimeSeconds;
+
+            double[] probes =
+            {
+                minimum,
+                minimum + 1.0,
+                minimum + 60.0,
+                minimum + 0.25 * (floor - minimum),
+                minimum + 0.50 * (floor - minimum),
+                minimum + 0.75 * (floor - minimum),
+                floor - 1.0,
+                floor,
+                floor + 0.05 * JulianDate.SecondsPerDay
+            };
+
+            foreach (double seconds in probes)
+            {
+                TrajectoryPlan plan = _planner.PlanAtDuration(ship, targetId, seconds);
+                TestContext.WriteLine(
+                    $"{targetId} {level} g at {seconds / JulianDate.SecondsPerDay:F6} d: " +
+                    $"feasible {plan.IsFeasible}, total {plan.FlightTimeDays:F6} d, " +
+                    $"dv {plan.DeltaVMps / 1000.0:F1} km/s" +
+                    (plan.IsFeasible ? "" : " | " + plan.InfeasibleReason));
+
+                Assert.That(plan.IsFeasible, Is.True,
+                    $"{targetId} {level} g at {seconds / JulianDate.SecondsPerDay:F6} d: " +
+                    plan.InfeasibleReason);
+                double tolerance = seconds - minimum <= 3.0 ? 5.0 : 1.0;
+                Assert.That(plan.FlightTimeSeconds, Is.EqualTo(seconds).Within(tolerance),
+                    $"{targetId} {level} g at {seconds / JulianDate.SecondsPerDay:F6} d: " +
+                    "the total is the request");
+                AssertChainCloses(plan);
+            }
         }
 
         private static void AssertChainCloses(TrajectoryPlan plan)
