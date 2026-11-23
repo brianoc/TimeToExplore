@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
 ---
 
 # One command
@@ -71,6 +71,11 @@ same wrapper:
 python3 tools/unity_guard.py --log /tmp/unity.log -- "$UNITY" …
 ```
 
+The sky capture is the exception to the `-nographics` rule: `CaptureSky` writes a
+bloom pair through HDR and post-processing, which needs the graphics device, so
+its command (in [The sky](/technical/sky.md#verification)) deliberately omits
+the flag and runs as its own Unity invocation rather than through this suite.
+
 A full run takes about three minutes for EditMode plus half a minute for
 PlayMode with the warm project (187 s measured on the first-plot branch); the
 `flight` category is the bulk of the EditMode time. `--fast` is the loop to use
@@ -97,8 +102,8 @@ because Unity test assemblies cannot reference the predefined
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the star→planet→station→moon→asteroid rank, the ordered stack and its depth tie, the repeated-click cycle, smoothstep/slerp transition, approach offset |
-| `SceneSmokeTests` | the shipped scene resolves the bootstrap; the catalogue resource imports; its camera carries `UniversalAdditionalCameraData` with post-processing and depth/colour copies off and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
-| `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; cheap settings (HDR off, MSAA 1, scale 1, no depth/opaque copy, no shadows); quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
+| `SceneSmokeTests` | the shipped scene resolves the bootstrap; the catalogue resource imports; its camera carries `UniversalAdditionalCameraData` with post-processing on (the bloom) and depth/colour copies off, and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
+| `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; the renderer carries URP's `PostProcessData`; HDR is on in the 32-bit R11G11B10 buffer and the rest of the cheap settings hold (MSAA 1, scale 1, no depth/opaque copy, no shadows); the default volume profile is the one URP registers, with Bloom over the 1.0 threshold and Neutral Tonemapping; quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
 | `SkyboxTests` | the committed `Sky/milky_way` texture is 2048 × 1024 with no mip chain, is dark overall and has a bright band covering part of the sky, and the skybox shader is found under `Resources` with no compile errors; `SkyView` points `RenderSettings.skybox` at its material and clears the camera to `Skybox`, `Remove` restores the previous skybox and clear flags and releases the runtime star map while leaving the band asset alone, and a missing texture or shader is refused without half-applying; the bright-star catalogue is every entry inside the V 4.0 cut with unit directions and Sirius at −1.46, the map it builds is 1024 × 512 `RGBA32` with point filtering, no mips, repeat/clamp wrapping and one occupied cell per star, Sirius lands within half a texel of its own direction, the brighter of two stars wins a shared cell, the magnitude and colour codes are monotonic with zero reserved for empty, and the shader's cell count is pinned to `StarCatalogue`'s constants by a source scan |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
@@ -509,10 +514,14 @@ The URP migration is checked without rendering a frame:
   `Assets/Settings/TimeToExploreUniversalRenderer.asset`.
 * Every quality level's `customRenderPipeline` is empty, so the graphics default
   applies at every level.
-* The pipeline is deliberately cheap: HDR off, MSAA 1, render scale 1, camera
-  depth and opaque textures off, main/additional/soft shadows off, URP main
-  and additional light rendering disabled, and intermediate texture mode Auto
-  (with no renderer features, nothing is allocated).
+* The pipeline is deliberately cheap with one exception: HDR is on in URP's
+  32-bit R11G11B10 buffer because the brightest sky stars write above white.
+  MSAA 1, render scale 1, camera depth and opaque textures off,
+  main/additional/soft shadows off, URP main and additional light rendering
+  disabled, and intermediate texture mode Auto (with no renderer features,
+  nothing is allocated). The renderer carries URP's `PostProcessData`,
+  post-processing is on, and the default volume profile holds Bloom
+  (threshold 1.0) and Neutral Tonemapping.
 * `TimeToExplore/BodyLit`, `TimeToExplore/Unlit`, and `TimeToExplore/Line` all
   resolve through `Shader.Find`, live under `Assets/Resources/Shaders/`,
   declare `RenderPipeline = UniversalPipeline` and a
@@ -520,8 +529,8 @@ The URP migration is checked without rendering a frame:
 * `_Color` is declared by every coloured shader, so `material.color` and the
   renderer's `SetColor("_Color", …)` calls keep working; `_Ambient` is on the
   body shader and `_MainTex` is on the line shader.
-* Both scene cameras carry `UniversalAdditionalCameraData` with post-processing,
-  depth texture, and colour texture requests off.
+* The scene's one camera carries `UniversalAdditionalCameraData` with
+  post-processing on and depth texture and colour texture requests off.
 * `TimeToExplore/Skybox` is deliberately **not** in `RenderingPipelineTests`'
   forward-pass assertion: it is a background pass drawn by Unity's skybox path,
   so it carries no pipeline or `LightMode` tags. `SkyboxTests` proves it compiles

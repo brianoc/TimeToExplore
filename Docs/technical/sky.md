@@ -4,7 +4,7 @@ title: The sky
 description: The baked Milky Way, the procedural stars, and the galactic frame behind the orrery.
 tags: [technical, rendering, skybox, stars, milky-way]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:49:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
 ---
 
 # What the player sees
@@ -223,8 +223,8 @@ Size and brightness both follow from the magnitude. Flux falls 2.512× per
 magnitude, so the blue channel becomes brightness with a single `exp2`; the
 radius grows as roughly the sixth root of that brightness, so a mag-4 star is a
 point about a pixel across and Sirius is a few pixels wide, tonemapped just
-below white, with a bloom halo. Colour is a B–V ramp from blue-white through white to amber, the way the
-eye reads colour temperature at low light.
+below white, with a bloom halo. Colour is a B–V ramp from blue-white through
+white to amber, the way the eye reads colour temperature at low light.
 
 The core is deliberately flat-topped rather than peaked. A star almost never
 lands on a pixel centre; a peaked core would give most of its brightness to the
