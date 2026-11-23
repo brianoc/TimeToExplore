@@ -1080,7 +1080,14 @@ namespace TimeToExplore.Simulation
         /// <summary>Build a Go To plan from the current state and start flying
         /// it. Returns the plan even when it is rejected, so the UI can explain
         /// why. A rejected or infeasible plan leaves the ship where it was.
-        /// Begin consumes any preview; begin always replans.</summary>
+        /// Begin consumes any preview; begin always replans. Its base plan is
+        /// <see cref="TripPlanner.PlanFastest"/> — the same minimum the preview's
+        /// trip-time window advertises — so a flight begun at a burn-only
+        /// minimum flies the no-coast crossing that was drawn; a preview that
+        /// asked for a longer time still re-times through
+        /// <see cref="TripPlanner.PlanAtDuration"/>. A preview that sat at its
+        /// minimum flies the fresh minimum, because the clock may have moved
+        /// since the plot and the old number can sit in the zero-coast gap.</summary>
         public TrajectoryPlan Begin(string targetId, double julianDate)
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
@@ -1088,16 +1095,29 @@ namespace TimeToExplore.Simulation
             // A retimed preview carries the player's chosen flight time into
             // the flight. Read it before the preview is discarded, solve the
             // fastest plan at the current date, and re-time to the choice.
+            // The fastest plan is PlanFastest, the same minimum the preview's
+            // trip-time window advertises, so beginning at a burn-only minimum
+            // flies the plan that was drawn instead of the coast floor. A
+            // preview that sat at its minimum carries the minimum, not a
+            // duration: the clock may have moved since the plot, and the fresh
+            // minimum is the answer. Re-timing to the old number by a few
+            // seconds would land in the zero-coast gap.
             double requestedSeconds = double.NaN;
+            bool previewAtMinimum = false;
             if (Preview != null && Preview.TargetId == targetId)
+            {
                 requestedSeconds = Preview.FlightTimeSeconds;
+                previewAtMinimum = Math.Abs(requestedSeconds - PreviewMinimumSeconds)
+                    <= 1e-9 * Math.Max(1.0, PreviewMinimumSeconds);
+            }
 
             DiscardPreview();
             ClearWindows();
             _state.JulianDate = julianDate;
             _appliedImpulses.Clear();
-            Plan = _planner.Plan(_state, targetId);
-            if (!double.IsNaN(requestedSeconds) && requestedSeconds > Plan.FlightTimeSeconds)
+            Plan = _planner.PlanFastest(_state, targetId);
+            if (!previewAtMinimum && !double.IsNaN(requestedSeconds)
+                && requestedSeconds > Plan.FlightTimeSeconds)
                 Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
 
             if (!Plan.IsFeasible)

@@ -18,17 +18,27 @@ only what is done, what is next, and the traps.
    chain at the arrival handover floor, and a two-burn seam with **no coast**:
    six unknowns against the six seam components at a fixed arrival date. See
    [the burn-only crossing](Docs/simulation/burn-coast-burn.md#the-burn-only-crossing).
-3. **Burn-only minimum — DONE (this commit).** The seam is wrapped in a
+3. **Burn-only minimum — DONE and accepted.** The seam is wrapped in a
    **moving-target loop** (`PlanBurnOnly(ship, target)`), and
    `TripPlanner.PlanFastest` returns the shorter feasible of that crossing and
    the coast floor. `FlightSession`'s preview window uses it, so the trip-time
    slider's minimum is the burn-only total. See [the nav computer's
    minimum](Docs/simulation/burn-coast-burn.md#the-nav-computers-minimum).
-4. **Short coast and the handover — NEXT.** Lower `MinimumCoastSeconds`, solve
-   the short-coast regime between the burn-only point and the coast floor, and
-   verify the two branches agree on delta-v, seams, and feasibility. Re-sweep the
-   window and then wire `Begin` and the gap into one buildable range.
-5. **Fuel versus delta-v — LATER.** Compare `PropellantKg` /
+4. **Begin flies the previewed plan — DONE (this commit).** `FlightSession.Begin`
+   now takes its base plan from `PlanFastest`, so beginning at a burn-only
+   minimum flies the no-coast crossing the preview drew; a coast-floor target
+   still flies the coast floor, and a chosen longer time still re-times with
+   `PlanAtDuration`. A preview at its minimum flies the **fresh** minimum: the
+   real-HUD PlayMode test showed the clock moving between plot and Begin, where
+   re-timing to the old number landed in the gap and rejected the flight. The
+   flight acceptance anchors that began at the old floor are re-baselined. The
+   range stays gapped until step 5.
+5. **Short coast and the handover — NEXT.** Try the pinned coast path inside the
+   gap first; if it builds, wire it as the retime branch. If it does not, extend
+   the burn-only seam with a non-negative coast and solve the branch. Verify the
+   two branches agree on delta-v, seams, and feasibility at the crossing point,
+   then re-sweep the window end to end.
+6. **Fuel versus delta-v — LATER.** Compare `PropellantKg` /
    `PropellantFraction` and delta-v for the pin on/off at fixed trip times and at
    each floor, and for the burn-only versus coast minimum.
 
@@ -38,16 +48,17 @@ command here.
 
 ## Current state
 
-Steps 1–3 are committed. The product decision is in force: **the burn-only
-crossing is the nav computer's minimum trip time**, while the coast floor is
-still the default `Plan()` used by the fixed-duration anchors. `Plan()`,
-`PlanAtDuration`, and the pin's default are unchanged, so every documented
-anchor still passes: the anchor test pins Mercury 8 d 557.0380, Mars 90 d
-44.3543, Uranus 400 d 182.3124, and the other three fixed-duration totals.
+Steps 1–3 are committed and accepted, and step 4 is in this commit. Step 4 makes
+`Begin` fly the plan the preview showed. The product decision is in force:
+**the burn-only crossing is the nav computer's minimum trip time**, while the
+coast floor is still the default `Plan()` used by the fixed-duration anchors.
+`Plan()`, `PlanAtDuration`, and the pin's default are unchanged, so every
+documented anchor still passes: the anchor test pins Mercury 8 d 557.0380, Mars
+90 d 44.3543, Uranus 400 d 182.3124, and the other three fixed-duration totals.
 
 The range between the burn-only minimum and the coast floor is a **known gap**:
 `PlanAtDuration` cannot build those durations yet, so a slider request there
-returns a stretched or infeasible plan and the panel's `Note` says so. Step 4
+returns a stretched or infeasible plan and the panel's `Note` says so. Step 5
 fills it. Nothing in the window fakes a plan for the gap.
 
 ### The step-3 measurement (epoch 2026-11-15, Gateway → Mercury at 1 g)
@@ -90,10 +101,49 @@ Two deliberate consequences, both recorded in the concept docs:
 
 - The crossing always ends on the **conic** capture chain, so the `ARRIVAL` row
   does not change the drawn minimum's shape. A retime above the floor does.
-- `FlightSession.Begin` still replans with `Plan()` and `PlanAtDuration`, so
-  beginning at a burn-only minimum flies the coast floor's duration until step 4
-  closes the gap. Wiring `Begin` to `PlanFastest` now would move every flight
-  acceptance anchor, so it waits.
+- `FlightSession.Begin` now solves its base plan with `PlanFastest`, so beginning
+  at a burn-only minimum flies the no-coast plan the preview drew. A chosen
+  duration above that base still re-times with `PlanAtDuration`.
+
+### The step-4 measurement
+
+- **Mercury 1 g.** Plot at the epoch puts the minimum at **3.044696 d**; Begin
+  flies that plan, not the 3.21610 d coast floor. It is six arcs — break →
+  departure burn → brake → capture — with **no Cruise coast**, and the autopilot
+  reaches the arrival state **0.1 m and 0.0001 m/s** (11,228 substeps, arrival
+  2026-11-18 01:04:21 UTC).
+- **Mars 0.3 g re-baseline.** Begin now flies **6.49501 d / 1,592 km/s /
+  172.6 t** (14.7% of departure mass), six arcs with no cruise coast, instead of
+  the **6.73042 d / 1,172 km/s / 124.3 t** coast floor. The arc breakdown from
+  `SceneFlightTests`: break 13.39 h / 92 km/s, departure burn 70.09 h / 742,
+  brake 71.20 h / 754, capture chain 1.20 h / 3.6.
+- **Uranus 0.3 g.** `PlanFastest` still returns the coast floor:
+  **33.60438 d** in this test environment. Begin flies that floor, with its
+  cruise coast.
+- **Flight acceptance.** `SceneFlightTests` and the bootstrap map flight arrive
+  at **2026-11-21 11:52:49 UTC** after **6.49501 d**, 6,523 frames and 108.7 s
+  real at 10,000×, peak **17** substeps in a frame, **0.1 m / 0.0001 m/s**, and
+  a 3,898 km parking orbit at **e = 2.4 × 10⁻⁹**. The profile bootstrap flight
+  reaches the same state at e = 1.49 × 10⁻⁸.
+- **At-minimum drift.** The real-HUD PlayMode test
+  (`PressingBeginInTheRealHudFliesAndCancelClearsTheRoute`) caught Begin
+  retiming to the preview's old minimum after the clock had moved; that number
+  was a few seconds into the gap and the flight was rejected. Begin now skips
+  the retime when the preview sat at its minimum and flies the fresh minimum;
+  `BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum` pins the
+  EditMode side.
+- **Tests retimed above the floor.** The tests that exist to show a cruise coast
+  or the hybrid capture — the phase table, the conic/hybrid row tests, the
+  finite-burn arrival, and the arrival-style-without-a-preview test — now plot,
+  re-time to 2× the minimum, then Begin, so they keep their intent. No test was
+  deleted, and the coast-floor Begin test is new.
+- **Fuel.** `TheFuelReadoutFollowsTheFlyingPlanAfterBegin` pins the panel's
+  `Fuel` row to the flying plan: **173 t / 14.7%** for the burn-only minimum
+  against the coast floor's 124.3 t.
+
+The gap is still open: a duration between the burn-only minimum and the coast
+floor comes back stretched or infeasible, and Begin's retime path reports it.
+Step 5 fills it.
 
 ## Verification
 
@@ -109,14 +159,18 @@ Last results (this commit):
 
 - `tools/check.sh --fast` — **PASSED** (OKF bundle 44 concepts, catalogue 137
   bodies, both generators byte-identical, bright-star catalogue, tooling tests).
-- `tools/check.sh --tests flight` — **PASSED** in 518 s: flight EditMode
-  category, 0 failed, 0 skipped. The three new tests are
-  `TheBurnOnlyMovingTargetSettles`, `PlanFastestReturnsTheBurnOnlyMinimum`, and
-  `ThePreviewMinimumIsTheBurnOnlyPlan`.
-- `tools/check.sh` — **PASSED** in 778 s: EditMode and PlayMode, 0 failed, 0
+- `tools/check.sh --tests flight` — **PASSED** in 649 s: flight EditMode
+  category, 0 failed, 0 skipped. The new Begin tests are
+  `BeginningAtTheBurnOnlyMinimumFliesThePreviewedPlan`,
+  `BeginningAtACoastFloorTargetFliesTheCoastFloor`,
+  `BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum`, and
+  `TheFuelReadoutFollowsTheFlyingPlanAfterBegin`; the Mars anchor is now the
+  6.49501 d burn-only minimum.
+- `tools/check.sh` — **PASSED** in 918 s: EditMode and PlayMode, 0 failed, 0
   skipped. The fixed-duration anchor test is in that run, so Mercury 8 d
   557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124 and the other three still
-  pass with the default path untouched.
+  pass with `Plan()` and `PlanAtDuration` untouched. The real-HUD PlayMode Begin
+  test passes with the at-minimum rule.
 
 ## Traps
 
@@ -134,7 +188,7 @@ Last results (this commit):
   on departure date, target, burn level, and arrival style; a repeat plot at the
   same key is free.
 - **The gap is not a bug to paper over.** A retime between the burn-only minimum
-  and the coast floor comes back stretched or infeasible on purpose. Step 4
+  and the coast floor comes back stretched or infeasible on purpose. Step 5
   fills it with the short coast; do not make the slider clamp or substitute a
   plan there.
 - The **fixed-date** `PlanBurnOnly(ship, target, arrivalJulianDate)` builds the
@@ -149,8 +203,16 @@ Last results (this commit):
   minimum (`PreviewRequest.AtMinimum`). The two styles' burn-only totals differ
   by about 19 s on Mars, and the old number would land inside the gap. Removing
   this breaks `ChangingTheArrivalStyleRebuildsThePreviewAndLeavesTheShipStill`.
-- `Begin` is unchanged on purpose: it still solves `Plan()` and retimes with
-  `PlanAtDuration`. Do not wire it to `PlanFastest` before step 4.
+- **Begin now uses `PlanFastest`**, and it still retimes with
+  `PlanAtDuration` when the preview asked for a longer trip. A preview that sat
+  at its minimum flies the fresh minimum, not its recorded number: the clock can
+  move between plot and Begin, and the old number can be a few seconds into the
+  zero-coast gap. Removing that at-minimum check broke
+  `PressingBeginInTheRealHudFliesAndCancelClearsTheRoute`. Do not switch the base
+  back to `Plan()`: that reintroduces the preview/flight mismatch at every
+  burn-only minimum. The flight acceptance anchors that began at the old floor
+  are re-baselined to the burn-only minimum; do not revert them. `Plan()` and
+  `PlanAtDuration` stay unchanged.
 - `PinBreakToCommandAcceleration` is still off by default. `PlanBurnOnly` pins
   its own break regardless of the property; keep that independent.
 - The step-2 break cap is deliberately generous and uses the **commanded**
@@ -169,22 +231,25 @@ Last results (this commit):
 - Do not merge into `main` and do not push. A finished step is a commit on
   `work/burn-only-profile`.
 
-## Step 4 notes
+## Step 5 notes
 
-- **Short coast.** Allow the burn-only seam's coast to be non-negative instead
-  of exactly zero, solve the branch, and let the floor search walk across the
-  boundary. At the crossing point the two branches must agree on delta-v, seams,
-  and feasibility — measure that, do not assume it.
-- **One buildable range.** Once the short coast builds, the slider can ask for
-  every duration from the minimum upward. Then `Begin` can use `PlanFastest`
-  (and retime normally) without moving the acceptance anchors only if the
-  anchors themselves are deliberately re-measured; otherwise keep `Begin` on the
-  coast path and treat the minimum as preview-only until the anchors are
-  re-baselined.
-- **Re-sweep.** Re-measure every window end, the first-plot cost, and the
-  burn-only-versus-coast delta-v pairs (Mars 1,592 against 1,172 km/s; Mercury
-  2,433 against 1,766) at the boundary.
-- **Fuel (step 5).** `TrajectoryPlan.PropellantKg` and `PropellantFraction` are
+- **Try the existing path first.** `BuildBurnCoastBurn` with
+  `PinBreakToCommandAcceleration = true` may already build a short coast inside
+  the gap: the break is pinned and the coast is the slack, so the block may be the
+  default allocation, not the Lambert solver. Test `PlanAtDuration` at the gap's
+  midpoint (Mercury ~3.1 d, Mars ~6.6 d, Jupiter ~12.8 d) with the pin on and
+  report the failure reason before writing a new solver.
+- **If it builds,** wire the pinned path as the retime branch for durations below
+  the coast floor and lower `MinimumCoastSeconds` only as far as the measured
+  plans need. The floor search must still return the coast floor above the gap.
+- **If it does not,** extend the burn-only seam with a non-negative coast: the
+  forward burn, a conic of the slack duration, and the backward brake. The
+  Lambert solve at a short coast is the risk; use the seam's state at `c = 0` as
+  the seed and report the conditioning rather than hiding it.
+- **Continuity.** At the crossing point, measure delta-v, seams, and feasibility
+  on both branches; do not assume they agree. Re-sweep the window end to end and
+  confirm every slider duration from the minimum to the maximum builds.
+- **Fuel (step 6).** `TrajectoryPlan.PropellantKg` and `PropellantFraction` are
   the numbers; compare the pin on/off at fixed trip times and at each floor, and
   the burn-only versus coast minimum. Do not answer the fuel question from
   delta-v alone.

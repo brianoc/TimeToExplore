@@ -342,9 +342,10 @@ rather than a phase. That is the **burn-only crossing** — the brachistochrone
 with the coast taken out. It is the fastest shape this profile can fly at a
 given level, and the most expensive. Since step 3 it is the **nav computer's
 minimum trip time** whenever it beats the coast floor
-(`TripPlanner.PlanFastest`), but `Plan()` and `PlanAtDuration` stay on the coast
-path: the profile's floors, windows, and delta-v anchors in this document are
-unchanged.
+(`TripPlanner.PlanFastest`), and **Begin flies it** when the preview's minimum is
+that plan; `Plan()` and `PlanAtDuration` stay on the coast path, so the
+profile's floors, windows, and fixed-duration delta-v anchors in this document
+are unchanged.
 
 The seam is solved as one system. The break is pinned to the commanded
 acceleration; the departure burn starts where it ends — the departure ceiling,
@@ -399,7 +400,9 @@ moving-target crossing at the same state and returns the **shorter feasible**
 one. The two are compared, not assumed; when the zero-coast solve is infeasible,
 does not settle, or comes out longer, the coast floor is returned.
 `FlightSession`'s preview window uses it for its minimum, so the trip-time
-slider's left end is the burn-only total when it wins. Measured at the epoch from
+slider's left end is the burn-only total when it wins, and `FlightSession.Begin`
+uses it for the flight's base plan: beginning at the preview's minimum flies the
+burn-only plan that was drawn, not the coast floor. Measured at the epoch from
 Gateway:
 
 | Target | Level | Burn-only minimum | Coast floor | Burn-only Δv | Coast Δv |
@@ -425,16 +428,20 @@ stretched or infeasible. The slider does not hide that — the window's minimum 
 the burn-only plan, its upper range is still `PlanAtDuration`, and a request
 inside the gap is reported with the planner's own `InfeasibleReason` in the
 panel. The **short-coast regime** that fills the gap, by letting the seam carry a
-non-negative coast so the floor search can walk across the boundary, is step 4.
-Until it lands, `Plan()` and `PlanAtDuration` keep every documented floor and
-delta-v anchor on the coast path.
+non-negative coast so the floor search can walk across the boundary, is the next
+step. Until it lands, `Plan()` and `PlanAtDuration` keep every documented floor
+and delta-v anchor on the coast path.
 
 Two smaller consequences are deliberate for this step. The crossing always ends
 on the **conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does
 not change the drawn minimum's shape — a retime above the floor does. And
-`FlightSession.Begin` still replans with `Plan()` and `PlanAtDuration`, so
-beginning at the burn-only minimum flies the coast floor until step 4 closes the
-gap; the preview that was drawn is the burn-only plan.
+`FlightSession.Begin` now solves its base plan with `PlanFastest`, so beginning
+at a burn-only minimum flies the no-coast plan the preview drew; at a
+coast-floor target the base is the coast floor. A preview that sat at its
+minimum flies the fresh minimum, because the clock may have moved and the old
+number can sit in the gap. A chosen duration above that base retimes with
+`PlanAtDuration`, including inside the gap, where it comes back stretched or
+infeasible until the short coast lands.
 
 The break's available time is circular here too — the total is the answer — so
 this step gives it a generous cap: twice the kinematic duration of the climb to
@@ -461,7 +468,9 @@ against the chain's entry — is **102.2 m and 0.209 m/s**; both are inside the
 9.9 × 10⁻⁶ m/s**). The plan is six arcs, break → departure burn → brake →
 capture, with **no Cruise coast**. The brake starts 63.4 million km from Mercury,
 553 of the handover ceilings out, so this fast case needs no planetocentric
-approach leg.
+approach leg. It also flies: `Begin` at the 1 g minimum puts the Mercury plan in
+the air and the autopilot reaches the arrival state **0.1 m and 0.0001 m/s**
+from the parking orbit, so the burn-only crossing is not only a build.
 
 Against the certified 1 g floor the burn-only crossing is **0.17140 d
 (4 h 7 min) shorter** — 3.04470 against 3.21610 d — and **667 km/s (38%) more

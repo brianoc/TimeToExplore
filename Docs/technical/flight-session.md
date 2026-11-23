@@ -102,8 +102,9 @@ The details footer splits the old one-press **Go To** into two actions:
    the result is held as `Preview`. It is data, not a flight: the ship, its
    `Status`, the clock, and the warp are untouched.
 2. **Begin flight** calls `BeginGoTo`, which always replans from the current
-   state and date. `FlightSession.Begin` discards the preview, so the flown
-   curve is close to the preview but never stale.
+   state and date with the same `PlanFastest` minimum the preview used, so the
+   flight flies the plan that was drawn. `FlightSession.Begin` discards the
+   preview, so nothing stale is ever flown if the clock has moved.
 
 Once a preview exists, the details footer grows a **trip-time slider**. Its
 range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds`, and its value is the
@@ -124,8 +125,10 @@ The **range between a burn-only minimum and the coast floor is a known gap**:
 `PlanAtDuration` still allocates a coast of at least `MinimumCoastSeconds`, so a
 retime that lands between the two comes back stretched or infeasible. The window
 does not hide it and does not fake a plan — the retimed route and the panel's
-`Note` show the planner's own answer. The **short-coast regime** that fills the
-gap is the next step; until it lands, `Plan()` and `PlanAtDuration` keep the
+`Note` show the planner's own answer. And Begin now uses the same
+`PlanFastest` minimum, so the flight matches the plan the preview drew instead of
+falling back to the coast floor. The **short-coast regime** that fills the gap
+is the next step; until it lands, `Plan()` and `PlanAtDuration` keep the
 documented floors and delta-v anchors unchanged.
 
 The first selection now pays for the moving-target minimum as well as the floor
@@ -186,11 +189,17 @@ worker and `SetPreviewDuration` build the identical plan.
 model, the 5% screen, the cache, and the measurements.
 
 Begin carries the chosen duration into the flight: it solves the fastest plan at
-the current date, then re-times it to the preview's flight time, clamped up to
-the new minimum. That keeps Begin's "always replan" rule while honouring the
-player's choice. Its fastest plan is still `Plan()` — the coast floor — so
-beginning at a burn-only minimum flies the coast floor's duration until step 4
-fills the gap; the drawn preview is the burn-only plan.
+the current date with the planner's **`PlanFastest`** — the same burn-only
+minimum or coast floor the preview's window advertises — then re-times it above
+that minimum with `PlanAtDuration` when the preview asked for a longer trip.
+That keeps Begin's "always replan" rule while making the flight match the plan
+that was drawn. A preview that sat at its minimum flies the **fresh** minimum:
+the clock may have moved since the plot, and re-timing to the old number by a
+few seconds would land in the zero-coast gap. At a coast-floor target the base
+is the coast floor; a chosen longer time still retimes. A request inside the gap
+still comes back stretched or infeasible until the short-coast regime fills it,
+and the panel reports the planner's own `InfeasibleReason` rather than
+substituting a plan.
 
 The preview is a promise of shape, not a contract. The clock keeps running,
 warp may be raised, and the ship keeps moving, so the panel ages the preview:
@@ -433,23 +442,27 @@ Run through the scene's frame loop at 60 fps, without a scene
 | Quantity | Value |
 |---|---|
 | Departure | Gateway Station, 2026-11-15 00:00 UTC |
-| Arrival | 2026-11-19 10:29:02 UTC (4.44 days later) |
-| Arrival error | 0.0 m, 0.0000 m/s |
+| Arrival | 2026-11-21 11:52:49 UTC (6.49501 days later) |
+| Plan | the 0.3 g burn-only minimum: 6 arcs, no cruise coast, 1,592 km/s |
+| Arrival error | 0.1 m, 0.0001 m/s |
 | After three orbits | r = 3,898 km, e = 3.07 × 10⁻⁶, drive off |
-| Real time | 65.7 s over 3,939 frames at the suggested 10,000× |
-| Peak substeps in one frame | 63 of the 2,000 budget |
+| Real time | 108.7 s over 6,523 frames at the suggested 10,000× |
+| Peak substeps in one frame | 17 of the 2,000 budget |
 | Warp | x10,000 → x10, auto-limited |
 | Teleports | none |
 
 The budget never bound, but a starved-budget test with two substeps per frame
-proves the clamp: 400 frames reach only 2026-11-15 05:53 and the clock is never
+proves the clamp: 400 frames reach only 2026-11-15 04:43 and the clock is never
 ahead of the ship.
 
 The same flight also runs through the real composition root
 (`BootstrapSmokeTests`): select Mars, plot, Begin, and let the bootstrap's own
-`Update`/`LateUpdate` run. It arrives at the same 2026-11-19 10:29:02 UTC after
-3,939 frames and 65.7 real seconds, with 0.0 m and 0.0000 m/s and the 3,898 km
-parking orbit at e = 4.3 × 10⁻⁹.
+`Update`/`LateUpdate` run. With one second per frame it arrives at the same
+2026-11-21 11:52:49 UTC after 6,523 frames and 108.7 real seconds, with 0.1 m
+and 0.0001 m/s and the 3,898 km parking orbit at e = 2.38 × 10⁻⁹. The shorter
+`AProfileFlightArrivesThroughTheBootstrap` run (3,248 frames, 54.1 s) uses the
+bootstrap's larger default frame step and reaches the same state at
+e = 1.49 × 10⁻⁸.
 
 # Verification
 
@@ -464,6 +477,16 @@ coasting profile, retiming changes the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
 target or burn level misses, and a changed departure date invalidates the cache.
+Begin itself is pinned to the preview: at Mercury 1 g it flies the **3.044696 d
+burn-only minimum** (break → departure burn → brake → capture, no cruise coast)
+and the autopilot arrives 0.1 m and 0.0001 m/s from the plan's state, while at
+Uranus it flies the **33.60438 d coast floor** because that is the shorter plan
+there. A preview at its minimum flies the **fresh** minimum rather than its old
+number, because the clock may have moved between plot and Begin; the real-HUD
+`PressingBeginInTheRealHudFliesAndCancelClearsTheRoute` is the PlayMode guard,
+and `BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum` pins the
+EditMode side. The Mars anchors moved from the 6.73042 d coast floor to the
+**6.49501 d burn-only minimum** (**1,592 km/s**, 6 arcs, 172.6 t of propellant).
 It also covers the **background planner**: the second of two requests made while
 the first is building is the plan that is published and the older build is
 dropped, the worker's plan equals the synchronous plan for the same duration,
