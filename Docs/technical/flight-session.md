@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T17:29:55Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T19:20:27Z }
 ---
 
 # What this adds to the orrery
@@ -158,11 +158,13 @@ instead of being rebuilt — a cold build is the profile's most expensive call,
 and near a floor needle it can refuse the very duration the window advertises.
 A request for a duration the session has already built is answered the same
 way: every finished plan is cached by window and requested flight time (the
-newest twelve per window, matched within 0.2% of the window so a continuous
+newest sixty-four per window, matched within 0.2% of the window so a continuous
 handle put back near its old position still hits), so returning to a value the
 player already waited for is a dictionary hit, not another multi-second build.
-The cache is keyed and dropped with the window, so a changed departure date or
-a place/teleport cannot read one back.
+A plan costs about **50 KB** — the departure burn's and brake's 512-sample
+interpolation tables dominate, at 24 bytes a sample — so the bound is about
+3 MB per window. The cache is keyed and dropped with the window, so a changed
+departure date or a place/teleport cannot read one back.
 A plan that finishes after a newer request arrived is discarded and the newest
 request is built next, so a drag never queues work behind stale plans. The
 preview stays pinned to `PreviewJulianDate`, and the
@@ -496,7 +498,8 @@ target or burn level misses, and a changed departure date invalidates the cache.
 A retimed plan is cached by its requested duration too: retiming away and back
 returns the same plan, a background ask for an already-built duration publishes
 without starting the worker, a repeat within 0.2% of the window reuses it, and a
-date change drops it.
+date change drops it. The bound is measured rather than assumed: a Mars plan's
+finite-burn tables are about 50 KiB, so sixty-four plans are a few megabytes.
 Begin itself is pinned to the preview: at Mercury 1 g it flies the **3.044696 d
 burn-only minimum** (break → departure burn → brake → capture, no cruise coast)
 and the autopilot arrives 0.1 m and 0.0001 m/s from the plan's state, while at

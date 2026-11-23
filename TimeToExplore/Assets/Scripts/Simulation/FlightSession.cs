@@ -110,10 +110,13 @@ namespace TimeToExplore.Simulation
         private readonly Dictionary<WindowKey, List<CachedRetime>> _retimedPlans =
             new Dictionary<WindowKey, List<CachedRetime>>();
 
-        /// <summary>How many retimed plans one window keeps. A drag that pauses
-        /// and comes back needs a handful; the bound keeps a long scrub from
-        /// growing without limit.</summary>
-        private const int MaxCachedRetimesPerWindow = 12;
+        /// <summary>How many retimed plans one window keeps. A route is about
+        /// 50 KB: two finite-burn interpolation tables of 512 samples dominate,
+        /// at 24 bytes a sample for position and velocity. Sixty-four is about
+        /// 3 MB per window, enough that a long scrub across the slider does not
+        /// evict the value the player is about to return to, while the eight
+        /// window keys bound the whole cache at tens of megabytes.</summary>
+        private const int MaxCachedRetimesPerWindow = 64;
 
         /// <summary>How close a repeat ask must be to a cached build. A slider
         /// is continuous, so a handle returned near its old position differs by
