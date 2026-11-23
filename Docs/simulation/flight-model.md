@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T22:05:52Z }
 ---
 
 # The one big assumption
@@ -296,17 +296,19 @@ boundary, the 5% screen, and the background planner.
 
 ## Tuning the trip in the nav computer
 
-The route preview has one **trip-time slider**. Its range starts at the fastest
-feasible plan of the profile, and every position is a fresh solve
-at that duration: the arcs are rebuilt, the arrival date moves, and the target is
-met where the ephemeris puts it on that date. The profile has a real upper bound
-— the short-way Lambert transfer sweeps past 180°, and a coast that arrives
-slower than the target's frame would need an acceleration — so its right-hand
-end is the slowest duration the planner still accepts, probed inside the same
-three-times span. At the epoch the window runs from **6.73 days to 20.19 days**
-to Mars, so it begins at the profile's true floor (6.73042 days at 0.3 g) and
-ends at three times that floor. A 90-day Mars plan exists as a direct
-`PlanAtDuration` build but the slider cannot reach it.
+The route preview has one **trip-time slider**. Its handle is one of **64
+integer steps** across the window: step 0 is the fastest feasible plan of the
+profile and step 63 the slowest duration the planner accepts, so every position
+is a distinct flight time and a fresh solve at that duration. The arcs are
+rebuilt, the arrival date moves, and the target is met where the ephemeris puts
+it on that date. The profile has a real upper bound — the short-way Lambert
+transfer sweeps past 180°, and a coast that arrives slower than the target's
+frame would need an acceleration — so its right-hand end is the slowest duration
+the planner still accepts, probed inside the same three-times span. At the epoch
+the window runs from **6.73 days to 20.19 days** to Mars, so it begins at the
+profile's true floor (6.73042 days at 0.3 g) and ends at three times that floor.
+A 90-day Mars plan exists as a direct `PlanAtDuration` build but the slider
+cannot reach it.
 
 The slider is one honest axis with two costs on it:
 

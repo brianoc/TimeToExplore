@@ -290,10 +290,16 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(group.activeSelf, Is.True, "a preview offers the trip-time control");
             Slider slider = SliderNamed("TimeSlider");
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(slider.minValue, Is.EqualTo((float)minimum).Within(1.0),
-                "the left end is the fastest feasible plan");
+            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
+            Assert.That(slider.wholeNumbers, Is.True,
+                "the handle moves in whole steps, not continuous seconds");
+            Assert.That(slider.minValue, Is.EqualTo(0f).Within(1e-6),
+                "the left end is step zero");
             Assert.That(slider.maxValue,
-                Is.EqualTo((float)(minimum * TripPlanner.MaxDurationScale)).Within(10.0));
+                Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
+                "64 distinct trips, endpoints included");
+            Assert.That(slider.value, Is.EqualTo(0f).Within(1e-6),
+                "a fresh preview sits on its minimum");
             Assert.That(TextNamed("TimeSliderLabel").text, Does.StartWith("TRIP TIME"));
             Assert.That(TextNamed("TimeSliderValue").text,
                 Does.StartWith(SolarSystemHud.FormatDuration(minimum)));
@@ -301,26 +307,37 @@ namespace TimeToExplore.Tests.EditMode
                 Does.Contain("0.3 g burns · no coast"),
                 "the minimum is the zero-coast crossing, and the label says so");
 
-            slider.value = (float)(2.0 * minimum);
+            float step = StepFor(slider, 2.0 * minimum, minimum, maximum);
+            double chosen = SecondsFor(slider, step, minimum, maximum);
+            slider.value = step;
             Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
                 "moving the handle queues a retime instead of blocking the frame");
 
             Update();
-            Assert.That(slider.value, Is.EqualTo((float)(2.0 * minimum)).Within(1.0),
+            Assert.That(slider.value, Is.EqualTo(step).Within(1e-4),
                 "the handle keeps the player's ask while the plan lags");
-            Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"),
+            Assert.That(TextNamed("TimeSliderLabel").text,
+                Does.Contain($"×{chosen / minimum:0.00}"),
                 "the label follows the handle, not the older published plan");
 
             WaitForRetime();
             Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
-                Is.EqualTo(2.0 * minimum).Within(1.0),
+                Is.EqualTo(chosen).Within(1.0),
                 "the finished plan is published on this thread");
 
             Update();
-            Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"));
+            Assert.That(TextNamed("TimeSliderLabel").text,
+                Does.Contain($"×{chosen / minimum:0.00}"));
             Assert.That(TextNamed("TimeSliderValue").text,
                 Does.Contain("0.3 g burns · coast"),
                 "the retimed plan above the floor is the coasting profile again");
+
+            slider.value = slider.maxValue;
+            WaitForRetime();
+            Update();
+            Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
+                Is.EqualTo(maximum).Within(1.0),
+                "the right end of the handle is the window's maximum");
         }
 
         [Test]
@@ -376,8 +393,10 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(conicMinimum),
                 "the hybrid capture has its own fastest plan");
             Assert.That(SliderNamed("TimeSlider").minValue,
-                Is.EqualTo((float)_bootstrap.Flight.PreviewMinimumSeconds).Within(1.0),
-                "the trip-time window follows the new style");
+                Is.EqualTo(0f).Within(1e-6));
+            Assert.That(SliderNamed("TimeSlider").maxValue,
+                Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
+                "the stepped handle still spans the rebuilt window");
             Assert.That(ButtonLabel("FixedBurnButton").color,
                 Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color));
 
@@ -501,10 +520,13 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(maximum,
                 Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6),
                 "the window never reaches past the planner's own span");
-            Assert.That(SliderNamed("TimeSlider").minValue,
-                Is.EqualTo((float)minimum).Within(1.0));
-            Assert.That(SliderNamed("TimeSlider").maxValue,
-                Is.EqualTo((float)maximum).Within(10.0));
+            Slider timeSlider = SliderNamed("TimeSlider");
+            Assert.That(timeSlider.minValue, Is.EqualTo(0f).Within(1e-6));
+            Assert.That(timeSlider.maxValue,
+                Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
+                "64 distinct trips across the profile's window");
+            Assert.That(timeSlider.value, Is.EqualTo(0f).Within(1e-6),
+                "the preview opens on its fastest trip");
 
             List<DetailRow> report = FlightReport.Build(_bootstrap.Flight,
                 _bootstrap.Model, "x1");
@@ -834,6 +856,23 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.Fail("no HUD Slider named " + name);
             return null;
+        }
+
+        /// <summary>The nearest handle step a flight time maps to, using the
+        /// HUD's own 64-step window.</summary>
+        private static float StepFor(Slider slider, double seconds, double minimum,
+            double maximum)
+        {
+            double fraction = (seconds - minimum) / (maximum - minimum);
+            return (float)System.Math.Round(
+                System.Math.Clamp(fraction, 0.0, 1.0) * slider.maxValue);
+        }
+
+        /// <summary>The flight time a handle step stands for.</summary>
+        private static double SecondsFor(Slider slider, float step, double minimum,
+            double maximum)
+        {
+            return minimum + step / slider.maxValue * (maximum - minimum);
         }
 
         private List<string> ActiveTexts() =>
