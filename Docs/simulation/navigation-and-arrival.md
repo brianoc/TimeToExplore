@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T22:05:52Z }
 ---
 
 # The problem
@@ -213,13 +213,13 @@ planned at; its floor is 0.05 g, so there is no zero-thrust version.
 
 ## The trip-time control
 
-The preview carries a trip-time slider whose range is the selected profile's
-fastest feasible plan to the slowest one the planner accepts. Each value is a
-build at an explicit duration: the arcs, the arrival date, and the intercept all
-move, and the panel reports the new flight time, peak thrust, and delta-v. It is
-a **duration** control, not a throttle cap, because `MaxAccelerationMps2` also
-sets the parking-orbit radius; lowering it would silently move where the ship
-parks.
+The preview carries a trip-time slider whose handle is one of **64 integer
+steps** across the selected profile's fastest feasible plan to the slowest one
+the planner accepts. Each step is a build at an explicit duration: the arcs, the
+arrival date, and the intercept all move, and the panel reports the new flight
+time, peak thrust, and delta-v. It is a **duration** control, not a throttle
+cap, because `MaxAccelerationMps2` also sets the parking-orbit radius; lowering
+it would silently move where the ship parks.
 
 The span starts at the profile's fastest plan and a has a real upper bound: the
 prograde short-way Lambert transfer sweeps past 180° as the trip lengthens, and a

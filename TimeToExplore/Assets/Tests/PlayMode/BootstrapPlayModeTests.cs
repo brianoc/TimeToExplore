@@ -364,14 +364,17 @@ namespace TimeToExplore.Tests.PlayMode
             Assert.That(slider.gameObject.activeInHierarchy, Is.True);
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(slider.minValue, Is.EqualTo((float)minimum).Within(1.0));
+            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
+            Assert.That(slider.wholeNumbers, Is.True);
+            Assert.That(slider.minValue, Is.EqualTo(0f).Within(1e-6));
             Assert.That(slider.maxValue,
-                Is.EqualTo((float)(minimum * TripPlanner.MaxDurationScale))
-                    .Within(10.0));
+                Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
+                "the handle offers 64 distinct trips");
 
-            double chosen = Math.Min(2.0 * minimum,
-                _bootstrap.Flight.PreviewMaximumSeconds);
-            slider.value = (float)chosen;
+            float step = (float)Math.Round(
+                (2.0 * minimum - minimum) / (maximum - minimum) * slider.maxValue);
+            double chosen = minimum + step / slider.maxValue * (maximum - minimum);
+            slider.value = step;
 
             Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
                 "the handle queues the retime; it does not block the frame");
@@ -383,7 +386,8 @@ namespace TimeToExplore.Tests.PlayMode
 
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
-            Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"),
+            Assert.That(TextNamed("TimeSliderLabel").text,
+                Does.Contain($"×{chosen / minimum:0.00}"),
                 "the label reports the chosen multiple of the minimum");
             Assert.That(TextNamed("TimeSliderValue").text, Does.Contain("g burns"),
                 "the profile reports its burn level, not a torch throttle");

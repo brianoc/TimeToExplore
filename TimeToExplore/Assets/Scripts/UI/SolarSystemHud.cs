@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -50,6 +51,13 @@ namespace TimeToExplore.UI
         private const int MaxFlightRows = 30;
         private const int MaxLegendRows = 6;
         private const int InitialLabelPool = 24;
+
+        /// <summary>Distinct trips the time slider offers. The handle is an
+        /// integer step from 0 to <c>TimeSliderSteps - 1</c>, mapped onto the
+        /// preview's window; 64 steps put one distinct value in each slot of
+        /// the retimed-plan cache, and a step is about a fifth of a day on a
+        /// Mars window, below what the eye reads as a smooth drag.</summary>
+        public const int TimeSliderSteps = 64;
 
         private static readonly Color StatusBackground = new Color(0.01f, 0.02f, 0.04f, 0.82f);
         private static readonly Color DetailsBackground = new Color(0.015f, 0.025f, 0.045f, 0.92f);
@@ -133,6 +141,7 @@ namespace TimeToExplore.UI
         private bool _syncingBurnLevel;
         private string _sliderBodyId;
         private double _sliderMinimumSeconds = double.NaN;
+        private double _sliderMaximumSeconds = double.NaN;
 
         private GameObject _flightPanel;
         private RectTransform _flightRect;
@@ -684,28 +693,32 @@ namespace TimeToExplore.UI
                 : flight.PreviewDurationSeconds;
 
             bool rangeChanged = _sliderBodyId != flight.Preview.TargetId ||
-                                _sliderMinimumSeconds != minimum;
+                                _sliderMinimumSeconds != minimum ||
+                                _sliderMaximumSeconds != maximum;
             if (rangeChanged)
             {
                 _sliderBodyId = flight.Preview.TargetId;
                 _sliderMinimumSeconds = minimum;
+                _sliderMaximumSeconds = maximum;
                 _syncingSlider = true;
-                _timeSlider.minValue = (float)minimum;
-                _timeSlider.maxValue = (float)maximum;
-                _timeSlider.value = (float)duration;
+                _timeSlider.minValue = 0f;
+                _timeSlider.maxValue = TimeSliderSteps - 1;
+                _timeSlider.value = TimeStepFor(duration, minimum, maximum);
                 _syncingSlider = false;
             }
-            else if (!retimePending &&
-                     Mathf.Abs(_timeSlider.value - (float)duration) >
-                     Mathf.Max(0.5f, 1e-4f * (float)(maximum - minimum)))
+            else if (!retimePending)
             {
-                // The plan and the handle disagree (a fresh plot or a replan).
-                // Do not fight a drag: the retimed plan's flight time is exactly
-                // the value the handle already holds, so this only runs on a
-                // deliberate reset.
-                _syncingSlider = true;
-                _timeSlider.value = (float)duration;
-                _syncingSlider = false;
+                float step = TimeStepFor(duration, minimum, maximum);
+                if (Mathf.Abs(_timeSlider.value - step) >= 0.5f)
+                {
+                    // The plan and the handle disagree (a fresh plot or a
+                    // replan). Do not fight a drag: the retimed plan's flight
+                    // time is the value the handle already holds, so this only
+                    // runs on a deliberate reset.
+                    _syncingSlider = true;
+                    _timeSlider.value = step;
+                    _syncingSlider = false;
+                }
             }
 
             double scale = minimum > 0.0 ? duration / minimum : 1.0;
@@ -713,9 +726,39 @@ namespace TimeToExplore.UI
             _timeValue.text = FormatDuration(duration) + "  ·  " + DriveStateLabel(flight);
         }
 
-        private void OnTimeSliderChanged(float seconds)
+        /// <summary>Map a flight time to the nearest slider step in the
+        /// preview's window. The handle is an integer from 0 to
+        /// <c>TimeSliderSteps - 1</c>, so the control offers exactly that many
+        /// distinct trips.</summary>
+        private static float TimeStepFor(double seconds, double minimum, double maximum)
+        {
+            double span = maximum - minimum;
+            if (!double.IsFinite(span) || !(span > 0.0)
+                || !double.IsFinite(seconds)) return 0f;
+
+            double fraction = (seconds - minimum) / span;
+            return Mathf.Round((float)(Math.Clamp(fraction, 0.0, 1.0)
+                                       * (TimeSliderSteps - 1)));
+        }
+
+        /// <summary>The flight time a slider step stands for.</summary>
+        private static double TimeForStep(float step, double minimum, double maximum)
+        {
+            double span = maximum - minimum;
+            if (!double.IsFinite(span) || !(span > 0.0)) return double.NaN;
+
+            double clamped = Math.Clamp(step, 0f, (float)(TimeSliderSteps - 1));
+            return minimum + clamped / (TimeSliderSteps - 1) * span;
+        }
+
+        private void OnTimeSliderChanged(float step)
         {
             if (_syncingSlider || _owner == null) return;
+
+            double seconds = TimeForStep(step, _sliderMinimumSeconds,
+                _sliderMaximumSeconds);
+            if (!double.IsFinite(seconds)) return;
+
             _owner.RetimePreview(seconds);
         }
 
@@ -1354,6 +1397,12 @@ namespace TimeToExplore.UI
 
             _timeSlider = BuildSlider(_timeSliderGroup, "TimeSlider", 52f,
                 OnTimeSliderChanged);
+
+            // The time handle is an integer step, not a raw seconds value: 64
+            // distinct positions, each one a trip the cache can hold.
+            _timeSlider.wholeNumbers = true;
+            _timeSlider.minValue = 0f;
+            _timeSlider.maxValue = TimeSliderSteps - 1;
 
             _burnLevelLabel = CreateText(_timeSliderGroup, "BurnLevelLabel",
                 "BURN LEVEL", 10, SectionColour, FontStyle.Bold);
