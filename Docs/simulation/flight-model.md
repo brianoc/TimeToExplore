@@ -245,11 +245,14 @@ outside the target's ceiling, it is absent.
 
 The profile's true floors at the epoch are **3.21610 days** to Mercury at 1 g
 (peak 9.70 m/s², 1,766 km/s) and **6.73042 days** to Mars at 0.3 g
-(5.14 m/s², 1,171.6 km/s); the Mars trip-time window ends at **20.19 days**,
-three times the floor, so the 90-day plan above is a direct `PlanAtDuration`
-build outside the nav computer's window. Jupiter at 0.3 g floors at
-**13.07211 days** (window 13.07–39.22) and Uranus at **33.60 days** at 0.3 g and
-**33.65 days** at 1 g (windows 33.60–100.81 and 33.65–100.96). The .NET harness
+(5.14 m/s², 1,171.6 km/s); the Mars **coast** trip-time window ends at **20.19
+days**, three times the floor, so the 90-day plan above is a direct
+`PlanAtDuration` build outside the nav computer's window. The nav minimum is the
+burn-only total where it wins — Mercury **3.04470**, Mars **6.49501**, Jupiter
+**12.54280** days — and the coast floor is its fallback. Jupiter at 0.3 g floors
+at **13.07211 days** (coast window 13.07–39.22) and Uranus at **33.60 days** at
+0.3 g and **33.65 days** at 1 g (windows 33.60–100.81 and 33.65–100.96). The
+.NET harness
 selects a different certified point at the giants (Uranus 40.71 and 30.56,
 Jupiter 13.33520); the editor's is the one that ships
 ([the divergence](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)).

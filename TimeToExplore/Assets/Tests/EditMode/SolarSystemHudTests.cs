@@ -298,7 +298,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(TextNamed("TimeSliderValue").text,
                 Does.StartWith(SolarSystemHud.FormatDuration(minimum)));
             Assert.That(TextNamed("TimeSliderValue").text,
-                Does.Contain("0.3 g burns · coast"));
+                Does.Contain("0.3 g burns · no coast"),
+                "the minimum is the zero-coast crossing, and the label says so");
 
             slider.value = (float)(2.0 * minimum);
             Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
@@ -317,6 +318,9 @@ namespace TimeToExplore.Tests.EditMode
 
             Update();
             Assert.That(TextNamed("TimeSliderLabel").text, Does.Contain("×2.00"));
+            Assert.That(TextNamed("TimeSliderValue").text,
+                Does.Contain("0.3 g burns · coast"),
+                "the retimed plan above the floor is the coasting profile again");
         }
 
         [Test]
@@ -345,8 +349,17 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color),
                 "the active style is marked");
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(6),
+                "the default is the conic capture on the zero-coast crossing");
+
+            // The zero-coast minimum carries the conic capture chain whichever
+            // arrival style is chosen, so retime above the floor first: there the
+            // style is visible in the plan the button switches.
+            _bootstrap.Flight.SetPreviewDuration(
+                2.0 * _bootstrap.Flight.PreviewMinimumSeconds);
+            Update();
             Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "the default is the conic capture");
+                "the coasting conic plan has the break, burns, coast, and capture");
 
             double conicMinimum = _bootstrap.Flight.PreviewMinimumSeconds;
             fixedBurn.onClick.Invoke();
@@ -472,7 +485,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
                 "the profile flies its departure burn and brake");
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.True);
+                Is.False,
+                "the minimum is the zero-coast crossing, so no cruise coast");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
             Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(7.5),
@@ -502,9 +516,9 @@ namespace TimeToExplore.Tests.EditMode
             DetailRow brake = report.First(row => row.Label == "Brake");
             Assert.That(brake.Value, Does.Contain("km/s"));
             Assert.That(brake.Value, Does.Contain("0.3 g"));
-            Assert.That(report.First(row => row.Label == "Coast" &&
-                                               row.Value.StartsWith("drive off")).Value,
-                Does.Contain("drive off"));
+            Assert.That(report.Any(row => row.Label == "Coast" &&
+                                          row.Value.StartsWith("drive off")), Is.False,
+                "the zero-coast minimum has no cruise coast to report");
             Assert.That(report.Any(row => row.Label == "Capture"), Is.True);
             Assert.That(report.Any(row => row.Label == "Cruise" &&
                                           row.Value.Contains("prograde burn")), Is.True);

@@ -176,6 +176,24 @@ namespace TimeToExplore.Simulation
         /// the failure path reports. It is never a solution, only a residual.</summary>
         private const int BurnOnlyDiagnosticIterations = 24;
 
+        /// <summary>How closely the moving-target loop's total must agree with
+        /// the date its capture chain was built at before the plan is accepted.
+        /// The chain's geometry moves slowly with the date, so a few seconds is
+        /// both a real convergence and far below any date the nav computer
+        /// reports.</summary>
+        private const double BurnOnlyDateToleranceSeconds = 2.0;
+
+        /// <summary>Outer passes the moving-target loop may run. The measured
+        /// Mercury case settles in two or three; the cap keeps a two-point ring
+        /// from turning one plan into a minute of work, and a loop that hits it
+        /// is reported as infeasible rather than returned.</summary>
+        private const int BurnOnlyDateIterations = 8;
+
+        /// <summary>Under-relaxation for a moving-target pass that overshoots
+        /// and reverses the previous step. Halving the update turns a two-point
+        /// ring into a geometric approach to the fixed point.</summary>
+        private const double BurnOnlyDateDamping = 0.5;
+
         /// <summary>How close the floor search's bracket must be before it
         /// returns the feasible end, as an absolute floor and a fraction of the
         /// floor. The old search bisected to 30 s; the fast model costs enough
@@ -299,10 +317,21 @@ namespace TimeToExplore.Simulation
         /// <summary>Optional diagnostic sink for the planning loop.</summary>
         public Action<string> Trace { get; set; }
 
-        public TrajectoryPlan Plan(ShipState ship, string targetId)
-        {
-            BodyRuntime target = RequireTarget(targetId);
+        /// <summary>
+        /// The profile's fastest **coast** crossing: the burn–coast–burn floor.
+        /// This is the default plan the nav computer's fixed-duration anchors and
+        /// the flight session's Begin path use. The zero-coast crossing is faster
+        /// at the same level but not part of this search; its own minimum is
+        /// <see cref="PlanFastest"/>.
+        /// </summary>
+        public TrajectoryPlan Plan(ShipState ship, string targetId) =>
+            PlanCoastFloor(ship, RequireTarget(targetId));
 
+        /// <summary>The <see cref="Plan"/> body, with the target already
+        /// resolved so <see cref="PlanFastest"/> can reuse the resolved body for
+        /// its two branches.</summary>
+        private TrajectoryPlan PlanCoastFloor(ShipState ship, BodyRuntime target)
+        {
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetPosition, out _);
             if (Vector3d.Distance(targetPosition, ship.PositionM)
                 < SphereOfInfluence.RadiusM(target))
@@ -706,11 +735,11 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Research spike: a **zero-coast** crossing built from the profile's own
-        /// finite-burn arcs. The break is pinned to the commanded acceleration
-        /// (<see cref="FixedBurnAccelerationMps2"/>, independent of
-        /// <see cref="PinBreakToCommandAcceleration"/>), the capture chain is
-        /// built at the arrival handover floor for
+        /// Research spike, **fixed date**: a **zero-coast** crossing built from
+        /// the profile's own finite-burn arcs. The break is pinned to the
+        /// commanded acceleration (<see cref="FixedBurnAccelerationMps2"/>,
+        /// independent of <see cref="PinBreakToCommandAcceleration"/>), the
+        /// capture chain is built at the arrival handover floor for
         /// <paramref name="arrivalJulianDate"/>, and the two burns meet at the
         /// flip with **no coast** between them:
         ///
@@ -732,17 +761,15 @@ namespace TimeToExplore.Simulation
         /// The supplied date fixes the capture chain's geometry — its entry
         /// radius, plane, and fall — and its handover is placed where the solved
         /// brake actually ends, so the plan is continuous in date as well as
-        /// state. There is no moving-target loop: the chain's local entry state
-        /// is built once from the supplied date.
+        /// state. This overload builds the chain **once** and is the step-2
+        /// measurement; the date is solved by
+        /// <see cref="PlanBurnOnly(ShipState, string)"/>, which owns the
+        /// moving-target loop.
         ///
-        /// This is not wired into <see cref="Plan"/> or the floor search. It is
-        /// the measurement behind [the burn-only
-        /// crossing](../simulation/burn-coast-burn.md#the-burn-only-crossing-experimental):
-        /// the fastest profile, which buys its time by spending delta-v on two
-        /// back-to-back burns. A plan is returned only when the seam closes to
-        /// the chain gate (1 km and 1 m/s); otherwise the returned plan names the
-        /// residual the solve reached, so a failure is reported rather than
-        /// hidden.
+        /// <see cref="PlanFastest"/> is the nav computer's route through this
+        /// crossing. A plan is returned only when the seam closes to the chain
+        /// gate (1 km and 1 m/s); otherwise the returned plan names the residual
+        /// the solve reached, so a failure is reported rather than hidden.
         /// </summary>
         public TrajectoryPlan PlanBurnOnly(ShipState ship, string targetId,
             double arrivalJulianDate)
@@ -754,6 +781,140 @@ namespace TimeToExplore.Simulation
                     "The burn-only crossing needs an arrival date after departure.");
             }
 
+            return BuildBurnOnly(ship, target, arrivalJulianDate);
+        }
+
+        /// <summary>
+        /// The nav computer's **minimum trip time**: the shorter feasible plan of
+        /// the zero-coast crossing and the profile's coast floor. The burn-only
+        /// total is an **output** of the seam solve, not a requested duration, and
+        /// it is normally the shorter of the two at a high burn level (Mercury at
+        /// 1 g: 3.04470 d against the 3.21610 d floor). The two are compared, not
+        /// assumed: when the zero-coast solve is infeasible, does not settle, or
+        /// comes out longer, the coast floor is returned.
+        ///
+        /// This does **not** change <see cref="Plan"/> or
+        /// <see cref="PlanAtDuration"/>: every documented floor, window, and
+        /// delta-v anchor still comes from the coast path. The range between this
+        /// minimum and the coast floor is a known gap —
+        /// <see cref="PlanAtDuration"/> cannot build the durations between them
+        /// yet — and the short-coast regime that fills it is the next step. A
+        /// caller that asks for a duration in the gap gets the planner's honest
+        /// answer for it (a stretched or infeasible plan), not a silent fallback.
+        /// </summary>
+        public TrajectoryPlan PlanFastest(ShipState ship, string targetId)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            TrajectoryPlan coast = PlanCoastFloor(ship, target);
+            TrajectoryPlan burnOnly = PlanBurnOnlyMovingTarget(ship, target,
+                coast.FlightTimeSeconds);
+
+            bool useBurnOnly = burnOnly.IsFeasible
+                               && burnOnly.FlightTimeSeconds > 0.0
+                               && (coast.FlightTimeSeconds <= 0.0
+                                   || burnOnly.FlightTimeSeconds
+                                   < coast.FlightTimeSeconds);
+            Trace?.Invoke($"fastest: burn-only " +
+                          $"{burnOnly.FlightTimeSeconds / SecondsPerDay:F5} d " +
+                          $"(feasible {burnOnly.IsFeasible}), coast " +
+                          $"{coast.FlightTimeSeconds / SecondsPerDay:F5} d " +
+                          $"(feasible {coast.IsFeasible}), using " +
+                          $"{(useBurnOnly ? "burn-only" : "coast")}");
+
+            return useBurnOnly ? burnOnly : coast;
+        }
+
+        /// <summary>
+        /// The same crossing with the **arrival date solved**, as the nav
+        /// computer needs it. The capture chain is built at
+        /// <c>t0 + total</c>, the seam is solved there, and the plan's own total
+        /// (break + departure burn + brake + capture) becomes the next date; the
+        /// loop repeats until the two agree within
+        /// <see cref="BurnOnlyDateToleranceSeconds"/>. The seed is the coast
+        /// floor's own total, so the fixed-date measurement is the first pass and
+        /// the chain starts in the basin the seam was measured in.
+        ///
+        /// A converged plan is continuous in date as well as state: its arrival
+        /// date is the date its chain was built at, within the tolerance. A loop
+        /// that does not settle is reported as infeasible with the last step it
+        /// took; a moving-target plan that never converged is never returned as a
+        /// solution. This is the nav computer's fastest crossing — see
+        /// <see cref="PlanFastest"/>.
+        /// </summary>
+        public TrajectoryPlan PlanBurnOnly(ShipState ship, string targetId)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            double seedSeconds = PlanCoastFloor(ship, target).FlightTimeSeconds;
+            return PlanBurnOnlyMovingTarget(ship, target, seedSeconds);
+        }
+
+        /// <summary>
+        /// The moving-target loop behind
+        /// <see cref="PlanBurnOnly(ShipState, string)"/> and
+        /// <see cref="PlanFastest"/>. Each pass rebuilds the capture chain at the
+        /// total the previous pass solved, so the chain's geometry belongs to the
+        /// date the plan actually reaches. The update is the plan's own total;
+        /// when a pass overshoots and reverses the last step, the next update is
+        /// damped by half so a two-point oscillation decays instead of ringing.
+        /// </summary>
+        private TrajectoryPlan PlanBurnOnlyMovingTarget(ShipState ship,
+            BodyRuntime target, double seedSeconds)
+        {
+            double total = Math.Max(seedSeconds, MinimumArcSeconds);
+            double lastStep = double.PositiveInfinity;
+            TrajectoryPlan plan = null;
+
+            for (int pass = 0; pass < BurnOnlyDateIterations; pass++)
+            {
+                double chainJulianDate = ship.JulianDate + total / SecondsPerDay;
+                plan = BuildBurnOnly(ship, target, chainJulianDate);
+                if (!plan.IsFeasible)
+                {
+                    Trace?.Invoke($"burn-only moving target pass {pass}: the build at " +
+                                  $"{total / SecondsPerDay:F5} d is infeasible: " +
+                                  plan.InfeasibleReason);
+                    return plan;
+                }
+
+                double actual = plan.FlightTimeSeconds;
+                double step = actual - total;
+                Trace?.Invoke($"burn-only moving target pass {pass}: chain at " +
+                              $"{total / SecondsPerDay:F5} d, plan arrives " +
+                              $"{actual / SecondsPerDay:F5} d, step {step:F1} s");
+
+                if (Math.Abs(step) <= BurnOnlyDateToleranceSeconds)
+                    return plan;
+
+                double next = actual;
+                if (double.IsFinite(lastStep)
+                    && Math.Sign(step) != Math.Sign(lastStep)
+                    && Math.Abs(step) > Math.Abs(lastStep))
+                {
+                    // The two dates bracket the fixed point and the plain update
+                    // jumps across it: halve the step to settle instead of ring.
+                    next = total + BurnOnlyDateDamping * step;
+                    Trace?.Invoke("burn-only moving target: damping an oscillating step");
+                }
+
+                lastStep = step;
+                total = Math.Max(next, MinimumArcSeconds);
+            }
+
+            Trace?.Invoke($"burn-only moving target: did not settle after " +
+                          $"{BurnOnlyDateIterations} passes; last step " +
+                          $"{lastStep:F1} s at {total / SecondsPerDay:F5} d");
+            return Reported(InfeasiblePlan(ship, target, total,
+                $"burn-only: the moving target did not settle after " +
+                $"{BurnOnlyDateIterations} passes (last step {lastStep:F1} s at " +
+                $"{total / SecondsPerDay:F3} d)"));
+        }
+
+        /// <summary>The fixed-date crossing's body: the caller supplies the
+        /// capture chain's date, and the handover lands where the solved brake
+        /// ends.</summary>
+        private TrajectoryPlan BuildBurnOnly(ShipState ship, BodyRuntime target,
+            double arrivalJulianDate)
+        {
             double totalSeconds = (arrivalJulianDate - ship.JulianDate) * SecondsPerDay;
             double acceleration = FixedBurnAccelerationMps2;
             if (!(acceleration > 0.0))

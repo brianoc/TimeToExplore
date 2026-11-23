@@ -141,13 +141,15 @@ profile.
    reference coast's departure share while that is gentle enough for the drive,
    and lengthens it to the drive's limit when the share is too short.
 4. **The controls.** The nav computer's `ARRIVAL` row chooses **Conic** or the
-   hybrid **X g burn**; the trip-time slider is the profile's speed control and
-   its window is the profile's own feasible range; the burn-level slider is the
-   level the departure burn, the brake, and the hybrid capture are planned at.
-   Its floor is **0.05 g**: the profile is two real burns around a coast, so it
-   has no zero-thrust version.
+   hybrid **X g burn**; the trip-time slider is the profile's speed control; the
+   burn-level slider is the level the departure burn, the brake, and the hybrid
+   capture are planned at. Its floor is **0.05 g**: the profile is two real burns
+   around a coast, so it has no zero-thrust version. The slider's window is the
+   profile's feasible range on the coast path, except that its **left end is the
+   burn-only minimum** when that is shorter (see [the nav computer's
+   minimum](#the-nav-computers-minimum)).
 
-The measured window at the epoch is **6.73 to 20.19 days** for the
+The measured **coast** window at the epoch is **6.73 to 20.19 days** for the
 Gateway→Mars profile at 0.3 g. At 1 g the fast end is **3.21610 days** to
 Mercury (window 3.22–9.65 days); Jupiter at 0.3 g is **13.07–39.22 days** and
 Uranus is **33.60–100.81 days** at 0.3 g and **33.65–100.96 days** at 1 g. The
@@ -159,7 +161,10 @@ the ceiling, so it is the one floor plan that carries an approach arc (eight
 arcs), while the 0.3 g floor is still a seven-arc fast trip. The right-hand end is the
 three-times cap, and both ends build. The 90-day Mars
 plan in the table below is still a valid direct build, but it is outside this
-window, so the nav computer's slider cannot ask for it.
+window, so the nav computer's slider cannot ask for it. The slider's **minimum**
+is the burn-only total where it wins and its right end is three times that
+minimum, so Mars's window is 6.50–19.49 days, Mercury's 3.04–9.13, and Jupiter's
+12.54–37.63; Uranus keeps the coast windows above.
 
 # The pinned break
 
@@ -329,16 +334,17 @@ the full field in charge at that level, which is why the measured pinned peaks
 are 9.7000 m/s², and the solver retargets a fifth of a percent lower once if a
 certified peak ever lands above the 10.0 m/s² drive.
 
-# The burn-only crossing (experimental)
+# The burn-only crossing
 
 The profile's two burns can be placed **back to back**, with no coast between
 them: the departure burn ends where the brake begins, and the flip is a seam
 rather than a phase. That is the **burn-only crossing** — the brachistochrone
 with the coast taken out. It is the fastest shape this profile can fly at a
-given level, and the most expensive, and it is **not the shipped route**: it is a
-measured research spike, not wired into `Plan()`, the floor search, or the nav
-computer. The default profile, its floors and windows, and every documented
-anchor are unchanged.
+given level, and the most expensive. Since step 3 it is the **nav computer's
+minimum trip time** whenever it beats the coast floor
+(`TripPlanner.PlanFastest`), but `Plan()` and `PlanAtDuration` stay on the coast
+path: the profile's floors, windows, and delta-v anchors in this document are
+unchanged.
 
 The seam is solved as one system. The break is pinned to the commanded
 acceleration; the departure burn starts where it ends — the departure ceiling,
@@ -356,12 +362,79 @@ calling it a solution.
 
 **The total time is an output.** With no coast to absorb a slider value, a
 burn-only crossing is one duration per geometry and level: it is the sum of the
-solved burn and brake plus the break and capture. `TripPlanner.PlanBurnOnly`
-therefore takes a **fixed arrival date** instead of a trip time, and uses it for
-the capture chain's geometry — the handover floor, the plane, and the fall. The
-chain's handover is then placed where the solved brake actually ends, so the plan
-is continuous in date as well as state. There is no moving-target loop: making
-the arrival date an unknown is step 3.
+solved burn and brake plus the break and capture. The crossing therefore has two
+entry points:
+
+* `PlanBurnOnly(ship, target, arrivalJulianDate)` builds the capture chain once
+  at the **fixed date** the caller supplies — its handover floor, plane, and
+  fall. This is the step-2 measurement below.
+* `PlanBurnOnly(ship, target)` **solves the arrival date**: the capture chain is
+  rebuilt at `t0 + total`, the seam is solved there, and the plan's own total
+  (break + departure burn + brake + capture) becomes the next date. The loop
+  stops when the two agree within **2 s**; a pass that overshoots and reverses
+  the previous step is halved, so a two-point ring decays instead of ringing. It
+  is capped at **8 passes**, and a loop that hits the cap is reported
+  **infeasible** with the last step it took — a moving-target plan that never
+  converged is never returned as a solution. The seed is the coast floor's own
+  total, so the chain starts in the basin the seam was measured in and the
+  fixed-date measurement is the first pass.
+
+The chain's handover is then placed where the solved brake actually ends, so the
+converged plan is continuous in **date** as well as state: its arrival date is
+the date its chain was built at, within the loop's tolerance. Building the chain
+at the plan's own arrival date reproduces the same total, which is the
+self-consistency the tests assert.
+
+Measured at the epoch from Gateway to **Mercury at 1 g**, the moving-target loop
+settles in **two passes**: the chain is built at 3.21610 d and the plan arrives
+3.04470 d (**step −14,808.9 s**); the chain is rebuilt at 3.04470 d and the plan
+arrives 3.04470 d (**step −0.3 s**). The rebuilt plan's seam is **2.2 m and
+9.9 × 10⁻⁶ m/s**, and the crossing costs **3.5 s** including the coast floor it
+seeds from. The fixed-date build at that same date agrees to 0.00001 d.
+
+## The nav computer's minimum
+
+`TripPlanner.PlanFastest(ship, target)` computes both the coast floor and the
+moving-target crossing at the same state and returns the **shorter feasible**
+one. The two are compared, not assumed; when the zero-coast solve is infeasible,
+does not settle, or comes out longer, the coast floor is returned.
+`FlightSession`'s preview window uses it for its minimum, so the trip-time
+slider's left end is the burn-only total when it wins. Measured at the epoch from
+Gateway:
+
+| Target | Level | Burn-only minimum | Coast floor | Burn-only Δv | Coast Δv |
+|---|---|---:|---:|---:|---:|
+| Mercury | 1 g | **3.04470 d** | 3.21610 d | 2,433 km/s | 1,766 km/s |
+| Mars | 0.3 g | **6.49501 d** | 6.73042 d | 1,592 km/s | 1,172 km/s |
+| Jupiter | 0.3 g | **12.54280 d** | 13.07 d | 3,109 km/s | 2,271 km/s (editor) |
+| Uranus | 0.3 g | coast floor | **33.60 d** | — | 2,301 km/s (editor) |
+| Uranus | 1 g | coast floor | **33.65 d** | — | 2,070 km/s (editor) |
+
+At the giants the zero-coast crossing does not win, so the coast floor is the
+minimum and every documented Uranus floor and window is unchanged. Jupiter's
+window shortens at the top end because the window's right end is three times its
+minimum: **12.54–37.63 d** against the old 13.07–39.22 d. Mercury's is
+**3.04–9.13 d** and Mars's **6.50–19.49 d**.
+
+## The gap
+
+The burn-only minimum is below the coast floor, and `PlanAtDuration` cannot
+build any duration **between** them yet: it allocates the arcs for a coast that
+must last at least `MinimumCoastSeconds`, so a request in the gap comes back
+stretched or infeasible. The slider does not hide that — the window's minimum is
+the burn-only plan, its upper range is still `PlanAtDuration`, and a request
+inside the gap is reported with the planner's own `InfeasibleReason` in the
+panel. The **short-coast regime** that fills the gap, by letting the seam carry a
+non-negative coast so the floor search can walk across the boundary, is step 4.
+Until it lands, `Plan()` and `PlanAtDuration` keep every documented floor and
+delta-v anchor on the coast path.
+
+Two smaller consequences are deliberate for this step. The crossing always ends
+on the **conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does
+not change the drawn minimum's shape — a retime above the floor does. And
+`FlightSession.Begin` still replans with `Plan()` and `PlanAtDuration`, so
+beginning at the burn-only minimum flies the coast floor until step 4 closes the
+gap; the preview that was drawn is the burn-only plan.
 
 The break's available time is circular here too — the total is the answer — so
 this step gives it a generous cap: twice the kinematic duration of the climb to
@@ -369,8 +442,9 @@ the clearance sphere at the commanded acceleration. The plan reports whether the
 cap bound, because a capped break is no longer the pin.
 
 Measured at the epoch (2026-11-15) from Gateway to **Mercury at 1 g**, on the
-date of the certified 1 g floor (3.21610 d). The break's cap is **0.5160 d** and
-the break uses **0.30986 d** of it, so it is **not binding**.
+date of the certified 1 g floor (3.21610 d) — the fixed-date plan, which the
+moving-target loop reproduces. The break's cap is **0.5160 d** and the break uses
+**0.30986 d** of it, so it is **not binding**.
 
 | Arc | Duration | Peak | Δv |
 |---|---:|---:|---:|
@@ -380,10 +454,11 @@ the break uses **0.30986 d** of it, so it is **not binding**.
 | Capture chain | 0.03655 d | — | 3.56 |
 | **Total** | **3.04470 d** | **9.70** | **2,432.9** |
 
-The seam closes. The solve's own residual is **151.4 m and
+The seam closes. The fixed-date solve's own residual is **151.4 m and
 1.65 × 10⁻³ m/s**, and the built plan's worst seam — the brake rebuilt forward
 against the chain's entry — is **102.2 m and 0.209 m/s**; both are inside the
-1 km / 1 m/s gate. The plan is six arcs, break → departure burn → brake →
+1 km / 1 m/s gate. The moving-target rebuild closes tighter (**2.2 m and
+9.9 × 10⁻⁶ m/s**). The plan is six arcs, break → departure burn → brake →
 capture, with **no Cruise coast**. The brake starts 63.4 million km from Mercury,
 553 of the handover ceilings out, so this fast case needs no planetocentric
 approach leg.
@@ -392,13 +467,13 @@ Against the certified 1 g floor the burn-only crossing is **0.17140 d
 (4 h 7 min) shorter** — 3.04470 against 3.21610 d — and **667 km/s (38%) more
 expensive**, 2,432.9 against 1,766 km/s. That is the trade the coast makes: the
 floor spends 0.97 d coasting for free, and the burn-only crossing spends it
-thrusting. It is a demonstration that the finite-burn arcs can close a zero-coast
-seam, not a candidate for the default profile.
+thrusting. It is fast enough to be the nav computer's minimum at a high level,
+and too expensive to replace the coast at a fixed trip time.
 
-What this does **not** do: it does not move the arrival date, it does not add the
-short coast that would let the floor search walk across the boundary, and it
-changes no default plan, floor, or anchor. The next step is the moving target and
-the short-coast regime.
+What this does **not** do: it does not add the short coast that would let the
+floor search walk across the boundary, so the range between the burn-only
+minimum and the coast floor is a known gap. It changes no default `Plan()`
+floor, window, or delta-v anchor.
 
 # The burns in the summed field
 
@@ -556,9 +631,11 @@ certified full-field plan; the editor's number is the one that ships:
 The runtime difference at the giants is the near-floor scatter, not a defect: a
 duration's feasibility is set by whether the departure Newton stalls and how
 many passes the brake pin needs, so a last-bit libm difference selects a
-different certified point. The editor's windows are **33.60–100.81 d** (Uranus
-0.3 g), **33.65–100.96 d** (Uranus 1 g), **6.73–20.19 d** (Mars 0.3 g),
-**3.22–9.65 d** (Mercury 1 g), and **13.07–39.22 d** (Jupiter 0.3 g); the
+different certified point. The editor's **coast** windows are **33.60–100.81 d**
+(Uranus 0.3 g), **33.65–100.96 d** (Uranus 1 g), **6.73–20.19 d** (Mars 0.3 g),
+**3.22–9.65 d** (Mercury 1 g), and **13.07–39.22 d** (Jupiter 0.3 g); the nav
+computer asks for the shorter burn-only windows where that crossing wins (see
+[the nav computer's minimum](#the-nav-computers-minimum)). The
 divergence's measurement is in [planning
 performance](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug).
 

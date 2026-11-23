@@ -147,7 +147,8 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan back = WaitForPublishedPreview();
 
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(back.Arcs.Count, Is.EqualTo(7), "the conic capture is back");
+            Assert.That(back.Arcs.Count, Is.EqualTo(6),
+                "the conic capture is back, on the zero-coast minimum");
             Assert.That(back.Arcs[back.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
         }
@@ -163,6 +164,52 @@ namespace TimeToExplore.Tests.EditMode
             WaitUntil(() => _session.TryApplyCompletedPreview(out published),
                 "no preview was published");
             return published;
+        }
+
+        [Test]
+        public void ThePreviewMinimumIsTheBurnOnlyPlan()
+        {
+            _session.BurnLevelG = 1.0;
+            var watch = Stopwatch.StartNew();
+            TrajectoryPlan preview = _session.Plot("mercury", _epoch);
+            watch.Stop();
+
+            ShipState departure = _session.State.WithJulianDate(_epoch);
+            TrajectoryPlan fastest = _planner.PlanFastest(departure, "mercury");
+            TrajectoryPlan coastFloor = _planner.Plan(departure, "mercury");
+
+            TestContext.WriteLine(
+                $"preview minimum {_session.PreviewMinimumSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"burn-only {fastest.FlightTimeDays:F5} d, " +
+                $"coast floor {coastFloor.FlightTimeDays:F5} d, " +
+                $"plot {watch.Elapsed.TotalSeconds:F2} s");
+
+            Assert.That(preview, Is.SameAs(_session.Preview));
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.EqualTo(fastest.FlightTimeSeconds).Within(1e-6),
+                "the minimum is the planner's fastest plan (the burn-only crossing)");
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.LessThan(coastFloor.FlightTimeSeconds),
+                "and it is below the coast floor: the gap is real");
+            Assert.That(preview.FlightTimeSeconds,
+                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1e-6));
+
+            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "the preview minimum is the zero-coast crossing");
+            Assert.That(preview.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(preview.Arcs[2].IsFiniteBurn, Is.True);
+
+            // A duration above the coast floor still builds the coast path. The
+            // range between the burn-only minimum and the floor is the known gap
+            // that step 4 fills; the slider does not fake a plan for it.
+            double above = coastFloor.FlightTimeSeconds
+                           + 0.5 * JulianDate.SecondsPerDay;
+            TrajectoryPlan slower = _session.SetPreviewDuration(above);
+
+            Assert.That(slower.IsFeasible, Is.True, slower.InfeasibleReason);
+            Assert.That(slower.FlightTimeSeconds, Is.EqualTo(above).Within(1.0));
+            Assert.That(slower.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.True, "a retime above the floor is the coasting profile");
         }
 
         [Test]

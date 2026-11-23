@@ -14,20 +14,23 @@ only what is done, what is next, and the traps.
    at 1 g, 2.942 at 0.3 g), behind the opt-in
    `TripPlanner.PinBreakToCommandAcceleration` (default **false**). See [the
    level pin](Docs/simulation/burn-coast-burn.md#the-level-pin-is-opt-in).
-2. **Burn-only seam solve — DONE (this commit).** `TripPlanner.PlanBurnOnly`
-   builds the pinned break, the capture chain at the arrival handover floor, and
-   a two-burn seam with **no coast**: the departure burn forward from where the
-   break ends, the brake backward from the chain entry, six unknowns against the
-   six seam components. The total time is an **output**. Measured on Mercury at
-   1 g: the seam closes, the crossing is **shorter than the floor** and costs
-   more delta-v. See [the burn-only
-   crossing](Docs/simulation/burn-coast-burn.md#the-burn-only-crossing-experimental).
-   It is not wired into `Plan()`, the floor search, or the HUD.
-3. **Short coast and the handover — NEXT.** Lower `MinimumCoastSeconds`, let the
-   floor search walk across the burn-only/short-coast boundary, verify the two
-   branches agree on delta-v, seams, and feasibility, and re-sweep the window.
-   The arrival date becomes an unknown (the moving-target loop) so a short coast
-   can absorb a chosen trip time.
+2. **Burn-only seam solve — DONE and accepted.** The pinned break, the capture
+   chain at the arrival handover floor, and a two-burn seam with **no coast**:
+   six unknowns against the six seam components at a fixed arrival date. See
+   [the burn-only crossing](Docs/simulation/burn-coast-burn.md#the-burn-only-crossing).
+3. **Burn-only minimum — DONE (this commit).** The seam is wrapped in a
+   **moving-target loop** (`PlanBurnOnly(ship, target)`), and
+   `TripPlanner.PlanFastest` returns the shorter feasible of that crossing and
+   the coast floor. `FlightSession`'s preview window uses it, so the trip-time
+   slider's minimum is the burn-only total. See [the nav computer's
+   minimum](Docs/simulation/burn-coast-burn.md#the-nav-computers-minimum).
+4. **Short coast and the handover — NEXT.** Lower `MinimumCoastSeconds`, solve
+   the short-coast regime between the burn-only point and the coast floor, and
+   verify the two branches agree on delta-v, seams, and feasibility. Re-sweep the
+   window and then wire `Begin` and the gap into one buildable range.
+5. **Fuel versus delta-v — LATER.** Compare `PropellantKg` /
+   `PropellantFraction` and delta-v for the pin on/off at fixed trip times and at
+   each floor, and for the burn-only versus coast minimum.
 
 Do not start a step until the previous step's commit is in and the tree is
 clean. Stop after two failures on the same step and leave the failure and last
@@ -35,72 +38,62 @@ command here.
 
 ## Current state
 
-Steps 1 and 2 are committed on `work/burn-only-profile`. The default path is
-unchanged: the pin property is off, `Plan()` and `PlanAtDuration` do not call any
-of the new code, and every documented anchor still passes — the anchor test pins
-Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124, and the other
-three fixed-duration totals.
+Steps 1–3 are committed. The product decision is in force: **the burn-only
+crossing is the nav computer's minimum trip time**, while the coast floor is
+still the default `Plan()` used by the fixed-duration anchors. `Plan()`,
+`PlanAtDuration`, and the pin's default are unchanged, so every documented
+anchor still passes: the anchor test pins Mercury 8 d 557.0380, Mars 90 d
+44.3543, Uranus 400 d 182.3124, and the other three fixed-duration totals.
 
-### The step-2 measurement (epoch 2026-11-15, Gateway → Mercury at 1 g)
+The range between the burn-only minimum and the coast floor is a **known gap**:
+`PlanAtDuration` cannot build those durations yet, so a slider request there
+returns a stretched or infeasible plan and the panel's `Note` says so. Step 4
+fills it. Nothing in the window fakes a plan for the gap.
 
-Read from the new test's output in `.cache/test-project/results-editmode.xml`.
-The arrival argument is the date of the certified 1 g floor (3.21610 d); the
-plan's own arrival comes out of the seam.
+### The step-3 measurement (epoch 2026-11-15, Gateway → Mercury at 1 g)
 
-| Arc | Duration | Peak | Δv |
-|---|---:|---:|---:|
-| Break (quintic) | 0.30986 d | 9.7000 m/s² | 167.9 km/s |
-| Departure burn | 1.37544 d | 9.7000 | 1,152.7 |
-| Brake | 1.32285 d | 9.7000 | 1,108.7 |
-| Capture chain (fall + transfer + parking) | 0.03655 d | — | 3.56 (impulse) |
-| **Total** | **3.04470 d** | 9.70 | **2,432.9** |
+From `TheBurnOnlyMovingTargetSettles` and `PlanFastestReturnsTheBurnOnlyMinimum`
+output in `.cache/test-project/results-editmode.xml`:
 
-- Seam residual from the solve: **151.4 m / 1.65 × 10⁻³ m/s**. Built plan's
-  worst seam (brake rebuilt forward against the chain entry): **102.2 m /
-  0.209 m/s**. Both inside the 1 km / 1 m/s gate.
-- Six arcs: break → departure burn → brake → capture chain. **No Cruise coast**,
-  and the dates are continuous at every seam.
-- The brake starts **63,444,313 km** from Mercury, against a **114,658 km**
-  ceiling (553 ceilings), so no planetocentric approach leg is needed.
-- Break cap: generous by design (twice the kinematic climb to the clearance
-  sphere at the commanded acceleration) — **0.5160 d**, break uses 0.30986 d,
-  **not binding**. The plan prints `BINDING` in its trace if a future case hits
-  it.
-- Against the certified floor: **0.17140 d (4 h 7 min) shorter** (3.04470 vs
-  3.21610 d) and **667 km/s (38%) more expensive** (2,432.9 vs 1,766 km/s).
-- The solver settles in six damped-Newton passes, 0.8 s in the editor. The
-  second seed (the straight line between the two ends, brake opposed) is only
-  used if the first attempt stalls.
+- Seed: the coast floor, **3.21610 d**.
+- Pass 0: chain at 3.21610 d, plan arrives **3.04470 d**, step **−14,808.9 s**.
+- Pass 1: chain at 3.04470 d, plan arrives **3.04470 d**, step **−0.3 s**;
+  settled.
+- The rebuilt plan's seam: **2.2 m and 9.9 × 10⁻⁶ m/s**.
+- Total **3.044696 d**, **2,433 km/s**. The fixed-date build at the plan's own
+  arrival agrees to 0.00001 d (3.044696 against 3.044696).
+- Planning time: **3.5 s**, including the coast floor the loop seeds from.
+  `PlanFastest` (floor + crossing) is 3.4 s on a warm run.
 
-### One deviation from the step-2 instructions — read before reviewing
+Against the coast floor: **0.17140 d (4 h 7 min) shorter** and **667 km/s
+(38%) more expensive** (2,433 against 1,766 km/s). Arc breakdown and seam gate
+are the step-2 table in [the burn-only
+crossing](Docs/simulation/burn-coast-burn.md#the-burn-only-crossing); the
+moving-target plan reproduces it.
 
-The step asked for a fixed arrival date **and** for the total time to be an
-output. Taken literally, those conflict: with the chain's entry date fixed, the
-burns must also fill the fixed gap, which adds a seventh condition to the six
-seam components. This implementation keeps both properties the honest way:
+Minima the preview now advertises at the epoch, from Gateway:
 
-- the supplied date fixes the **capture chain's geometry** — its plane, entry
-  radius, and fall — and seeds the handover;
-- the seam uses the six unknowns the step named, and places the chain's handover
-  where the solved brake actually ends. The plan is therefore continuous in
-  **date as well as state**, and the total is the sum of the solved durations
-  plus the break and capture.
+| Target | Level | Minimum | Coast floor | Window |
+|---|---|---:|---:|---|
+| Mercury | 1 g | **3.04470 d** (burn-only) | 3.21610 d | 3.04–9.13 d |
+| Mars | 0.3 g | **6.49501 d** (burn-only) | 6.73042 d | 6.50–19.49 d |
+| Jupiter | 0.3 g | **12.54280 d** (burn-only) | 13.07 d | 12.54–37.63 d |
+| Uranus | 0.3 g | coast floor | **33.60 d** | 33.60–100.81 d |
+| Uranus | 1 g | coast floor | **33.65 d** | 33.65–100.96 d |
 
-There is **no moving-target loop**: the chain is built once, and nothing is
-re-solved after the seam. The alternative (a fixed entry date, states compared
-at two different dates) admits a geometric seam that is not a flyable plan; it
-was not built. Caretaker: accept this reading, or ask for the literal variant as
-a diagnostic.
+First `Plot()` in the warm test project: **2.81 s** (Uranus 0.3 g), **3.08** (1 g),
+**5.07** (Mars 0.3 g), **3.89** (Mercury 1 g), **4.61** (Jupiter 0.3 g) —
+against 1.80, 1.28, 2.99, 2.29, 3.03 s before this step. The extra time is the
+moving-target solve; the floor search still certifies on its first certificate.
 
-### The pin stays opt-in (step 1's decision, still in force)
+Two deliberate consequences, both recorded in the concept docs:
 
-At 0.3 g the pin spends about 92 km/s of break delta-v at long trips against 8.8
-on the default 90-day build. Step 2 uses it only inside the burn-only crossing,
-where the trip is at the fast end and the break must not be the binding
-constraint. The global default decision waits for step 3's short-coast
-measurement. The fixed-duration evidence is in
-[Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md#the-level-pin-is-opt-in)
-and the eight-case sweep is in the 2026-11-22 log entry.
+- The crossing always ends on the **conic** capture chain, so the `ARRIVAL` row
+  does not change the drawn minimum's shape. A retime above the floor does.
+- `FlightSession.Begin` still replans with `Plan()` and `PlanAtDuration`, so
+  beginning at a burn-only minimum flies the coast floor's duration until step 4
+  closes the gap. Wiring `Begin` to `PlanFastest` now would move every flight
+  acceptance anchor, so it waits.
 
 ## Verification
 
@@ -114,16 +107,16 @@ tools/check.sh                 # full EditMode + PlayMode before the step's comm
 
 Last results (this commit):
 
-- `tools/check.sh --fast` — **PASSED** in 6 s (OKF bundle 44 concepts, catalogue
-  137 bodies, both generators byte-identical, bright-star catalogue, tooling
-  tests).
-- `tools/check.sh --tests flight` — **PASSED** in 439 s: EditMode flight
-  category, 234 tests, 0 failed, 0 skipped. The new test
-  `ABurnOnlyCrossingClosesWithoutACoast` passes in 0.8 s.
-- `tools/check.sh` — **PASSED** in 637 s on the committed tree: EditMode 542
-  tests and PlayMode 6 tests, 0 failed, 0 skipped. The fixed-duration anchor
-  test is in that run, so Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus 400 d
-  182.3124 and the other three still pass with the default path untouched.
+- `tools/check.sh --fast` — **PASSED** (OKF bundle 44 concepts, catalogue 137
+  bodies, both generators byte-identical, bright-star catalogue, tooling tests).
+- `tools/check.sh --tests flight` — **PASSED** in 518 s: flight EditMode
+  category, 0 failed, 0 skipped. The three new tests are
+  `TheBurnOnlyMovingTargetSettles`, `PlanFastestReturnsTheBurnOnlyMinimum`, and
+  `ThePreviewMinimumIsTheBurnOnlyPlan`.
+- `tools/check.sh` — **PASSED** in 778 s: EditMode and PlayMode, 0 failed, 0
+  skipped. The fixed-duration anchor test is in that run, so Mercury 8 d
+  557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124 and the other three still
+  pass with the default path untouched.
 
 ## Traps
 
@@ -135,41 +128,63 @@ Last results (this commit):
 - `tools/check.sh` derives its root from its own path, so it is safe here; it
   writes `.cache/test-project` under this worktree.
 - The `.venv` is a symlink. Do not `pip install`; it would change the shared venv.
-- **The burn-only crossing's date is an output.** Do not pass its total through
-  `PlanAtDuration`, and do not expect the returned arrival date to equal the
-  supplied one: the supplied date chooses the capture chain's geometry, and the
-  handover lands where the solved brake ends. The measured difference on the
-  Mercury case is about 0.2 d.
-- The step-2 break cap is deliberately generous and uses the **commanded**
-  acceleration, not `MaxAccelerationMps2`: at 0.3 g the climb is slower and a cap
-  built from the drive limit would bind. The trace reports `BINDING`; the
-  Mercury 1 g case is not binding.
-- The seam's largest built residual is the brake's forward rebuild against the
-  chain entry (102 m / 0.209 m/s), because the brake is placed backward and
-  reported forward. It is inside the gate; do not re-tighten the solver's
-  tolerance without re-measuring it.
+- **Every preview plot now pays for `PlanFastest`** — the coast floor plus the
+  moving-target crossing, about 1–2 s more. Do not call it per frame or on the
+  main thread outside the existing preview worker. The window cache still keys
+  on departure date, target, burn level, and arrival style; a repeat plot at the
+  same key is free.
+- **The gap is not a bug to paper over.** A retime between the burn-only minimum
+  and the coast floor comes back stretched or infeasible on purpose. Step 4
+  fills it with the short coast; do not make the slider clamp or substitute a
+  plan there.
+- The **fixed-date** `PlanBurnOnly(ship, target, arrivalJulianDate)` builds the
+  chain once and its arrival lands where the solved brake ends (about 0.17 d
+  from the supplied date on Mercury). Use the moving-target overload for a plan.
+- The moving-target loop stops at **2 s** and **8 passes** and reports an
+  unsettled plan as infeasible with its last step. Do not widen the tolerance to
+  make a basin pass; fix convergence or report the refusal.
+- The crossing always uses the **conic capture chain** (`AppendConicCapture`).
+  The hybrid arrival style only shows above the floor.
+- A style or level rebuild that is keeping a **minimum** now lands on the new
+  minimum (`PreviewRequest.AtMinimum`). The two styles' burn-only totals differ
+  by about 19 s on Mars, and the old number would land inside the gap. Removing
+  this breaks `ChangingTheArrivalStyleRebuildsThePreviewAndLeavesTheShipStill`.
+- `Begin` is unchanged on purpose: it still solves `Plan()` and retimes with
+  `PlanAtDuration`. Do not wire it to `PlanFastest` before step 4.
 - `PinBreakToCommandAcceleration` is still off by default. `PlanBurnOnly` pins
   its own break regardless of the property; keep that independent.
-- Keep the existing default behavior. The documented floors and delta-v anchors
-  in [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md) and [planning
-  performance](Docs/technical/planning-performance.md) must not move. The
-  fixed-duration anchor test still pins six of them.
+- The step-2 break cap is deliberately generous and uses the **commanded**
+  acceleration, not `MaxAccelerationMps2`. The trace reports `BINDING`; the
+  Mercury 1 g case is not binding.
+- The seam's fixed-date build's largest residual is the brake's forward rebuild
+  against the chain entry (102 m / 0.209 m/s). The moving-target rebuild closes
+  tighter (2.2 m / 9.9 × 10⁻⁶ m/s). Do not re-tighten the solver's tolerance
+  without re-measuring.
+- Keep the documented floors and delta-v anchors. `Plan()` and
+  `PlanAtDuration` are untouched in this step; only the preview minimum, the
+  trip-time label, and the Mars/Mercury/Jupiter window ends moved.
 - Update `Docs/log.md` under the current `YYYY-MM-DD` heading and this handoff in
   the same commit as the work. Run `tools/validate_okf.py` (or `check.sh --fast`)
   after the doc edits.
 - Do not merge into `main` and do not push. A finished step is a commit on
   `work/burn-only-profile`.
 
-## Step 3 notes
+## Step 4 notes
 
-- The next unknown is the **arrival date** (or, equivalently, the total time):
-  adding it to the six makes a seven-unknown, seven-equation system, and the
-  chain's handover then moves with the answer. That is the moving-target loop the
-  step-2 scope deferred.
-- A short coast between the burns is the second unknown regime: the same seam
-  with a non-negative coast time, and the floor search walking across the
-  boundary. Check that both branches agree on delta-v and seams at the crossing
-  point rather than assuming they do.
-- The burn-only crossing is the fast extreme, not a candidate default: it is
-  shorter and much more expensive than the coasting floor. The decision to make
-  the pin global still waits on the short-coast numbers.
+- **Short coast.** Allow the burn-only seam's coast to be non-negative instead
+  of exactly zero, solve the branch, and let the floor search walk across the
+  boundary. At the crossing point the two branches must agree on delta-v, seams,
+  and feasibility — measure that, do not assume it.
+- **One buildable range.** Once the short coast builds, the slider can ask for
+  every duration from the minimum upward. Then `Begin` can use `PlanFastest`
+  (and retime normally) without moving the acceptance anchors only if the
+  anchors themselves are deliberately re-measured; otherwise keep `Begin` on the
+  coast path and treat the minimum as preview-only until the anchors are
+  re-baselined.
+- **Re-sweep.** Re-measure every window end, the first-plot cost, and the
+  burn-only-versus-coast delta-v pairs (Mars 1,592 against 1,172 km/s; Mercury
+  2,433 against 1,766) at the boundary.
+- **Fuel (step 5).** `TrajectoryPlan.PropellantKg` and `PropellantFraction` are
+  the numbers; compare the pin on/off at fixed trip times and at each floor, and
+  the burn-only versus coast minimum. Do not answer the fuel question from
+  delta-v alone.

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -1589,6 +1591,136 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.DeltaVMps / 1000.0, Is.GreaterThan(1766.0),
                 "and it buys that time with delta-v, above the floor's 1,766 km/s");
             Assert.That(plan.DeltaVMps / 1000.0, Is.LessThan(3000.0));
+        }
+
+        /// <summary>
+        /// Step 3: the moving-target loop solves the arrival date as well as the
+        /// seam. The chain is rebuilt at the total each pass solves, so a settled
+        /// plan's arrival date is the date its chain was built at, and a second
+        /// call returns the same total. Building again at the plan's own arrival
+        /// date (the fixed-date overload) reproduces that total, which is the
+        /// self-consistency check: the date is a fixed point, not a seed that
+        /// happened to be close.
+        /// </summary>
+        [Test]
+        public void TheBurnOnlyMovingTargetSettles()
+        {
+            _planner.BurnLevelG = 1.0;
+            _planner.PinBreakToCommandAcceleration = false;
+
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            var trace = new List<string>();
+            _planner.Trace = trace.Add;
+
+            var watch = Stopwatch.StartNew();
+            TrajectoryPlan plan = _planner.PlanBurnOnly(ship, "mercury");
+            watch.Stop();
+            foreach (string line in trace) TestContext.WriteLine("trace: " + line);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
+
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                Assert.That(arc.Phase == FlightPhase.Cruise && arc.IsCoast, Is.False,
+                    "the burn-only crossing leaves no cruise coast");
+            }
+
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                Assert.That(plan.Arcs[i].EndJulianDate,
+                    Is.EqualTo(plan.Arcs[i + 1].StartJulianDate).Within(1e-12),
+                    $"seam {i} date");
+            }
+
+            AssertChainCloses(plan);
+
+            // The plan's arrival reproduces its own total when the chain is built
+            // there: the arrival date is the chain's own build date, not a date
+            // the seam happened to land near. The tolerance is the loop's.
+            TrajectoryPlan rebuilt = _planner.PlanBurnOnly(ship, "mercury",
+                plan.ArrivalJulianDate);
+            Assert.That(rebuilt.IsFeasible, Is.True, rebuilt.InfeasibleReason);
+            TestContext.WriteLine(
+                $"arrival-date rebuild: {rebuilt.FlightTimeDays:F6} d against " +
+                $"{plan.FlightTimeDays:F6} d");
+
+            Assert.That(rebuilt.FlightTimeSeconds,
+                Is.EqualTo(plan.FlightTimeSeconds).Within(10.0),
+                "the chain built at the plan's arrival reproduces the settled total");
+
+            // Deterministic: a second call from the same state settles on the
+            // same plan.
+            TrajectoryPlan second = _planner.PlanBurnOnly(ship, "mercury");
+            Assert.That(second.IsFeasible, Is.True, second.InfeasibleReason);
+            Assert.That(second.FlightTimeSeconds,
+                Is.EqualTo(plan.FlightTimeSeconds).Within(1e-6),
+                "the moving-target total is stable across calls");
+            Assert.That(second.ArrivalJulianDate,
+                Is.EqualTo(plan.ArrivalJulianDate).Within(1e-9));
+
+            double totalDays = plan.FlightTimeDays;
+            TestContext.WriteLine(
+                $"moving-target total {totalDays:F5} d in {watch.Elapsed.TotalSeconds:F1} s; " +
+                $"fixed-date 3.04470 d, coast floor 3.21610 d");
+
+            Assert.That(totalDays, Is.EqualTo(3.0447).Within(0.05),
+                "measured: the settled crossing is the step-2 total's neighbourhood");
+        }
+
+        /// <summary>
+        /// Step 3: <see cref="TripPlanner.PlanFastest"/> is the nav computer's
+        /// minimum. On Mercury at 1 g the zero-coast crossing wins over the coast
+        /// floor on duration (3.04470 against 3.21610 d) and costs more delta-v,
+        /// and the returned plan is the six-arc burn-only shape. The comparison is
+        /// the two plans', not an assumption.
+        /// </summary>
+        [Test]
+        public void PlanFastestReturnsTheBurnOnlyMinimum()
+        {
+            _planner.BurnLevelG = 1.0;
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+
+            TrajectoryPlan coast = _planner.Plan(ship, "mercury");
+            Assert.That(coast.IsFeasible, Is.True, coast.InfeasibleReason);
+
+            var watch = Stopwatch.StartNew();
+            TrajectoryPlan fastest = _planner.PlanFastest(ship, "mercury");
+            watch.Stop();
+            PrintPlan(fastest);
+
+            Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
+            Assert.That(fastest.FlightTimeSeconds, Is.LessThan(coast.FlightTimeSeconds),
+                "the zero-coast crossing is the shorter plan at Mercury 1 g");
+            Assert.That(fastest.FlightTimeDays, Is.EqualTo(3.0447).Within(0.05));
+            Assert.That(coast.FlightTimeDays, Is.EqualTo(3.21610).Within(0.05),
+                "the coast floor did not move");
+
+            // break → departure burn → brake → capture, with no coast phase.
+            Assert.That(fastest.Arcs.Count, Is.EqualTo(6));
+            Assert.That(fastest.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(fastest.Arcs[0].Path, Is.InstanceOf<Quintic>());
+            Assert.That(fastest.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(fastest.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(fastest.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(fastest.Arcs[2].IsFiniteBurn, Is.True);
+            Assert.That(fastest.Arcs[3].Phase, Is.EqualTo(FlightPhase.Coast));
+            Assert.That(fastest.Arcs[4].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(fastest.Arcs[5].Phase, Is.EqualTo(FlightPhase.Parking));
+            Assert.That(fastest.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False);
+
+            AssertChainCloses(fastest);
+
+            Assert.That(fastest.DeltaVMps, Is.GreaterThan(coast.DeltaVMps),
+                "the faster crossing costs more delta-v than the coast floor");
+
+            TestContext.WriteLine(
+                $"fastest {fastest.FlightTimeDays:F5} d / " +
+                $"{fastest.DeltaVMps / 1000.0:F0} km/s against the coast floor " +
+                $"{coast.FlightTimeDays:F5} d / {coast.DeltaVMps / 1000.0:F0} km/s; " +
+                $"planned in {watch.Elapsed.TotalSeconds:F1} s");
         }
 
         /// <summary>
