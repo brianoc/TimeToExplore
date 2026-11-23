@@ -329,6 +329,77 @@ the full field in charge at that level, which is why the measured pinned peaks
 are 9.7000 m/s², and the solver retargets a fifth of a percent lower once if a
 certified peak ever lands above the 10.0 m/s² drive.
 
+# The burn-only crossing (experimental)
+
+The profile's two burns can be placed **back to back**, with no coast between
+them: the departure burn ends where the brake begins, and the flip is a seam
+rather than a phase. That is the **burn-only crossing** — the brachistochrone
+with the coast taken out. It is the fastest shape this profile can fly at a
+given level, and the most expensive, and it is **not the shipped route**: it is a
+measured research spike, not wired into `Plan()`, the floor search, or the nav
+computer. The default profile, its floors and windows, and every documented
+anchor are unchanged.
+
+The seam is solved as one system. The break is pinned to the commanded
+acceleration; the departure burn starts where it ends — the departure ceiling,
+along the escape ray, at the local escape speed — and integrates forward through
+the summed field; the brake integrates **backward** from the capture chain's
+entry. The unknowns are the escape ray (two angles), the departure burn's
+duration, the brake's direction (two angles), and the brake's duration: six
+unknowns for the six seam components, the forward burn's end position and
+velocity against the backward brake's start. The solver is a damped Newton with
+a finite-difference Jacobian, seeded by the reference coast's ray, the chain's
+arrival direction, and a half-and-half kinematic split
+(`t_burn = t_brake = sqrt(distance / acceleration)`). A point at the chain gate
+(1 km, 1 m/s) is accepted; a failure reports the residual it reached rather than
+calling it a solution.
+
+**The total time is an output.** With no coast to absorb a slider value, a
+burn-only crossing is one duration per geometry and level: it is the sum of the
+solved burn and brake plus the break and capture. `TripPlanner.PlanBurnOnly`
+therefore takes a **fixed arrival date** instead of a trip time, and uses it for
+the capture chain's geometry — the handover floor, the plane, and the fall. The
+chain's handover is then placed where the solved brake actually ends, so the plan
+is continuous in date as well as state. There is no moving-target loop: making
+the arrival date an unknown is step 3.
+
+The break's available time is circular here too — the total is the answer — so
+this step gives it a generous cap: twice the kinematic duration of the climb to
+the clearance sphere at the commanded acceleration. The plan reports whether the
+cap bound, because a capped break is no longer the pin.
+
+Measured at the epoch (2026-11-15) from Gateway to **Mercury at 1 g**, on the
+date of the certified 1 g floor (3.21610 d). The break's cap is **0.5160 d** and
+the break uses **0.30986 d** of it, so it is **not binding**.
+
+| Arc | Duration | Peak | Δv |
+|---|---:|---:|---:|
+| Break (quintic) | 0.30986 d | 9.7000 m/s² | 167.9 km/s |
+| Departure burn | 1.37544 d | 9.7000 | 1,152.7 |
+| Brake | 1.32285 d | 9.7000 | 1,108.7 |
+| Capture chain | 0.03655 d | — | 3.56 |
+| **Total** | **3.04470 d** | **9.70** | **2,432.9** |
+
+The seam closes. The solve's own residual is **151.4 m and
+1.65 × 10⁻³ m/s**, and the built plan's worst seam — the brake rebuilt forward
+against the chain's entry — is **102.2 m and 0.209 m/s**; both are inside the
+1 km / 1 m/s gate. The plan is six arcs, break → departure burn → brake →
+capture, with **no Cruise coast**. The brake starts 63.4 million km from Mercury,
+553 of the handover ceilings out, so this fast case needs no planetocentric
+approach leg.
+
+Against the certified 1 g floor the burn-only crossing is **0.17140 d
+(4 h 7 min) shorter** — 3.04470 against 3.21610 d — and **667 km/s (38%) more
+expensive**, 2,432.9 against 1,766 km/s. That is the trade the coast makes: the
+floor spends 0.97 d coasting for free, and the burn-only crossing spends it
+thrusting. It is a demonstration that the finite-burn arcs can close a zero-coast
+seam, not a candidate for the default profile.
+
+What this does **not** do: it does not move the arrival date, it does not add the
+short coast that would let the floor search walk across the boundary, and it
+changes no default plan, floor, or anchor. The next step is the moving target and
+the short-coast regime.
+
 # The burns in the summed field
 
 The two fixed burns are integrated through the **summed gravity field**, not a

@@ -155,6 +155,27 @@ namespace TimeToExplore.Simulation
         private const double RayDirectionTolerance = 1e-10;
         private const double BurnDurationToleranceSeconds = 1e-6;
 
+        /// <summary>The chain gate the burn-only seam must meet: a kilometre of
+        /// position and a metre per second of velocity.</summary>
+        private const double BurnOnlyPositionGateM = 1_000.0;
+        private const double BurnOnlyVelocityGateMps = 1.0;
+
+        /// <summary>What the burn-only Newton aims at, well inside the gate, so
+        /// the built plan's own seams have margin. The finite-difference noise of
+        /// the break's duration bisection (milliseconds of break, tens of metres
+        /// of the departure body's motion) is the floor under this target.</summary>
+        private const double BurnOnlyTargetPositionM = 250.0;
+        private const double BurnOnlyTargetVelocityMps = 0.05;
+
+        /// <summary>Damped-Newton iterations for the six-unknown burn-only seam.
+        /// The measured Mercury case settles in six passes; the cap keeps a
+        /// stalled basin from turning one plan into a minute of work.</summary>
+        private const int BurnOnlyIterations = 32;
+
+        /// <summary>Least-squares iterations of the fixed-direction diagnostic
+        /// the failure path reports. It is never a solution, only a residual.</summary>
+        private const int BurnOnlyDiagnosticIterations = 24;
+
         /// <summary>How close the floor search's bracket must be before it
         /// returns the feasible end, as an absolute floor and a fraction of the
         /// floor. The old search bisected to 30 s; the fast model costs enough
@@ -649,6 +670,12 @@ namespace TimeToExplore.Simulation
             return plan;
         }
 
+        /// <summary><see cref="Reported(TrajectoryPlan)"/> for a builder that
+        /// returns a <see cref="BuildResult"/> rather than running the growth
+        /// loop: the burn-only crossing's duration is an output.</summary>
+        private static TrajectoryPlan Reported(BuildResult result) =>
+            Reported(result.Plan);
+
         /// <summary>
         /// Build a plan at an explicit flight time instead of solving for the
         /// shortest feasible one. The arcs are allocated so the last one ends at
@@ -676,6 +703,334 @@ namespace TimeToExplore.Simulation
                     "A pinned flight time must be finite and positive.");
 
             return Reported(Build(ship, target, durationSeconds).Plan);
+        }
+
+        /// <summary>
+        /// Research spike: a **zero-coast** crossing built from the profile's own
+        /// finite-burn arcs. The break is pinned to the commanded acceleration
+        /// (<see cref="FixedBurnAccelerationMps2"/>, independent of
+        /// <see cref="PinBreakToCommandAcceleration"/>), the capture chain is
+        /// built at the arrival handover floor for
+        /// <paramref name="arrivalJulianDate"/>, and the two burns meet at the
+        /// flip with **no coast** between them:
+        ///
+        /// * the departure burn starts where the pinned break ends — on the
+        ///   departure handover ceiling, along the escape ray, at the local
+        ///   escape speed — and integrates forward through the summed field;
+        /// * the brake ends on the capture chain's entry and integrates
+        ///   **backward** from it, so its start state is the flip.
+        ///
+        /// The unknowns are the escape ray (two angles), the departure burn's
+        /// duration, the brake's direction (two angles), and the brake's
+        /// duration: six unknowns for the six seam components (the forward
+        /// burn's end position and velocity against the backward brake's start).
+        /// The total crossing time is the **sum** of the solved burn and brake
+        /// durations plus the break and capture, so it is an **output**: a
+        /// burn-only crossing is one duration per geometry and level, not a
+        /// slider value.
+        ///
+        /// The supplied date fixes the capture chain's geometry — its entry
+        /// radius, plane, and fall — and its handover is placed where the solved
+        /// brake actually ends, so the plan is continuous in date as well as
+        /// state. There is no moving-target loop: the chain's local entry state
+        /// is built once from the supplied date.
+        ///
+        /// This is not wired into <see cref="Plan"/> or the floor search. It is
+        /// the measurement behind [the burn-only
+        /// crossing](../simulation/burn-coast-burn.md#the-burn-only-crossing-experimental):
+        /// the fastest profile, which buys its time by spending delta-v on two
+        /// back-to-back burns. A plan is returned only when the seam closes to
+        /// the chain gate (1 km and 1 m/s); otherwise the returned plan names the
+        /// residual the solve reached, so a failure is reported rather than
+        /// hidden.
+        /// </summary>
+        public TrajectoryPlan PlanBurnOnly(ShipState ship, string targetId,
+            double arrivalJulianDate)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            if (!double.IsFinite(arrivalJulianDate) || !(arrivalJulianDate > ship.JulianDate))
+            {
+                throw new ArgumentOutOfRangeException(nameof(arrivalJulianDate),
+                    "The burn-only crossing needs an arrival date after departure.");
+            }
+
+            double totalSeconds = (arrivalJulianDate - ship.JulianDate) * SecondsPerDay;
+            double acceleration = FixedBurnAccelerationMps2;
+            if (!(acceleration > 0.0))
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: the drive commands no fixed-burn acceleration"));
+            }
+
+            BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
+            if (departureBody == null)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: the ship is not inside a departure sphere of influence " +
+                    "to break out of"));
+            }
+
+            _model.ComputeState(target, ship.JulianDate,
+                out Vector3d targetAtDeparture, out _);
+            if (Vector3d.Distance(ship.PositionM, targetAtDeparture)
+                < SphereOfInfluence.RadiusM(target))
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: the ship starts inside the target's sphere of influence, " +
+                    "so there is no crossing to plan"));
+            }
+
+            HandoverBand departureBand = HandoverBand.For(departureBody, acceleration);
+            if (!departureBand.IsValid)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: " + departureBand.InvalidReason));
+            }
+
+            HandoverBand arrivalBand = HandoverBand.For(target, acceleration);
+            if (!arrivalBand.IsValid)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: " + arrivalBand.InvalidReason));
+            }
+
+            double clearanceRadius = departureBand.DepartureRadiusM;
+            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
+            double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
+
+            // The capture chain is the fixed part of the request: the supplied
+            // date chooses its plane and the handover floor chooses its entry.
+            TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius,
+                arrivalJulianDate);
+            if (!chain.IsValid)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: conic capture: " + chain.InvalidReason));
+            }
+
+            // The reference coast seeds the two directions and the break, the
+            // same way BuildBurnCoastBurn seeds its own solve. It is a search
+            // input only: this crossing has no coast of its own.
+            BuildResult reference = BuildCoastSkeleton(ship, target, totalSeconds,
+                arrivalRadius, fast: false, probe: false);
+            PlanArc referenceCruise = null;
+            if (reference.Plan != null)
+            {
+                foreach (PlanArc arc in reference.Plan.Arcs)
+                {
+                    if (arc.Phase == FlightPhase.Cruise && arc.IsCoast)
+                    {
+                        referenceCruise = arc;
+                        break;
+                    }
+                }
+            }
+
+            _model.ComputeState(departureBody, ship.JulianDate,
+                out Vector3d departureAtStart, out Vector3d departureVelocityAtStart);
+            Vector3d seedRay = Vector3d.Zero;
+            if (referenceCruise != null)
+            {
+                _model.ComputeState(departureBody, referenceCruise.StartJulianDate,
+                    out _, out Vector3d departureAtExit);
+                seedRay = referenceCruise.Path.VelocityAt(0.0) - departureAtExit;
+            }
+
+            if (seedRay.SqrMagnitude < 0.5)
+                seedRay = ship.VelocityMps - departureVelocityAtStart;
+            if (seedRay.SqrMagnitude < 0.5)
+                seedRay = ship.PositionM - departureAtStart;
+            if (seedRay.SqrMagnitude < 0.5)
+                seedRay = new Vector3d(1.0, 0.0, 0.0);
+            seedRay = seedRay.Normalized;
+
+            double breakSeedSeconds = MinimumArcSeconds;
+            if (referenceCruise != null)
+            {
+                breakSeedSeconds = Math.Max((referenceCruise.StartJulianDate - ship.JulianDate)
+                                            * SecondsPerDay, MinimumArcSeconds);
+            }
+
+            // The break's available time is circular here — the total is the
+            // output — so it gets a generous cap: twice the kinematic duration of
+            // the climb to the clearance sphere at the commanded acceleration.
+            // The plan reports whether the cap was binding, because a capped break
+            // would no longer be the pin.
+            Vector3d seedBurnStart = departureAtStart + seedRay * clearanceRadius;
+            double breakCapSeconds = 4.0 * Math.Sqrt(
+                Math.Max(Vector3d.Distance(ship.PositionM, seedBurnStart), 1.0)
+                / acceleration);
+
+            // A half-and-half kinematic split is the seed: the straight-line
+            // estimate is t_burn = t_brake = sqrt(distance / acceleration).
+            double seedEntryJd = arrivalJulianDate - chain.TotalSeconds / SecondsPerDay;
+            _model.ComputeState(target, seedEntryJd,
+                out Vector3d targetAtSeedEntry, out Vector3d targetVelocityAtSeedEntry);
+            Vector3d seedEntryPosition = targetAtSeedEntry + chain.EntryLocalPositionM;
+            Vector3d seedEntryVelocity = targetVelocityAtSeedEntry
+                                         + chain.EntryLocalVelocityMps;
+            double crossingDistance = Math.Max(
+                Vector3d.Distance(seedBurnStart, seedEntryPosition), 1.0);
+            double halfSeconds = Math.Max(Math.Sqrt(crossingDistance / acceleration),
+                MinimumArcSeconds);
+
+            Vector3d seedBrakeDirection = seedEntryVelocity.SqrMagnitude > 1e-6
+                ? -seedEntryVelocity.Normalized
+                : -seedRay;
+
+            var geometry = new BurnOnlyGeometry(departureBody, target, chain,
+                acceleration, clearanceRadius, escapeSpeed, breakSeedSeconds,
+                breakCapSeconds);
+
+            Vector3d straightRay = seedEntryPosition - seedBurnStart;
+            straightRay = straightRay.SqrMagnitude > 0.5 ? straightRay.Normalized : seedRay;
+
+            // The second seed is the straight line between the two ends with the
+            // brake opposed to it: a different basin from the reference coast's
+            // ray, so a stalling first attempt is a real second attempt rather
+            // than the same solve again.
+            var seeds = new[]
+            {
+                new BurnOnlySeed(seedRay, seedBrakeDirection, halfSeconds, halfSeconds),
+                new BurnOnlySeed(straightRay, -straightRay, halfSeconds, halfSeconds)
+            };
+
+            BurnOnlyEvaluation solved = default;
+            string failure = null;
+            foreach (BurnOnlySeed seed in seeds)
+            {
+                if (TrySolveBurnOnlySeam(geometry, ship, seed, out solved, out failure))
+                {
+                    failure = null;
+                    break;
+                }
+
+                Trace?.Invoke("burn-only: attempt failed: " + failure);
+            }
+
+            if (failure != null)
+            {
+                // Diagnostic only: with the two directions fixed, what do the
+                // two durations alone leave? This is the measured velocity
+                // residual the failure is reported with, not a second attempt to
+                // call a solution.
+                TrySolveBurnOnlyDurations(geometry, ship, seeds[0].Ray,
+                    seeds[0].BrakeDirection, seeds[0].BurnSeconds, seeds[0].BrakeSeconds,
+                    out double diagnosticBurn, out double diagnosticBrake,
+                    out double diagnosticPosition, out double diagnosticVelocity);
+                Trace?.Invoke($"burn-only: directions fixed, durations " +
+                              $"{diagnosticBurn:F0} s and {diagnosticBrake:F0} s leave " +
+                              $"{diagnosticPosition:F0} m and {diagnosticVelocity:E2} m/s");
+
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    failure + $"; with the two directions fixed the durations reach " +
+                    $"{diagnosticPosition:F0} m and {diagnosticVelocity:E2} m/s"));
+            }
+
+            // The reported arcs are integrated at the certified resolution. The
+            // departure burn is rebuilt from the same pinned start state; the
+            // brake starts exactly where that burn ends, so the burn-to-brake
+            // seam is structural and the brake-to-chain seam carries the
+            // forward/backward integration difference.
+            _model.ComputeState(_model.Sun, solved.BurnStartJulianDate,
+                out Vector3d sunAtBurnStart, out Vector3d sunVelocityAtBurnStart);
+            FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
+                solved.BurnStartJulianDate, solved.BurnSeconds,
+                solved.BurnStartPositionM - sunAtBurnStart,
+                solved.BurnStartVelocityMps - sunVelocityAtBurnStart, acceleration,
+                retrograde: false, samples: Math.Max(512, ArcSamples),
+                fixedThrustDirection: solved.Ray, gravity: _gravity);
+
+            double brakeStartJd = solved.BurnStartJulianDate
+                                  + solved.BurnSeconds / SecondsPerDay;
+            // The Sun's ephemeris is the origin of the heliocentric frame, but it
+            // is read at the brake's own date so the decomposition stays explicit.
+            _model.ComputeState(_model.Sun, brakeStartJd,
+                out Vector3d sunPositionAtBrakeStart,
+                out Vector3d sunVelocityAtBrakeStart);
+            Vector3d brakeStartPosition = departureBurn.EndLocalPositionM
+                                          + sunPositionAtBrakeStart;
+            Vector3d brakeStartVelocity = departureBurn.EndLocalVelocityMps
+                                          + sunVelocityAtBrakeStart;
+            double entryJd = solved.EntryJulianDate;
+
+            // The first cut has no planetocentric approach leg. If the brake
+            // starts inside the target's handover ceiling the deep part of the
+            // arrival would need one, and inventing it here would be a different
+            // change.
+            _model.ComputeState(target, brakeStartJd,
+                out Vector3d targetAtBrakeStart, out _);
+            double brakeStartRadius = Vector3d.Distance(brakeStartPosition,
+                targetAtBrakeStart);
+            if (brakeStartRadius < arrivalBand.CeilingRadiusM)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    $"burn-only: the brake starts {brakeStartRadius / 1000.0:F0} km from " +
+                    $"{target.Name}, inside the {arrivalBand.CeilingRadiusM / 1000.0:F0} km " +
+                    "handover ceiling; the planetocentric approach leg is not built in " +
+                    "this step"));
+            }
+
+            FiniteBurnArc brake = FiniteBurnArc.Create(_model, _model.Sun, brakeStartJd,
+                solved.BrakeSeconds, brakeStartPosition - sunPositionAtBrakeStart,
+                brakeStartVelocity - sunVelocityAtBrakeStart, acceleration,
+                retrograde: true, samples: Math.Max(512, ArcSamples),
+                fixedThrustDirection: solved.BrakeDirection, gravity: _gravity);
+
+            var arcs = new List<PlanArc>(6);
+            arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, ship.JulianDate,
+                solved.BurnStartJulianDate, ship.PositionM, ship.VelocityMps,
+                solved.BurnStartPositionM, solved.BurnStartVelocityMps));
+            arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
+                solved.BurnStartJulianDate, brakeStartJd, departureBurn));
+            arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id, brakeStartJd,
+                entryJd, brake));
+
+            double parkingEndJd;
+            ConicArc parking;
+            AppendConicCapture(arcs, target, entryJd, chain, Vector3d.Zero,
+                out parkingEndJd, out parking);
+
+            if (Vector3d.Dot(solved.BrakeDirection, brakeStartVelocity) >= 0.0)
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: the crossing arrives slower than the target's frame, so " +
+                    "the seam needs an acceleration rather than a brake"));
+            }
+
+            if (!FixedBurnsClearBodies(arcs, departureBody, target,
+                    out string clearanceReason))
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    clearanceReason));
+            }
+
+            if (!BurnChainIsClosed(arcs, out string seamReason))
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: " + seamReason));
+            }
+
+            double actualSeconds = (parkingEndJd - ship.JulianDate) * SecondsPerDay;
+            var arrivalState = new ShipState(parkingEndJd, parking.PositionAt(1.0),
+                parking.VelocityAt(1.0), ship.DryMassKg, ship.PropellantKg);
+            var plan = new TrajectoryPlan(target.Id, MaxAccelerationMps2, arcs, ship,
+                arrivalState);
+            plan.FiniteBurnAccelerationMps2 = acceleration;
+            plan.CaptureEntryRadiusM = chain.EntryRadiusM;
+            plan.CaptureInboundSeconds = chain.InboundSeconds;
+
+            Trace?.Invoke($"burn-only: seam {solved.SeamPositionM.Magnitude:F1} m / " +
+                          $"{solved.SeamVelocityMps.Magnitude:E2} m/s; break " +
+                          $"{solved.BreakSeconds / SecondsPerDay:F4} d, burn " +
+                          $"{solved.BurnSeconds / SecondsPerDay:F4} d, brake " +
+                          $"{solved.BrakeSeconds / SecondsPerDay:F4} d, capture " +
+                          $"{chain.TotalSeconds / SecondsPerDay:F5} d, total " +
+                          $"{actualSeconds / SecondsPerDay:F5} d; break cap " +
+                          $"{breakCapSeconds / SecondsPerDay:F4} d " +
+                          $"{(solved.BreakSeconds >= 0.999 * breakCapSeconds ? "BINDING" : "not binding")}");
+
+            return Reported(plan);
         }
 
         /// <summary>Diagnostic only: build one burn–coast–burn trip at the
@@ -2105,6 +2460,438 @@ namespace TimeToExplore.Simulation
                 cheap: false);
         }
 
+        /// <summary>The norm the burn-only seam solve reduces: the seam's
+        /// position and velocity, each measured against the chain gate, so a norm
+        /// of one is exactly the gate.</summary>
+        private static double BurnOnlyNorm(double positionM, double velocityMps) =>
+            Math.Sqrt(
+                (positionM / BurnOnlyPositionGateM) * (positionM / BurnOnlyPositionGateM)
+                + (velocityMps / BurnOnlyVelocityGateMps)
+                * (velocityMps / BurnOnlyVelocityGateMps));
+
+        /// <summary>An orthonormal pair about a direction, for parameterising a
+        /// ray by two small angles.</summary>
+        private static void Tangents(Vector3d direction, out Vector3d tangent1,
+            out Vector3d tangent2)
+        {
+            Vector3d axis = Math.Abs(direction.z) < 0.9
+                ? new Vector3d(0.0, 0.0, 1.0)
+                : new Vector3d(0.0, 1.0, 0.0);
+            tangent1 = Vector3d.Cross(direction, axis).Normalized;
+            if (tangent1.SqrMagnitude < 0.5)
+                tangent1 = new Vector3d(1.0, 0.0, 0.0);
+            tangent2 = Vector3d.Cross(direction, tangent1).Normalized;
+            if (tangent2.SqrMagnitude < 0.5)
+                tangent2 = new Vector3d(0.0, 1.0, 0.0);
+        }
+
+        /// <summary>
+        /// One evaluation of the burn-only seam: the pinned break for the trial
+        /// ray, the departure burn forward from where it ends, the brake backward
+        /// from the capture chain's entry, and the six residuals between them.
+        /// The handover date is the crossing's own — the brake's end — so the two
+        /// burns meet at one instant by construction and the total time stays an
+        /// output.
+        /// </summary>
+        private bool EvaluateBurnOnlySeam(BurnOnlyGeometry geometry, ShipState ship,
+            Vector3d raySeed, Vector3d rayTangent1, Vector3d rayTangent2,
+            Vector3d brakeSeed, Vector3d brakeTangent1, Vector3d brakeTangent2,
+            double[] x, out BurnOnlyEvaluation evaluation)
+        {
+            evaluation = default;
+            double burnSeconds = x[2];
+            double brakeSeconds = x[5];
+            if (!(burnSeconds > MinimumArcSeconds) || !(brakeSeconds > MinimumArcSeconds))
+                return false;
+
+            Vector3d ray = Ray(raySeed, rayTangent1, rayTangent2, x[0], x[1]);
+            Vector3d brakeDirection = Ray(brakeSeed, brakeTangent1, brakeTangent2,
+                x[3], x[4]);
+
+            double breakSeconds = SolveBreakSecondsForCommandPeakWithin(ship,
+                geometry.DepartureBody, ray, geometry.ClearanceRadiusM,
+                geometry.EscapeSpeedMps, geometry.BreakSeedSeconds,
+                geometry.BreakCapSeconds, cheap: false);
+            double burnStartJd = ship.JulianDate + breakSeconds / SecondsPerDay;
+
+            _model.ComputeState(geometry.DepartureBody, burnStartJd,
+                out Vector3d anchorPosition, out Vector3d anchorVelocity);
+            Vector3d burnStartPosition = anchorPosition + ray * geometry.ClearanceRadiusM;
+            Vector3d burnStartVelocity = anchorVelocity + ray * geometry.EscapeSpeedMps;
+
+            double brakeStartJd = burnStartJd + burnSeconds / SecondsPerDay;
+            double entryJd = brakeStartJd + brakeSeconds / SecondsPerDay;
+
+            _model.ComputeState(geometry.Target, entryJd,
+                out Vector3d targetAtEntry, out Vector3d targetVelocityAtEntry);
+            Vector3d entryPosition = targetAtEntry + geometry.Chain.EntryLocalPositionM;
+            Vector3d entryVelocity = targetVelocityAtEntry
+                                     + geometry.Chain.EntryLocalVelocityMps;
+
+            _model.ComputeState(_model.Sun, burnStartJd,
+                out Vector3d sunAtBurnStart, out Vector3d sunVelocityAtBurnStart);
+            FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
+                burnStartJd, burnSeconds, burnStartPosition - sunAtBurnStart,
+                burnStartVelocity - sunVelocityAtBurnStart, geometry.AccelerationMps2,
+                retrograde: false, samples: PinnedDepartureSamples,
+                fixedThrustDirection: ray, gravity: _gravity);
+
+            _model.ComputeState(_model.Sun, entryJd,
+                out Vector3d sunAtEntry, out Vector3d sunVelocityAtEntry);
+            FiniteBurnArc.SimulateBackward(_model, _gravity, _model.Sun, entryJd,
+                entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
+                geometry.AccelerationMps2, retrograde: true, brakeSeconds, BrakeSamples,
+                out Vector3d brakeLocalStartPosition,
+                out Vector3d brakeLocalStartVelocity, brakeDirection);
+
+            _model.ComputeState(_model.Sun, brakeStartJd,
+                out Vector3d sunAtBrakeStart, out Vector3d sunVelocityAtBrakeStart);
+            Vector3d brakeStartPosition = sunAtBrakeStart + brakeLocalStartPosition;
+            Vector3d brakeStartVelocity = sunVelocityAtBrakeStart + brakeLocalStartVelocity;
+
+            Vector3d burnEndPosition = departureBurn.EndLocalPositionM + sunAtBrakeStart;
+            Vector3d burnEndVelocity = departureBurn.EndLocalVelocityMps
+                                       + sunVelocityAtBrakeStart;
+
+            evaluation = new BurnOnlyEvaluation(
+                burnEndPosition - brakeStartPosition,
+                burnEndVelocity - brakeStartVelocity,
+                ray, brakeDirection, breakSeconds, burnSeconds, brakeSeconds,
+                burnStartJd, entryJd, burnStartPosition, burnStartVelocity);
+            return true;
+        }
+
+        /// <summary>
+        /// The six-unknown burn-only seam: a damped Newton with a
+        /// finite-difference Jacobian, in the same style as the pinned departure
+        /// solve. The unknowns are the two ray angles, the departure burn's
+        /// duration, the two brake-direction angles, and the brake's duration;
+        /// the residuals are the seam's three position and three velocity
+        /// components. A point at the chain gate is accepted if the tighter
+        /// target cannot be reached, and the gate is the planner's own 1 km /
+        /// 1 m/s — no tolerance is widened to call a failure a success.
+        /// </summary>
+        private bool TrySolveBurnOnlySeam(BurnOnlyGeometry geometry, ShipState ship,
+            BurnOnlySeed seed, out BurnOnlyEvaluation solution, out string reason)
+        {
+            solution = default;
+            reason = null;
+
+            Tangents(seed.Ray, out Vector3d rayTangent1, out Vector3d rayTangent2);
+            Tangents(seed.BrakeDirection, out Vector3d brakeTangent1,
+                out Vector3d brakeTangent2);
+
+            var x = new double[6];
+            x[2] = Math.Max(seed.BurnSeconds, MinimumArcSeconds);
+            x[5] = Math.Max(seed.BrakeSeconds, MinimumArcSeconds);
+
+            double bestNorm = double.PositiveInfinity;
+            double bestPosition = double.PositiveInfinity;
+            double bestVelocity = double.PositiveInfinity;
+            var best = new double[6];
+            Array.Copy(x, best, x.Length);
+
+            var jacobian = new double[6, 6];
+            var rhs = new double[6];
+            int jacobianAge = int.MaxValue;
+            string stall = null;
+
+            for (int iteration = 0; iteration < BurnOnlyIterations; iteration++)
+            {
+                if (!EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1,
+                        rayTangent2, seed.BrakeDirection, brakeTangent1, brakeTangent2,
+                        x, out BurnOnlyEvaluation current))
+                {
+                    reason = "burn-only: the crossing has no seam at this seed";
+                    return false;
+                }
+
+                double position = current.SeamPositionM.Magnitude;
+                double velocity = current.SeamVelocityMps.Magnitude;
+                double norm = BurnOnlyNorm(position, velocity);
+                if (norm < bestNorm)
+                {
+                    bestNorm = norm;
+                    bestPosition = position;
+                    bestVelocity = velocity;
+                    Array.Copy(x, best, x.Length);
+                }
+
+                Trace?.Invoke($"burn-only pass {iteration}: {position:F0} m, " +
+                              $"{velocity:E2} m/s, burn {x[2]:F0} s, " +
+                              $"brake {x[5]:F0} s");
+
+                if (position <= BurnOnlyTargetPositionM
+                    && velocity <= BurnOnlyTargetVelocityMps)
+                {
+                    solution = current;
+                    return true;
+                }
+
+                if (jacobianAge >= 2)
+                {
+                    double angleStep = 1e-4;
+                    double burnStep = Math.Clamp(1e-4 * x[2], 0.5, 20.0);
+                    double brakeStep = Math.Clamp(1e-4 * x[5], 0.5, 20.0);
+
+                    for (int column = 0; column < 6; column++)
+                    {
+                        double step = column < 2 ? angleStep
+                            : column == 2 ? burnStep
+                            : column < 5 ? angleStep
+                            : brakeStep;
+                        var trial = new double[6];
+                        Array.Copy(x, trial, x.Length);
+                        trial[column] += step;
+                        if (!EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1,
+                                rayTangent2, seed.BrakeDirection, brakeTangent1,
+                                brakeTangent2, trial, out BurnOnlyEvaluation shifted))
+                        {
+                            reason = "burn-only: the crossing has no seam beside this seed";
+                            return false;
+                        }
+
+                        for (int row = 0; row < 3; row++)
+                        {
+                            jacobian[row, column] = (Component(shifted.SeamPositionM, row)
+                                                     - Component(current.SeamPositionM, row))
+                                                    / step;
+                            jacobian[row + 3, column] =
+                                (Component(shifted.SeamVelocityMps, row)
+                                 - Component(current.SeamVelocityMps, row)) / step;
+                        }
+                    }
+
+                    jacobianAge = 0;
+                }
+                else
+                {
+                    jacobianAge++;
+                }
+
+                for (int row = 0; row < 3; row++)
+                {
+                    rhs[row] = -Component(current.SeamPositionM, row);
+                    rhs[row + 3] = -Component(current.SeamVelocityMps, row);
+                }
+
+                if (!SolveLinear(jacobian, rhs, out double[] stepVector))
+                {
+                    stall = "the seam's Jacobian is singular at this seed";
+                    break;
+                }
+
+                double scale = 1.0;
+                double maxAngle = Math.Max(
+                    Math.Max(Math.Abs(stepVector[0]), Math.Abs(stepVector[1])),
+                    Math.Max(Math.Abs(stepVector[3]), Math.Abs(stepVector[4])));
+                if (maxAngle > 0.5) scale = Math.Min(scale, 0.5 / maxAngle);
+                if (Math.Abs(stepVector[2]) > 0.5 * x[2])
+                    scale = Math.Min(scale, 0.5 * x[2] / Math.Abs(stepVector[2]));
+                if (Math.Abs(stepVector[5]) > 0.5 * x[5])
+                    scale = Math.Min(scale, 0.5 * x[5] / Math.Abs(stepVector[5]));
+
+                bool accepted = false;
+                for (int attempt = 0; attempt < 6 && !accepted; attempt++, scale *= 0.5)
+                {
+                    var trial = new double[6];
+                    for (int i = 0; i < 6; i++) trial[i] = x[i] + scale * stepVector[i];
+                    if (!(trial[2] > MinimumArcSeconds)
+                        || !(trial[5] > MinimumArcSeconds)) continue;
+                    if (!EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1,
+                            rayTangent2, seed.BrakeDirection, brakeTangent1,
+                            brakeTangent2, trial, out BurnOnlyEvaluation trialEvaluation))
+                    {
+                        continue;
+                    }
+
+                    double trialNorm = BurnOnlyNorm(
+                        trialEvaluation.SeamPositionM.Magnitude,
+                        trialEvaluation.SeamVelocityMps.Magnitude);
+                    if (trialNorm < norm)
+                    {
+                        Array.Copy(trial, x, x.Length);
+                        accepted = true;
+                    }
+                }
+
+                if (!accepted)
+                {
+                    stall = "the damped step stopped improving the seam";
+                    break;
+                }
+            }
+
+            // The gate is the planner's own. Accept the best point if it is
+            // inside it; a failure names the residual it reached.
+            if (bestPosition <= BurnOnlyPositionGateM
+                && bestVelocity <= BurnOnlyVelocityGateMps)
+            {
+                Array.Copy(best, x, x.Length);
+                if (EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1, rayTangent2,
+                        seed.BrakeDirection, brakeTangent1, brakeTangent2, x,
+                        out BurnOnlyEvaluation gate))
+                {
+                    solution = gate;
+                    Trace?.Invoke($"burn-only: settled at the gate " +
+                                  $"({bestPosition:F0} m, {bestVelocity:E2} m/s)");
+                    return true;
+                }
+            }
+
+            string why = stall == null ? "the iteration cap was reached" : stall;
+            reason = $"burn-only: the seam did not close ({why}; best " +
+                     $"{bestPosition:F0} m and {bestVelocity:E2} m/s with burn " +
+                     $"{best[2]:F0} s and brake {best[5]:F0} s)";
+            return false;
+        }
+
+        /// <summary>
+        /// Diagnostic only: with the two directions held at a seed, solve the two
+        /// durations against the six residuals in the least-squares sense. It is
+        /// the honest answer to "how much of the miss is the durations?" — the
+        /// failure path reports its residual, and it is never presented as a
+        /// solution.
+        /// </summary>
+        private bool TrySolveBurnOnlyDurations(BurnOnlyGeometry geometry, ShipState ship,
+            Vector3d ray, Vector3d brakeDirection, double burnSeedSeconds,
+            double brakeSeedSeconds, out double burnSeconds, out double brakeSeconds,
+            out double positionM, out double velocityMps)
+        {
+            burnSeconds = Math.Max(burnSeedSeconds, MinimumArcSeconds);
+            brakeSeconds = Math.Max(brakeSeedSeconds, MinimumArcSeconds);
+            positionM = double.PositiveInfinity;
+            velocityMps = double.PositiveInfinity;
+
+            for (int iteration = 0; iteration < BurnOnlyDiagnosticIterations; iteration++)
+            {
+                if (!EvaluateBurnOnlyDurations(geometry, ship, ray, brakeDirection,
+                        burnSeconds, brakeSeconds, out Vector3d seamPosition,
+                        out Vector3d seamVelocity))
+                {
+                    return false;
+                }
+
+                double position = seamPosition.Magnitude;
+                double velocity = seamVelocity.Magnitude;
+                positionM = position;
+                velocityMps = velocity;
+                if (position <= 1.0 && velocity <= 1e-3) return true;
+
+                var residual = new double[6];
+                for (int row = 0; row < 3; row++)
+                {
+                    residual[row] = Component(seamPosition, row);
+                    residual[row + 3] = Component(seamVelocity, row);
+                }
+
+                double burnStep = Math.Clamp(1e-4 * burnSeconds, 0.5, 20.0);
+                double brakeStep = Math.Clamp(1e-4 * brakeSeconds, 0.5, 20.0);
+                var jacobian = new double[6, 2];
+                if (!EvaluateBurnOnlyDurations(geometry, ship, ray, brakeDirection,
+                        burnSeconds + burnStep, brakeSeconds,
+                        out Vector3d shiftedPosition, out Vector3d shiftedVelocity))
+                {
+                    return false;
+                }
+
+                for (int row = 0; row < 3; row++)
+                {
+                    jacobian[row, 0] = (Component(shiftedPosition, row)
+                                        - Component(seamPosition, row)) / burnStep;
+                    jacobian[row + 3, 0] = (Component(shiftedVelocity, row)
+                                            - Component(seamVelocity, row)) / burnStep;
+                }
+
+                if (!EvaluateBurnOnlyDurations(geometry, ship, ray, brakeDirection,
+                        burnSeconds, brakeSeconds + brakeStep,
+                        out shiftedPosition, out shiftedVelocity))
+                {
+                    return false;
+                }
+
+                for (int row = 0; row < 3; row++)
+                {
+                    jacobian[row, 1] = (Component(shiftedPosition, row)
+                                        - Component(seamPosition, row)) / brakeStep;
+                    jacobian[row + 3, 1] = (Component(shiftedVelocity, row)
+                                            - Component(seamVelocity, row)) / brakeStep;
+                }
+
+                var normal = new double[2, 2];
+                var rhs = new double[2];
+                for (int row = 0; row < 6; row++)
+                {
+                    normal[0, 0] += jacobian[row, 0] * jacobian[row, 0];
+                    normal[0, 1] += jacobian[row, 0] * jacobian[row, 1];
+                    normal[1, 1] += jacobian[row, 1] * jacobian[row, 1];
+                    rhs[0] -= jacobian[row, 0] * residual[row];
+                    rhs[1] -= jacobian[row, 1] * residual[row];
+                }
+
+                normal[1, 0] = normal[0, 1];
+                if (!SolveLinear(normal, rhs, out double[] step)) return false;
+
+                double scale = 1.0;
+                if (Math.Abs(step[0]) > 0.25 * burnSeconds)
+                    scale = Math.Min(scale, 0.25 * burnSeconds / Math.Abs(step[0]));
+                if (Math.Abs(step[1]) > 0.25 * brakeSeconds)
+                    scale = Math.Min(scale, 0.25 * brakeSeconds / Math.Abs(step[1]));
+
+                bool accepted = false;
+                double norm = BurnOnlyNorm(position, velocity);
+                for (int attempt = 0; attempt < 6 && !accepted; attempt++, scale *= 0.5)
+                {
+                    double trialBurn = burnSeconds + scale * step[0];
+                    double trialBrake = brakeSeconds + scale * step[1];
+                    if (!(trialBurn > MinimumArcSeconds)
+                        || !(trialBrake > MinimumArcSeconds)) continue;
+                    if (!EvaluateBurnOnlyDurations(geometry, ship, ray, brakeDirection,
+                            trialBurn, trialBrake, out Vector3d trialPosition,
+                            out Vector3d trialVelocity))
+                    {
+                        continue;
+                    }
+
+                    double trialNorm = BurnOnlyNorm(trialPosition.Magnitude,
+                        trialVelocity.Magnitude);
+                    if (trialNorm < norm)
+                    {
+                        burnSeconds = trialBurn;
+                        brakeSeconds = trialBrake;
+                        accepted = true;
+                    }
+                }
+
+                if (!accepted) break;
+            }
+
+            return positionM <= BurnOnlyPositionGateM
+                   && velocityMps <= BurnOnlyVelocityGateMps;
+        }
+
+        private bool EvaluateBurnOnlyDurations(BurnOnlyGeometry geometry, ShipState ship,
+            Vector3d ray, Vector3d brakeDirection, double burnSeconds,
+            double brakeSeconds, out Vector3d seamPosition,
+            out Vector3d seamVelocity)
+        {
+            var x = new double[6];
+            x[2] = burnSeconds;
+            x[5] = brakeSeconds;
+            if (!EvaluateBurnOnlySeam(geometry, ship, ray, Vector3d.Zero, Vector3d.Zero,
+                    brakeDirection, Vector3d.Zero, Vector3d.Zero, x,
+                    out BurnOnlyEvaluation evaluation))
+            {
+                seamPosition = Vector3d.Zero;
+                seamVelocity = Vector3d.Zero;
+                return false;
+            }
+
+            seamPosition = evaluation.SeamPositionM;
+            seamVelocity = evaluation.SeamVelocityMps;
+            return true;
+        }
+
         /// <summary>
         /// Solve the departure burn's escape ray and duration so that a burn
         /// integrated forward from the pinned clearance state ends on the Lambert
@@ -3141,6 +3928,90 @@ namespace TimeToExplore.Simulation
             double distance = Math.Max(distanceM, 1.0);
             double kinematic = 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
             return Math.Max(kinematic, MinimumArcSeconds);
+        }
+
+        /// <summary>One seed for the burn-only seam: the two directions and the
+        /// two durations.</summary>
+        private readonly struct BurnOnlySeed
+        {
+            public BurnOnlySeed(Vector3d ray, Vector3d brakeDirection,
+                double burnSeconds, double brakeSeconds)
+            {
+                Ray = ray;
+                BrakeDirection = brakeDirection;
+                BurnSeconds = burnSeconds;
+                BrakeSeconds = brakeSeconds;
+            }
+
+            public Vector3d Ray { get; }
+            public Vector3d BrakeDirection { get; }
+            public double BurnSeconds { get; }
+            public double BrakeSeconds { get; }
+        }
+
+        /// <summary>The fixed part of a burn-only crossing: the departure and
+        /// arrival bodies, the capture chain the supplied date chose, the level,
+        /// the pinned departure state, and the break's cap.</summary>
+        private readonly struct BurnOnlyGeometry
+        {
+            public BurnOnlyGeometry(BodyRuntime departureBody, BodyRuntime target,
+                TransferConic chain, double accelerationMps2, double clearanceRadiusM,
+                double escapeSpeedMps, double breakSeedSeconds, double breakCapSeconds)
+            {
+                DepartureBody = departureBody;
+                Target = target;
+                Chain = chain;
+                AccelerationMps2 = accelerationMps2;
+                ClearanceRadiusM = clearanceRadiusM;
+                EscapeSpeedMps = escapeSpeedMps;
+                BreakSeedSeconds = breakSeedSeconds;
+                BreakCapSeconds = breakCapSeconds;
+            }
+
+            public BodyRuntime DepartureBody { get; }
+            public BodyRuntime Target { get; }
+            public TransferConic Chain { get; }
+            public double AccelerationMps2 { get; }
+            public double ClearanceRadiusM { get; }
+            public double EscapeSpeedMps { get; }
+            public double BreakSeedSeconds { get; }
+            public double BreakCapSeconds { get; }
+        }
+
+        /// <summary>One evaluation of the burn-only seam: the six residuals and
+        /// the solved crossing's own states and dates.</summary>
+        private readonly struct BurnOnlyEvaluation
+        {
+            public BurnOnlyEvaluation(Vector3d seamPositionM, Vector3d seamVelocityMps,
+                Vector3d ray, Vector3d brakeDirection, double breakSeconds,
+                double burnSeconds, double brakeSeconds, double burnStartJulianDate,
+                double entryJulianDate, Vector3d burnStartPositionM,
+                Vector3d burnStartVelocityMps)
+            {
+                SeamPositionM = seamPositionM;
+                SeamVelocityMps = seamVelocityMps;
+                Ray = ray;
+                BrakeDirection = brakeDirection;
+                BreakSeconds = breakSeconds;
+                BurnSeconds = burnSeconds;
+                BrakeSeconds = brakeSeconds;
+                BurnStartJulianDate = burnStartJulianDate;
+                EntryJulianDate = entryJulianDate;
+                BurnStartPositionM = burnStartPositionM;
+                BurnStartVelocityMps = burnStartVelocityMps;
+            }
+
+            public Vector3d SeamPositionM { get; }
+            public Vector3d SeamVelocityMps { get; }
+            public Vector3d Ray { get; }
+            public Vector3d BrakeDirection { get; }
+            public double BreakSeconds { get; }
+            public double BurnSeconds { get; }
+            public double BrakeSeconds { get; }
+            public double BurnStartJulianDate { get; }
+            public double EntryJulianDate { get; }
+            public Vector3d BurnStartPositionM { get; }
+            public Vector3d BurnStartVelocityMps { get; }
         }
 
         private readonly struct ArrivalGeometry

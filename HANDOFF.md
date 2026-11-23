@@ -9,21 +9,25 @@ only what is done, what is next, and the traps.
 
 ## Steps
 
-1. **Pin the break — DONE (commit below).** The break's duration is solved so the
+1. **Pin the break — DONE and accepted.** The break's duration is solved so the
    quintic's peak commanded thrust equals `FixedBurnAccelerationMps2` (9.70 m/s²
    at 1 g, 2.942 at 0.3 g), behind the opt-in
-   `TripPlanner.PinBreakToCommandAcceleration` (default **false**). The search is
-   on the fast central-body peak with the 5% screen; the reported plan is the
-   full-field measurement. Tests, concept update, log entry, and this handoff are
-   in the same commit. See [the level pin](Docs/simulation/burn-coast-burn.md#the-level-pin-is-opt-in).
-2. **Burn-only crossing.** Add the zero-coast seam: integrate the departure burn
-   forward from the pinned break end, the brake backward from the capture entry,
-   and close them at the flip with no Lambert coast. Keep the existing long-coast
-   path; select the burn-only crossing by a planner mode. Tests for a burn-only
-   plan; docs and log.
-3. **Short coast and the handover.** Lower `MinimumCoastSeconds`, let the floor
-   search walk across the burn-only/short-coast boundary, and verify the two
-   branches agree on delta-v, seams, and feasibility. Re-sweep the window.
+   `TripPlanner.PinBreakToCommandAcceleration` (default **false**). See [the
+   level pin](Docs/simulation/burn-coast-burn.md#the-level-pin-is-opt-in).
+2. **Burn-only seam solve — DONE (this commit).** `TripPlanner.PlanBurnOnly`
+   builds the pinned break, the capture chain at the arrival handover floor, and
+   a two-burn seam with **no coast**: the departure burn forward from where the
+   break ends, the brake backward from the chain entry, six unknowns against the
+   six seam components. The total time is an **output**. Measured on Mercury at
+   1 g: the seam closes, the crossing is **shorter than the floor** and costs
+   more delta-v. See [the burn-only
+   crossing](Docs/simulation/burn-coast-burn.md#the-burn-only-crossing-experimental).
+   It is not wired into `Plan()`, the floor search, or the HUD.
+3. **Short coast and the handover — NEXT.** Lower `MinimumCoastSeconds`, let the
+   floor search walk across the burn-only/short-coast boundary, verify the two
+   branches agree on delta-v, seams, and feasibility, and re-sweep the window.
+   The arrival date becomes an unknown (the moving-target loop) so a short coast
+   can absorb a chosen trip time.
 
 Do not start a step until the previous step's commit is in and the tree is
 clean. Stop after two failures on the same step and leave the failure and last
@@ -31,73 +35,72 @@ command here.
 
 ## Current state
 
-Step 1 is committed. The default path is unchanged: the property is off, and the
-existing anchors (`Mercury 8 d 557.0380`, `Mars 90 d 44.3543`, `Uranus 400 d
-182.3124`, the other three fixed-duration anchors) still pass. Step 2 has not
-started.
+Steps 1 and 2 are committed on `work/burn-only-profile`. The default path is
+unchanged: the pin property is off, `Plan()` and `PlanAtDuration` do not call any
+of the new code, and every documented anchor still passes — the anchor test pins
+Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus 400 d 182.3124, and the other
+three fixed-duration totals.
 
-### The measured pinned break (epoch 2026-11-15, from Gateway, conic capture)
+### The step-2 measurement (epoch 2026-11-15, Gateway → Mercury at 1 g)
 
-Printed by `ThePinnedBreakSweepIsRecorded` from `.cache/test-project/results-editmode.xml`.
-Every row is a **certified full-field** plan found by `Plan()` with the pin on,
-so each floor is the pinned floor, not the documented default floor. Window hi is
-the nav computer's probed slow end; all eight cases accepted the 3× cap.
+Read from the new test's output in `.cache/test-project/results-editmode.xml`.
+The arrival argument is the date of the certified 1 g floor (3.21610 d); the
+plan's own arrival comes out of the seam.
 
-| target | level | floor d | window d | break d | break peak | break Δv | burn d | burn Δv | coast d | approach d | brake d | brake Δv | capture Δv | total Δv | worst seam |
-|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| mercury | 1.0 g | 3.217 | 3.217–9.651 | 0.3098 | 9.7000 | 167.877 | 0.9765 | 818.39 | 0.970 | 0 | 1330.7 min | 774.48 | 3.56 | 1764.3 | 147.5 m / 1.57E-02 m/s |
-| mercury | 0.3 g | 5.905 | 5.905–17.716 | 0.5618 | 2.9366 | 91.858 | 1.8597 | 472.72 | 1.757 | 0 | 2427.9 min | 428.58 | 3.56 | 996.7 | 641.5 m / 4.78E-02 m/s |
-| mars | 1.0 g | 3.856 | 3.856–11.567 | 0.3087 | 9.7000 | 167.806 | 1.1076 | 928.27 | 1.272 | 0 | 1619.5 min | 942.55 | 3.53 | 2042.2 | 131.4 m / 8.66E-02 m/s |
-| mars | 0.3 g | 6.864 | 6.864–20.592 | 0.5582 | 2.9407 | 91.917 | 2.0404 | 518.65 | 2.129 | 0 | 3004.4 min | 530.33 | 3.53 | 1144.4 | 298.2 m / 5.18E-02 m/s |
-| jupiter | 1.0 g | 9.257 | 9.257–27.771 | 0.3087 | 9.7000 | 167.770 | 1.4353 | 1202.92 | 5.945 | 0 | 2083.5 min | 1212.62 | 17.40 | 2600.7 | 2.0 m / 6.19E-05 m/s |
-| jupiter | 0.3 g | 13.713 | 13.713–41.140 | 0.5576 | 2.9408 | 91.818 | 3.7542 | 954.26 | 5.423 | 0 | 5464.8 min | 964.64 | 17.40 | 2028.1 | 172.6 m / 2.85E-03 m/s |
-| uranus | 1.0 g | 32.484 | 32.484–97.452 | 0.2566 | 9.7000 | 139.666 | 1.2268 | 1028.16 | 29.675 | 0 | 1776.3 min | 1033.81 | 6.69 | 2208.3 | 3.9 m / 5.22E-04 m/s |
-| uranus | 0.3 g | 40.874 | 40.874–122.622 | 0.4614 | 2.9376 | 76.064 | 3.3867 | 860.85 | 33.500 | 0 | 4897.0 min | 864.42 | 6.69 | 1808.0 | 2.0 m / 7.13E-04 m/s |
+| Arc | Duration | Peak | Δv |
+|---|---:|---:|---:|
+| Break (quintic) | 0.30986 d | 9.7000 m/s² | 167.9 km/s |
+| Departure burn | 1.37544 d | 9.7000 | 1,152.7 |
+| Brake | 1.32285 d | 9.7000 | 1,108.7 |
+| Capture chain (fall + transfer + parking) | 0.03655 d | — | 3.56 (impulse) |
+| **Total** | **3.04470 d** | 9.70 | **2,432.9** |
 
-All delta-v in km/s. No pinned floor plan carries an approach arc; the
-pinned breaks are short enough that every brake starts outside the ceiling.
+- Seam residual from the solve: **151.4 m / 1.65 × 10⁻³ m/s**. Built plan's
+  worst seam (brake rebuilt forward against the chain entry): **102.2 m /
+  0.209 m/s**. Both inside the 1 km / 1 m/s gate.
+- Six arcs: break → departure burn → brake → capture chain. **No Cruise coast**,
+  and the dates are continuous at every seam.
+- The brake starts **63,444,313 km** from Mercury, against a **114,658 km**
+  ceiling (553 ceilings), so no planetocentric approach leg is needed.
+- Break cap: generous by design (twice the kinematic climb to the clearance
+  sphere at the commanded acceleration) — **0.5160 d**, break uses 0.30986 d,
+  **not binding**. The plan prints `BINDING` in its trace if a future case hits
+  it.
+- Against the certified floor: **0.17140 d (4 h 7 min) shorter** (3.04470 vs
+  3.21610 d) and **667 km/s (38%) more expensive** (2,432.9 vs 1,766 km/s).
+- The solver settles in six damped-Newton passes, 0.8 s in the editor. The
+  second seed (the straight line between the two ends, brake opposed) is only
+  used if the first attempt stalls.
 
-The floors move only under the option, through the near-floor basin: Mercury
-1 g keeps 3.217 d, Mars 0.3 g 6.864 against 6.730, Jupiter 0.3 g 13.713 against
-13.072, Uranus 0.3 g 40.874 against 33.604, Uranus 1 g 32.484 against 33.654.
-The totals at the pins are 1764.3 / 996.7 / 2042.2 / 1144.4 / 2600.7 / 2028.1 /
-2208.3 / 1808.0 km/s; against the documented default floor totals that is
-Mercury 1766 and Mars 1172 and Jupiter 2271 and Uranus 1 g 2070 and Uranus
-0.3 g 2301. Three improve, Uranus 1 g is worse, and the floors are at different
-durations — this is a trade, not a strict win.
+### One deviation from the step-2 instructions — read before reviewing
 
-### Fixed-duration measurements (needed for the default-on decision)
+The step asked for a fixed arrival date **and** for the total time to be an
+output. Taken literally, those conflict: with the chain's entry date fixed, the
+burns must also fill the fixed gap, which adds a seventh condition to the six
+seam components. This implementation keeps both properties the honest way:
 
-| Plan | Pin | Break d | Break peak | Break Δv | Total Δv |
-|---|---|---:|---:|---:|---:|
-| Mercury 1 g, 8 d | off | 0.569 | 2.85 | 90.2 | 557.0 |
-| Mercury 1 g, 8 d | **on** | 0.3086 | 9.7000 | 167.2 | 615 |
-| Mars 0.3 g, 30 d | **on** | 0.563231 | 2.9400 | 92.672 | 232.24 |
-| Mars 0.3 g, 90 d | **on** | 0.566942 | 2.9392 | 93.193 | 127.66 |
-| Mars 0.3 g, 200 d | **on** | 0.546069 | 2.9419 | 90.011 | 99.38 |
-| Mars 0.3 g, 90 d | off | 4.844 | 0.033 | 8.8 | 44.4 |
+- the supplied date fixes the **capture chain's geometry** — its plane, entry
+  radius, and fall — and seeds the handover;
+- the seam uses the six unknowns the step named, and places the chain's handover
+  where the solved brake actually ends. The plan is therefore continuous in
+  **date as well as state**, and the total is the sum of the solved durations
+  plus the break and capture.
 
-Kinds are m/s², km/s. The pinned peak sits within 0.2% of the target at 0.3 g
-and exactly on it at 1 g (the 5% screen puts the full field in charge there).
-The pinned break's delta-v is set by the level and the ray, so it barely moves
-with the trip; the trip's saving shows in the coast and the total.
+There is **no moving-target loop**: the chain is built once, and nothing is
+re-solved after the seam. The alternative (a fixed entry date, states compared
+at two different dates) admits a geometric seam that is not a flyable plan; it
+was not built. Caretaker: accept this reading, or ask for the literal variant as
+a diagnostic.
 
-### One deviation from the step instructions — read this before reviewing
+### The pin stays opt-in (step 1's decision, still in force)
 
-The step asked the test to assert the three Mars plans' own Departure arc
-`DurationSeconds` are equal within **1e-6** relative. That cannot hold: the
-three trips need different escape rays, and the ray is one of the solver's
-inputs. Measured, the 90-day ray is **10.9591°** from the 30-day ray and the
-200-day ray **27.6717°**, and the reported durations move 0.659% and 3.047% with
-them. The test therefore asserts the invariant the design actually states — the
-same departure state, level, and **ray** give the same duration — through the
-new diagnostic `TripPlanner.MeasurePinnedBreakDurationSeconds`: with the 30-day
-ray held fixed and only the cap and seed varying, the three solves agree to
-**8.4 × 10⁻⁸** relative (measured 0.563231464 / 0.563231511 / 0.563231460 d).
-The reported spread is separately bounded at 5% and printed. No tolerance was
-widened to make a failing number pass; the 1e-6 assertion is kept on the fixed-ray
-solve. Caretaker: accept this reading, or ask for a solver whose ray is held
-across trips (which would change the design sentence in the step).
+At 0.3 g the pin spends about 92 km/s of break delta-v at long trips against 8.8
+on the default 90-day build. Step 2 uses it only inside the burn-only crossing,
+where the trip is at the fast end and the break must not be the binding
+constraint. The global default decision waits for step 3's short-coast
+measurement. The fixed-duration evidence is in
+[Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md#the-level-pin-is-opt-in)
+and the eight-case sweep is in the 2026-11-22 log entry.
 
 ## Verification
 
@@ -106,7 +109,7 @@ From this worktree only:
 ```bash
 tools/check.sh --fast          # docs, catalogue, generators, tooling
 tools/check.sh --tests flight  # the planner/flight EditMode category
-tools/check.sh                 # full EditMode suite before the step's commit
+tools/check.sh                 # full EditMode + PlayMode before the step's commit
 ```
 
 Last results (this commit):
@@ -114,14 +117,13 @@ Last results (this commit):
 - `tools/check.sh --fast` — **PASSED** in 6 s (OKF bundle 44 concepts, catalogue
   137 bodies, both generators byte-identical, bright-star catalogue, tooling
   tests).
-- `tools/check.sh --tests flight` — **PASSED** in 444 s: EditMode flight
-  category, 0 failed, 0 skipped.
-- `tools/check.sh` — **PASSED** in 653 s: EditMode 541 tests and PlayMode 6
-  tests, 0 failed, 0 skipped.
-
-The first `--tests flight` attempt failed only on the plan-level 1e-6 assertion
-described above; after the fixed-ray test landed, the same category passes. The
-failure is not a solver failure and no number was invented.
+- `tools/check.sh --tests flight` — **PASSED** in 439 s: EditMode flight
+  category, 234 tests, 0 failed, 0 skipped. The new test
+  `ABurnOnlyCrossingClosesWithoutACoast` passes in 0.8 s.
+- `tools/check.sh` — **PASSED** in 637 s on the committed tree: EditMode 542
+  tests and PlayMode 6 tests, 0 failed, 0 skipped. The fixed-duration anchor
+  test is in that run, so Mercury 8 d 557.0380, Mars 90 d 44.3543, Uranus 400 d
+  182.3124 and the other three still pass with the default path untouched.
 
 ## Traps
 
@@ -133,37 +135,41 @@ failure is not a solver failure and no number was invented.
 - `tools/check.sh` derives its root from its own path, so it is safe here; it
   writes `.cache/test-project` under this worktree.
 - The `.venv` is a symlink. Do not `pip install`; it would change the shared venv.
-- The pin targets the **commanded level**, not the drive limit. At 1 g the two
-  coincide (9.7 m/s² after the 0.97 margin); at 0.3 g the target is 2.942 m/s².
-- A short, hard break is not free: its delta-v rises as its peak rises (Mercury
-  1 g: 90.2 → 167.2 km/s). Do not adopt the pin on the floor numbers alone.
-- The fast search measures the break against the departure body alone. Inside
-  `TripPlanner.BreakScreenMargin` (5%) of the drive limit, it certifies with the
-  full field. At 1 g the target is that limit, so every pinned 1 g break is
-  full-field-certified and reports 9.7000; at 0.3 g the reported peak carries the
-  Sun's omitted term (measured 2.9366–2.9419).
-- The trip's own escape ray rotates with the arrival date (10.96° at Mars 90 d,
-  27.67° at 200 d). That is why the plan-level durations differ; the solver's
-  invariance is a **fixed-ray** statement, tested through
-  `MeasurePinnedBreakDurationSeconds`.
-- Keep the existing default behavior when the opt-in property is off. The
-  documented floors and delta-v anchors in
-  [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md) and
-  [planning performance](Docs/technical/planning-performance.md) must not move.
-  The fixed-duration anchor test still pins six of them.
+- **The burn-only crossing's date is an output.** Do not pass its total through
+  `PlanAtDuration`, and do not expect the returned arrival date to equal the
+  supplied one: the supplied date chooses the capture chain's geometry, and the
+  handover lands where the solved brake ends. The measured difference on the
+  Mercury case is about 0.2 d.
+- The step-2 break cap is deliberately generous and uses the **commanded**
+  acceleration, not `MaxAccelerationMps2`: at 0.3 g the climb is slower and a cap
+  built from the drive limit would bind. The trace reports `BINDING`; the
+  Mercury 1 g case is not binding.
+- The seam's largest built residual is the brake's forward rebuild against the
+  chain entry (102 m / 0.209 m/s), because the brake is placed backward and
+  reported forward. It is inside the gate; do not re-tighten the solver's
+  tolerance without re-measuring it.
+- `PinBreakToCommandAcceleration` is still off by default. `PlanBurnOnly` pins
+  its own break regardless of the property; keep that independent.
+- Keep the existing default behavior. The documented floors and delta-v anchors
+  in [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md) and [planning
+  performance](Docs/technical/planning-performance.md) must not move. The
+  fixed-duration anchor test still pins six of them.
 - Update `Docs/log.md` under the current `YYYY-MM-DD` heading and this handoff in
   the same commit as the work. Run `tools/validate_okf.py` (or `check.sh --fast`)
   after the doc edits.
 - Do not merge into `main` and do not push. A finished step is a commit on
   `work/burn-only-profile`.
 
-## Decision left to the caretaker
+## Step 3 notes
 
-**Whether `PinBreakToCommandAcceleration` becomes the default.** On: the break
-commands the same level as the two fixed burns, the duration stops scaling with
-the trip, and the 0.3 g total delta-v at the floors improves for Mercury, Mars,
-Jupiter, and Uranus 0.3 g. Off: the break stays gentle and cheap at long trip
-times (8.8 km/s against 93.2 on the 90-day Mars build), Uranus 1 g's floor and
-total are better under the old rule, and every documented anchor stays put. The
-tables above are the measurement; the code default remains **off** until the
-caretaker decides.
+- The next unknown is the **arrival date** (or, equivalently, the total time):
+  adding it to the six makes a seven-unknown, seven-equation system, and the
+  chain's handover then moves with the answer. That is the moving-target loop the
+  step-2 scope deferred.
+- A short coast between the burns is the second unknown regime: the same seam
+  with a non-negative coast time, and the floor search walking across the
+  boundary. Check that both branches agree on delta-v and seams at the crossing
+  point rather than assuming they do.
+- The burn-only crossing is the fast extreme, not a candidate default: it is
+  shorter and much more expensive than the coasting floor. The decision to make
+  the pin global still waits on the short-coast numbers.

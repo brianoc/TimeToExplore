@@ -1463,6 +1463,135 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// Step 2 research spike: a **zero-coast** crossing built from the pinned
+        /// break, a departure burn, and a brake that meet at the flip with no
+        /// coast. The total crossing time is an output — the sum of the solved
+        /// burn and brake durations plus the break and capture — so
+        /// <see cref="TripPlanner.PlanBurnOnly"/> takes a fixed date for the
+        /// capture chain, not a trip time, and never calls
+        /// <see cref="TripPlanner.PlanAtDuration"/>. Measured at the epoch from
+        /// Gateway to Mercury at 1 g, on the date of the certified 1 g floor: the
+        /// seam closes inside the gate, and the crossing is shorter than the
+        /// 3.21610 d floor at a much higher delta-v. Nothing here is wired into
+        /// <see cref="TripPlanner.Plan"/>: the floor, the window, and the HUD are
+        /// untouched.
+        /// </summary>
+        [Test]
+        public void ABurnOnlyCrossingClosesWithoutACoast()
+        {
+            _planner.BurnLevelG = 1.0;
+            // The method pins its own break; the property's value must not matter.
+            _planner.PinBreakToCommandAcceleration = false;
+
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            const double floorDays = 3.21610;
+            double arrivalJd = ship.JulianDate + floorDays;
+
+            var trace = new List<string>();
+            _planner.Trace = trace.Add;
+            TrajectoryPlan plan = _planner.PlanBurnOnly(ship, "mercury", arrivalJd);
+            foreach (string line in trace) TestContext.WriteLine("trace: " + line);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            // The crossing is break → departure burn → brake → capture, with no
+            // coast between the burns at all.
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
+            Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(plan.Arcs[0].Path, Is.InstanceOf<Quintic>());
+            Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[2].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[3].Phase, Is.EqualTo(FlightPhase.Coast));
+            Assert.That(plan.Arcs[4].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(plan.Arcs[5].Phase, Is.EqualTo(FlightPhase.Parking));
+
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                Assert.That(arc.Phase == FlightPhase.Cruise && arc.IsCoast, Is.False,
+                    "the burn-only crossing leaves no cruise coast");
+            }
+
+            // Dates and states both run continuously, so the seam is one instant
+            // as well as one state.
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                Assert.That(plan.Arcs[i].EndJulianDate,
+                    Is.EqualTo(plan.Arcs[i + 1].StartJulianDate).Within(1e-12),
+                    $"seam {i} date");
+            }
+
+            AssertChainCloses(plan);
+
+            // The break is pinned to the commanded level, and both fixed burns
+            // command it too.
+            double level = _planner.FixedBurnAccelerationMps2;
+            Assert.That(plan.Arcs[0].PeakThrustMps2, Is.EqualTo(level).Within(0.05),
+                "the break is pinned to the commanded acceleration");
+            Assert.That(((FiniteBurnArc)plan.Arcs[1].Path).AccelerationMps2,
+                Is.EqualTo(level).Within(1e-6));
+            Assert.That(((FiniteBurnArc)plan.Arcs[2].Path).AccelerationMps2,
+                Is.EqualTo(level).Within(1e-6));
+
+            // This is the fast case: the brake starts far outside the ceiling, so
+            // no planetocentric approach leg is needed.
+            BodyRuntime mercury = _model.Get("mercury");
+            _model.ComputeState(mercury, plan.Arcs[2].StartJulianDate,
+                out Vector3d mercuryAtBrakeStart, out _);
+            double brakeStartRadius = Vector3d.Distance(plan.Arcs[2].Path.PositionAt(0.0),
+                mercuryAtBrakeStart);
+            HandoverBand band = HandoverBand.For(mercury, level);
+
+            double captureSeconds = 0.0;
+            for (int i = 3; i < plan.Arcs.Count; i++)
+                captureSeconds += plan.Arcs[i].DurationSeconds;
+
+            double worstPosition = 0.0;
+            double worstVelocity = 0.0;
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                PlanArc left = plan.Arcs[i];
+                PlanArc right = plan.Arcs[i + 1];
+                worstPosition = Math.Max(worstPosition, Vector3d.Distance(
+                    left.Path.PositionAt(1.0), right.Path.PositionAt(0.0)));
+                worstVelocity = Math.Max(worstVelocity, (left.Path.VelocityAt(1.0)
+                    + right.EntryImpulseVectorMps - right.Path.VelocityAt(0.0)).Magnitude);
+            }
+
+            double totalDays = plan.FlightTimeDays;
+            double burnDeltaV = plan.Arcs[1].DeltaVMps / 1000.0;
+            double brakeDeltaV = plan.Arcs[2].DeltaVMps / 1000.0;
+
+            TestContext.WriteLine(
+                $"break {plan.Arcs[0].DurationSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"burn {plan.Arcs[1].DurationSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"brake {plan.Arcs[2].DurationSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"capture {captureSeconds / JulianDate.SecondsPerDay:F5} d");
+            TestContext.WriteLine(
+                $"burn {burnDeltaV:F1} km/s, brake {brakeDeltaV:F1} km/s, " +
+                $"total {plan.DeltaVMps / 1000.0:F1} km/s; " +
+                $"brake starts {brakeStartRadius / 1000.0:N0} km out " +
+                $"against the {band.CeilingRadiusM / 1000.0:N0} km ceiling");
+            TestContext.WriteLine($"worst seam {worstPosition:F1} m / {worstVelocity:E2} m/s");
+            TestContext.WriteLine(
+                $"total {totalDays:F5} d against the {floorDays:F5} d floor: " +
+                $"{(totalDays < floorDays ? "shorter" : "not shorter")} by " +
+                $"{Math.Abs(floorDays - totalDays):F5} d");
+
+            Assert.That(brakeStartRadius, Is.GreaterThan(band.CeilingRadiusM),
+                "the fast crossing's brake starts outside the handover ceiling");
+            Assert.That(totalDays, Is.LessThan(floorDays),
+                "the burn-only crossing is shorter than the certified 1 g floor");
+            Assert.That(totalDays, Is.EqualTo(3.0447).Within(0.05),
+                "measured: the burn-only crossing's output length");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.GreaterThan(1766.0),
+                "and it buys that time with delta-v, above the floor's 1,766 km/s");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.LessThan(3000.0));
+        }
+
+        /// <summary>
         /// The available-time budget <see cref="TripPlanner"/> gives the break, read
         /// from the plan's own arcs: the coast's end minus the departure time, less
         /// the departure burn, the reserved brake when there is no approach leg, and
