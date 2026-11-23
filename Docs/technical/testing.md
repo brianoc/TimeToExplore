@@ -268,10 +268,13 @@ performance](/technical/planning-performance.md#the-runtime-divergence-is-a-prop
 
 | Quantity | Value |
 |---|---|
-| Trip-time window (Mars) | 6.73–20.19 days |
-| Trip-time window (Mercury) | 3.22–9.65 days |
+| Trip-time window (Mars) | 6.73–20.19 days on the coast path |
+| Trip-time window (Mercury) | 3.22–9.65 days on the coast path |
 | Trip-time window (Uranus) | 33.60–100.81 days at 0.3 g, 33.65–100.96 days at 1 g |
-| Trip-time window (Jupiter) | 13.07–39.22 days at 0.3 g |
+| Trip-time window (Jupiter) | 13.07–39.22 days at 0.3 g on the coast path |
+| Nav minimum, Mars at 0.3 g | 6.49501 days (burn-only; the coast floor is 6.73042) |
+| Nav minimum, Mercury at 1 g | 3.04470 days (burn-only; the coast floor is 3.21610) |
+| Nav minimum, Jupiter at 0.3 g | 12.54280 days (burn-only; the coast floor is 13.07) |
 | True floor, Mars at 0.3 g | 6.73042 days, 1,171.61 km/s |
 | True floor, Mercury at 1 g | 3.21610 days, peak 9.70 m/s², 1,765.52 km/s |
 | True floor, Uranus at 1 g | 33.65372 days (editor; .NET 30.56), peak 9.70 m/s², 2,070.02 km/s, eight arcs |

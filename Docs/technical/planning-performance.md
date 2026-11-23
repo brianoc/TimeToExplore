@@ -715,6 +715,13 @@ and the merged tree meets it: the five cases are 1.28–3.03 s (a second run gav
 same tree is 0.21–0.38 s, so the editor's remaining gap is per-build cost, not
 search shape.
 
+**Since step 3 of the burn-only plan the preview window also solves the
+moving-target minimum** (`PlanFastest`: the coast floor plus the zero-coast
+crossing), so the same five first plots are **2.81, 3.08, 5.07, 3.89, and 4.61 s**
+in that order — the added 1–2 s is the crossing, not a longer floor search. The
+floors and the .NET `Plan()` costs above are unchanged; Uranus does not win the
+zero-coast branch but pays for the attempt.
+
 ### What the remaining time is
 
 Mars and Jupiter are ~3.0 s because they are now **one certified build plus

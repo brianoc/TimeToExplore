@@ -747,7 +747,17 @@ namespace TimeToExplore.UI
             if (flight?.Preview == null) return "—";
 
             double g = flight.FixedBurnAccelerationMps2 / TripPlanner.StandardGravityMps2;
-            return LevelLabel(g) + " burns · coast";
+            bool coast = false;
+            foreach (PlanArc arc in flight.Preview.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Cruise && arc.IsCoast)
+                {
+                    coast = true;
+                    break;
+                }
+            }
+
+            return LevelLabel(g) + (coast ? " burns · coast" : " burns · no coast");
         }
 
         /// <summary>One decimal for the usual levels, two at the slider's low

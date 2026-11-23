@@ -184,8 +184,10 @@ namespace TimeToExplore.Simulation
         /// <summary>The date the preview was plotted at, or NaN.</summary>
         public double PreviewJulianDate { get; private set; } = double.NaN;
 
-        /// <summary>The fastest feasible flight time for the current preview,
-        /// or NaN. The trip-time control's lower bound.</summary>
+        /// <summary>The nav computer's minimum trip time for the current preview,
+        /// or NaN. The trip-time control's lower bound: the planner's
+        /// <see cref="TripPlanner.PlanFastest"/> — the zero-coast burn-only
+        /// crossing when it wins, otherwise the coast floor.</summary>
         public double PreviewMinimumSeconds { get; private set; } = double.NaN;
 
         /// <summary>The slowest trip the trip-time control offers, or NaN. It is
@@ -804,14 +806,18 @@ namespace TimeToExplore.Simulation
         /// requested duration when the window's fastest plan is slower than
         /// the player's ask. Mirrors the old synchronous rebuild semantics:
         /// the window plan's duration is the published minimum; a kept flight
-        /// time re-solves to it when the new window contains it.</summary>
+        /// time re-solves to it when the new window contains it. A rebuild that
+        /// is keeping the minimum itself stays on the new window's minimum,
+        /// because the two styles' burn-only totals can differ by seconds and
+        /// the old number would fall into the zero-coast gap.</summary>
         private CompletedPreview BuildRebuild(PreviewRequest request)
         {
             request.ApplyTo(_workerPlanner);
             PreviewWindow window = WindowFor(request.TargetId, request.Departure,
                 _workerPlanner, request.BurnLevelG, request.Arrival);
             TrajectoryPlan plan = window.Plan;
-            if (plan.IsFeasible && request.DurationSeconds > plan.FlightTimeSeconds)
+            if (!request.AtMinimum && plan.IsFeasible
+                && request.DurationSeconds > plan.FlightTimeSeconds)
                 plan = _workerPlanner.PlanAtDuration(request.Departure,
                     request.TargetId, Math.Min(request.DurationSeconds,
                         window.MaximumSeconds));
@@ -902,19 +908,31 @@ namespace TimeToExplore.Simulation
 
             string targetId = Preview.TargetId;
             double requested = Preview.FlightTimeSeconds;
+            bool atMinimum = Math.Abs(requested - PreviewMinimumSeconds)
+                             <= 1e-9 * Math.Max(1.0, PreviewMinimumSeconds);
             var request = new PreviewRequest(PreviewKind.Rebuild, targetId, _previewDeparture,
-                requested, ArrivalStyle, BurnLevelG, _planner);
+                requested, ArrivalStyle, BurnLevelG, _planner, atMinimum);
             EnqueuePreview(request);
         }
 
         /// <summary>
-        /// The floor plan and the trip-time window for a target, at the given
-        /// pinned departure state. Runs on the caller's thread: the session's
-        /// synchronous <see cref="Plot"/> and the background worker's
-        /// <see cref="BuildPlotWindow"/> and <see cref="BuildRebuild"/>. The
-        /// cache is shared between threads, so every access is under
-        /// <see cref="_retimeLock"/>; the slow <see cref="TripPlanner.Plan"/>
-        /// calls run outside it, on the worker for async builds.
+        /// The fastest plan and the trip-time window for a target, at the given
+        /// pinned departure state. The minimum is the planner's
+        /// <see cref="TripPlanner.PlanFastest"/> — the zero-coast burn-only
+        /// crossing when it is the shorter feasible plan, otherwise the coast
+        /// floor — and the upper end is still probed with
+        /// <see cref="TripPlanner.PlanAtDuration"/>. Runs on the caller's thread:
+        /// the session's synchronous <see cref="Plot"/> and the background
+        /// worker's <see cref="BuildPlotWindow"/> and <see cref="BuildRebuild"/>.
+        /// The cache is shared between threads, so every access is under
+        /// <see cref="_retimeLock"/>; the slow planner calls run outside it, on
+        /// the worker for async builds.
+        ///
+        /// The range between a burn-only minimum and the coast floor is a known
+        /// gap: <see cref="TripPlanner.PlanAtDuration"/> cannot build those
+        /// durations yet, so a retime that lands there comes back stretched or
+        /// infeasible and the panel reports it. The window does not fake a plan
+        /// for the gap.
         /// </summary>
         private PreviewWindow WindowFor(string targetId, ShipState departure,
             TripPlanner planner, double burnLevelG, CaptureStyle arrival)
@@ -932,7 +950,7 @@ namespace TimeToExplore.Simulation
                 if (_windows.TryGetValue(key, out PreviewWindow cached)) return cached;
             }
 
-            TrajectoryPlan plan = planner.Plan(departure, targetId);
+            TrajectoryPlan plan = planner.PlanFastest(departure, targetId);
             var window = new PreviewWindow(plan,
                 MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds, planner,
                     departure));
@@ -1062,7 +1080,14 @@ namespace TimeToExplore.Simulation
         /// <summary>Build a Go To plan from the current state and start flying
         /// it. Returns the plan even when it is rejected, so the UI can explain
         /// why. A rejected or infeasible plan leaves the ship where it was.
-        /// Begin consumes any preview; begin always replans.</summary>
+        /// Begin consumes any preview; begin always replans. Its base plan is
+        /// <see cref="TripPlanner.PlanFastest"/> — the same minimum the preview's
+        /// trip-time window advertises — so a flight begun at a burn-only
+        /// minimum flies the no-coast crossing that was drawn; a preview that
+        /// asked for a longer time still re-times through
+        /// <see cref="TripPlanner.PlanAtDuration"/>. A preview that sat at its
+        /// minimum flies the fresh minimum, because the clock may have moved
+        /// since the plot and the old number can sit in the zero-coast gap.</summary>
         public TrajectoryPlan Begin(string targetId, double julianDate)
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
@@ -1070,16 +1095,29 @@ namespace TimeToExplore.Simulation
             // A retimed preview carries the player's chosen flight time into
             // the flight. Read it before the preview is discarded, solve the
             // fastest plan at the current date, and re-time to the choice.
+            // The fastest plan is PlanFastest, the same minimum the preview's
+            // trip-time window advertises, so beginning at a burn-only minimum
+            // flies the plan that was drawn instead of the coast floor. A
+            // preview that sat at its minimum carries the minimum, not a
+            // duration: the clock may have moved since the plot, and the fresh
+            // minimum is the answer. Re-timing to the old number by a few
+            // seconds would land in the zero-coast gap.
             double requestedSeconds = double.NaN;
+            bool previewAtMinimum = false;
             if (Preview != null && Preview.TargetId == targetId)
+            {
                 requestedSeconds = Preview.FlightTimeSeconds;
+                previewAtMinimum = Math.Abs(requestedSeconds - PreviewMinimumSeconds)
+                    <= 1e-9 * Math.Max(1.0, PreviewMinimumSeconds);
+            }
 
             DiscardPreview();
             ClearWindows();
             _state.JulianDate = julianDate;
             _appliedImpulses.Clear();
-            Plan = _planner.Plan(_state, targetId);
-            if (!double.IsNaN(requestedSeconds) && requestedSeconds > Plan.FlightTimeSeconds)
+            Plan = _planner.PlanFastest(_state, targetId);
+            if (!previewAtMinimum && !double.IsNaN(requestedSeconds)
+                && requestedSeconds > Plan.FlightTimeSeconds)
                 Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
 
             if (!Plan.IsFeasible)
@@ -1442,7 +1480,7 @@ namespace TimeToExplore.Simulation
         {
             public PreviewRequest(PreviewKind kind, string targetId, ShipState departure,
                 double durationSeconds, CaptureStyle arrival,
-                double burnLevelG, TripPlanner settings)
+                double burnLevelG, TripPlanner settings, bool atMinimum = false)
             {
                 Kind = kind;
                 TargetId = targetId;
@@ -1450,6 +1488,7 @@ namespace TimeToExplore.Simulation
                 DurationSeconds = durationSeconds;
                 Arrival = arrival;
                 BurnLevelG = burnLevelG;
+                AtMinimum = atMinimum;
                 MaxAccelerationMps2 = settings.MaxAccelerationMps2;
                 ThrustMargin = settings.ThrustMargin;
                 EntrySpeedMps = settings.EntrySpeedMps;
@@ -1466,6 +1505,14 @@ namespace TimeToExplore.Simulation
             /// <summary>The requested flight time for a rebuild; NaN to solve
             /// the fastest feasible plan (a plot).</summary>
             public double DurationSeconds { get; }
+
+            /// <summary>True when the rebuild is keeping a preview that sat at
+            /// its minimum, rather than a duration the player chose. The new
+            /// style's own minimum is then the answer: its burn-only total can
+            /// sit a few seconds either side of the old one, and asking the
+            /// planner for the old number would land inside the zero-coast gap
+            /// the new style may open.</summary>
+            public bool AtMinimum { get; }
 
             public CaptureStyle Arrival { get; }
             public double BurnLevelG { get; }

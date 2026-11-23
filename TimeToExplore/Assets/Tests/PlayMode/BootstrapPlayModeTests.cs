@@ -437,7 +437,8 @@ namespace TimeToExplore.Tests.PlayMode
 
             yield return null;
 
-            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying),
+                _bootstrap.Flight.Failure);
             Assert.That(_bootstrap.Flight.HasPreview, Is.False,
                 "Begin consumes the preview");
             Assert.That(_bootstrap.Flight.Plan.TargetId, Is.EqualTo("mars"));

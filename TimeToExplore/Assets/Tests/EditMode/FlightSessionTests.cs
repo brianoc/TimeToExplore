@@ -53,17 +53,31 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void BeginPlansTheTestedMarsTripAndStartsFlying()
+        public void BeginFliesTheMarsBurnOnlyMinimumAndStartsFlying()
         {
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
+
+            TestContext.WriteLine($"mars begin: {plan.FlightTimeDays:F5} d, " +
+                                  $"{plan.DeltaVMps / 1000.0:F0} km/s, " +
+                                  $"{plan.PropellantKg / 1000.0:F1} t, " +
+                                  $"peak {plan.PeakThrustMps2:F2} m/s²");
 
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
             Assert.That(plan.IsFeasible, Is.True);
             Assert.That(plan.TargetId, Is.EqualTo("mars"));
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6),
+                "the burn-only crossing is break, departure burn, brake, and the capture chain");
+            Assert.That(plan.FlightTimeDays, Is.EqualTo(6.49501).Within(0.001),
+                "Begin flies the preview's burn-only minimum, not the 6.73042 d coast floor");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.EqualTo(1592.0).Within(2.0));
+            Assert.That(plan.PropellantKg / 1000.0, Is.EqualTo(172.6).Within(0.2),
+                "the burn-only minimum's delta-v implies 172.6 t of propellant");
+            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "the burn-only crossing has no cruise coast");
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
             Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
             Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[2].IsFiniteBurn, Is.True);
             Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
             Assert.That(_session.Phase, Is.EqualTo(FlightPhase.Departure));
@@ -72,6 +86,61 @@ namespace TimeToExplore.Tests.EditMode
             // ship is a little way into the departure arc.
             _session.Advance(plan.DepartureJulianDate + 0.002, 50_000);
             Assert.That(_session.CurrentThrust.MagnitudeMps2, Is.GreaterThan(0.0));
+        }
+
+        /// <summary>
+        /// The acceptance that ties Begin to the preview: at Mercury 1 g the
+        /// trip-time window's minimum is the 3.044696-day burn-only crossing, so
+        /// pressing Begin must fly that plan — no cruise coast, break →
+        /// departure burn → brake → capture — and the autopilot must reach the
+        /// arrival state, not merely build the arcs.
+        /// </summary>
+        [Test]
+        public void BeginningAtTheBurnOnlyMinimumFliesThePreviewedPlan()
+        {
+            _session.BurnLevelG = 1.0;
+            TrajectoryPlan preview = _session.Plot("mercury", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+
+            TestContext.WriteLine($"preview minimum {minimum / JulianDate.SecondsPerDay:F6} d");
+
+            Assert.That(minimum / JulianDate.SecondsPerDay,
+                Is.EqualTo(3.044696).Within(0.001),
+                "the window's minimum is the burn-only crossing");
+            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False);
+
+            TrajectoryPlan plan = _session.Begin("mercury", _epoch);
+
+            Assert.That(_session.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(plan.FlightTimeSeconds, Is.EqualTo(minimum).Within(1e-6),
+                "the flight is the plan the preview drew, not the coast floor");
+            Assert.That(plan.FlightTimeDays, Is.EqualTo(3.044696).Within(0.001));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
+            Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True, "the departure burn");
+            Assert.That(plan.Arcs[2].IsFiniteBurn, Is.True, "the brake");
+            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "break, burn, brake, capture — no cruise coast");
+            Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Parking));
+
+            FlightStep step = _session.Advance(plan.ArrivalJulianDate, 200_000);
+            double positionError = Vector3d.Distance(_session.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (_session.State.VelocityMps - plan.ArrivalState.VelocityMps)
+                .Magnitude;
+            TestContext.WriteLine($"burn-only flight arrived {JulianDate.Format(step.ReachedJulianDate)}, " +
+                                  $"{positionError:F1} m, {velocityError:F4} m/s, " +
+                                  $"{step.Substeps} substeps");
+
+            Assert.That(step.CollisionDetected, Is.False);
+            Assert.That(step.BudgetExhausted, Is.False);
+            Assert.That(step.Arrived, Is.True);
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived));
+            Assert.That(positionError, Is.LessThan(10_000.0), "within 10 km of the arrival state");
+            Assert.That(velocityError, Is.LessThan(10.0), "within 10 m/s of the arrival state");
         }
 
         [Test]
@@ -101,6 +170,36 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(velocityError, Is.LessThan(10.0), "within 10 m/s of the orbit");
         }
 
+        /// <summary>
+        /// At a giant the zero-coast crossing does not win, so PlanFastest
+        /// returns the coast floor and Begin must fly that: the same rule, the
+        /// other branch.
+        /// </summary>
+        [Test]
+        public void BeginningAtACoastFloorTargetFliesTheCoastFloor()
+        {
+            ShipState departure = _session.State.WithJulianDate(_epoch);
+            TrajectoryPlan coastFloor = _planner.Plan(departure, "uranus");
+
+            TrajectoryPlan preview = _session.Plot("uranus", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+
+            TestContext.WriteLine($"uranus coast floor {coastFloor.FlightTimeDays:F5} d, " +
+                                  $"preview minimum {minimum / JulianDate.SecondsPerDay:F5} d");
+
+            Assert.That(preview, Is.SameAs(_session.Preview));
+            Assert.That(minimum, Is.EqualTo(coastFloor.FlightTimeSeconds).Within(1e-6),
+                "the giant's minimum is the coast floor, not a burn-only crossing");
+
+            TrajectoryPlan plan = _session.Begin("uranus", _epoch);
+
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(plan.FlightTimeSeconds, Is.EqualTo(minimum).Within(1e-6),
+                "Begin flies the coast floor the preview showed");
+            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.True, "the coast floor has a cruise coast");
+        }
+
         [Test]
         public void TheSessionArrivalStyleReachesThePlanner()
         {
@@ -108,7 +207,7 @@ namespace TimeToExplore.Tests.EditMode
 
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
 
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
             Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
             Assert.That(plan.Arcs[plan.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
@@ -147,7 +246,8 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan back = WaitForPublishedPreview();
 
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(back.Arcs.Count, Is.EqualTo(7), "the conic capture is back");
+            Assert.That(back.Arcs.Count, Is.EqualTo(6),
+                "the conic capture is back, on the zero-coast minimum");
             Assert.That(back.Arcs[back.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
         }
@@ -163,6 +263,96 @@ namespace TimeToExplore.Tests.EditMode
             WaitUntil(() => _session.TryApplyCompletedPreview(out published),
                 "no preview was published");
             return published;
+        }
+
+        [Test]
+        public void ThePreviewMinimumIsTheBurnOnlyPlan()
+        {
+            _session.BurnLevelG = 1.0;
+            var watch = Stopwatch.StartNew();
+            TrajectoryPlan preview = _session.Plot("mercury", _epoch);
+            watch.Stop();
+
+            ShipState departure = _session.State.WithJulianDate(_epoch);
+            TrajectoryPlan fastest = _planner.PlanFastest(departure, "mercury");
+            TrajectoryPlan coastFloor = _planner.Plan(departure, "mercury");
+
+            TestContext.WriteLine(
+                $"preview minimum {_session.PreviewMinimumSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"burn-only {fastest.FlightTimeDays:F5} d, " +
+                $"coast floor {coastFloor.FlightTimeDays:F5} d, " +
+                $"plot {watch.Elapsed.TotalSeconds:F2} s");
+
+            Assert.That(preview, Is.SameAs(_session.Preview));
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.EqualTo(fastest.FlightTimeSeconds).Within(1e-6),
+                "the minimum is the planner's fastest plan (the burn-only crossing)");
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.LessThan(coastFloor.FlightTimeSeconds),
+                "and it is below the coast floor: the gap is real");
+            Assert.That(preview.FlightTimeSeconds,
+                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1e-6));
+
+            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "the preview minimum is the zero-coast crossing");
+            Assert.That(preview.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(preview.Arcs[2].IsFiniteBurn, Is.True);
+
+            // A duration above the coast floor still builds the coast path. The
+            // range between the burn-only minimum and the floor is the short-coast
+            // regime, which the planner now builds; a retime anywhere in the
+            // window is feasible.
+            double above = coastFloor.FlightTimeSeconds
+                           + 0.5 * JulianDate.SecondsPerDay;
+            TrajectoryPlan slower = _session.SetPreviewDuration(above);
+
+            Assert.That(slower.IsFeasible, Is.True, slower.InfeasibleReason);
+            Assert.That(slower.FlightTimeSeconds, Is.EqualTo(above).Within(1.0));
+            Assert.That(slower.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.True, "a retime above the floor is the coasting profile");
+        }
+
+        [Test]
+        public void ARetimeInsideTheGapBuildsTheShortCoast()
+        {
+            _session.BurnLevelG = 1.0;
+            _session.Plot("mercury", _epoch);
+
+            double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan coastFloor = _planner.Plan(
+                _session.State.WithJulianDate(_epoch), "mercury");
+            double requested = 0.5 * (minimum + coastFloor.FlightTimeSeconds);
+            TrajectoryPlan retimed = _session.SetPreviewDuration(requested);
+
+            TestContext.WriteLine(
+                $"gap retime {requested / JulianDate.SecondsPerDay:F5} d against the " +
+                $"burn-only minimum {minimum / JulianDate.SecondsPerDay:F5} d and the " +
+                $"coast floor {coastFloor.FlightTimeDays:F5} d: " +
+                $"feasible {retimed.IsFeasible}, {retimed.FlightTimeDays:F5} d, " +
+                $"{retimed.DeltaVMps / 1000.0:F0} km/s, {retimed.Arcs.Count} arcs");
+
+            Assert.That(retimed.IsFeasible, Is.True, retimed.InfeasibleReason);
+            Assert.That(retimed.FlightTimeSeconds, Is.EqualTo(requested).Within(1.0),
+                "the slider's requested total is the plan's total");
+            Assert.That(retimed.FlightTimeSeconds,
+                Is.GreaterThan(_session.PreviewMinimumSeconds),
+                "the retime is above the burn-only minimum");
+            Assert.That(retimed.FlightTimeSeconds,
+                Is.LessThan(coastFloor.FlightTimeSeconds),
+                "and below the coast floor: it is the gap");
+            Assert.That(retimed.Arcs.Count, Is.EqualTo(7),
+                "break, departure burn, conic coast, brake, and the capture chain");
+
+            for (int i = 0; i < retimed.Arcs.Count - 1; i++)
+            {
+                PlanArc left = retimed.Arcs[i];
+                PlanArc right = retimed.Arcs[i + 1];
+                Assert.That(Vector3d.Distance(left.Path.PositionAt(1.0),
+                    right.Path.PositionAt(0.0)), Is.LessThan(1e3), $"seam {i} position");
+                Assert.That((left.Path.VelocityAt(1.0) + right.EntryImpulseVectorMps
+                    - right.Path.VelocityAt(0.0)).Magnitude, Is.LessThan(1.0),
+                    $"seam {i} velocity");
+            }
         }
 
         [Test]
@@ -236,6 +426,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.SetArrivalStyle(CaptureStyle.FiniteBurn), Is.Null);
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
 
+            // The burn-only minimum always ends on the conic capture chain, so
+            // retime above the floor where the chosen style is visible in the
+            // plan Begin flies.
+            _session.Plot("mars", _epoch);
+            _session.SetPreviewDuration(2.0 * _session.PreviewMinimumSeconds);
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
             Assert.That(plan.Arcs.Count, Is.EqualTo(8));
 
@@ -257,7 +452,7 @@ namespace TimeToExplore.Tests.EditMode
             session.PlaceAt("gateway", _epoch);
 
             TrajectoryPlan plan = session.Begin("mars", _epoch);
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(6));
             Assert.That(plan.ImpulseDeltaVMps, Is.GreaterThan(0.0));
 
             FlightStep step = session.Advance(plan.ArrivalJulianDate, 200_000);
@@ -295,6 +490,10 @@ namespace TimeToExplore.Tests.EditMode
             var session = new FlightSession(_model, _gravity, planner);
             session.PlaceAt("gateway", _epoch);
 
+            // The burn-only minimum always keeps the conic capture, so retime
+            // above the coast floor to fly the hybrid capture the style asks for.
+            session.Plot("mars", _epoch);
+            session.SetPreviewDuration(2.0 * session.PreviewMinimumSeconds);
             TrajectoryPlan plan = session.Begin("mars", _epoch);
             Assert.That(plan.Arcs.Count, Is.EqualTo(8));
             Assert.That(plan.FiniteBurnDeltaVMps, Is.GreaterThan(0.0));
@@ -462,6 +661,33 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived));
             Assert.That(Vector3d.Distance(_session.State.PositionM, plan.ArrivalState.PositionM),
                 Is.LessThan(10_000.0));
+        }
+
+        [Test]
+        public void BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double previewMinimum = _session.PreviewMinimumSeconds;
+            double later = _epoch + 0.002;
+            TrajectoryPlan replanned = _planner.PlanFastest(
+                _session.State.WithJulianDate(later), "mars");
+
+            TestContext.WriteLine($"preview minimum {previewMinimum / JulianDate.SecondsPerDay:F6} d, " +
+                                  $"replanned at +0.002 d " +
+                                  $"{replanned.FlightTimeSeconds / JulianDate.SecondsPerDay:F6} d");
+
+            Assert.That(replanned.FlightTimeSeconds,
+                Is.Not.EqualTo(previewMinimum).Within(1.0),
+                "the fresh minimum really is a different plan from the preview's number");
+
+            TrajectoryPlan plan = _session.Begin("mars", later);
+
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying),
+                _session.Failure);
+            Assert.That(plan.FlightTimeSeconds, Is.EqualTo(replanned.FlightTimeSeconds).Within(1e-6),
+                "a preview at its minimum flies the fresh minimum, not the old number");
+            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "the fresh minimum is still the no-coast plan");
         }
 
         [Test]

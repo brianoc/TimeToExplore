@@ -338,7 +338,7 @@ editor and **40.71332 d** in .NET, both seven-arc trips. Mercury and Mars are
 unchanged because their brakes span the sphere. Measured at the epoch on the
 merged tree:
 
-| Floor | .NET harness | Editor | Editor window |
+| Floor | .NET harness | Editor | Editor coast window |
 |---|---:|---:|---|
 | Uranus, 1 g | **30.55886 d** | **33.65372 d** | 33.65–100.96 d |
 | Uranus, 0.3 g | **40.71332 d** | **33.60438 d** | 33.60–100.81 d |
@@ -468,10 +468,12 @@ the field the burn is integrated in, and the arrival leg change.
 
 The break is still the quintic that leaves the parking orbit and ends on the
 handover at the local escape speed along the escape ray; the capture is still the
-conic or hybrid chain the profile already uses. The break's duration solve, the
+conic or hybrid chain the profile already uses. The break's duration solve (an
+opt-in variant now pins it to the commanded level rather than the drive limit —
+[the level pin](/simulation/burn-coast-burn.md#the-level-pin-is-opt-in)), the
 pinned fixed point, the escape-ray attitude, the brake's direction, the trim, the
-transfer ellipse, and the circularisation are unchanged. No new arc *type* is
-introduced — the approach is a `ConicArc` like the coast.
+transfer ellipse, and the circularisation are otherwise unchanged. No new arc
+*type* is introduced — the approach is a `ConicArc` like the coast.
 
 # What the floor entry measured
 
@@ -563,10 +565,14 @@ did not move.
 
 **Step 4 closed the first-plot plan with the final floors and windows.** The
 editor is the runtime that ships, so its first `Plot()` measurements are the
-anchors the docs carry: **Uranus 0.3 g 33.60438 d** (window 33.60–100.81 d),
-**Uranus 1 g 33.65372 d** (33.65–100.96 d), **Mars 0.3 g 6.73042 d**
+anchors the docs carry: **Uranus 0.3 g 33.60438 d** (coast window 33.60–100.81
+d), **Uranus 1 g 33.65372 d** (33.65–100.96 d), **Mars 0.3 g 6.73042 d**
 (6.73–20.19 d), **Mercury 1 g 3.21610 d** (3.22–9.65 d), and **Jupiter 0.3 g
-13.07211 d** (13.07–39.22 d). Every one is a certified full-field plan: the
+13.07211 d** (13.07–39.22 d). Since step 3 of the burn-only plan the nav
+computer's minimum is the burn-only total where it wins — Mercury 3.04470, Mars
+6.49501, Jupiter 12.54280 d — so the slider's left end and its three-times
+upper end are shorter than those coast windows; the floors above are unchanged.
+Every one is a certified full-field plan: the
 returned duration is rebuilt with the summed field, every arc has its measured
 clearance and delta-v, and every seam is inside the 1 km / 1 m/s gate. Each of
 the five now certifies on its **first** certificate with no continuation probes,
