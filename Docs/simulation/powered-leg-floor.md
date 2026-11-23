@@ -468,10 +468,12 @@ the field the burn is integrated in, and the arrival leg change.
 
 The break is still the quintic that leaves the parking orbit and ends on the
 handover at the local escape speed along the escape ray; the capture is still the
-conic or hybrid chain the profile already uses. The break's duration solve, the
+conic or hybrid chain the profile already uses. The break's duration solve (an
+opt-in variant now pins it to the commanded level rather than the drive limit —
+[the level pin](/simulation/burn-coast-burn.md#the-level-pin-is-opt-in)), the
 pinned fixed point, the escape-ray attitude, the brake's direction, the trim, the
-transfer ellipse, and the circularisation are unchanged. No new arc *type* is
-introduced — the approach is a `ConicArc` like the coast.
+transfer ellipse, and the circularisation are otherwise unchanged. No new arc
+*type* is introduced — the approach is a `ConicArc` like the coast.
 
 # What the floor entry measured
 

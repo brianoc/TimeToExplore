@@ -1232,6 +1232,293 @@ namespace TimeToExplore.Tests.EditMode
                 Does.Contain(tooFast.PeakThrustMps2.ToString("F1")));
         }
 
+        /// <summary>
+        /// The pinned break commands the level the fixed burns command, not the
+        /// drive's limit or the reference coast's departure share. The search
+        /// solves the break's duration on the fast central-body peak, so the
+        /// reported full-field peak carries the screen's difference: at 1 g the
+        /// screen puts the full field in charge and the residual is small; at
+        /// 0.3 g the departure body alone sets the duration and the Sun's term
+        /// shows up in the reported peak. Five percent bounds that difference,
+        /// and the exact residual is recorded here.
+        /// </summary>
+        [TestCase("mars", 0.3, 30.0)]
+        [TestCase("mercury", 1.0, 8.0)]
+        public void ThePinnedBreakPeaksAtTheCommandLevel(string targetId, double level,
+            double days)
+        {
+            _planner.BurnLevelG = level;
+            _planner.PinBreakToCommandAcceleration = true;
+            TrajectoryPlan plan = PlanTo(targetId, days);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            PlanArc breakArc = plan.Arcs[0];
+            Assert.That(breakArc.Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(breakArc.Path, Is.InstanceOf<Quintic>());
+
+            double target = _planner.FixedBurnAccelerationMps2;
+            double residual = breakArc.PeakThrustMps2 - target;
+            TestContext.WriteLine($"{targetId} {days} d at {level} g: pinned break " +
+                                  $"{breakArc.DurationSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                                  $"peak {breakArc.PeakThrustMps2:F4} against target {target:F4} " +
+                                  $"m/s², residual {residual:+0.0000;-0.0000} " +
+                                  $"({100.0 * residual / target:+0.00;-0.00}%)");
+
+            Assert.That(Math.Abs(residual), Is.LessThanOrEqualTo(0.05 * target),
+                "the reported break peaks at the commanded level to within 5%");
+        }
+
+        /// <summary>
+        /// The pinned break's duration is a property of the departure state, the
+        /// level, and the escape ray, not of the trip time: the solve enters the
+        /// trip only through the available-time cap, which is nowhere near binding
+        /// on 30, 90 and 200 days to Mars at 0.3 g.
+        ///
+        /// The three plans' own escape rays are not the same — the ray is the
+        /// outbound asymptote the crossing needs, so it rotates with the trip
+        /// (measured 10.96° at 90 d and 27.67° at 200 d), and the reported break
+        /// durations follow it by 0.66% and -3.0%. That is the ray moving, not the
+        /// trip: with the 30-day ray held fixed and the cap varied, the solve
+        /// returns the same duration to 1e-6 relative. The reported spread is
+        /// recorded and bounded at 5%, which is the measured ray effect.
+        /// </summary>
+        [Test]
+        public void ThePinnedBreakDurationDoesNotMoveWithTripTime()
+        {
+            _planner.BurnLevelG = 0.3;
+            _planner.PinBreakToCommandAcceleration = true;
+            double[] days = { 30.0, 90.0, 200.0 };
+            var plans = new TrajectoryPlan[days.Length];
+            var durations = new double[days.Length];
+            var available = new double[days.Length];
+            var rays = new Vector3d[days.Length];
+
+            for (int i = 0; i < days.Length; i++)
+            {
+                TrajectoryPlan plan = PlanTo("mars", days[i]);
+                Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+                plans[i] = plan;
+                durations[i] = plan.Arcs[0].DurationSeconds;
+                available[i] = BreakAvailableSeconds(plan);
+
+                // The escape ray is the solver's other input. Record it: the
+                // plans differ in it even though the departure state does not.
+                BodyRuntime earth = _model.Get("earth");
+                _model.ComputeState(earth, plan.Arcs[0].EndJulianDate,
+                    out Vector3d earthAtEnd, out _);
+                rays[i] = (plan.Arcs[0].Path.PositionAt(1.0) - earthAtEnd).Normalized;
+
+                double rayDegrees = i == 0 ? 0.0 : Math.Acos(Math.Clamp(
+                    Vector3d.Dot(rays[i], rays[0]), -1.0, 1.0)) * 180.0 / Math.PI;
+                double reportedRelative = i == 0
+                    ? 0.0
+                    : Math.Abs(durations[i] - durations[0]) / durations[0];
+                TestContext.WriteLine($"{days[i]} d: break " +
+                                      $"{durations[i] / JulianDate.SecondsPerDay:F6} d, " +
+                                      $"peak {plan.Arcs[0].PeakThrustMps2:F4} m/s², " +
+                                      $"dv {plan.Arcs[0].DeltaVMps / 1000.0:F3} km/s, " +
+                                      $"total {plan.DeltaVMps / 1000.0:F2} km/s, " +
+                                      $"available {available[i] / JulianDate.SecondsPerDay:F3} d, " +
+                                      $"ray {rayDegrees:F4}° from 30 d, " +
+                                      $"reported moves {reportedRelative:P3}");
+                Assert.That(durations[i], Is.LessThan(0.9 * available[i]),
+                    $"{days[i]} d: the available-time cap is not binding");
+            }
+
+            // The exact invariant: the same departure state, level, and ray, with
+            // only the cap (and the seed) varying. Every input but the cap is
+            // shared; the cap is non-binding, so the answer must not move.
+            var pinned = new double[days.Length];
+            for (int i = 0; i < days.Length; i++)
+            {
+                pinned[i] = _planner.MeasurePinnedBreakDurationSeconds(
+                    plans[i], rays[0], available[i]);
+                TestContext.WriteLine($"{days[i]} d: fixed-ray solve " +
+                                      $"{pinned[i] / JulianDate.SecondsPerDay:F9} d");
+            }
+
+            for (int i = 1; i < days.Length; i++)
+            {
+                double fixedRayRelative = Math.Abs(pinned[i] - pinned[0]) / pinned[0];
+                double reportedRelative = Math.Abs(durations[i] - durations[0]) / durations[0];
+                TestContext.WriteLine($"{days[i]} d against 30 d: fixed ray " +
+                                      $"{fixedRayRelative:E2}, reported {reportedRelative:E2}");
+                Assert.That(fixedRayRelative, Is.LessThanOrEqualTo(1e-6),
+                    $"{days[i]} d: with the ray held fixed the break duration does not " +
+                    "move with the trip");
+                Assert.That(reportedRelative, Is.LessThanOrEqualTo(0.05),
+                    $"{days[i]} d: the reported duration moves only as far as the ray does");
+            }
+        }
+
+        [TestCase("mars", 0.3, 30.0)]
+        [TestCase("mercury", 1.0, 8.0)]
+        public void ThePinnedBreakChainStillCloses(string targetId, double level, double days)
+        {
+            _planner.BurnLevelG = level;
+            _planner.PinBreakToCommandAcceleration = true;
+            TrajectoryPlan plan = PlanTo(targetId, days);
+            PrintPlan(plan);
+
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            AssertChainCloses(plan);
+        }
+
+        /// <summary>
+        /// The pinned break's measured trade at the epoch from Gateway: the floor,
+        /// the trip-time window, and the arc breakdown at Mercury, Mars, Jupiter
+        /// and Uranus at 1 g and 0.3 g. The break now commands the level, so its
+        /// delta-v rises with the peak it is pinned to; the table is what the
+        /// caretaker reviews before deciding whether the pin becomes the default.
+        /// </summary>
+        [Test]
+        public void ThePinnedBreakSweepIsRecorded()
+        {
+            var cases = new[]
+            {
+                ("mercury", 1.0), ("mercury", 0.3),
+                ("mars", 1.0), ("mars", 0.3),
+                ("jupiter", 1.0), ("jupiter", 0.3),
+                ("uranus", 1.0), ("uranus", 0.3)
+            };
+
+            TestContext.WriteLine("target  level  floor d   window d      break d  " +
+                                  "break peak  break dv   burn d  burn dv  coast d  " +
+                                  "approach d  brake d  brake dv  capture dv  total dv  worst seam");
+            foreach ((string targetId, double level) in cases)
+            {
+                _planner.BurnLevelG = level;
+                _planner.PinBreakToCommandAcceleration = true;
+                ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+                TrajectoryPlan plan = _planner.Plan(ship, targetId);
+                if (!plan.IsFeasible)
+                {
+                    TestContext.WriteLine($"{targetId,-7} {level,5:F1}  refused: " +
+                                          plan.InfeasibleReason);
+                    Assert.That(plan.IsFeasible, Is.True,
+                        $"{targetId} {level} g: {plan.InfeasibleReason}");
+                }
+
+                double floorDays = plan.FlightTimeDays;
+                double maximumDays = MaximumWindowDays(ship, targetId, floorDays);
+
+                PlanArc breakArc = plan.Arcs[0];
+                double burnSeconds = 0.0;
+                double burnDeltaV = 0.0;
+                double coastSeconds = 0.0;
+                double approachSeconds = 0.0;
+                double brakeSeconds = 0.0;
+                double brakeDeltaV = 0.0;
+                foreach (PlanArc arc in plan.Arcs)
+                {
+                    if (arc.Phase == FlightPhase.Cruise && arc.IsFiniteBurn)
+                    {
+                        burnSeconds = arc.DurationSeconds;
+                        burnDeltaV = arc.DeltaVMps;
+                    }
+                    else if (arc.Phase == FlightPhase.Cruise && arc.IsCoast)
+                    {
+                        coastSeconds = arc.DurationSeconds;
+                    }
+                    else if (arc.Phase == FlightPhase.Approach)
+                    {
+                        approachSeconds = arc.DurationSeconds;
+                    }
+                    else if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn)
+                    {
+                        brakeSeconds = arc.DurationSeconds;
+                        brakeDeltaV = arc.DeltaVMps;
+                    }
+                }
+
+                double worstPosition = 0.0;
+                double worstVelocity = 0.0;
+                for (int i = 0; i < plan.Arcs.Count - 1; i++)
+                {
+                    PlanArc left = plan.Arcs[i];
+                    PlanArc right = plan.Arcs[i + 1];
+                    worstPosition = Math.Max(worstPosition, Vector3d.Distance(
+                        left.Path.PositionAt(1.0), right.Path.PositionAt(0.0)));
+                    worstVelocity = Math.Max(worstVelocity, (left.Path.VelocityAt(1.0)
+                        + right.EntryImpulseVectorMps - right.Path.VelocityAt(0.0)).Magnitude);
+                }
+
+                TestContext.WriteLine(
+                    $"{targetId,-7} {level,5:F1}  {floorDays,7:F3}  " +
+                    $"{floorDays,7:F3}-{maximumDays,-7:F3}  " +
+                    $"{breakArc.DurationSeconds / JulianDate.SecondsPerDay,7:F4}  " +
+                    $"{breakArc.PeakThrustMps2,10:F4}  " +
+                    $"{breakArc.DeltaVMps / 1000.0,8:F3}  " +
+                    $"{burnSeconds / JulianDate.SecondsPerDay,6:F4}  " +
+                    $"{burnDeltaV / 1000.0,7:F2}  " +
+                    $"{coastSeconds / JulianDate.SecondsPerDay,7:F3}  " +
+                    $"{approachSeconds / JulianDate.SecondsPerDay,9:F4}  " +
+                    $"{brakeSeconds / 60.0,7:F1}  " +
+                    $"{brakeDeltaV / 1000.0,8:F2}  " +
+                    $"{plan.ImpulseDeltaVMps / 1000.0,9:F2}  " +
+                    $"{plan.DeltaVMps / 1000.0,8:F1}  " +
+                    $"{worstPosition,8:F1} m / {worstVelocity:E2} m/s");
+            }
+        }
+
+        /// <summary>
+        /// The available-time budget <see cref="TripPlanner"/> gives the break, read
+        /// from the plan's own arcs: the coast's end minus the departure time, less
+        /// the departure burn, the reserved brake when there is no approach leg, and
+        /// the minimum coast. A returned break at or above this is a break the cap
+        /// shortened.
+        /// </summary>
+        private static double BreakAvailableSeconds(TrajectoryPlan plan)
+        {
+            double breakSeconds = plan.Arcs[0].DurationSeconds;
+            double burnSeconds = 0.0;
+            double coastSeconds = 0.0;
+            double brakeSeconds = 0.0;
+            bool hasApproach = false;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (arc.Phase == FlightPhase.Cruise && arc.IsFiniteBurn)
+                    burnSeconds = arc.DurationSeconds;
+                else if (arc.Phase == FlightPhase.Cruise && arc.IsCoast)
+                    coastSeconds = arc.DurationSeconds;
+                else if (arc.Phase == FlightPhase.Approach)
+                    hasApproach = true;
+                else if (arc.Phase == FlightPhase.Capture && arc.IsFiniteBurn)
+                    brakeSeconds = arc.DurationSeconds;
+            }
+
+            double coastEndFromDeparture = breakSeconds + burnSeconds + coastSeconds;
+            return coastEndFromDeparture - burnSeconds
+                   - (hasApproach ? 0.0 : brakeSeconds) - 3_600.0;
+        }
+
+        /// <summary>
+        /// The slowest trip the nav computer would offer, by the same probe the
+        /// flight session uses: three times the floor, bisected six times when the
+        /// cap itself is refused.
+        /// </summary>
+        private double MaximumWindowDays(ShipState ship, string targetId, double floorDays)
+        {
+            double floorSeconds = floorDays * JulianDate.SecondsPerDay;
+            double capSeconds = TripPlanner.MaxDurationScale * floorSeconds;
+            if (_planner.PlanAtDuration(ship, targetId, capSeconds).IsFeasible)
+                return TripPlanner.MaxDurationScale * floorDays;
+
+            double feasible = floorSeconds;
+            double infeasible = capSeconds;
+            for (int probe = 0; probe < 6; probe++)
+            {
+                double middle = 0.5 * (feasible + infeasible);
+                if (_planner.PlanAtDuration(ship, targetId, middle).IsFeasible)
+                    feasible = middle;
+                else
+                    infeasible = middle;
+            }
+
+            return feasible / JulianDate.SecondsPerDay;
+        }
+
         private static void AssertChainCloses(TrajectoryPlan plan)
         {
             for (int i = 0; i < plan.Arcs.Count - 1; i++)

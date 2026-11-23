@@ -227,6 +227,19 @@ namespace TimeToExplore.Simulation
         /// default; the hybrid finite-burn capture is the alternative.</summary>
         public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Conic;
 
+        /// <summary>Opt-in: pin the break's duration to the commanded
+        /// acceleration. When true the break's quintic is solved so its peak
+        /// commanded thrust equals <see cref="FixedBurnAccelerationMps2"/>, the
+        /// level the departure burn, the brake, and the hybrid capture command,
+        /// instead of keeping the reference coast's departure share and only
+        /// lengthening the break when the drive is exceeded. The result does not
+        /// scale with the trip time: it is a root of the break's own
+        /// peak-versus-duration curve, and the trip only bounds it through the
+        /// time the coast and the burns leave. Default false, so the documented
+        /// plans, floors, and delta-v anchors do not move.
+        /// </summary>
+        public bool PinBreakToCommandAcceleration { get; set; }
+
         /// <summary>Design acceleration of a fixed-thrust burn. 0.3 g is the
         /// working level: low enough to be a real burn rather than an impulse,
         /// high enough that the capture still fits inside a low orbit. The
@@ -1301,9 +1314,18 @@ namespace TimeToExplore.Simulation
 
                 coastEndJd = hasApproach ? approachStartJd : brakeStartJd;
                 coastEndPosition = hasApproach ? approachStartPosition : brakeStartPosition;
-                breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
-                    clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
-                    burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                if (PinBreakToCommandAcceleration)
+                {
+                    breakSeconds = SolveBreakSecondsForCommandPeak(ship, departureBody,
+                        escapeDirection, clearanceRadius, escapeSpeed, breakSeconds,
+                        coastEndJd, burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                }
+                else
+                {
+                    breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
+                        clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
+                        burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                }
 
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 _model.ComputeState(departureBody, burnStartJd,
@@ -1383,9 +1405,18 @@ namespace TimeToExplore.Simulation
                 double previousSettleBurn = burnSeconds;
                 Vector3d previousSettleRay = escapeDirection;
 
-                breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
-                    clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
-                    burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                if (PinBreakToCommandAcceleration)
+                {
+                    breakSeconds = SolveBreakSecondsForCommandPeak(ship, departureBody,
+                        escapeDirection, clearanceRadius, escapeSpeed, breakSeconds,
+                        coastEndJd, burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                }
+                else
+                {
+                    breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
+                        clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
+                        burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                }
                 burnStartJd = t0 + breakSeconds / SecondsPerDay;
                 if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
                         escapeSpeed, acceleration, burnStartJd, coastEndJd,
@@ -1674,6 +1705,152 @@ namespace TimeToExplore.Simulation
             return high;
         }
 
+        /// <summary>
+        /// The pinned break's duration: the duration whose quintic peaks at the
+        /// commanded acceleration, <see cref="FixedBurnAccelerationMps2"/> — the
+        /// same level the fixed burns command — rather than at the drive's limit
+        /// or at the reference coast's departure share. The break's peak falls as
+        /// its duration grows, so the solve brackets the crossing from the seed
+        /// (growing when the seed is too hard, shrinking when it is too gentle)
+        /// and bisects. The trip enters only through the available-time cap, so
+        /// the same departure state, level, and ray give the same duration on a
+        /// 30-day trip and a 200-day one.
+        ///
+        /// The bracketing and bisection use the fast peak <see cref="BreakPeakMps2"/>
+        /// (the departure body alone, with the 5% full-field screen), so probes pay
+        /// a looser relative tolerance than the certified build. The plan that is
+        /// reported is still measured with the full field, so its
+        /// <see cref="PlanArc.PeakThrustMps2"/> may differ from the target by a few
+        /// percent at 0.3 g, where the screen leaves the central-body model in
+        /// charge; the difference is recorded, not hidden.
+        ///
+        /// At 1 g the target is the drive's own margin limit (9.7 m/s² of 10.0),
+        /// so a certified peak a little above it would make the plan infeasible.
+        /// The screen normally makes the search function the full-field one there,
+        /// which keeps the result at or under the target. As insurance, a
+        /// certified full-field peak above the drive retargets the solve 0.2% lower
+        /// once, which trades a little peak for feasibility without moving the
+        /// duration on plans that do not need it.
+        /// </summary>
+        private double SolveBreakSecondsForCommandPeak(ShipState ship,
+            BodyRuntime departureBody, Vector3d direction, double clearanceRadius,
+            double escapeSpeed, double candidateSeconds, double coastEndJd,
+            double burnSeconds, double reservedTailSeconds, bool cheap = false)
+        {
+            // The same budget SolveBreakSeconds uses: the break may spend the
+            // time the coast, the departure burn, the reserved brake, and the
+            // minimum coast leave.
+            double available = (coastEndJd - ship.JulianDate) * SecondsPerDay
+                               - burnSeconds - reservedTailSeconds - MinimumCoastSeconds;
+            return SolveBreakSecondsForCommandPeakWithin(ship, departureBody, direction,
+                clearanceRadius, escapeSpeed, candidateSeconds,
+                Math.Max(MinimumArcSeconds, available), cheap);
+        }
+
+        /// <summary>The pinned solve with the available time already reduced to
+        /// the cap. Split out so a test can hold the ray fixed and vary only the
+        /// cap the trip supplies — the one way the trip is allowed to move the
+        /// answer.</summary>
+        private double SolveBreakSecondsForCommandPeakWithin(ShipState ship,
+            BodyRuntime departureBody, Vector3d direction, double clearanceRadius,
+            double escapeSpeed, double candidateSeconds, double cap, bool cheap)
+        {
+            double Peak(double seconds) => cheap
+                ? BreakPeakCentralBody(ship, departureBody, direction, clearanceRadius,
+                    escapeSpeed, seconds)
+                : BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
+                    escapeSpeed, seconds);
+
+            double SolveForTarget(double target)
+            {
+                double seed = Math.Clamp(candidateSeconds, MinimumArcSeconds, cap);
+                if (!(target > 0.0)) return seed;
+
+                double low;
+                double high;
+                if (Peak(seed) > target)
+                {
+                    // Too hard: grow until the peak crosses below the target.
+                    low = seed;
+                    high = seed;
+                    bool crossed = false;
+                    for (int step = 0; step < 48 && high < cap; step++)
+                    {
+                        double next = Math.Min(high * 1.25, cap);
+                        if (Peak(next) <= target)
+                        {
+                            high = next;
+                            crossed = true;
+                            break;
+                        }
+
+                        low = next;
+                        high = next;
+                    }
+
+                    // The cap is as gentle as the trip allows and is still
+                    // harder than the target: the plan cannot reach the level.
+                    if (!crossed) return cap;
+                }
+                else
+                {
+                    // Too gentle: shrink until the peak crosses above the
+                    // target. If even the shortest arc stays gentle, the
+                    // minimum is the strongest break this level can build.
+                    high = seed;
+                    low = seed;
+                    bool crossed = false;
+                    for (int step = 0; step < 80 && low > MinimumArcSeconds; step++)
+                    {
+                        double next = Math.Max(low * 0.8, MinimumArcSeconds);
+                        if (Peak(next) > target)
+                        {
+                            low = next;
+                            crossed = true;
+                            break;
+                        }
+
+                        high = next;
+                        low = next;
+                    }
+
+                    if (!crossed) return MinimumArcSeconds;
+                }
+
+                // A probe stops at a looser relative tolerance: only the
+                // certified build's break is reported. The certified tolerance
+                // is tight enough that the duration does not depend on the
+                // seed the trip supplied.
+                double tolerance = cheap ? 1e-3 * high : 1e-7 * high;
+                for (int iteration = 0; iteration < 64 && high - low > tolerance;
+                     iteration++)
+                {
+                    double middle = 0.5 * (low + high);
+                    if (Peak(middle) <= target) high = middle;
+                    else low = middle;
+                }
+
+                return Math.Clamp(high, MinimumArcSeconds, cap);
+            }
+
+            double seconds = SolveForTarget(FixedBurnAccelerationMps2);
+
+            // Numerical safety at 1 g, where the target is the drive's margin
+            // limit. The full-field peak the plan reports is the authority; if
+            // it lands above the drive, re-solve a fifth of a percent lower once.
+            if (!cheap)
+            {
+                double certified = BreakPeakFullField(ship, departureBody, direction,
+                    clearanceRadius, escapeSpeed, seconds);
+                if (certified > MaxAccelerationMps2)
+                {
+                    seconds = SolveForTarget(0.998 * FixedBurnAccelerationMps2);
+                }
+            }
+
+            return Math.Clamp(seconds, MinimumArcSeconds, cap);
+        }
+
         /// <summary>The quintic break's peak commanded thrust for one duration.
         /// The search uses the departure body's gravity alone: the break's
         /// meaningful field is its own central body, and evaluating the full
@@ -1892,6 +2069,40 @@ namespace TimeToExplore.Simulation
                     "The plan's first arc is not a quintic break.", nameof(plan));
 
             return BreakPeakFullFieldAlongPath(arc.Path, arc.StartJulianDate);
+        }
+
+        /// <summary>Diagnostic only: the pinned break's duration for a plan's
+        /// own departure state and an explicit escape ray, with the trip's
+        /// available time supplied as a cap. The tests use it to hold the ray
+        /// fixed while the trip time changes: the solve depends on the departure
+        /// state, the level, and the ray, and the trip enters only through the
+        /// cap, so the same ray gives the same duration.</summary>
+        public double MeasurePinnedBreakDurationSeconds(TrajectoryPlan plan,
+            Vector3d escapeDirection, double availableSeconds)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+            if (escapeDirection.SqrMagnitude < 0.5)
+                throw new ArgumentException("An escape ray is needed.", nameof(escapeDirection));
+
+            PlanArc arc = plan.Arcs[0];
+            if (arc.Phase != FlightPhase.Departure || arc.IsCoast || arc.IsFiniteBurn)
+                throw new ArgumentException(
+                    "The plan's first arc is not a quintic break.", nameof(plan));
+
+            BodyRuntime departureBody = _model.Get(arc.ReferenceBodyId)
+                ?? throw new ArgumentException(
+                    $"No body '{arc.ReferenceBodyId}' for the break arc.", nameof(plan));
+
+            _model.ComputeState(departureBody, arc.EndJulianDate,
+                out Vector3d anchorPosition, out _);
+            double clearanceRadius = Vector3d.Distance(
+                arc.Path.PositionAt(1.0), anchorPosition);
+            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
+
+            return SolveBreakSecondsForCommandPeakWithin(plan.DepartureState,
+                departureBody, escapeDirection.Normalized, clearanceRadius, escapeSpeed,
+                arc.DurationSeconds, Math.Max(MinimumArcSeconds, availableSeconds),
+                cheap: false);
         }
 
         /// <summary>

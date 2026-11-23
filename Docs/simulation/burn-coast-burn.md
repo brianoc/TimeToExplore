@@ -270,6 +270,65 @@ distance, so a gentle break spends tens of kilometres per second even though it
 ends at 0.92 km/s. What the pin removes is the 53 m/s² peak and the
 four-sphere-long backwards burn.
 
+## The level pin is opt-in
+
+The shipped break aims at the drive's **limit**, not at the level the player
+chose. `TripPlanner.PinBreakToCommandAcceleration` (default **false**) is the
+alternative: the break's duration is solved so the quintic's peak **commanded**
+thrust equals `FixedBurnAccelerationMps2` — the level the departure burn, the
+brake, and the hybrid capture already command, 9.70 m/s² at 1 g and 2.942 at
+0.3 g. The peak falls as the duration grows, so the solve brackets the crossing
+from the coast's share and bisects, on the fast central-body model; the plan
+that is reported is still the full-field measurement, so its peak can sit a
+fraction of a percent from the target at 0.3 g, where the 5% screen leaves the
+departure body alone in charge.
+
+The duration is then a property of the departure state, the level, and the
+escape ray, not of the trip. With one ray held fixed, 30, 90 and 200 days to
+Mars at 0.3 g solve the same duration to **8.4 × 10⁻⁸** relative, and the
+available-time cap is nowhere near binding (29.1, 89.5 and 198.7 days). The
+plans' own rays are not identical: the outbound asymptote the crossing needs
+rotates **10.96°** by 90 days and **27.67°** by 200, and the reported break
+durations follow it by 0.66% and 3.05%. That is the ray moving, not the trip
+scaling the break.
+
+Measured at the epoch from Gateway, conic capture. The Mercury row is the
+8-day plan the table above records; the Mars rows are the pinned break at three
+trip times, against the 90-day default build:
+
+| Plan | Pin | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Total Δv (km/s) |
+|---|---|---:|---:|---:|---:|
+| Mercury, 1 g, 8 d | off | 0.569 | 2.85 | 90.2 | 557.0 |
+| Mercury, 1 g, 8 d | **on** | 0.3086 | 9.7000 | 167.2 | 615 |
+| Mars, 0.3 g, 30 d | **on** | 0.5632 | 2.9400 | 92.7 | 232.2 |
+| Mars, 0.3 g, 90 d | **on** | 0.5669 | 2.9392 | 93.2 | 127.7 |
+| Mars, 0.3 g, 200 d | **on** | 0.5461 | 2.9419 | 90.0 | 99.4 |
+| Mars, 0.3 g, 90 d | off | 4.844 | 0.033 | 8.8 | 44.4 |
+
+The trade is the point: **a short break at a high level spends more delta-v.**
+Pinning Mercury's 8-day break to 1 g nearly doubles its spend, 90.2 → 167.2
+km/s, because the quintic has to cancel the station's motion and cross the
+sphere in a third of the time. At Mars 0.3 g the pinned break costs 90–93 km/s
+at any trip time, against 8.8 for the 4.844-day gentle break the default
+builds; the long trip's saving shows in the coast and the total, not in the
+break. The level pin is not a fuel optimisation; it is a way to make the departure
+burn and the two fixed burns command the same acceleration.
+
+The floors move only when the option is on, and only through the near-floor
+basin: Mercury at 1 g stays **3.217 d**, Mars at 0.3 g is **6.864** against
+6.730, Jupiter at 0.3 g **13.713** against 13.072, and Uranus at 0.3 g lands at
+**40.874** against 33.604 — the pinned break's changed basin selects a different
+certified point, not a different profile. The eight-case sweep, its windows,
+and the arc breakdown are the measurement the caretaker reviews before deciding
+whether the level pin becomes the default; keeping the option off leaves every number
+above and every anchor in this document unchanged.
+
+At 1 g the target is the drive's own margin limit (9.7 m/s² of 10.0), so a
+certified peak above it would spend the plan's feasibility. The 5% screen puts
+the full field in charge at that level, which is why the measured pinned peaks
+are 9.7000 m/s², and the solver retargets a fifth of a percent lower once if a
+certified peak ever lands above the 10.0 m/s² drive.
+
 # The burns in the summed field
 
 The two fixed burns are integrated through the **summed gravity field**, not a
