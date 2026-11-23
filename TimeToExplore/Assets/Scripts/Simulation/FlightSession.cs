@@ -101,6 +101,27 @@ namespace TimeToExplore.Simulation
         /// player tries many targets at one date.</summary>
         private const int MaxCachedWindows = 8;
 
+        /// <summary>Plans already built at a requested flight time inside a
+        /// preview window. A slider handle returned to a value the player has
+        /// already waited for is a dictionary hit rather than another
+        /// multi-second build. The entries share the window cache's key and are
+        /// dropped with it, so a changed departure date or a
+        /// place/teleport can never read one back.</summary>
+        private readonly Dictionary<WindowKey, List<CachedRetime>> _retimedPlans =
+            new Dictionary<WindowKey, List<CachedRetime>>();
+
+        /// <summary>How many retimed plans one window keeps. A drag that pauses
+        /// and comes back needs a handful; the bound keeps a long scrub from
+        /// growing without limit.</summary>
+        private const int MaxCachedRetimesPerWindow = 12;
+
+        /// <summary>How close a repeat ask must be to a cached build. A slider
+        /// is continuous, so a handle returned near its old position differs by
+        /// a fraction of the window rather than being bit-identical. A fifth of
+        /// a percent of the window is under a pixel of the track and far below
+        /// any physical difference in the route.</summary>
+        private const double RetimeCacheFraction = 0.002;
+
         /// <summary>Departure state the preview was solved from. Retiming
         /// rebuilds from this rather than the current (possibly coasted) state,
         /// so the preview stays one coherent draft.</summary>
@@ -397,7 +418,22 @@ namespace TimeToExplore.Simulation
                 return Preview;
             }
 
-            Preview = _planner.PlanAtDuration(_previewDeparture, Preview.TargetId, duration);
+            string targetId = Preview.TargetId;
+            double julianDate = _previewDeparture.JulianDate;
+            double burnLevelG = BurnLevelG;
+            CaptureStyle arrival = ArrivalStyle;
+
+            // A duration the player has already waited for is a dictionary
+            // hit. This is the synchronous twin of the slider's cache path.
+            if (TryGetCachedRetime(targetId, julianDate, burnLevelG, arrival, duration,
+                    RetimeCacheTolerance, out TrajectoryPlan cached))
+            {
+                Preview = cached;
+                return Preview;
+            }
+
+            Preview = _planner.PlanAtDuration(_previewDeparture, targetId, duration);
+            CacheRetime(targetId, julianDate, burnLevelG, arrival, duration, Preview);
             return Preview;
         }
 
@@ -413,8 +449,10 @@ namespace TimeToExplore.Simulation
         /// The request is clamped to the preview's window exactly as
         /// <see cref="SetPreviewDuration"/> clamps it, and the worker's planner
         /// copies the session planner's configuration, so the background plan is
-        /// the same plan the synchronous path would build for that duration.
-        /// Returns false when there is no preview or the session has been
+        /// the same plan the synchronous path would build for that duration. A
+        /// duration this window has already built — within a fraction of the
+        /// slider's track — is published from the retime cache without queueing
+        /// work. Returns false when there is no preview or the session has been
         /// disposed.
         /// </summary>
         public bool RequestPreviewDuration(double seconds)
@@ -450,8 +488,34 @@ namespace TimeToExplore.Simulation
                 return true;
             }
 
-            var request = new RetimeRequest(_previewDeparture, Preview.TargetId, duration,
-                ArrivalStyle, _planner);
+            string targetId = Preview.TargetId;
+            double julianDate = _previewDeparture.JulianDate;
+            double burnLevelG = BurnLevelG;
+            CaptureStyle arrival = ArrivalStyle;
+
+            // A duration the player has already waited for is answered at once:
+            // the plan is in the retime cache, so a handle returned to an old
+            // value must not queue another multi-second build behind it.
+            if (TryGetCachedRetime(targetId, julianDate, burnLevelG, arrival, duration,
+                    RetimeCacheTolerance, out TrajectoryPlan cached))
+            {
+                lock (_retimeLock)
+                {
+                    if (_retimeStop) return false;
+
+                    _retimeGeneration++;
+                    _pendingRetime = null;
+                    _completedRetime = cached;
+                    _completedRetimeGeneration = _retimeGeneration;
+                    _requestedPreviewSeconds = duration;
+                    BeginPreviewReplacement();
+                }
+
+                return true;
+            }
+
+            var request = new RetimeRequest(_previewDeparture, targetId, duration,
+                arrival, _planner);
 
             lock (_retimeLock)
             {
@@ -785,8 +849,15 @@ namespace TimeToExplore.Simulation
         private TrajectoryPlan BuildRetime(RetimeRequest request)
         {
             request.ApplyTo(_workerPlanner);
-            return _workerPlanner.PlanAtDuration(request.Departure, request.TargetId,
-                request.DurationSeconds);
+            TrajectoryPlan plan = _workerPlanner.PlanAtDuration(request.Departure,
+                request.TargetId, request.DurationSeconds);
+
+            // Cache even a superseded build: the plan is still the right answer
+            // for this window and duration, and it is exactly the work a
+            // returned slider handle is asking to skip.
+            CacheRetime(request.TargetId, request.Departure.JulianDate,
+                request.BurnLevelG, request.Arrival, request.DurationSeconds, plan);
+            return plan;
         }
 
         /// <summary>One background Plot build: the window for the request's
@@ -818,9 +889,13 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan = window.Plan;
             if (!request.AtMinimum && plan.IsFeasible
                 && request.DurationSeconds > plan.FlightTimeSeconds)
+            {
+                double duration = Math.Min(request.DurationSeconds, window.MaximumSeconds);
                 plan = _workerPlanner.PlanAtDuration(request.Departure,
-                    request.TargetId, Math.Min(request.DurationSeconds,
-                        window.MaximumSeconds));
+                    request.TargetId, duration);
+                CacheRetime(request.TargetId, request.Departure.JulianDate,
+                    request.BurnLevelG, request.Arrival, duration, plan);
+            }
             return new CompletedPreview(plan, window.Plan,
                 window.MaximumSeconds, request.Departure.JulianDate);
         }
@@ -840,6 +915,8 @@ namespace TimeToExplore.Simulation
                 _requestedPreviewSeconds = double.NaN;
                 _pendingPreview = null;
                 _completedPreview = null;
+                _windows.Clear();
+                _retimedPlans.Clear();
                 Monitor.PulseAll(_retimeLock);
                 thread = _plannerThread;
             }
@@ -945,6 +1022,7 @@ namespace TimeToExplore.Simulation
                 if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
                 {
                     _windows.Clear();
+                    _retimedPlans.Clear();
                     _windowEpoch = julianDate;
                 }
                 if (_windows.TryGetValue(key, out PreviewWindow cached)) return cached;
@@ -957,7 +1035,11 @@ namespace TimeToExplore.Simulation
 
             lock (_retimeLock)
             {
-                if (_windows.Count >= MaxCachedWindows) _windows.Clear();
+                if (_windows.Count >= MaxCachedWindows)
+                {
+                    _windows.Clear();
+                    _retimedPlans.Clear();
+                }
                 _windows[key] = window;
             }
             return window;
@@ -979,14 +1061,103 @@ namespace TimeToExplore.Simulation
             lock (_retimeLock) return _windows.TryGetValue(key, out window);
         }
 
-        /// <summary>Drop every cached preview window. Called when the ship's
-        /// pinned departure state is replaced, so a later plot cannot reuse a
-        /// window that belonged to another state.</summary>
+        /// <summary>How close a repeat request must be to a cached retime to
+        /// reuse it. It is a fraction of the preview's own window, because the
+        /// slider's range is the window: a fifth of a percent is under a pixel
+        /// of the track. A preview without a finite window matches to the
+        /// second.</summary>
+        private double RetimeCacheTolerance
+        {
+            get
+            {
+                double span = PreviewMaximumSeconds - PreviewMinimumSeconds;
+                return double.IsFinite(span) && span > 0.0
+                    ? Math.Max(1.0, RetimeCacheFraction * span)
+                    : 1.0;
+            }
+        }
+
+        /// <summary>
+        /// Look up a plan this session already built at (or near) a requested
+        /// duration. The window inputs are part of the key and the cache is
+        /// shared with the worker, so every access is under
+        /// <see cref="_retimeLock"/>. A miss is cheap and means the caller must
+        /// build; a hit is the whole point of the retime cache.
+        /// </summary>
+        private bool TryGetCachedRetime(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double seconds,
+            double tolerance, out TrajectoryPlan plan)
+        {
+            plan = null;
+            var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
+
+            lock (_retimeLock)
+            {
+                if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
+                    return false;
+                if (!_retimedPlans.TryGetValue(key, out List<CachedRetime> entries))
+                    return false;
+
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (Math.Abs(entries[i].RequestedSeconds - seconds) <= tolerance)
+                    {
+                        plan = entries[i].Plan;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Keep a finished plan for the window and duration that produced it, on
+        /// whichever thread built it. The oldest entry of a full window is
+        /// dropped first. A plan for a window the session has since left is
+        /// refused, so a superseded worker cannot repopulate a dropped date.
+        /// </summary>
+        private void CacheRetime(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double requestedSeconds,
+            TrajectoryPlan plan)
+        {
+            if (plan == null) return;
+
+            var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
+            lock (_retimeLock)
+            {
+                if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
+                    return;
+
+                if (!_retimedPlans.TryGetValue(key, out List<CachedRetime> entries))
+                {
+                    entries = new List<CachedRetime>();
+                    _retimedPlans[key] = entries;
+                }
+
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (Math.Abs(entries[i].RequestedSeconds - requestedSeconds) <= 1e-6)
+                    {
+                        entries[i] = new CachedRetime(requestedSeconds, plan);
+                        return;
+                    }
+                }
+
+                if (entries.Count >= MaxCachedRetimesPerWindow) entries.RemoveAt(0);
+                entries.Add(new CachedRetime(requestedSeconds, plan));
+            }
+        }
+
+        /// <summary>Drop every cached preview window and retimed plan. Called
+        /// when the ship's pinned departure state is replaced, so a later plot
+        /// cannot reuse a plan that belonged to another state.</summary>
         private void ClearWindows()
         {
             lock (_retimeLock)
             {
                 _windows.Clear();
+                _retimedPlans.Clear();
                 _windowEpoch = double.NaN;
             }
         }
@@ -1581,6 +1752,22 @@ namespace TimeToExplore.Simulation
 
             public TrajectoryPlan Plan { get; }
             public double MaximumSeconds { get; }
+        }
+
+        /// <summary>A plan the session already built at a requested flight time,
+        /// kept so a returned slider handle is instant. The stored seconds are
+        /// the request, not the plan's own total, so the next drag asks at the
+        /// same value it used before.</summary>
+        private readonly struct CachedRetime
+        {
+            public CachedRetime(double requestedSeconds, TrajectoryPlan plan)
+            {
+                RequestedSeconds = requestedSeconds;
+                Plan = plan;
+            }
+
+            public double RequestedSeconds { get; }
+            public TrajectoryPlan Plan { get; }
         }
 
         /// <summary>The inputs that make a preview window unique. The departure
