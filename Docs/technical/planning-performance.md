@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T17:29:55Z }
 ---
 
 # The problem
@@ -94,6 +94,20 @@ buys no time
 `(departure date, target, burn level, cruise style, arrival style)`. A repeat
 plot reuses both; a changed departure date, or a place/teleport, clears the
 cache. This is what makes a repeat selection free rather than merely fast.
+
+The retimed plans are cached as well, keyed by the same window inputs plus the
+requested flight time. A finished background build is stored even when a newer
+ask superseded it — the plan is still the right answer for that duration, and it
+is exactly the work a returned handle would otherwise repeat. The newest twelve
+per window are kept, and a repeat ask is matched when it lies within **0.2% of
+the window**, because a continuous slider put back near its old position is not
+bit-identical; that is under a pixel of the track and far below a physical
+difference in the route. Both the synchronous `SetPreviewDuration` and the
+slider's `RequestPreviewDuration` read the cache before queueing work, and a hit
+is published directly, so a duration the player has already waited for costs a
+dictionary lookup instead of another multi-second build. The cache shares the
+window's lifetime: a changed departure date, a place/teleport, or clearing the
+windows drops it.
 
 # The background planner
 
@@ -808,7 +822,7 @@ sections record how each measurement was reached.
 | The certified pin's pass cap and its retry | `TripPlanner.DefaultOuterPasses`, `RetryOuterPasses`, `Build`'s certified burn–coast–burn branch, `BuildResult.PinStalled` |
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
-| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
+| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `SetPreviewDuration`'s floor reuse |
 | Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 

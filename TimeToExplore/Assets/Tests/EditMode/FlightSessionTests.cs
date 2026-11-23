@@ -823,6 +823,101 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.PendingPreviewSeconds, Is.NaN);
         }
 
+        /// <summary>
+        /// A duration the player has already waited for is a cache hit. The
+        /// point is a drag that goes out and comes back: paying for the same
+        /// multi-second build twice is what the cache exists to stop.
+        /// </summary>
+        [Test]
+        public void RetimingBackToAPreviouslyBuiltDurationReusesTheCachedPlan()
+        {
+            _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            double first = 1.6 * minimum;
+            double other = 2.2 * minimum;
+
+            TrajectoryPlan builtOnce = _session.SetPreviewDuration(first);
+            TrajectoryPlan different = _session.SetPreviewDuration(other);
+            Assert.That(different, Is.Not.SameAs(builtOnce),
+                "a different duration is a different trip and a new build");
+
+            TrajectoryPlan back = _session.SetPreviewDuration(first);
+
+            Assert.That(back, Is.SameAs(builtOnce),
+                "the duration was already built; returning to it must reuse the plan");
+            Assert.That(_session.Preview, Is.SameAs(builtOnce));
+            Assert.That(back.FlightTimeSeconds, Is.EqualTo(first).Within(1.0));
+        }
+
+        /// <summary>
+        /// The slider's background path reuses a previously built duration too.
+        /// It is handed to the publisher directly, so no worker is started for
+        /// work the session has already paid for.
+        /// </summary>
+        [Test]
+        public void ABackgroundRetimeToAPreviouslyBuiltDurationIsAnsweredFromTheCache()
+        {
+            _session.Plot("mars", _epoch);
+            double chosen = 1.7 * _session.PreviewMinimumSeconds;
+            TrajectoryPlan built = _session.SetPreviewDuration(chosen);
+
+            Assert.That(_session.RequestPreviewDuration(chosen), Is.True);
+            Assert.That(_session.HasRetimeWorker, Is.False,
+                "a cached duration must not queue a background build");
+            Assert.That(_session.TryApplyCompletedRetime(out TrajectoryPlan published),
+                Is.True, "the cached plan is waiting for the publisher");
+
+            Assert.That(published, Is.SameAs(built));
+            Assert.That(_session.Preview, Is.SameAs(built));
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN);
+        }
+
+        /// <summary>
+        /// A continuous slider returns near, not bit-identical to, a value it
+        /// visited. The cache matches within a fraction of the window so that a
+        /// handle put back near its old position still hits, while a genuinely
+        /// different trip still builds.
+        /// </summary>
+        [Test]
+        public void ARepeatAskNearACachedDurationReusesItsPlan()
+        {
+            _session.Plot("mars", _epoch);
+            double minimum = _session.PreviewMinimumSeconds;
+            double span = _session.PreviewMaximumSeconds - minimum;
+            double chosen = 1.8 * minimum;
+            TrajectoryPlan built = _session.SetPreviewDuration(chosen);
+
+            TrajectoryPlan near = _session.SetPreviewDuration(
+                chosen + 0.001 * span);
+            Assert.That(near, Is.SameAs(built),
+                "a handle returned within a fraction of the window reuses the plan");
+
+            TrajectoryPlan far = _session.SetPreviewDuration(chosen + 0.02 * span);
+            Assert.That(far, Is.Not.SameAs(built),
+                "outside the tolerance is a different trip and a new build");
+        }
+
+        /// <summary>
+        /// Retimed plans belong to their departure date, exactly like the
+        /// window. A new date drops them, so plotting back to an old date must
+        /// build again rather than hand back a plan made at another departure.
+        /// </summary>
+        [Test]
+        public void AChangedDepartureDateDropsTheCachedRetimes()
+        {
+            _session.Plot("mars", _epoch);
+            double chosen = 1.6 * _session.PreviewMinimumSeconds;
+            TrajectoryPlan first = _session.SetPreviewDuration(chosen);
+
+            _session.Plot("mars", _epoch + 0.5);
+            _session.Plot("mars", _epoch);
+            TrajectoryPlan again = _session.SetPreviewDuration(chosen);
+
+            Assert.That(again, Is.Not.SameAs(first),
+                "the date change dropped the retimed plans instead of reading " +
+                "one back");
+        }
+
         [Test]
         public void ThePreviewDurationIsClampedToItsWindow()
         {

@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T17:29:55Z }
 ---
 
 # What this adds to the orrery
@@ -155,8 +155,15 @@ state with `TripPlanner.PlanAtDuration`, using its own `TripPlanner` and
 and stays on the main thread. A request that lands on the window's floor is the
 plan the window already solved, so it is handed to the publisher directly
 instead of being rebuilt — a cold build is the profile's most expensive call,
-and near a floor needle it can refuse the very duration the window advertises. A
-plan that finishes after a newer request arrived is discarded and the newest
+and near a floor needle it can refuse the very duration the window advertises.
+A request for a duration the session has already built is answered the same
+way: every finished plan is cached by window and requested flight time (the
+newest twelve per window, matched within 0.2% of the window so a continuous
+handle put back near its old position still hits), so returning to a value the
+player already waited for is a dictionary hit, not another multi-second build.
+The cache is keyed and dropped with the window, so a changed departure date or
+a place/teleport cannot read one back.
+A plan that finishes after a newer request arrived is discarded and the newest
 request is built next, so a drag never queues work behind stale plans. The
 preview stays pinned to `PreviewJulianDate`, and the
 published preview — path, arrival marker and ghost, panel flight time,
@@ -486,6 +493,10 @@ the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
 target or burn level misses, and a changed departure date invalidates the cache.
+A retimed plan is cached by its requested duration too: retiming away and back
+returns the same plan, a background ask for an already-built duration publishes
+without starting the worker, a repeat within 0.2% of the window reuses it, and a
+date change drops it.
 Begin itself is pinned to the preview: at Mercury 1 g it flies the **3.044696 d
 burn-only minimum** (break → departure burn → brake → capture, no cruise coast)
 and the autopilot arrives 0.1 m and 0.0001 m/s from the plan's state, while at
