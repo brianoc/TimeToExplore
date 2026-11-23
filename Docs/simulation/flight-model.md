@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T00:00:00Z }
 ---
 
 # The one big assumption
@@ -417,6 +417,12 @@ the plan does. This is a **readout, not a budget**: the ship has no finite tank,
 its mass does not change in flight, and no plan is refused or stranded for
 fuel. A finite tank, mass-dependent acceleration, and the failure state are
 milestone 3 ([ADR-016](../decisions/adr-016-fuel-readout.md)).
+
+The measured trade across the burn-only minimum, the short-coast family and the
+coast floor — and what the break pin costs in propellant — is in [burn–coast–burn
+trips](burn-coast-burn.md#fuel-versus-delta-v). The fast end spends more, not
+less: the Mercury 1 g minimum is 275.4 t against the coast floor's 193.1 t for
+4 h 7 min less trip.
 
 ## Command thrust is not the fuel lever
 

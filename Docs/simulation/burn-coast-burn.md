@@ -4,7 +4,7 @@ title: Burn–coast–burn trips
 description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T00:00:00Z }
 ---
 
 # The trip
@@ -317,7 +317,9 @@ sphere in a third of the time. At Mars 0.3 g the pinned break costs 90–93 km/s
 at any trip time, against 8.8 for the 4.844-day gentle break the default
 builds; the long trip's saving shows in the coast and the total, not in the
 break. The level pin is not a fuel optimisation; it is a way to make the departure
-burn and the two fixed burns command the same acceleration.
+burn and the two fixed burns command the same acceleration. [Fuel versus
+delta-v](#fuel-versus-delta-v) measures what it costs in propellant at a fixed
+trip time and at each floor.
 
 The floors move only when the option is on, and only through the near-floor
 basin: Mercury at 1 g stays **3.217 d**, Mars at 0.3 g is **6.864** against
@@ -483,7 +485,8 @@ The family's measured shape at Mercury 1 g, in days and km/s:
 | 3.173249 | short coast | 1,841 | 72,076 s |
 | 3.216099 (floor) | coast (Lambert) | 1,766 | 0.9677 d |
 
-The delta-v falls smoothly as the coast takes more of the crossing, and the two
+The delta-v falls smoothly as the coast takes more of the crossing, and the
+propellant with it ([fuel versus delta-v](#fuel-versus-delta-v)), and the two
 branches meet inside the gate at the floor. Mars 0.3 g runs 1,592 → 1,569 →
 1,394 / 1,319 / 1,195 → 1,172 km/s and Jupiter 0.3 g 3,109 → 3,076 → 2,689 /
 2,533 / 2,420 → 2,271 the same way. The branch switch is not free — Mercury's
@@ -551,6 +554,139 @@ The short coast fills what this section left open: the range between the
 burn-only minimum and the coast floor is now a buildable family, and the coast
 floor itself still comes from the unchanged coast path. No default `Plan()`
 floor, window, or delta-v anchor moved.
+
+# Fuel versus delta-v
+
+The pin and the short coast are argued in delta-v, but the nav computer quotes
+**propellant**. Its `Fuel` row is the rocket equation at the design exhaust
+velocity, `v_e = 10,000 km/s`, against the ship's 1,000 t dry mass
+([the fuel readout](/simulation/flight-model.md#the-fuel-readout)):
+
+```text
+m_p = m_dry (exp(delta-v / v_e) - 1)      PropellantFraction = m_p / m_0
+```
+
+`TrajectoryPlan.PropellantKg` and `PropellantFraction` are that readout, and
+every table below is printed from them by
+`TheFastPlansSpendMorePropellantNotLess` rather than recomputed by hand. The
+exponential is the reason to measure in propellant: it exaggerates each delta-v
+difference. At 1,000 t dry, 1,766 km/s is 193 t, 2,433 km/s is 275 t, and
+3,109 km/s is 365 t.
+
+## The pin at a fixed trip time
+
+Measured at the epoch (2026-11-15) from Gateway with the conic capture. The trip
+time is the same on both sides of each comparison, so the fuel difference is the
+pin's own cost:
+
+| Plan | Pin | Trip (d) | Delta-v (km/s) | Propellant (t) | Share of departure mass |
+|---|---|---:|---:|---:|---:|
+| Mercury 1 g, 8 d | off | 8.00000 | 557.0 | 57.3 | 5.42% |
+| Mercury 1 g, 8 d | **on** | 8.00000 | 615.5 | 63.5 | 5.97% |
+| Mars 0.3 g, 30 d | **on** | 30.00000 | 232.2 | 23.5 | 2.30% |
+| Mars 0.3 g, 90 d | **on** | 90.00000 | 127.7 | 12.8 | 1.27% |
+| Mars 0.3 g, 200 d | **on** | 200.00000 | 99.4 | 10.0 | 0.99% |
+| Mars 0.3 g, 90 d | off | 90.00000 | 44.4 | 4.4 | 0.44% |
+
+At a fixed time the pin is a **cost**, not a saving. Mercury's 8-day break goes
+90.2 → 167.2 km/s, so the total goes 557.0 → 615.5 and the propellant 57.3 →
+63.5 t — 6.2 t more for the same 8 days. Mars at 0.3 g is the same shape: the
+pinned 30, 90 and 200-day plans spend 232.2 / 127.7 / 99.4 km/s and 23.5 / 12.8
+/ 10.0 t, against the 90-day default build's 44.4 km/s and 4.4 t. Spending falls
+as the trip lengthens, but the pin never becomes free at a fixed time: its break
+must command the level whatever the coast is doing.
+
+## The pin at a floor
+
+The floors are the case where the sign can go the other way, because the pin
+selects a different **certified duration** and the two sides are not the same
+trip. Both time and fuel are quoted for that reason.
+
+| Target | Level | Pin | Floor (d) | Delta-v (km/s) | Propellant (t) | Share |
+|---|---|---:|---:|---:|---:|---:|
+| Mercury | 1 g | off | 3.21610 | 1,765.5 | 193.1 | 16.18% |
+| Mercury | 1 g | **on** | 3.21686 | 1,764.3 | 193.0 | 16.17% |
+| Mars | 0.3 g | off | 6.73042 | 1,171.6 | 124.3 | 11.06% |
+| Mars | 0.3 g | **on** | 6.86413 | 1,144.4 | 121.2 | 10.81% |
+| Jupiter | 0.3 g | off | 13.07211 | 2,271.0 | 255.0 | 20.32% |
+| Jupiter | 0.3 g | **on** | 13.71332 | 2,028.1 | 224.8 | 18.36% |
+| Uranus | 1 g | off | 33.65372 | 2,070.0 | 230.0 | 18.70% |
+| Uranus | 1 g | **on** | 32.48399 | 2,208.3 | 247.1 | 19.81% |
+| Uranus | 0.3 g | off | 33.60438 | 2,300.8 | 258.7 | 20.55% |
+| Uranus | 0.3 g | **on** | 40.87407 | 1,808.0 | 198.2 | 16.54% |
+
+Read as a time/fuel trade, not as like-for-like trips:
+
+* **Mercury 1 g** is the same certified point on both sides: 3.21610 against
+  3.21686 d, 193.1 against 193.0 t. The pin changes nothing it can reach there.
+* **Mars 0.3 g** is 3.1 t cheaper (124.3 → 121.2 t) but takes **3 h 12 min
+  longer** (6.86413 against 6.73042 d).
+* **Jupiter 0.3 g** is 30.2 t cheaper (255.0 → 224.8 t) for **15 h 23 min
+  longer**.
+* **Uranus 0.3 g** is 60.5 t cheaper (258.7 → 198.2 t) but **7.27 days longer**.
+* **Uranus 1 g** goes the other way: the pin is **17.1 t dearer** (230.0 →
+  247.1 t) even though it is **28 h 4 min shorter**. Its changed basin selects a
+  different 1 g floor.
+
+So the pin is cheaper at some 0.3 g floors and dearer at long fixed trips and at
+Uranus 1 g. It is a level choice, not a fuel optimisation.
+
+## The new family
+
+The burn-only minimum, the short-coast midpoint and the coast floor, in the same
+order as [the nav computer's minimum](#the-nav-computers-minimum) and [the short
+coast](#the-short-coast):
+
+| Target | Level | Plan | Trip (d) | Delta-v (km/s) | Propellant (t) | Share |
+|---|---|---:|---:|---:|---:|---:|
+| Mercury | 1 g | burn-only minimum | 3.04470 | 2,432.8 | 275.4 | 21.60% |
+| Mercury | 1 g | short coast | 3.10000 | 2,023.4 | 224.3 | 18.32% |
+| Mercury | 1 g | coast floor | 3.21610 | 1,765.5 | 193.1 | 16.18% |
+| Mars | 0.3 g | burn-only minimum | 6.49501 | 1,591.9 | 172.6 | 14.72% |
+| Mars | 0.3 g | short coast | 6.60000 | 1,333.1 | 142.6 | 12.48% |
+| Mars | 0.3 g | coast floor | 6.73042 | 1,171.6 | 124.3 | 11.06% |
+| Jupiter | 0.3 g | burn-only minimum | 12.54280 | 3,109.0 | 364.6 | 26.72% |
+| Jupiter | 0.3 g | short coast | 12.80000 | 2,540.1 | 289.2 | 22.43% |
+| Jupiter | 0.3 g | coast floor | 13.07211 | 2,271.0 | 255.0 | 20.32% |
+
+Propellant falls monotonically as the trip lengthens, in the same order as
+delta-v. The short coast is the part the player controls: every hour added
+between the minimum and the floor buys propellant back. The measured rate is
+about **20 t per hour** at Mercury and **8.6 t per hour** at Mars and Jupiter.
+
+The branch switch is still a step, not a smooth continuation. The last
+short-coast probe (three quarters of the way across the gap) spends **75.5 km/s**
+more than the Lambert floor at Mercury (3.173249 d / 1,841.0 km/s against
+3.216099 d / 1,765.5), **148.6** more at Jupiter (12.939783 d / 2,419.6 against
+13.072112 d / 2,271.0), and **23.7** more at Mars (6.671570 d / 1,195.3 against
+6.730422 d / 1,171.6). The short coast is one conic carrying the whole crossing,
+while the floor lets the Lambert solver choose the transfer. Quoting the step is
+the honest reading of the family: the gap is buildable and monotone, but it is
+not the same curve as the coast path it hands over to.
+
+## The answer
+
+**The fast plans use more propellant, not less.** Against the coast floor:
+
+* **Mercury 1 g** — the burn-only minimum buys **4 h 7 min** (3.04470 against
+  3.21610 d) for **667 km/s** more and **82.3 t** more propellant: 275.4 t
+  against 193.1 t, 21.60% against 16.18% of departure mass.
+* **Mars 0.3 g** — **5 h 39 min** (6.49501 against 6.73042 d) for **420 km/s**
+  and **48.3 t**: 172.6 against 124.3 t, 14.72% against 11.06%.
+* **Jupiter 0.3 g** — **12 h 42 min** (12.54280 against 13.07211 d) for
+  **838 km/s** and **109.6 t**: 364.6 against 255.0 t, 26.72% against 20.32%.
+
+That is the trade the whole profile exposes: a coast minute is a minute of free
+travel, and thrusting through it is what makes the fast end expensive. The
+short-coast branch does not change that — it lets the player spend time to buy
+the propellant back, one buildable duration at a time. The pin is a separate
+axis: at a fixed time it is a cost, and at a floor it is a time/fuel trade whose
+sign depends on which certified point its changed basin selects.
+
+The fuel readout is still a **readout, not a budget**: the ship has no finite
+tank, its mass does not change in flight, and no plan is refused for fuel. These
+figures describe what a future tank would have to hold
+([ADR-016](/decisions/adr-016-fuel-readout.md)).
 
 # The burns in the summed field
 

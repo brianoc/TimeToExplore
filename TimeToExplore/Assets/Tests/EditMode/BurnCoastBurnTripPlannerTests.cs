@@ -1971,6 +1971,330 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        /// <summary>
+        /// Step 6: what speed costs in **propellant**, not in delta-v alone. The
+        /// flight panel's fuel readout is the rocket equation at the design
+        /// exhaust velocity, so it is monotone in delta-v by construction; the
+        /// question this table answers is where the delta-v goes. Three
+        /// comparisons, all measured at the epoch (2026-11-15) from Gateway with
+        /// the conic capture:
+        ///
+        /// 1. the pin on and off at a fixed trip time, where the pin spends break
+        ///    delta-v to make the quintic command the fixed burns' level;
+        /// 2. the pin on and off at each floor — a time/fuel trade whose two
+        ///    sides are different certified durations, so each row quotes both;
+        /// 3. the new family — burn-only minimum, short-coast midpoint, coast
+        ///    floor — and the branch switch across the last quarter of the gap,
+        ///    quoted rather than smoothed away.
+        ///
+        /// The answer is the same in every row: **the fast plans spend more
+        /// propellant, not less.** At Mercury 1 g the burn-only minimum buys
+        /// 4 h 7 min for 82 t more propellant (275 t against 193 t); at Mars
+        /// 0.3 g it buys 5.65 h for 48 t (173 t against 124 t). The short coast
+        /// lets the player buy the propellant back by adding time.
+        /// </summary>
+        [Test]
+        public void TheFastPlansSpendMorePropellantNotLess()
+        {
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+            var rows = new List<(string Family, string Label, double LevelG,
+                TrajectoryPlan Plan)>();
+            var watch = Stopwatch.StartNew();
+
+            TrajectoryPlan Record(string family, string label, double level,
+                TrajectoryPlan plan)
+            {
+                Assert.That(plan.IsFeasible, Is.True, $"{label}: {plan.InfeasibleReason}");
+                rows.Add((family, label, level, plan));
+                return plan;
+            }
+
+            TrajectoryPlan At(string targetId, double level, double days, bool pin)
+            {
+                _planner.BurnLevelG = level;
+                _planner.PinBreakToCommandAcceleration = pin;
+                return _planner.PlanAtDuration(ship, targetId,
+                    days * JulianDate.SecondsPerDay);
+            }
+
+            TrajectoryPlan Floor(string targetId, double level, bool pin)
+            {
+                _planner.BurnLevelG = level;
+                _planner.PinBreakToCommandAcceleration = pin;
+                return _planner.Plan(ship, targetId);
+            }
+
+            // 1. The pin at a fixed trip time. The pin moves the break, not the
+            //    crossing, so its fuel follows the break's delta-v.
+            TrajectoryPlan mercury8Gentle =
+                Record("pin at a fixed time", "Mercury 1 g 8 d, pin off", 1.0,
+                    At("mercury", 1.0, 8.0, false));
+            TrajectoryPlan mercury8Pinned =
+                Record("pin at a fixed time", "Mercury 1 g 8 d, pin on", 1.0,
+                    At("mercury", 1.0, 8.0, true));
+
+            var marsPinned = new List<TrajectoryPlan>();
+            foreach (double days in new[] { 30.0, 90.0, 200.0 })
+            {
+                marsPinned.Add(Record("pin at a fixed time",
+                    $"Mars 0.3 g {days:F0} d, pin on", 0.3,
+                    At("mars", 0.3, days, true)));
+            }
+
+            TrajectoryPlan mars90Gentle =
+                Record("pin at a fixed time", "Mars 0.3 g 90 d, pin off", 0.3,
+                    At("mars", 0.3, 90.0, false));
+
+            // 2. The pin at each floor. Every case is a certified coast floor, so
+            //    the pin's two sides are different durations and are not
+            //    like-for-like trips.
+            var floorCases = new[]
+            {
+                ("mercury", 1.0), ("mars", 0.3), ("jupiter", 0.3),
+                ("uranus", 1.0), ("uranus", 0.3)
+            };
+            var floorsGentle = new Dictionary<string, TrajectoryPlan>();
+            var floorsPinned = new Dictionary<string, TrajectoryPlan>();
+            foreach ((string targetId, double level) in floorCases)
+            {
+                string key = $"{targetId} {level:F1} g";
+                floorsGentle[key] = Record("floor", $"{key} coast floor, pin off",
+                    level, Floor(targetId, level, false));
+                floorsPinned[key] = Record("floor", $"{key} coast floor, pin on",
+                    level, Floor(targetId, level, true));
+            }
+
+            // 3. The new family and the branch switch at the old floor.
+            var familyCases = new[]
+            {
+                ("mercury", 1.0, 3.10), ("mars", 0.3, 6.60),
+                ("jupiter", 0.3, 12.80)
+            };
+            var minimums = new Dictionary<string, TrajectoryPlan>();
+            var midpoints = new Dictionary<string, TrajectoryPlan>();
+            var edges = new Dictionary<string, TrajectoryPlan>();
+            var branchSteps = new Dictionary<string, double>();
+            foreach ((string targetId, double level, double midpointDays) in familyCases)
+            {
+                string key = $"{targetId} {level:F1} g";
+                _planner.BurnLevelG = level;
+                _planner.PinBreakToCommandAcceleration = false;
+
+                minimums[key] = Record("the new family",
+                    $"{key} burn-only minimum", level,
+                    _planner.PlanFastest(ship, targetId));
+
+                midpoints[key] = Record("the new family",
+                    $"{key} short coast {midpointDays:F2} d", level,
+                    At(targetId, level, midpointDays, false));
+
+                // The branch switch is measured across the last quarter of the
+                // gap: the short coast is the only plan that builds there, and the
+                // Lambert floor at its own (slightly longer) duration is what the
+                // switch hands over to. The difference is the price of the gap's
+                // freedom, quoted rather than smoothed away.
+                double gap = floorsGentle[key].FlightTimeSeconds
+                             - minimums[key].FlightTimeSeconds;
+                TrajectoryPlan edge = _planner.PlanAtDuration(ship, targetId,
+                    minimums[key].FlightTimeSeconds + 0.75 * gap);
+                edges[key] = Record("the new family",
+                    $"{key} short coast, 75% of the gap", level, edge);
+                branchSteps[key] = (edge.DeltaVMps
+                                    - floorsGentle[key].DeltaVMps) / 1000.0;
+            }
+
+            TestContext.WriteLine(
+                $"dry mass {ShipState.DefaultDryMassKg / 1000.0:N0} t, exhaust velocity " +
+                $"{FuelModel.ExhaustVelocityMps / 1000.0:N0} km/s; propellant from the " +
+                $"plan's own PropellantKg and PropellantFraction (the rocket equation).");
+            TestContext.WriteLine(
+                $"{"family",-21} {"case",-36} {"lvl",4} {"trip d",10} " +
+                $"{"dv km/s",9} {"prop t",8} {"prop/dry",9} {"prop/m0",8} {"m0 t",7}");
+            foreach ((string family, string label, double level, TrajectoryPlan plan)
+                     in rows)
+            {
+                TestContext.WriteLine(
+                    $"{family,-21} {label,-36} {level,3:F1}g {plan.FlightTimeDays,10:F5} " +
+                    $"{plan.DeltaVMps / 1000.0,9:F1} {plan.PropellantKg / 1000.0,8:F1} " +
+                    $"{plan.PropellantKg / plan.DryMassKg,9:F4} " +
+                    $"{plan.PropellantFraction * 100.0,7:F2}% " +
+                    $"{(plan.DryMassKg + plan.PropellantKg) / 1000.0,7:F1}");
+            }
+
+            TestContext.WriteLine(
+                "branch switch across the last quarter of the gap " +
+                "(short coast against the Lambert floor):");
+            foreach ((string targetId, double level, double _) in familyCases)
+            {
+                string key = $"{targetId} {level:F1} g";
+                TestContext.WriteLine(
+                    $"  {key}: short coast {edges[key].DeltaVMps / 1000.0:F1} km/s at " +
+                    $"{edges[key].FlightTimeDays:F6} d against the Lambert floor " +
+                    $"{floorsGentle[key].DeltaVMps / 1000.0:F1} km/s at " +
+                    $"{floorsGentle[key].FlightTimeDays:F6} d, step " +
+                    $"{branchSteps[key]:F1} km/s");
+            }
+
+            // More delta-v is more propellant, ordered exactly within each
+            // family: the burn-only crossing is the expensive end, the coast
+            // floor the cheap one.
+            foreach ((string targetId, double level, double _) in familyCases)
+            {
+                string key = $"{targetId} {level:F1} g";
+                TrajectoryPlan minimum = minimums[key];
+                TrajectoryPlan midpoint = midpoints[key];
+                TrajectoryPlan floor = floorsGentle[key];
+
+                Assert.That(minimum.PropellantKg,
+                    Is.GreaterThan(midpoint.PropellantKg),
+                    $"{key}: the burn-only minimum spends more propellant than the short coast");
+                Assert.That(midpoint.PropellantKg,
+                    Is.GreaterThan(floor.PropellantKg),
+                    $"{key}: the short coast spends more than the coast floor");
+                Assert.That(minimum.DeltaVMps, Is.GreaterThan(midpoint.DeltaVMps),
+                    $"{key}: delta-v is ordered the same way");
+                Assert.That(midpoint.DeltaVMps, Is.GreaterThan(floor.DeltaVMps),
+                    $"{key}: delta-v is ordered the same way");
+                Assert.That(branchSteps[key], Is.GreaterThan(0.0),
+                    $"{key}: the branch switch costs delta-v, it is not smooth");
+            }
+
+            // The pin at a fixed trip time is dearer at Mercury and at a long
+            // Mars trip. The 30-day Mars row is the pinned build; the 90-day
+            // default is the gentle break.
+            Assert.That(mercury8Pinned.DeltaVMps,
+                Is.GreaterThan(mercury8Gentle.DeltaVMps),
+                "the pinned 8-day Mercury break spends more delta-v");
+            Assert.That(mercury8Pinned.PropellantKg,
+                Is.GreaterThan(mercury8Gentle.PropellantKg),
+                "so it spends more propellant");
+            Assert.That(marsPinned[0].DeltaVMps,
+                Is.GreaterThan(mars90Gentle.DeltaVMps),
+                "the pin spends more at 30 days than the 90-day default");
+            for (int i = 0; i < marsPinned.Count - 1; i++)
+            {
+                Assert.That(marsPinned[i].DeltaVMps,
+                    Is.GreaterThan(marsPinned[i + 1].DeltaVMps),
+                    "a longer pinned trip spends less delta-v");
+                Assert.That(marsPinned[i].PropellantKg,
+                    Is.GreaterThan(marsPinned[i + 1].PropellantKg),
+                    "and less propellant");
+            }
+
+            // Pinned fractions: the readout's measured values, with the
+            // tolerance the anchors' rounding implies rather than a
+            // hand-recomputed rocket equation.
+            AssertPinnedFuel(minimums["mercury 1.0 g"], 275.4, 0.2160,
+                "Mercury 1 g burn-only");
+            AssertPinnedFuel(floorsGentle["mercury 1.0 g"], 193.2, 0.1619,
+                "Mercury 1 g coast floor");
+            AssertPinnedFuel(minimums["mars 0.3 g"], 172.6, 0.1472,
+                "Mars 0.3 g burn-only");
+            AssertPinnedFuel(floorsGentle["mars 0.3 g"], 124.3, 0.1106,
+                "Mars 0.3 g coast floor");
+
+            // The pin at a floor is a time/fuel trade, not a like-for-like trip:
+            // each side is its own certified duration. At Mars, Jupiter and
+            // Uranus 0.3 g the pinned floor is the cheaper, longer plan; at
+            // Uranus 1 g it is the dearer, shorter one; at Mercury the two are
+            // the same plan to the floor search's resolution.
+            AssertFloorTrade("mars 0.3 g", floorsGentle, floorsPinned, true);
+            AssertFloorTrade("jupiter 0.3 g", floorsGentle, floorsPinned, true);
+            AssertFloorTrade("uranus 0.3 g", floorsGentle, floorsPinned, true);
+            AssertFloorTrade("uranus 1.0 g", floorsGentle, floorsPinned, false);
+
+            TrajectoryPlan mercuryFloorOff = floorsGentle["mercury 1.0 g"];
+            TrajectoryPlan mercuryFloorOn = floorsPinned["mercury 1.0 g"];
+            Assert.That(Math.Abs(mercuryFloorOn.FlightTimeSeconds
+                                 - mercuryFloorOff.FlightTimeSeconds),
+                Is.LessThan(0.01 * JulianDate.SecondsPerDay),
+                "Mercury: the pin's floor is the same certified point");
+            Assert.That(Math.Abs(mercuryFloorOn.PropellantKg
+                                 - mercuryFloorOff.PropellantKg) / mercuryFloorOff.PropellantKg,
+                Is.LessThan(0.01),
+                "and the same propellant, within the floor search's resolution");
+
+            // The branch-switch step the docs quote: the short coast across the
+            // last quarter of the gap spends 75 / 24 / 149 km/s more than the
+            // Lambert floor it hands over to.
+            TestContext.WriteLine(
+                $"branch step: Mercury {branchSteps["mercury 1.0 g"]:F1} km/s, " +
+                $"Mars {branchSteps["mars 0.3 g"]:F1}, " +
+                $"Jupiter {branchSteps["jupiter 0.3 g"]:F1}");
+            Assert.That(branchSteps["mercury 1.0 g"], Is.InRange(60.0, 90.0),
+                "measured: 75 km/s");
+            Assert.That(branchSteps["mars 0.3 g"], Is.InRange(15.0, 35.0),
+                "measured: 24 km/s");
+            Assert.That(branchSteps["jupiter 0.3 g"], Is.InRange(120.0, 180.0),
+                "measured: 149 km/s");
+
+            // The answer, in the two places the player would feel it.
+            double mercuryHoursSaved =
+                (floorsGentle["mercury 1.0 g"].FlightTimeSeconds
+                 - minimums["mercury 1.0 g"].FlightTimeSeconds) / 3600.0;
+            double mercuryExtraPropellant =
+                (minimums["mercury 1.0 g"].PropellantKg
+                 - floorsGentle["mercury 1.0 g"].PropellantKg) / 1000.0;
+            double marsHoursSaved =
+                (floorsGentle["mars 0.3 g"].FlightTimeSeconds
+                 - minimums["mars 0.3 g"].FlightTimeSeconds) / 3600.0;
+            double marsExtraPropellant =
+                (minimums["mars 0.3 g"].PropellantKg
+                 - floorsGentle["mars 0.3 g"].PropellantKg) / 1000.0;
+
+            TestContext.WriteLine(
+                $"answer: Mercury 1 g buys {mercuryHoursSaved:F2} h for " +
+                $"{mercuryExtraPropellant:F1} t more; Mars 0.3 g buys " +
+                $"{marsHoursSaved:F2} h for {marsExtraPropellant:F1} t more. " +
+                $"The fast plans use more propellant, not less.");
+            Assert.That(mercuryHoursSaved, Is.InRange(3.8, 4.4),
+                "measured: 4 h 7 min");
+            Assert.That(mercuryExtraPropellant, Is.GreaterThan(70.0),
+                "measured: about 82 t at 1,000 t dry");
+            Assert.That(marsExtraPropellant, Is.GreaterThan(40.0),
+                "measured: about 48 t at 1,000 t dry");
+
+            TestContext.WriteLine($"measured in {watch.Elapsed.TotalSeconds:F0} s");
+        }
+
+        private static void AssertFloorTrade(string key,
+            Dictionary<string, TrajectoryPlan> gentle,
+            Dictionary<string, TrajectoryPlan> pinned, bool pinnedIsCheaper)
+        {
+            TrajectoryPlan off = gentle[key];
+            TrajectoryPlan on = pinned[key];
+            TestContext.WriteLine(
+                $"{key}: pin off {off.FlightTimeDays:F5} d / {off.PropellantKg / 1000.0:F1} t, " +
+                $"pin on {on.FlightTimeDays:F5} d / {on.PropellantKg / 1000.0:F1} t");
+
+            // A different certified duration on each side is the point: the fuel
+            // difference is not a like-for-like time comparison.
+            Assert.That(Math.Abs(on.FlightTimeSeconds - off.FlightTimeSeconds),
+                Is.GreaterThan(60.0),
+                $"{key}: the pinned floor is a different certified duration");
+            if (pinnedIsCheaper)
+            {
+                Assert.That(on.PropellantKg, Is.LessThan(off.PropellantKg),
+                    $"{key}: the pinned floor spends less propellant");
+            }
+            else
+            {
+                Assert.That(on.PropellantKg, Is.GreaterThan(off.PropellantKg),
+                    $"{key}: the pinned floor spends more propellant");
+            }
+        }
+
+        private static void AssertPinnedFuel(TrajectoryPlan plan, double expectedKg,
+            double expectedFraction, string label)
+        {
+            Assert.That(plan.PropellantKg / 1000.0,
+                Is.EqualTo(expectedKg).Within(0.01 * expectedKg),
+                $"{label}: propellant from the plan's own readout");
+            Assert.That(plan.PropellantFraction,
+                Is.EqualTo(expectedFraction).Within(0.005),
+                $"{label}: share of departure mass");
+        }
+
         private static void AssertChainCloses(TrajectoryPlan plan)
         {
             for (int i = 0; i < plan.Arcs.Count - 1; i++)
