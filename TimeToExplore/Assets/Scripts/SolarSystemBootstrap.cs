@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using TimeToExplore.Core;
 using TimeToExplore.Player;
 using TimeToExplore.Rendering;
@@ -163,6 +164,13 @@ namespace TimeToExplore
             ViewCamera.nearClipPlane = 0.05f;
             ViewCamera.farClipPlane = 20_000_000f;
             ViewCamera.fieldOfView = 60f;
+
+            // The volume (in the pipeline's default profile) supplies the bloom;
+            // a camera built from scratch leaves post-processing off, so opt in
+            // here or the effect silently never runs. The HUD is a Screen Space
+            // Overlay canvas, which draws after post-processing, so it is not
+            // smeared by the bloom.
+            ViewCamera.GetUniversalAdditionalCameraData().renderPostProcessing = true;
 
             // Unity's legacy mouse dispatcher (SendMouseEvents, the OnMouse*
             // path) runs every frame even with Active Input Handling on the

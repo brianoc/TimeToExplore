@@ -3,6 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace TimeToExplore.EditorTools
 {
@@ -39,6 +40,12 @@ namespace TimeToExplore.EditorTools
             camera.farClipPlane = 20_000_000f;
             camera.fieldOfView = 60f;
             cameraObject.transform.position = Vector3.zero;
+
+            // A bare URP camera has post-processing off, so the scene builder
+            // must opt in exactly as EnsureCamera does, or a regenerated scene
+            // silently loses the bloom the committed one has.
+            cameraObject.AddComponent<UniversalAdditionalCameraData>()
+                .renderPostProcessing = true;
 
             GameObject root = new GameObject("Time to Explore");
             root.AddComponent<SolarSystemBootstrap>();

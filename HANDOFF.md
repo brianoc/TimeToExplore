@@ -1,7 +1,9 @@
 # Handoff
 
-**No active handoff.** The sky now carries the 509 brightest real stars through
-a cell lookup, so Orion and the Plough sit where they belong, and the band's
-composition spin finally matches the number in the code (−86°). History is in
-[the update log](Docs/log.md); the reasoning is in
-[The sky](Docs/technical/sky.md#the-real-stars).
+**No active handoff.** The sky's brightest stars now bloom: HDR renders in URP's
+32-bit R11G11B10 buffer, the scene and runtime camera run post-processing, and
+the pipeline's default volume profile supplies Bloom (threshold 1.0) and Neutral
+Tonemapping, with the procedural beacons tuned under the threshold. The project
+still renders in Gamma. History is in [the update log](Docs/log.md); the
+reasoning is in [The sky](Docs/technical/sky.md#cost-and-appearance) and
+[Rendering at solar scale](/Docs/technical/rendering-scale.md).

@@ -57,7 +57,13 @@ namespace TimeToExplore.Tests.EditMode
             var pipeline = GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
             Assert.That(pipeline, Is.Not.Null);
 
-            Assert.That(pipeline.supportsHDR, Is.False, "HDR is not required");
+            Assert.That(pipeline.supportsHDR, Is.True,
+                "the sky's brightest stars write above 1.0 (Sirius and the " +
+                "catalogue peak near 2.4 against a band peak of 0.55), and HDR " +
+                "is what lets the display tell them apart");
+            Assert.That(pipeline.hdrColorBufferPrecision,
+                Is.EqualTo(HDRColorBufferPrecision._32Bits),
+                "the cheap 32-bit HDR buffer is chosen over 64-bit RGBA16F");
             Assert.That(pipeline.msaaSampleCount, Is.EqualTo(1), "MSAA must be off");
             Assert.That(pipeline.renderScale, Is.EqualTo(1f).Within(1e-6f),
                 "render scale must be 1");
@@ -82,6 +88,69 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(renderer.intermediateTextureMode,
                 Is.EqualTo(IntermediateTextureMode.Auto),
                 "no renderer features, so no intermediate texture is needed");
+        }
+
+        /// <summary>
+        /// URP skips every post-processing pass when the renderer has no
+        /// <c>PostProcessData</c>: the effect is enabled, the volume is live,
+        /// and nothing happens, with no warning in the console. The renderer
+        /// must therefore carry the package's data even while HDR and post
+        /// processing stay off, so that turning them on cannot silently do
+        /// nothing.
+        /// </summary>
+        [Test]
+        public void TheRendererCarriesThePostProcessData()
+        {
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(
+                RendererAssetPath);
+
+            Assert.That(renderer, Is.Not.Null, RendererAssetPath + " is missing");
+            Assert.That(renderer.postProcessData, Is.Not.Null,
+                "the renderer has no post-process data, which disables every " +
+                "URP post-processing pass silently (bloom included)");
+            Assert.That(renderer.postProcessData.name, Is.EqualTo("PostProcessData"),
+                "the renderer's post-process data is not URP's package asset");
+        }
+
+        /// <summary>
+        /// The pipeline's default volume profile is the bloom home: URP applies
+        /// it to every camera with post-processing on, so the scene needs no
+        /// Volume object, and the offscreen capture tool and the tests get the
+        /// same effect. HDR alone only widens the buffer; without this profile
+        /// the brightest star still clips flat at white.
+        /// </summary>
+        [Test]
+        public void TheDefaultVolumeProfileBloomsAboveTheBandAndTonemapsTheHighlights()
+        {
+            const string profilePath = "Assets/DefaultVolumeProfile.asset";
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
+
+            Assert.That(profile, Is.Not.Null, profilePath + " is missing");
+            Assert.That(
+                GraphicsSettings.GetRenderPipelineSettings<URPDefaultVolumeProfileSettings>()
+                    .volumeProfile,
+                Is.SameAs(profile),
+                "the pipeline's default volume profile is not the shipped one, " +
+                "so its bloom never reaches a camera");
+
+            Assert.That(profile.TryGet(out Bloom bloom), Is.True,
+                "the default profile has no Bloom override");
+            Assert.That(bloom.active, Is.True, "the Bloom override is disabled");
+            Assert.That(bloom.threshold.overrideState, Is.True,
+                "bloom threshold must be overridden, not left at the default");
+            Assert.That(bloom.threshold.value, Is.InRange(0.8f, 1.2f),
+                "the band peaks at 0.55 and must stay out of the bloom");
+            Assert.That(bloom.intensity.overrideState, Is.True);
+            Assert.That(bloom.intensity.value, Is.GreaterThan(0.05f),
+                "a near-zero intensity would make the bloom invisible");
+            Assert.That(bloom.scatter.overrideState, Is.True);
+            Assert.That(bloom.highQualityFiltering.value, Is.False,
+                "bicubic upsampling is not needed at 1080p");
+
+            Assert.That(profile.TryGet(out Tonemapping tonemapping), Is.True,
+                "the default profile has no Tonemapping override");
+            Assert.That(tonemapping.mode.value, Is.EqualTo(TonemappingMode.Neutral),
+                "HDR highlights need a shoulder or the cores become white discs");
         }
 
         [Test]

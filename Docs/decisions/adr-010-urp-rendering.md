@@ -4,7 +4,7 @@ title: "ADR-010: Universal Render Pipeline for the prototype"
 description: Move the orrery from the built-in pipeline to URP 17.3.0 with three minimal runtime shaders and a deliberately cheap forward renderer.
 tags: [decision, rendering, urp, shaders, technical]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-17T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
 ---
 
 # Context
@@ -70,6 +70,19 @@ depend on it.
    no camera stack, renderer feature, additional light, volume, or post-process
    override.
 
+**Amendment, 2026-11-22: HDR and bloom for the real sky.** Items 3 and 6 no
+longer hold in two places. The real bright-star catalogue writes up to about 2.4
+in HDR units, and clamping at 1.0 made Sirius, Vega, and Rigel identical white
+blobs, so HDR is now on in URP's **32-bit R11G11B10** buffer rather than 64-bit
+RGBA16F. The scene camera and the runtime camera run post-processing, and the
+pipeline's default volume profile — registered in URP's global settings, so no
+scene Volume object exists — carries **Bloom** at a threshold of 1.0 (intensity
+2.0, scatter 0.65) and **Neutral Tonemapping** for those stars. The rest of this
+decision is unchanged: MSAA 1, render scale 1, depth and opaque copies off,
+shadows off, URP lights disabled, one base camera, no renderer features. See
+[Rendering at solar scale](/technical/rendering-scale.md) and
+[The sky](/technical/sky.md).
+
 # Consequences
 
 **Positive**
@@ -126,7 +139,8 @@ the global settings and camera data correctly.
 # Revisit when
 
 * bloom, SSAO, or a local light/shadow pass is added (enable only what the
-  feature needs, and only near the ship),
+  feature needs, and only near the ship) — bloom triggered this on 2026-11-22
+  (see the amendment above); SSAO and a local light/shadow pass are still open.
 * the two-camera far field is needed for depth precision,
 * the project moves to linear colour space,
 * URP's render graph or a newer URP version becomes the default path,

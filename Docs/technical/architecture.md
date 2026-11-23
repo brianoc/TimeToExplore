@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
 ---
 
 # Shape of the prototype
@@ -329,10 +329,14 @@ The project renders through the **Universal Render Pipeline** (URP 17.3.0,
 `Assets/Settings/TimeToExploreUniversalRenderPipeline.asset`, which points at
 `Assets/Settings/TimeToExploreUniversalRenderer.asset`; the quality levels keep
 their pipeline override empty so the graphics default applies to every level.
-The pipeline is deliberately cheap: HDR and MSAA are off, render scale is 1,
-depth and opaque copies are off, shadows are off, and no post-processing runs.
-URP's main and additional light rendering is disabled; the orrery shades itself
-from `_SunPosition`, so the light and shadow paths have nothing to do.
+The pipeline is deliberately cheap: MSAA is off, render scale is 1, depth and
+opaque copies are off, and shadows are off. HDR is the one exception — it is on
+in URP's 32-bit R11G11B10 buffer so the brightest sky stars can write above
+white — and post-processing is on, with the pipeline's default volume profile
+supplying Bloom and Neutral tonemapping for those stars
+([Rendering at solar scale](/technical/rendering-scale.md)). URP's main and
+additional light rendering is disabled; the orrery shades itself from
+`_SunPosition`, so the light and shadow paths have nothing to do.
 
 Each body gets a Unity primitive:
 
@@ -599,9 +603,10 @@ Render Pipeline, the Input System package, uGUI, and Active Input Handling set t
   frame pump and the button events, but no test sends a real pointer through the
   EventSystem, so button hit areas and canvas scaling still need a human eye.
 * The scene is generated at runtime; there is no authored art scene.
-* The rendering migration stops at the URP forward path: there is no
-  post-processing, no SSAO, no shadow system, and no two-camera far field. Those
-  remain future work, and the shaders are intentionally minimal.
+* The rendering migration stays on the URP forward path: post-processing is one
+  Bloom plus Neutral tonemapping pass from the default volume profile, and there
+  is no SSAO, no shadow system, and no two-camera far field. Those remain future
+  work, and the shaders are intentionally minimal.
 * Warp drops in the clock's power-of-ten steps, not continuously.
 
 # Extension points

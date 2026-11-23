@@ -85,6 +85,10 @@ namespace TimeToExplore.Tests.EditMode
                 "PlayerControls is the one gameplay seam and lives in Presentation");
             CollectionAssert.Contains(References(presentation.Json), "UnityEngine.UI",
                 "the HUD is uGUI and needs the Unity UI assembly");
+            CollectionAssert.Contains(References(presentation.Json),
+                "Unity.RenderPipelines.Universal.Runtime",
+                "the composition root configures the URP camera data, " +
+                "including post-processing");
             CollectionAssert.DoesNotContain(References(presentation.Json), EditorAssembly);
             CollectionAssert.DoesNotContain(References(presentation.Json), Tests);
         }

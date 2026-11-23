@@ -55,8 +55,10 @@ namespace TimeToExplore.Tests.EditMode
                 Assert.That(data, Is.Not.Null,
                     "the camera needs UniversalAdditionalCameraData under URP");
                 Assert.That(data.renderType, Is.EqualTo(CameraRenderType.Base));
-                Assert.That(data.renderPostProcessing, Is.False,
-                    "the project renders without post-processing");
+                Assert.That(data.renderPostProcessing, Is.True,
+                    "the shipped scene must opt into post-processing for the " +
+                    "bloom: HDR is on and the volume comes from the pipeline's " +
+                    "default profile");
                 Assert.That(data.requiresDepthTexture, Is.False);
                 Assert.That(data.requiresColorTexture, Is.False);
 

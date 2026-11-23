@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:49:24Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
 ---
 
 # The problem
@@ -258,16 +258,45 @@ Stations and asteroids use the same lit shader as planets; a cube with a
 day/night terminator reads surprisingly well. `material.color` and `_Color`
 remain the contract: every shader that the C# code colours declares `_Color`.
 
-The pipeline asset keeps the cost down: render scale 1, MSAA off, HDR off, no
-depth or opaque texture, no main or additional shadows, no soft shadows, URP
-main and additional lights disabled, and no post-processing volume.
-`UniversalAdditionalCameraData` is on both scene cameras with post-processing
-and depth/colour texture requests off, and a black serialized clear that the
-bootstrap switches to `Skybox` at runtime.
+The pipeline asset keeps the cost down: render scale 1, MSAA off, no depth or
+opaque texture, no main or additional shadows, no soft shadows, URP main and
+additional lights disabled, and no Volume object in the scene. HDR is the
+deliberate exception: it is on, in URP's **32-bit R11G11B10** colour buffer
+(`m_HDRColorBufferPrecision: 0`) rather than 64-bit RGBA16F, and MSAA stays off.
+The sky earns it. It writes up to about 2.4 in HDR units, so clamping at 1.0
+makes Sirius, Vega, and Rigel identical white blobs; the band peaks at 0.55 and
+stays below the bloom threshold. HDR is what lets the display tell those
+brightnesses apart.
+
+The bloom itself comes from the pipeline's **default volume profile**,
+`Assets/DefaultVolumeProfile.asset`, which URP registers in its global settings
+and applies to every camera with post-processing on. That is why the scene needs
+no Volume object, and why the offscreen capture tool and the test suites get the
+same effect as the game. The profile carries **Bloom** — threshold 1.0, intensity
+2.0, scatter 0.65, Gaussian filtering, no lens dirt — and **Neutral Tonemapping**,
+which gives the brightest HDR cores a shoulder instead of a clipped white disc.
+The intensity is high because a star is only a few pixels wide, so the
+downsampled bloom chain has little energy to work with, while the 1.0 threshold
+keeps the 0.55 band out of it. The shipped scene has one camera, the runtime
+camera is that same camera, and its `UniversalAdditionalCameraData` has
+post-processing on but depth and colour texture requests off, with a black
+serialized clear that the bootstrap switches to `Skybox` at runtime. The
+renderer does carry URP's `PostProcessData` (the package's
+`Runtime/Data/PostProcessData.asset`), so the post-processing shaders exist in a
+build; a renderer without it skips every effect silently, with no warning. Bloom
+on the Sun and stations is still future work.
+
+Nothing else in the frame exceeds 1.0, so the bloom is confined to the sky.
+`tools/validate_catalogue.py` keeps every body colour inside [0, 1];
+`TimeToExplore/BodyLit` multiplies `_Color` by
+`_Ambient + (1 - _Ambient) * ndl` with `ndl <= 1`, so it never exceeds `_Color`;
+the Sun is unlit `[1.0, 0.93, 0.72]`; route and orbit colours are at most 1 with
+alpha below 1. The band's 0.55 and the washed body colours sit under the
+threshold, and only the brightest catalogue stars write above it.
 
 The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
-bloom, and the far-field camera stack without changing the scale rules.
+and the far-field camera stack without changing the scale rules.
 
 # What breaks at this scale
 
@@ -302,15 +331,15 @@ bloom, and the far-field camera stack without changing the scale rules.
    spheres up close.
 3. **Instanced asteroid belt** with per-instance colour and size.
 4. ~~**Starfield** with real bright stars and the Milky Way; currently the
-   background is black.~~ Done: a generated Milky Way band plus procedural
-   stars ([The sky](/technical/sky.md)). Real bright-star positions are still a
-   follow-up.
+   background is black.~~ Done: a generated Milky Way band, procedural stars,
+   and the real bright-star catalogue ([The sky](/technical/sky.md)).
 5. **Rings for Saturn and Uranus**, and a tenuous atmosphere shell for Earth,
    Venus, Titan, and the gas giants.
 6. **Local lighting** for stations and ships: running lights, docking guides,
    radiators.
-7. **Post-processing** for bloom on the Sun, stations, and the brightest stars,
-   used sparingly.
+7. **Post-processing.** Bloom for the brightest stars is in, through the
+   pipeline's default volume profile. Bloom on the Sun and stations is still
+   future work, to be used sparingly.
 
 The scale rules—double simulation, ship-relative render, minimum apparent size—
 should survive all of these. They are the load-bearing decisions.
