@@ -208,22 +208,25 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.ArcIsDashed(0), Is.False);
 
             Assert.That(_bootstrap.Trajectory.ArcColour(1),
-                Is.EqualTo(RouteColours.FixedBurn));
-            Assert.That(_bootstrap.Trajectory.ArcLabel(1), Is.EqualTo("Fixed burn"));
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(1), Is.False,
-                "the departure burn is solid");
+                Is.EqualTo(RouteColours.Conic));
+            Assert.That(_bootstrap.Trajectory.ArcLabel(1), Is.EqualTo("Conic arc"));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(1), Is.True,
+                "the escape conic is dashed");
 
             Assert.That(_bootstrap.Trajectory.ArcLabel(2), Is.EqualTo("Fixed burn"));
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(2), Is.False);
-            Assert.That(_bootstrap.Trajectory.ArcColour(2),
-                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(1)),
-                "two fixed burns back to back take two shades");
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(2), Is.False,
+                "the departure burn is solid");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Fixed burn"));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.False);
             Assert.That(_bootstrap.Trajectory.ArcColour(3),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(2)),
+                "two fixed burns back to back take two shades");
+            Assert.That(_bootstrap.Trajectory.ArcColour(4),
                 Is.EqualTo(RouteColours.Conic),
                 "the brake ends the fixed run and the capture chain starts");
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.True);
-            Assert.That(_bootstrap.Trajectory.ArcColour(4),
-                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(3)),
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(4), Is.True);
+            Assert.That(_bootstrap.Trajectory.ArcColour(5),
+                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(4)),
                 "the transfer is the second conic in the run");
 
             TrajectoryPlan conic = _bootstrap.Flight.Preview;
@@ -231,7 +234,7 @@ namespace TimeToExplore.Tests.EditMode
             WaitForRebuild(conic);
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(6),
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
                 "the zero-coast minimum keeps its conic capture chain");
             Assert.That(_bootstrap.Flight.Preview.Arcs.Count(arc => arc.IsFiniteBurn),
                 Is.EqualTo(2),
@@ -241,7 +244,7 @@ namespace TimeToExplore.Tests.EditMode
             // adds its finite capture burn.
             TrajectoryPlan coasting = _bootstrap.Flight.SetPreviewDuration(
                 2.0 * _bootstrap.Flight.PreviewMinimumSeconds);
-            Assert.That(coasting.Arcs.Count, Is.EqualTo(8),
+            Assert.That(coasting.Arcs.Count, Is.EqualTo(9),
                 "the hybrid capture adds its finite capture burn");
             Assert.That(coasting.Arcs.Count(arc => arc.IsFiniteBurn), Is.EqualTo(3),
                 "departure burn, brake, and the hybrid capture burn");
@@ -319,7 +322,8 @@ namespace TimeToExplore.Tests.EditMode
             Build();
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
             WaitForPreview();
-            double staleDate = _bootstrap.Clock.JulianDate + 0.08;
+            double staleDate = _bootstrap.Clock.JulianDate
+                               + _bootstrap.Flight.PreviewStaleAfterDays + 0.01;
 
             _bootstrap.Clock.JulianDate = staleDate;
             Invoke("Update");
@@ -412,9 +416,9 @@ namespace TimeToExplore.Tests.EditMode
                 "the preview carries the departure burn and the brake");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(7.5),
-                "the window starts at the nav computer's minimum, below the old 8.03 d floor");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(17.5),
+                "the window starts at the nav computer's burn-only minimum");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(16.0),
                 "the minimum is a real plan, not the profile being flown faster than it can");
             Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
                 Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6));

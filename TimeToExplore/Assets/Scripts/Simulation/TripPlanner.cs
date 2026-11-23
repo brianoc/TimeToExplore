@@ -266,19 +266,6 @@ namespace TimeToExplore.Simulation
         /// default; the hybrid finite-burn capture is the alternative.</summary>
         public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Conic;
 
-        /// <summary>Opt-in: pin the break's duration to the commanded
-        /// acceleration. When true the break's quintic is solved so its peak
-        /// commanded thrust equals <see cref="FixedBurnAccelerationMps2"/>, the
-        /// level the departure burn, the brake, and the hybrid capture command,
-        /// instead of keeping the reference coast's departure share and only
-        /// lengthening the break when the drive is exceeded. The result does not
-        /// scale with the trip time: it is a root of the break's own
-        /// peak-versus-duration curve, and the trip only bounds it through the
-        /// time the coast and the burns leave. Default false, so the documented
-        /// plans, floors, and delta-v anchors do not move.
-        /// </summary>
-        public bool PinBreakToCommandAcceleration { get; set; }
-
         /// <summary>Design acceleration of a fixed-thrust burn. 0.3 g is the
         /// working level: low enough to be a real burn rather than an impulse,
         /// high enough that the capture still fits inside a low orbit. The
@@ -768,20 +755,18 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// Research spike, **fixed date**: a **zero-coast** crossing built from
-        /// the profile's own finite-burn arcs. The break is pinned to the
-        /// commanded acceleration (<see cref="FixedBurnAccelerationMps2"/>,
-        /// independent of <see cref="PinBreakToCommandAcceleration"/>), the
-        /// capture chain is built at the arrival handover floor for
+        /// the profile's own finite-burn arcs. The departure is the physical
+        /// climb — the short break and the escape conic out to the handover
+        /// ceiling — the capture chain is built at the arrival handover floor for
         /// <paramref name="arrivalJulianDate"/>, and the two burns meet at the
         /// flip with **no coast** between them:
         ///
-        /// * the departure burn starts where the pinned break ends — on the
-        ///   departure handover ceiling, along the escape ray, at the local
-        ///   escape speed — and integrates forward through the summed field;
+        /// * the departure burn starts at the escape conic's ceiling state and
+        ///   integrates forward through the summed field;
         /// * the brake ends on the capture chain's entry and integrates
         ///   **backward** from it, so its start state is the flip.
         ///
-        /// The unknowns are the escape ray (two angles), the departure burn's
+        /// The unknowns are the departure burn's thrust direction (two angles) and
         /// duration, the brake's direction (two angles), and the brake's
         /// duration: six unknowns for the six seam components (the forward
         /// burn's end position and velocity against the backward brake's start).
@@ -1004,8 +989,6 @@ namespace TimeToExplore.Simulation
                     "burn-only: " + arrivalBand.InvalidReason));
             }
 
-            double clearanceRadius = departureBand.DepartureRadiusM;
-            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
             double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
 
             // The capture chain is the fixed part of the request: the supplied
@@ -1036,40 +1019,28 @@ namespace TimeToExplore.Simulation
                 }
             }
 
+            // The departure climb: the short break onto the ship's prograde escape
+            // state and the ballistic conic out to the departure ceiling. The
+            // crossing's total is an output here, so the climb gets the time the
+            // seed burn and brake leave; a request below the minimum-energy climb
+            // hyperbolises it rather than stretching the break.
             _model.ComputeState(departureBody, ship.JulianDate,
-                out Vector3d departureAtStart, out Vector3d departureVelocityAtStart);
-            Vector3d seedRay = Vector3d.Zero;
+                out _, out Vector3d departureVelocityAtStart);
+            double departureCeiling = departureBand.DepartureRadiusM;
+            double seedBurnSeconds = MinimumArcSeconds;
+            Vector3d referenceDepartureVelocity = ship.VelocityMps
+                                                  - departureVelocityAtStart;
             if (referenceCruise != null)
             {
                 _model.ComputeState(departureBody, referenceCruise.StartJulianDate,
                     out _, out Vector3d departureAtExit);
-                seedRay = referenceCruise.Path.VelocityAt(0.0) - departureAtExit;
+                referenceDepartureVelocity =
+                    referenceCruise.Path.VelocityAt(0.0) - departureAtExit;
+                seedBurnSeconds = Math.Max(
+                    (referenceDepartureVelocity.Magnitude
+                     - Math.Sqrt(2.0 * departureBody.Gm / departureCeiling))
+                    / acceleration, MinimumArcSeconds);
             }
-
-            if (seedRay.SqrMagnitude < 0.5)
-                seedRay = ship.VelocityMps - departureVelocityAtStart;
-            if (seedRay.SqrMagnitude < 0.5)
-                seedRay = ship.PositionM - departureAtStart;
-            if (seedRay.SqrMagnitude < 0.5)
-                seedRay = new Vector3d(1.0, 0.0, 0.0);
-            seedRay = seedRay.Normalized;
-
-            double breakSeedSeconds = MinimumArcSeconds;
-            if (referenceCruise != null)
-            {
-                breakSeedSeconds = Math.Max((referenceCruise.StartJulianDate - ship.JulianDate)
-                                            * SecondsPerDay, MinimumArcSeconds);
-            }
-
-            // The break's available time is circular here — the total is the
-            // output — so it gets a generous cap: twice the kinematic duration of
-            // the climb to the clearance sphere at the commanded acceleration.
-            // The plan reports whether the cap was binding, because a capped break
-            // would no longer be the pin.
-            Vector3d seedBurnStart = departureAtStart + seedRay * clearanceRadius;
-            double breakCapSeconds = 4.0 * Math.Sqrt(
-                Math.Max(Vector3d.Distance(ship.PositionM, seedBurnStart), 1.0)
-                / acceleration);
 
             // A half-and-half kinematic split is the seed: the straight-line
             // estimate is t_burn = t_brake = sqrt(distance / acceleration).
@@ -1080,19 +1051,41 @@ namespace TimeToExplore.Simulation
             Vector3d seedEntryVelocity = targetVelocityAtSeedEntry
                                          + chain.EntryLocalVelocityMps;
             double crossingDistance = Math.Max(
-                Vector3d.Distance(seedBurnStart, seedEntryPosition), 1.0);
+                Vector3d.Distance(ship.PositionM, seedEntryPosition), 1.0);
             double halfSeconds = Math.Max(Math.Sqrt(crossingDistance / acceleration),
                 MinimumArcSeconds);
+
+            double climbAvailable = totalSeconds - chain.TotalSeconds
+                                    - seedBurnSeconds - halfSeconds;
+            if (!TryBuildDepartureClimb(ship, departureBody, departureCeiling,
+                    Math.Max(climbAvailable, MinimumArcSeconds),
+                    ClimbSeedSeconds(climbAvailable), cheap: false,
+                    out DepartureClimb climb, out string climbReason))
+            {
+                return Reported(InfeasiblePlan(ship, target, totalSeconds,
+                    "burn-only: " + climbReason));
+            }
+
+            ClimbBurnStart(departureBody, climb, out Vector3d burnStartPosition,
+                out Vector3d burnStartVelocity);
+
+            Vector3d seedRay = referenceDepartureVelocity
+                               - climb.EscapeEndLocalVelocityMps;
+            if (seedRay.SqrMagnitude < 0.5) seedRay = climb.EscapeEndLocalVelocityMps;
+            if (seedRay.SqrMagnitude < 0.5)
+                seedRay = ship.VelocityMps - departureVelocityAtStart;
+            if (seedRay.SqrMagnitude < 0.5)
+                seedRay = new Vector3d(1.0, 0.0, 0.0);
+            seedRay = seedRay.Normalized;
 
             Vector3d seedBrakeDirection = seedEntryVelocity.SqrMagnitude > 1e-6
                 ? -seedEntryVelocity.Normalized
                 : -seedRay;
 
             var geometry = new BurnOnlyGeometry(departureBody, target, chain,
-                acceleration, clearanceRadius, escapeSpeed, breakSeedSeconds,
-                breakCapSeconds);
+                acceleration, climb);
 
-            Vector3d straightRay = seedEntryPosition - seedBurnStart;
+            Vector3d straightRay = seedEntryPosition - burnStartPosition;
             straightRay = straightRay.SqrMagnitude > 0.5 ? straightRay.Normalized : seedRay;
 
             // The second seed is the straight line between the two ends with the
@@ -1189,10 +1182,8 @@ namespace TimeToExplore.Simulation
                 retrograde: true, samples: Math.Max(512, ArcSamples),
                 fixedThrustDirection: solved.BrakeDirection, gravity: _gravity);
 
-            var arcs = new List<PlanArc>(6);
-            arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, ship.JulianDate,
-                solved.BurnStartJulianDate, ship.PositionM, ship.VelocityMps,
-                solved.BurnStartPositionM, solved.BurnStartVelocityMps));
+            var arcs = new List<PlanArc>(8);
+            AppendDepartureClimb(arcs, ship, departureBody, climb, fast: false);
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
                 solved.BurnStartJulianDate, brakeStartJd, departureBurn));
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id, brakeStartJd,
@@ -1234,13 +1225,13 @@ namespace TimeToExplore.Simulation
 
             Trace?.Invoke($"burn-only: seam {solved.SeamPositionM.Magnitude:F1} m / " +
                           $"{solved.SeamVelocityMps.Magnitude:E2} m/s; break " +
-                          $"{solved.BreakSeconds / SecondsPerDay:F4} d, burn " +
-                          $"{solved.BurnSeconds / SecondsPerDay:F4} d, brake " +
+                          $"{climb.BreakSeconds / SecondsPerDay:F4} d, escape " +
+                          $"{climb.EscapeSeconds / SecondsPerDay:F4} d " +
+                          $"{(climb.IsParabolic ? "parabolic" : $"v∞ {climb.VInfinityMps:F0} m/s")}, " +
+                          $"burn {solved.BurnSeconds / SecondsPerDay:F4} d, brake " +
                           $"{solved.BrakeSeconds / SecondsPerDay:F4} d, capture " +
                           $"{chain.TotalSeconds / SecondsPerDay:F5} d, total " +
-                          $"{actualSeconds / SecondsPerDay:F5} d; break cap " +
-                          $"{breakCapSeconds / SecondsPerDay:F4} d " +
-                          $"{(solved.BreakSeconds >= 0.999 * breakCapSeconds ? "BINDING" : "not binding")}");
+                          $"{actualSeconds / SecondsPerDay:F5} d");
 
             return Reported(plan);
         }
@@ -1288,8 +1279,6 @@ namespace TimeToExplore.Simulation
             HandoverBand arrivalBand = HandoverBand.For(target, acceleration);
             if (!departureBand.IsValid || !arrivalBand.IsValid) return null;
 
-            double clearanceRadius = departureBand.DepartureRadiusM;
-            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
             double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
 
             double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
@@ -1333,17 +1322,24 @@ namespace TimeToExplore.Simulation
                 return new BuildResult(burnOnly, burnOnly.FlightTimeSeconds);
             }
 
-            _model.ComputeState(departureBody, ship.JulianDate,
-                out Vector3d departureAtStart, out _);
-            Vector3d seedBurnStart = departureAtStart
-                                     + burnOnlySolution.Ray * clearanceRadius;
-            double breakCapSeconds = 4.0 * Math.Sqrt(
-                Math.Max(Vector3d.Distance(ship.PositionM, seedBurnStart), 1.0)
-                / acceleration);
+            // The requested total fixes the climb's time: the capture and the two
+            // solved burns come out of it, and the break and the escape conic take
+            // what is left. The coast then absorbs the remainder, so a duration
+            // above the burn-only minimum keeps the minimum-energy climb.
+            double climbAvailable = totalSeconds - chain.TotalSeconds
+                                    - burnOnlySolution.BurnSeconds
+                                    - burnOnlySolution.BrakeSeconds;
+            if (!TryBuildDepartureClimb(ship, departureBody,
+                    departureBand.DepartureRadiusM, Math.Max(climbAvailable, MinimumArcSeconds),
+                    ClimbSeedSeconds(climbAvailable), cheap: false,
+                    out DepartureClimb climb, out string climbReason))
+            {
+                return InfeasiblePlan(ship, target, totalSeconds,
+                    "short coast: " + climbReason);
+            }
 
             var geometry = new ShortCoastGeometry(departureBody, target, chain,
-                acceleration, clearanceRadius, escapeSpeed,
-                burnOnlySolution.BreakSeconds, breakCapSeconds, totalSeconds);
+                acceleration, climb, totalSeconds);
 
             double coastSeedSeconds = Math.Max(
                 totalSeconds - burnOnly.FlightTimeSeconds, 0.0);
@@ -1432,11 +1428,8 @@ namespace TimeToExplore.Simulation
                 fixedThrustDirection: solved.BrakeDirection, gravity: _gravity);
 
             double entryJd = solved.EntryJulianDate;
-            var arcs = new List<PlanArc>(7);
-            arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id,
-                ship.JulianDate, solved.BurnStartJulianDate, ship.PositionM,
-                ship.VelocityMps, solved.BurnStartPositionM,
-                solved.BurnStartVelocityMps));
+            var arcs = new List<PlanArc>(9);
+            AppendDepartureClimb(arcs, ship, departureBody, climb, fast: false);
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
                 solved.BurnStartJulianDate, coastStartJd, departureBurn));
             if (coast != null)
@@ -1616,7 +1609,6 @@ namespace TimeToExplore.Simulation
             double t0 = ship.JulianDate;
 
             BodyRuntime departureBody = null;
-            double departureSoi = 0.0;
             foreach (BodyRuntime planet in _model.Sun.Children)
             {
                 if (planet == target || planet == target.Parent) continue;
@@ -1628,41 +1620,29 @@ namespace TimeToExplore.Simulation
                 if (Vector3d.Distance(ship.PositionM, planetPosition) < soi)
                 {
                     departureBody = planet;
-                    departureSoi = soi;
                     break;
                 }
             }
 
-            Vector3d escapeDirection = Vector3d.Zero;
-            Vector3d provisionalExit = ship.PositionM;
-            double escapeBase = 0.0;
-            if (departureBody != null)
-            {
-                _model.ComputeState(departureBody, t0,
-                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
-
-                escapeDirection = (ship.VelocityMps - anchorVelocity).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = (ship.PositionM - anchorPosition).Normalized;
-                if (escapeDirection.SqrMagnitude < 0.5)
-                    escapeDirection = new Vector3d(1.0, 0.0, 0.0);
-
-                provisionalExit = anchorPosition + escapeDirection * departureSoi;
-                escapeBase = BaseDuration(Vector3d.Distance(ship.PositionM, provisionalExit));
-            }
+            double departureCeiling = departureBody != null
+                ? SphereOfInfluence.RadiusM(departureBody) * HandoverBand.CeilingSoiFraction
+                : 0.0;
 
             double arrivalJd = t0 + totalSeconds / SecondsPerDay;
             double captureSeconds = 0.0;
             double escapeSeconds = 0.0;
             double cruiseSeconds = 0.0;
             TransferConic chain = null;
+            DepartureClimb climb = default;
 
             // Same five-pass arrival loop as the conic capture: the capture
-            // shape fixes the entry date, the departure and the coast split the
-            // time that is left in proportion to their kinematic floors, and
-            // the arrival date is re-derived until it settles. The departure
-            // needs the share because the coast asks for a real break velocity,
-            // which a fixed few-hour escape cannot supply.
+            // shape fixes the entry date, the physical departure — the short break
+            // and the ballistic escape conic — takes the time it needs from what
+            // is left, and the cruise is the remainder. The departure no longer
+            // takes a share of the trip: its duration is the break's own
+            // commanded-level burn plus the conic's climb, and a trip too short for
+            // the minimum-energy climb gets a hyperbolic one rather than a longer
+            // break.
             for (int pass = 0; pass < 5; pass++)
             {
                 chain = BuildCaptureShape(ship, target, entryRadiusM, arrivalJd);
@@ -1671,19 +1651,21 @@ namespace TimeToExplore.Simulation
                         "conic capture: " + chain.InvalidReason);
 
                 captureSeconds = chain.TotalSeconds;
-                double passEntryJd = arrivalJd - captureSeconds / SecondsPerDay;
-                _model.ComputeState(target, passEntryJd,
-                    out Vector3d passTargetAtEntry, out _);
-                Vector3d passEntryPosition = passTargetAtEntry + chain.EntryLocalPositionM;
-
                 double available = totalSeconds - captureSeconds;
                 if (departureBody != null)
                 {
-                    double cruiseBase = BaseDuration(
-                        Vector3d.Distance(provisionalExit, passEntryPosition));
-                    double scale = Math.Max(1.0, available / (escapeBase + cruiseBase));
-                    escapeSeconds = escapeBase * scale;
-                    cruiseSeconds = cruiseBase * scale;
+                    if (!TryBuildDepartureClimb(ship, departureBody, departureCeiling,
+                            available - MinimumCoastSeconds,
+                            ClimbSeedSeconds(available), cheap, out climb,
+                            out string climbReason))
+                    {
+                        return InfeasiblePlan(ship, target, totalSeconds,
+                            "coast: " + climbReason);
+                    }
+
+                    escapeSeconds = climb.ClimbSeconds;
+                    cruiseSeconds = Math.Max(available - escapeSeconds,
+                        MinimumArcSeconds);
                 }
                 else
                 {
@@ -1711,13 +1693,29 @@ namespace TimeToExplore.Simulation
                 out Vector3d targetAtEntry, out _);
             Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
 
-            double escapeEndJd = t0 + escapeSeconds / SecondsPerDay;
+            if (departureBody != null)
+            {
+                double available = totalSeconds - captureSeconds;
+                if (!TryBuildDepartureClimb(ship, departureBody, departureCeiling,
+                        available - MinimumCoastSeconds, ClimbSeedSeconds(available),
+                        cheap, out climb, out string climbReason))
+                {
+                    return InfeasiblePlan(ship, target, totalSeconds,
+                        "coast: " + climbReason);
+                }
+
+                escapeSeconds = climb.ClimbSeconds;
+            }
+
+            double escapeEndJd = departureBody != null
+                ? climb.BurnStartJulianDate
+                : t0;
             Vector3d exitPosition = ship.PositionM;
             if (departureBody != null)
             {
                 _model.ComputeState(departureBody, escapeEndJd,
                     out Vector3d anchorPosition, out _);
-                exitPosition = anchorPosition + escapeDirection * departureSoi;
+                exitPosition = anchorPosition + climb.EscapeEndLocalPositionM;
             }
 
             double cruiseEndJd = entryJd;
@@ -1978,31 +1976,32 @@ namespace TimeToExplore.Simulation
             Vector3d entryPosition = targetAtEntry + chain.EntryLocalPositionM;
             Vector3d entryVelocity = targetVelocityAtEntry + chain.EntryLocalVelocityMps;
 
-            double clearanceRadius = departureBand.DepartureRadiusM;
-            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
+            // The departure climb's ceiling: the handover band's 1.02 × SOI. The
+            // break is no longer stretched to a radial pin on this sphere; it is a
+            // short burn to the ship's own prograde escape state, and a ballistic
+            // conic carries that state from the parking radius out to this ceiling.
+            double climbCeilingRadius = departureBand.DepartureRadiusM;
 
+            // The departure burn's seed: the target is the reference coast's local
+            // departure velocity, and its duration the velocity change over the
+            // commanded acceleration. The burn's start state and its solved attitude
+            // belong to the climb and the Newton; this only starts the solve in the
+            // right basin.
             _model.ComputeState(departureBody, referenceCruise.StartJulianDate,
                 out _, out Vector3d departureAtExit);
-            Vector3d escapeDirection =
+            Vector3d seedDepartureVelocity =
                 referenceCruise.Path.VelocityAt(0.0) - departureAtExit;
-            if (escapeDirection.SqrMagnitude < 0.5)
-            {
-                _model.ComputeState(departureBody, t0,
-                    out Vector3d departureAtStart, out _);
-                escapeDirection = ship.PositionM - departureAtStart;
-            }
-            if (escapeDirection.SqrMagnitude < 0.5)
-                escapeDirection = new Vector3d(1.0, 0.0, 0.0);
-            escapeDirection = escapeDirection.Normalized;
+            Vector3d burnDirection = seedDepartureVelocity.SqrMagnitude > 0.5
+                ? seedDepartureVelocity.Normalized
+                : new Vector3d(1.0, 0.0, 0.0);
 
             double burnSeconds = Math.Max(0.0,
-                (referenceCruise.Path.VelocityAt(0.0) - departureAtExit).Magnitude
-                - escapeSpeed) / acceleration;
+                seedDepartureVelocity.Magnitude
+                - Math.Sqrt(2.0 * departureBody.Gm / climbCeilingRadius)) / acceleration;
             burnSeconds = Math.Max(burnSeconds, MinimumArcSeconds);
 
-            double breakSeconds = Math.Max(
-                (referenceCruise.StartJulianDate - t0) * SecondsPerDay,
-                MinimumArcSeconds);
+            double breakSeconds = MinimumArcSeconds;
+            DepartureClimb climb = default;
 
             double brakeSeconds = MinimumArcSeconds;
             Vector3d brakeDirection = -referenceCruise.Path.VelocityAt(1.0).Normalized;
@@ -2055,7 +2054,7 @@ namespace TimeToExplore.Simulation
                 : BrakeDurationToleranceSeconds;
 
             double previousBurnSeconds = double.NaN;
-            Vector3d previousRay = Vector3d.Zero;
+            Vector3d previousDirection = Vector3d.Zero;
             double brakeMismatch = double.PositiveInfinity;
             bool pinSettled = false;
 
@@ -2123,28 +2122,43 @@ namespace TimeToExplore.Simulation
 
                 coastEndJd = hasApproach ? approachStartJd : brakeStartJd;
                 coastEndPosition = hasApproach ? approachStartPosition : brakeStartPosition;
-                if (PinBreakToCommandAcceleration)
+
+                // A brake that has grown past the departure has already spent
+                // more than the trip; there is no departure climb to place.
+                if (!(coastEndJd > t0))
                 {
-                    breakSeconds = SolveBreakSecondsForCommandPeak(ship, departureBody,
-                        escapeDirection, clearanceRadius, escapeSpeed, breakSeconds,
-                        coastEndJd, burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
-                }
-                else
-                {
-                    breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
-                        clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
-                        burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                    return StretchedPlan(ship, target, totalSeconds,
+                        "burn-coast-burn: the trip time leaves no room for the " +
+                        "departure climb and the coast", shortCoastWorthy: true);
                 }
 
-                burnStartJd = t0 + breakSeconds / SecondsPerDay;
-                _model.ComputeState(departureBody, burnStartJd,
-                    out Vector3d anchorPosition, out Vector3d anchorVelocity);
-                burnStartPosition = anchorPosition + escapeDirection * clearanceRadius;
-                burnStartVelocity = anchorVelocity + escapeDirection * escapeSpeed;
+                // The trip's time for the departure: the coast's end it has to
+                // reach, less the departure burn the last pass solved, the brake's
+                // own tail when there is no planetocentric approach, and a minimum
+                // coast. The break and the escape climb share it. The break is
+                // always the short burn at the commanded level; the climb is the
+                // minimum-energy parabolic one when that time allows it and a
+                // hyperbolic one when it does not, so a faster trip pays more and
+                // the coast absorbs whatever is left.
+                double climbAvailable = (coastEndJd - t0) * SecondsPerDay - burnSeconds
+                                        - (hasApproach ? 0.0 : brakeSeconds)
+                                        - MinimumCoastSeconds;
+                if (!TryBuildDepartureClimb(ship, departureBody, climbCeilingRadius,
+                        climbAvailable, ClimbSeedSeconds(climbAvailable), cheap,
+                        out climb, out string climbReason))
+                {
+                    return StretchedPlan(ship, target, totalSeconds,
+                        "burn-coast-burn: " + climbReason, shortCoastWorthy: true);
+                }
 
-                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
-                        escapeSpeed, acceleration, burnStartJd, coastEndJd,
-                        coastEndPosition, ref escapeDirection, ref burnSeconds,
+                breakSeconds = climb.BreakSeconds;
+                burnStartJd = climb.BurnStartJulianDate;
+                ClimbBurnStart(departureBody, climb, out burnStartPosition,
+                    out burnStartVelocity);
+
+                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody,
+                        acceleration, burnStartJd, burnStartPosition, burnStartVelocity,
+                        coastEndJd, coastEndPosition, ref burnDirection, ref burnSeconds,
                         solveSamples, fallbackSamples, burnGravity,
                         out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string reason))
@@ -2187,15 +2201,18 @@ namespace TimeToExplore.Simulation
                     && Math.Abs(nextBrakeSeconds - brakeSeconds) <= durationTolerance
                     && (nextBrakeDirection - brakeDirection).Magnitude <= directionTolerance
                     && Math.Abs(burnSeconds - previousBurnSeconds) <= durationTolerance
-                    && (escapeDirection - previousRay).Magnitude <= directionTolerance;
+                    && (burnDirection - previousDirection).Magnitude <= directionTolerance;
 
                 Trace?.Invoke($"pin pass {pass}: brake {brakeSeconds:F3} s, " +
                     $"mismatch {brakeMismatch:E2} m/s, " +
-                    $"burn {burnSeconds:F3} s, converged {converged}" +
+                    $"burn {burnSeconds:F3} s, break {breakSeconds:F3} s, " +
+                    $"escape {climb.EscapeSeconds / SecondsPerDay:F4} d " +
+                    $"({(climb.IsParabolic ? "parabolic" : $"v∞ {climb.VInfinityMps:F0} m/s")}), " +
+                    $"converged {converged}" +
                     (hasApproach ? $", approach {approachSeconds:F1} s" : ""));
 
                 previousBurnSeconds = burnSeconds;
-                previousRay = escapeDirection;
+                previousDirection = burnDirection;
                 brakeSeconds = nextBrakeSeconds;
                 brakeDirection = nextBrakeDirection;
                 if (converged)
@@ -2205,32 +2222,42 @@ namespace TimeToExplore.Simulation
                 }
             }
 
-            // Settle the break and the departure against the brake the loop
-            // finished with, so the arcs that are about to be built all belong
-            // to the same ray. A converged loop needs one pass; a near-floor
-            // probe whose fixed point is still drifting gets the old three.
+            // Settle the climb and the departure against the brake the loop
+            // finished with, so the arcs that are about to be built all belong to
+            // one climb. A converged loop needs one pass; a near-floor probe whose
+            // fixed point is still drifting gets the old three.
             int settlePasses = cheap ? 0 : 3;
             for (int settle = 0; settle < settlePasses; settle++)
             {
                 double previousSettleBurn = burnSeconds;
-                Vector3d previousSettleRay = escapeDirection;
+                Vector3d previousSettleDirection = burnDirection;
 
-                if (PinBreakToCommandAcceleration)
+                if (!(coastEndJd > t0))
                 {
-                    breakSeconds = SolveBreakSecondsForCommandPeak(ship, departureBody,
-                        escapeDirection, clearanceRadius, escapeSpeed, breakSeconds,
-                        coastEndJd, burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                    return StretchedPlan(ship, target, totalSeconds,
+                        "burn-coast-burn: the trip time leaves no room for the " +
+                        "departure climb and the coast", shortCoastWorthy: true);
                 }
-                else
+
+                double settleAvailable = (coastEndJd - t0) * SecondsPerDay - burnSeconds
+                                         - (hasApproach ? 0.0 : brakeSeconds)
+                                         - MinimumCoastSeconds;
+                if (!TryBuildDepartureClimb(ship, departureBody, climbCeilingRadius,
+                        settleAvailable, ClimbSeedSeconds(settleAvailable), cheap,
+                        out climb, out string climbReason))
                 {
-                    breakSeconds = SolveBreakSeconds(ship, departureBody, escapeDirection,
-                        clearanceRadius, escapeSpeed, breakSeconds, coastEndJd,
-                        burnSeconds, hasApproach ? 0.0 : brakeSeconds, cheap);
+                    return StretchedPlan(ship, target, totalSeconds,
+                        "burn-coast-burn: " + climbReason, shortCoastWorthy: true);
                 }
-                burnStartJd = t0 + breakSeconds / SecondsPerDay;
-                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody, clearanceRadius,
-                        escapeSpeed, acceleration, burnStartJd, coastEndJd,
-                        coastEndPosition, ref escapeDirection, ref burnSeconds,
+
+                breakSeconds = climb.BreakSeconds;
+                burnStartJd = climb.BurnStartJulianDate;
+                ClimbBurnStart(departureBody, climb, out burnStartPosition,
+                    out burnStartVelocity);
+
+                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody,
+                        acceleration, burnStartJd, burnStartPosition, burnStartVelocity,
+                        coastEndJd, coastEndPosition, ref burnDirection, ref burnSeconds,
                         solveSamples, fallbackSamples, burnGravity,
                         out coastStartPosition, out coastStartVelocity,
                         out coastArrivalVelocity, out coastSeconds, out string settleReason))
@@ -2240,7 +2267,8 @@ namespace TimeToExplore.Simulation
                 }
 
                 if (Math.Abs(burnSeconds - previousSettleBurn) <= durationTolerance
-                    && (escapeDirection - previousSettleRay).Magnitude <= directionTolerance)
+                    && (burnDirection - previousSettleDirection).Magnitude
+                    <= directionTolerance)
                 {
                     break;
                 }
@@ -2253,10 +2281,13 @@ namespace TimeToExplore.Simulation
                     "between the burns");
             }
 
-            _model.ComputeState(departureBody, burnStartJd,
-                out Vector3d settledAnchorPosition, out Vector3d settledAnchorVelocity);
-            burnStartPosition = settledAnchorPosition + escapeDirection * clearanceRadius;
-            burnStartVelocity = settledAnchorVelocity + escapeDirection * escapeSpeed;
+            // The reported arcs use the climb the solve settled on; its ceiling
+            // state is the departure burn's start, so the break, the conic, and the
+            // burn share one continuous state.
+            breakSeconds = climb.BreakSeconds;
+            burnStartJd = climb.BurnStartJulianDate;
+            ClimbBurnStart(departureBody, climb, out burnStartPosition,
+                out burnStartVelocity);
             coastStartJd = burnStartJd + burnSeconds / SecondsPerDay;
 
             // A brake decelerates. A coast that arrives slower than the target's
@@ -2281,7 +2312,7 @@ namespace TimeToExplore.Simulation
                 burnStartJd, burnSeconds, burnStartPosition - sunForBurn,
                 burnStartVelocity - sunVelocityForBurn, acceleration,
                 retrograde: false, samples: burnSamples,
-                fixedThrustDirection: escapeDirection, gravity: burnGravity);
+                fixedThrustDirection: burnDirection, gravity: burnGravity);
 
             // The coast is solved to the approach's start on the ceiling (or to
             // the brake's start when the brake begins outside the ceiling and
@@ -2359,10 +2390,9 @@ namespace TimeToExplore.Simulation
                 retrograde: true, samples: brakeSamples,
                 fixedThrustDirection: brakeDirection, gravity: burnGravity);
 
-            var arcs = new List<PlanArc>(9);
-            arcs.Add(MakeArc(FlightPhase.Departure, departureBody.Id, t0, burnStartJd,
-                ship.PositionM, ship.VelocityMps, burnStartPosition, burnStartVelocity,
-                fast: cheap));
+            var arcs = new List<PlanArc>(10);
+            AppendDepartureClimb(arcs, ship, departureBody, climb, cheap);
+
             arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
                 burnStartJd, coastStartJd, departureBurn, cheap));
 
@@ -2448,293 +2478,6 @@ namespace TimeToExplore.Simulation
             return new BuildResult(plan, requiredSeconds);
         }
 
-        /// <summary>
-        /// The break's duration. The reference coast's departure share is kept
-        /// while the quintic's peak thrust fits the drive; when it does not, the
-        /// duration is lengthened to the shortest one that fits, capped by the time
-        /// the coast and the burns leave. The endpoint is the pinned clearance
-        /// state, so the duration changes only how hard the break works, not where
-        /// it ends.
-        /// </summary>
-        private double SolveBreakSeconds(ShipState ship, BodyRuntime departureBody,
-            Vector3d direction, double clearanceRadius, double escapeSpeed,
-            double candidateSeconds, double coastEndJd, double burnSeconds,
-            double reservedTailSeconds, bool cheap = false)
-        {
-            double limit = MaxAccelerationMps2 * ThrustMargin;
-            // The reserved tail is the brake's duration when the coast ends at
-            // the brake's start; the approach leg already takes the brake and its
-            // own fall out of the span when it exists, so the caller passes zero.
-            double available = (coastEndJd - ship.JulianDate) * SecondsPerDay
-                               - burnSeconds - reservedTailSeconds - MinimumCoastSeconds;
-            double cap = Math.Max(MinimumArcSeconds, available);
-            double candidate = Math.Clamp(candidateSeconds, MinimumArcSeconds, cap);
-
-            // A probe measures the break against its own central body and skips
-            // the full-field certification; the certified build at the end of
-            // the floor search decides with the field the plan reports.
-            double Peak(double seconds) => cheap
-                ? BreakPeakCentralBody(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, seconds)
-                : BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, seconds);
-
-            if (Peak(candidate) <= limit)
-                return candidate;
-
-            if (!(available > candidate) || Peak(cap) > limit)
-            {
-                // The trip time itself is too short for a gentle break; the plan
-                // comes out over-thrust and is reported as infeasible rather than
-                // inventing time.
-                return cap;
-            }
-
-            double low = candidate;
-            double high = candidate;
-            for (int step = 0; step < 24 && high < cap; step++)
-            {
-                high = Math.Min(high * 1.25, cap);
-                if (Peak(high) <= limit)
-                    break;
-            }
-
-            // The crossing is a smooth function of the break's duration, so a
-            // tolerance-based bisection is enough; a probe stops a few steps
-            // early because only the certified build's break is reported.
-            double tolerance = cheap ? 1e-3 * high : 0.0;
-            for (int iteration = 0; iteration < 20; iteration++)
-            {
-                double middle = 0.5 * (low + high);
-                if (tolerance > 0.0 && high - low <= tolerance)
-                    break;
-                if (Peak(middle) <= limit)
-                    high = middle;
-                else
-                    low = middle;
-            }
-
-            return high;
-        }
-
-        /// <summary>
-        /// The pinned break's duration: the duration whose quintic peaks at the
-        /// commanded acceleration, <see cref="FixedBurnAccelerationMps2"/> — the
-        /// same level the fixed burns command — rather than at the drive's limit
-        /// or at the reference coast's departure share. The break's peak falls as
-        /// its duration grows, so the solve brackets the crossing from the seed
-        /// (growing when the seed is too hard, shrinking when it is too gentle)
-        /// and bisects. The trip enters only through the available-time cap, so
-        /// the same departure state, level, and ray give the same duration on a
-        /// 30-day trip and a 200-day one.
-        ///
-        /// The bracketing and bisection use the fast peak <see cref="BreakPeakMps2"/>
-        /// (the departure body alone, with the 5% full-field screen), so probes pay
-        /// a looser relative tolerance than the certified build. The plan that is
-        /// reported is still measured with the full field, so its
-        /// <see cref="PlanArc.PeakThrustMps2"/> may differ from the target by a few
-        /// percent at 0.3 g, where the screen leaves the central-body model in
-        /// charge; the difference is recorded, not hidden.
-        ///
-        /// At 1 g the target is the drive's own margin limit (9.7 m/s² of 10.0),
-        /// so a certified peak a little above it would make the plan infeasible.
-        /// The screen normally makes the search function the full-field one there,
-        /// which keeps the result at or under the target. As insurance, a
-        /// certified full-field peak above the drive retargets the solve 0.2% lower
-        /// once, which trades a little peak for feasibility without moving the
-        /// duration on plans that do not need it.
-        /// </summary>
-        private double SolveBreakSecondsForCommandPeak(ShipState ship,
-            BodyRuntime departureBody, Vector3d direction, double clearanceRadius,
-            double escapeSpeed, double candidateSeconds, double coastEndJd,
-            double burnSeconds, double reservedTailSeconds, bool cheap = false)
-        {
-            // The same budget SolveBreakSeconds uses: the break may spend the
-            // time the coast, the departure burn, the reserved brake, and the
-            // minimum coast leave.
-            double available = (coastEndJd - ship.JulianDate) * SecondsPerDay
-                               - burnSeconds - reservedTailSeconds - MinimumCoastSeconds;
-            return SolveBreakSecondsForCommandPeakWithin(ship, departureBody, direction,
-                clearanceRadius, escapeSpeed, candidateSeconds,
-                Math.Max(MinimumArcSeconds, available), cheap);
-        }
-
-        /// <summary>The pinned solve with the available time already reduced to
-        /// the cap. Split out so a test can hold the ray fixed and vary only the
-        /// cap the trip supplies — the one way the trip is allowed to move the
-        /// answer.</summary>
-        private double SolveBreakSecondsForCommandPeakWithin(ShipState ship,
-            BodyRuntime departureBody, Vector3d direction, double clearanceRadius,
-            double escapeSpeed, double candidateSeconds, double cap, bool cheap)
-        {
-            double Peak(double seconds) => cheap
-                ? BreakPeakCentralBody(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, seconds)
-                : BreakPeakMps2(ship, departureBody, direction, clearanceRadius,
-                    escapeSpeed, seconds);
-
-            double SolveForTarget(double target)
-            {
-                double seed = Math.Clamp(candidateSeconds, MinimumArcSeconds, cap);
-                if (!(target > 0.0)) return seed;
-
-                double low;
-                double high;
-                if (Peak(seed) > target)
-                {
-                    // Too hard: grow until the peak crosses below the target.
-                    low = seed;
-                    high = seed;
-                    bool crossed = false;
-                    for (int step = 0; step < 48 && high < cap; step++)
-                    {
-                        double next = Math.Min(high * 1.25, cap);
-                        if (Peak(next) <= target)
-                        {
-                            high = next;
-                            crossed = true;
-                            break;
-                        }
-
-                        low = next;
-                        high = next;
-                    }
-
-                    // The cap is as gentle as the trip allows and is still
-                    // harder than the target: the plan cannot reach the level.
-                    if (!crossed) return cap;
-                }
-                else
-                {
-                    // Too gentle: shrink until the peak crosses above the
-                    // target. If even the shortest arc stays gentle, the
-                    // minimum is the strongest break this level can build.
-                    high = seed;
-                    low = seed;
-                    bool crossed = false;
-                    for (int step = 0; step < 80 && low > MinimumArcSeconds; step++)
-                    {
-                        double next = Math.Max(low * 0.8, MinimumArcSeconds);
-                        if (Peak(next) > target)
-                        {
-                            low = next;
-                            crossed = true;
-                            break;
-                        }
-
-                        high = next;
-                        low = next;
-                    }
-
-                    if (!crossed) return MinimumArcSeconds;
-                }
-
-                // A probe stops at a looser relative tolerance: only the
-                // certified build's break is reported. The certified tolerance
-                // is tight enough that the duration does not depend on the
-                // seed the trip supplied.
-                double tolerance = cheap ? 1e-3 * high : 1e-7 * high;
-                for (int iteration = 0; iteration < 64 && high - low > tolerance;
-                     iteration++)
-                {
-                    double middle = 0.5 * (low + high);
-                    if (Peak(middle) <= target) high = middle;
-                    else low = middle;
-                }
-
-                return Math.Clamp(high, MinimumArcSeconds, cap);
-            }
-
-            double seconds = SolveForTarget(FixedBurnAccelerationMps2);
-
-            // Numerical safety at 1 g, where the target is the drive's margin
-            // limit. The full-field peak the plan reports is the authority; if
-            // it lands above the drive, re-solve a fifth of a percent lower once.
-            if (!cheap)
-            {
-                double certified = BreakPeakFullField(ship, departureBody, direction,
-                    clearanceRadius, escapeSpeed, seconds);
-                if (certified > MaxAccelerationMps2)
-                {
-                    seconds = SolveForTarget(0.998 * FixedBurnAccelerationMps2);
-                }
-            }
-
-            return Math.Clamp(seconds, MinimumArcSeconds, cap);
-        }
-
-        /// <summary>The quintic break's peak commanded thrust for one duration.
-        /// The search uses the departure body's gravity alone: the break's
-        /// meaningful field is its own central body, and evaluating the full
-        /// field at 64 samples per probe is what made the profile freeze the nav
-        /// computer. The endpoint accelerations stay full-field, so the quintic
-        /// is exactly the arc the final plan builds; only the along-arc gravity
-        /// subtraction is reduced. Inside <see cref="BreakScreenMargin"/> of the
-        /// drive limit the full field certifies the probe, because there the
-        /// omitted Sun and third-body terms decide whether the break fits.</summary>
-        private double BreakPeakMps2(ShipState ship, BodyRuntime departureBody,
-            Vector3d direction, double clearanceRadius, double escapeSpeed,
-            double seconds)
-        {
-            double fast = BreakPeakCentralBody(ship, departureBody, direction,
-                clearanceRadius, escapeSpeed, seconds);
-            double limit = MaxAccelerationMps2 * ThrustMargin;
-            if (fast <= limit * (1.0 - BreakScreenMargin))
-                return fast;
-
-            return BreakPeakFullField(ship, departureBody, direction,
-                clearanceRadius, escapeSpeed, seconds);
-        }
-
-        /// <summary>The break peak with only the departure body's gravity. The
-        /// quintic is built exactly as <see cref="MakeArc"/> builds the final
-        /// break, so the reported and fast arcs share a shape; the samples
-        /// subtract the central body instead of the full catalogue.</summary>
-        private double BreakPeakCentralBody(ShipState ship, BodyRuntime departureBody,
-            Vector3d direction, double clearanceRadius, double escapeSpeed,
-            double seconds)
-        {
-            double startJd = ship.JulianDate;
-            double endJd = startJd + seconds / SecondsPerDay;
-            _model.ComputeState(departureBody, endJd,
-                out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            Vector3d endPosition = anchorPosition + direction * clearanceRadius;
-            Vector3d endVelocity = anchorVelocity + direction * escapeSpeed;
-
-            // Full-field endpoint accelerations keep this curve identical to the
-            // final plan's break arc. Only two Prepare calls are paid per probe;
-            // the samples evaluate one body's state, not the whole catalogue.
-            _gravity.Prepare(ship.PositionM, startJd);
-            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, startJd);
-            _gravity.Prepare(endPosition, endJd);
-            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJd);
-
-            Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
-                endPosition, endVelocity, endGravity, seconds);
-
-            int samples = Math.Max(8, ArcSamples);
-            double peak = 0.0;
-            for (int i = 0; i <= samples; i++)
-            {
-                double magnitude = BreakThrustAt(path, departureBody, startJd,
-                    (double)i / samples);
-                if (magnitude > peak) peak = magnitude;
-            }
-
-            return peak;
-        }
-
-        /// <summary>Thrust the break quintic needs at a parameter, against the
-        /// departure body's gravity alone.</summary>
-        private double BreakThrustAt(Quintic path, BodyRuntime departureBody,
-            double startJd, double u)
-        {
-            Vector3d position = path.PositionAt(u);
-            double julianDate = startJd + path.SecondsAt(u) / SecondsPerDay;
-            return (path.AccelerationAt(u)
-                    - CentralBodyGravity(departureBody, position, julianDate)).Magnitude;
-        }
-
         /// <summary>The fast peak of an already-built quintic, against its own
         /// reference body alone. The floor probes use this instead of the full
         /// <see cref="Measure"/>, so a probe pays one body's ephemeris per
@@ -2769,38 +2512,6 @@ namespace TimeToExplore.Simulation
             double radius2 = Math.Max(delta.SqrMagnitude, body.RadiusM * body.RadiusM);
             double inverse = 1.0 / Math.Sqrt(radius2);
             return delta * (body.Gm * inverse * inverse * inverse);
-        }
-
-        /// <summary>The full-field break peak: the same quintic the plan reports,
-        /// sampled through the complete field. The field is prepared once at the
-        /// break's start, where the departure body and its moons are strongest,
-        /// and that selected set is evaluated at every sample. The break only
-        /// climbs outward, so no new body becomes significant along it; this is
-        /// the field <see cref="Measure"/> sees, without recomputing every
-        /// catalogue ephemeris at each sample. Used only inside the screen band,
-        /// so the common path stays central-body-only.</summary>
-        private double BreakPeakFullField(ShipState ship, BodyRuntime departureBody,
-            Vector3d direction, double clearanceRadius, double escapeSpeed,
-            double seconds)
-        {
-            double startJd = ship.JulianDate;
-            double endJd = startJd + seconds / SecondsPerDay;
-            _model.ComputeState(departureBody, endJd,
-                out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            Vector3d endPosition = anchorPosition + direction * clearanceRadius;
-            Vector3d endVelocity = anchorVelocity + direction * escapeSpeed;
-
-            // Endpoint accelerations exactly as MakeArc builds them, so the
-            // certified curve and the plan's break arc share their shape.
-            _gravity.Prepare(ship.PositionM, startJd);
-            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, startJd);
-            _gravity.Prepare(endPosition, endJd);
-            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJd);
-
-            Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
-                endPosition, endVelocity, endGravity, seconds);
-
-            return BreakPeakFullFieldAlongPath(path, startJd);
         }
 
         /// <summary>Full-field peak of an already-built break path. The field is
@@ -2883,39 +2594,513 @@ namespace TimeToExplore.Simulation
             return BreakPeakFullFieldAlongPath(arc.Path, arc.StartJulianDate);
         }
 
-        /// <summary>Diagnostic only: the pinned break's duration for a plan's
-        /// own departure state and an explicit escape ray, with the trip's
-        /// available time supplied as a cap. The tests use it to hold the ray
-        /// fixed while the trip time changes: the solve depends on the departure
-        /// state, the level, and the ray, and the trip enters only through the
-        /// cap, so the same ray gives the same duration.</summary>
-        public double MeasurePinnedBreakDurationSeconds(TrajectoryPlan plan,
-            Vector3d escapeDirection, double availableSeconds)
+        /// <summary>
+        /// The ship's own orbital basis about the departure body: the radial
+        /// direction, its prograde tangent, and the orbit normal. The tangent is
+        /// the component of the relative velocity across the radius, rotated into
+        /// the plane — not the outbound escape ray. The break aims at the ship's
+        /// own prograde direction: a station's orbital direction has no relation
+        /// to the transfer, and a burn that points at the target cannot start from
+        /// the parking radius, it would push the ship into the planet.
+        /// </summary>
+        private bool TryDepartureBasis(ShipState ship, BodyRuntime body,
+            out Vector3d radial, out Vector3d tangent, out Vector3d normal,
+            out double radius, out double angularRateRadPerSecond)
         {
-            if (plan == null) throw new ArgumentNullException(nameof(plan));
-            if (escapeDirection.SqrMagnitude < 0.5)
-                throw new ArgumentException("An escape ray is needed.", nameof(escapeDirection));
+            radial = Vector3d.Zero;
+            tangent = Vector3d.Zero;
+            normal = Vector3d.Zero;
+            radius = 0.0;
+            angularRateRadPerSecond = 0.0;
 
-            PlanArc arc = plan.Arcs[0];
-            if (arc.Phase != FlightPhase.Departure || arc.IsCoast || arc.IsFiniteBurn)
-                throw new ArgumentException(
-                    "The plan's first arc is not a quintic break.", nameof(plan));
+            _model.ComputeState(body, ship.JulianDate,
+                out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            Vector3d relativePosition = ship.PositionM - bodyPosition;
+            Vector3d relativeVelocity = ship.VelocityMps - bodyVelocity;
+            radius = relativePosition.Magnitude;
+            if (!(radius > body.RadiusM) || !(radius > 0.0)) return false;
 
-            BodyRuntime departureBody = _model.Get(arc.ReferenceBodyId)
-                ?? throw new ArgumentException(
-                    $"No body '{arc.ReferenceBodyId}' for the break arc.", nameof(plan));
+            radial = relativePosition / radius;
+            Vector3d angularMomentum = Vector3d.Cross(relativePosition, relativeVelocity);
+            if (!(angularMomentum.Magnitude > 1e-9 * radius * relativeVelocity.Magnitude))
+                return false;
 
-            _model.ComputeState(departureBody, arc.EndJulianDate,
-                out Vector3d anchorPosition, out _);
-            double clearanceRadius = Vector3d.Distance(
-                arc.Path.PositionAt(1.0), anchorPosition);
-            double escapeSpeed = Math.Sqrt(2.0 * departureBody.Gm / clearanceRadius);
+            normal = angularMomentum.Normalized;
+            tangent = Vector3d.Cross(normal, radial).Normalized;
+            if (tangent.SqrMagnitude < 0.5) return false;
 
-            return SolveBreakSecondsForCommandPeakWithin(plan.DepartureState,
-                departureBody, escapeDirection.Normalized, clearanceRadius, escapeSpeed,
-                arc.DurationSeconds, Math.Max(MinimumArcSeconds, availableSeconds),
-                cheap: false);
+            angularRateRadPerSecond = Vector3d.Dot(relativeVelocity, tangent) >= 0.0
+                ? relativeVelocity.Magnitude / radius
+                : -relativeVelocity.Magnitude / radius;
+            return true;
         }
+
+        /// <summary>Rotate a vector about a unit axis by an angle, right-handed.</summary>
+        private static Vector3d RotateAbout(Vector3d vector, Vector3d axisUnit,
+            double angleRad)
+        {
+            double cos = Math.Cos(angleRad);
+            double sin = Math.Sin(angleRad);
+            return vector * cos
+                   + Vector3d.Cross(axisUnit, vector) * sin
+                   + axisUnit * (Vector3d.Dot(axisUnit, vector) * (1.0 - cos));
+        }
+
+        /// <summary>
+        /// Where the break ends: the parking position advanced by the phase the
+        /// ship sweeps during the burn, with the planetocentric escape speed along
+        /// the prograde tangent there. The periapsis speed is
+        /// <c>√(2μ/r₀ + v∞²)</c>, so <c>v∞ = 0</c> is the parabolic boundary and
+        /// the break's endpoint is the escape conic's periapsis.
+        /// </summary>
+        private void BreakEndpoint(ShipState ship, BodyRuntime body, Vector3d radial,
+            Vector3d tangent, Vector3d normal, double radius, double angularRateRadPerSecond,
+            double periapsisSpeedMps, double seconds,
+            out Vector3d endLocalPositionM, out Vector3d endLocalVelocityMps,
+            out Vector3d endPositionM, out Vector3d endVelocityMps,
+            out double endJulianDate)
+        {
+            double angle = angularRateRadPerSecond * seconds;
+            Vector3d rotatedRadial = RotateAbout(radial, normal, angle);
+            Vector3d rotatedTangent = RotateAbout(tangent, normal, angle);
+            endLocalPositionM = rotatedRadial * radius;
+            endLocalVelocityMps = rotatedTangent * periapsisSpeedMps;
+
+            endJulianDate = ship.JulianDate + seconds / SecondsPerDay;
+            _model.ComputeState(body, endJulianDate,
+                out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            endPositionM = bodyPosition + endLocalPositionM;
+            endVelocityMps = bodyVelocity + endLocalVelocityMps;
+        }
+
+        /// <summary>The quintic break's peak commanded thrust for one duration,
+        /// with the endpoint on the ship's own prograde escape state. The endpoint
+        /// accelerations are full-field, exactly as <see cref="MakeArc"/> builds
+        /// the final break; a probe measures only the departure body's gravity
+        /// along the arc.</summary>
+        private double BreakPeakToEndpoint(ShipState ship, BodyRuntime body,
+            Vector3d radial, Vector3d tangent, Vector3d normal, double radius,
+            double angularRateRadPerSecond, double periapsisSpeedMps, double seconds,
+            bool cheap)
+        {
+            BreakEndpoint(ship, body, radial, tangent, normal, radius,
+                angularRateRadPerSecond, periapsisSpeedMps, seconds,
+                out _, out _, out Vector3d endPosition, out Vector3d endVelocity,
+                out double endJulianDate);
+
+            _gravity.Prepare(ship.PositionM, ship.JulianDate);
+            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, ship.JulianDate);
+            _gravity.Prepare(endPosition, endJulianDate);
+            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJulianDate);
+
+            Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
+                endPosition, endVelocity, endGravity, seconds);
+
+            if (cheap) return BreakPeakCentralBodyAlongPath(path, ship.JulianDate, body);
+
+            double fast = BreakPeakCentralBodyAlongPath(path, ship.JulianDate, body);
+            double limit = MaxAccelerationMps2 * ThrustMargin;
+            return fast <= limit * (1.0 - BreakScreenMargin)
+                ? fast
+                : BreakPeakFullFieldAlongPath(path, ship.JulianDate);
+        }
+
+        /// <summary>
+        /// The break's duration: the quintic whose peak commanded thrust is the
+        /// commanded acceleration <see cref="FixedBurnAccelerationMps2"/>, solved
+        /// against the ship's own prograde escape endpoint. The seed is the speed
+        /// change over the acceleration, and the peak falls as the duration grows,
+        /// so the solve grows or shrinks from the seed and bisects. The trip enters
+        /// only through <paramref name="capSeconds"/>: a trip too short to fly the
+        /// break at the commanded level comes back at the cap and is reported
+        /// over-thrust rather than stretched.
+        /// </summary>
+        private double SolveBreakSecondsToEscapeState(ShipState ship, BodyRuntime body,
+            Vector3d radial, Vector3d tangent, Vector3d normal, double radius,
+            double angularRateRadPerSecond, double periapsisSpeedMps,
+            double seedSeconds, double capSeconds, bool cheap)
+        {
+            double limit = FixedBurnAccelerationMps2;
+            double cap = Math.Max(MinimumArcSeconds, capSeconds);
+            double Peak(double seconds) => BreakPeakToEndpoint(ship, body, radial, tangent,
+                normal, radius, angularRateRadPerSecond, periapsisSpeedMps, seconds, cheap);
+
+            double seed = Math.Clamp(seedSeconds, MinimumArcSeconds, cap);
+            double low;
+            double high;
+
+            if (Peak(seed) > limit)
+            {
+                // Too hard: grow until the peak crosses below the target.
+                low = seed;
+                high = seed;
+                bool crossed = false;
+                for (int step = 0; step < 64 && high < cap; step++)
+                {
+                    double next = Math.Min(high * 1.25, cap);
+                    if (Peak(next) <= limit)
+                    {
+                        high = next;
+                        crossed = true;
+                        break;
+                    }
+
+                    low = next;
+                    high = next;
+                }
+
+                if (!crossed) return cap;
+            }
+            else
+            {
+                // Too gentle: shrink until the peak crosses above the target.
+                high = seed;
+                low = seed;
+                bool crossed = false;
+                for (int step = 0; step < 96 && low > MinimumArcSeconds; step++)
+                {
+                    double next = Math.Max(low * 0.8, MinimumArcSeconds);
+                    if (Peak(next) > limit)
+                    {
+                        low = next;
+                        crossed = true;
+                        break;
+                    }
+
+                    high = next;
+                    low = next;
+                }
+
+                if (!crossed) return MinimumArcSeconds;
+            }
+
+            double tolerance = cheap ? 1e-3 * high : 1e-6 * high;
+            for (int iteration = 0; iteration < 64 && high - low > tolerance; iteration++)
+            {
+                double middle = 0.5 * (low + high);
+                if (Peak(middle) <= limit) high = middle;
+                else low = middle;
+            }
+
+            return Math.Clamp(high, MinimumArcSeconds, cap);
+        }
+
+        /// <summary>
+        /// The ballistic planetocentric climb from the parking radius to the
+        /// departure ceiling. The conic starts at the break's endpoint — the
+        /// parking radius on the ship's prograde tangent at the planetocentric
+        /// escape speed — so its periapsis is that state. The ceiling crossing is
+        /// solved from the conic's own elements, not from a time share: the true
+        /// anomaly is where <c>p / (1 + e cos ν) = r_ceiling</c> on the outward
+        /// branch, and the time is the conic's own time from periapsis.
+        /// </summary>
+        private bool TryEscapeCeilingState(BodyRuntime body, Vector3d radial,
+            Vector3d tangent, double parkingRadiusM, double periapsisSpeedMps,
+            double ceilingRadiusM, out ConicElements elements, out double anomalyRad,
+            out double seconds, out Vector3d localPositionM, out Vector3d localVelocityMps)
+        {
+            elements = null;
+            anomalyRad = 0.0;
+            seconds = 0.0;
+            localPositionM = Vector3d.Zero;
+            localVelocityMps = Vector3d.Zero;
+
+            if (!(ceilingRadiusM > parkingRadiusM)) return false;
+
+            try
+            {
+                elements = ConicElements.FromState(radial * parkingRadiusM,
+                    tangent * periapsisSpeedMps, body.Gm);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            // The endpoint is at escape speed or above, so the conic is parabolic
+            // or hyperbolic and reaches any radius outside its periapsis. An
+            // elliptic conic cannot climb to the ceiling.
+            if (elements.Eccentricity < 1.0 - 1e-7) return false;
+
+            double cos = (elements.SemiLatusRectumM / ceilingRadiusM - 1.0)
+                         / elements.Eccentricity;
+            if (!(cos > -1.0 && cos < 1.0)) return false;
+
+            anomalyRad = Math.Acos(cos);
+            seconds = elements.TimeSincePeriapsis(anomalyRad);
+            if (!(seconds > 0.0) || !double.IsFinite(seconds)) return false;
+
+            elements.StateAtTrueAnomaly(anomalyRad, out localPositionM, out localVelocityMps);
+            return true;
+        }
+
+        /// <summary>
+        /// The hyperbolic excess speed whose escape conic reaches the ceiling in
+        /// <paramref name="targetSeconds"/>. The flight time falls monotonically as
+        /// the excess speed rises, so the solve is a bisection on v∞; the
+        /// minimum-energy parabolic climb is the v∞ = 0 end.
+        /// </summary>
+        private bool TrySolveVInfinityForEscapeSeconds(BodyRuntime body, Vector3d radial,
+            Vector3d tangent, double parkingRadiusM, double ceilingRadiusM,
+            double targetSeconds, out double vInfinityMps, out double periapsisSpeedMps,
+            out double escapeSeconds)
+        {
+            vInfinityMps = 0.0;
+            periapsisSpeedMps = 0.0;
+            escapeSeconds = 0.0;
+
+            if (!(targetSeconds > 0.0)) return false;
+
+            double escapeSpeed = Math.Sqrt(2.0 * body.Gm / parkingRadiusM);
+            double Time(double vInfinity)
+            {
+                double speed = Math.Sqrt(escapeSpeed * escapeSpeed
+                                         + vInfinity * vInfinity);
+                return TryEscapeCeilingState(body, radial, tangent, parkingRadiusM, speed,
+                    ceilingRadiusM, out _, out _, out double seconds, out _, out _)
+                    ? seconds
+                    : double.PositiveInfinity;
+            }
+
+            double low = 0.0;
+            double lowSeconds = Time(0.0);
+            if (!(lowSeconds > targetSeconds)) return false;
+
+            double high = 1.0;
+            for (int step = 0; step < 80; step++)
+            {
+                double seconds = Time(high);
+                if (double.IsFinite(seconds) && seconds <= targetSeconds) break;
+                high *= 2.0;
+                if (!(high < 1e9)) return false;
+            }
+
+            if (!(Time(high) <= targetSeconds)) return false;
+
+            for (int iteration = 0; iteration < 80; iteration++)
+            {
+                double middle = 0.5 * (low + high);
+                double seconds = Time(middle);
+                if (seconds <= targetSeconds) high = middle;
+                else low = middle;
+            }
+
+            vInfinityMps = high;
+            periapsisSpeedMps = Math.Sqrt(escapeSpeed * escapeSpeed
+                                          + vInfinityMps * vInfinityMps);
+            escapeSeconds = Time(vInfinityMps);
+            return true;
+        }
+
+        /// <summary>
+        /// Build the departure: the short break and the ballistic climb, in the
+        /// time the trip leaves for them. A trip long enough for the minimum-energy
+        /// parabolic climb gets exactly that; a shorter one gets a hyperbolic
+        /// excess speed so the conic still reaches the ceiling in the available
+        /// time, and the coast absorbs whatever is left. If the break and even the
+        /// fastest climb cannot fit the available time, the trip is infeasible and
+        /// the numbers are reported rather than a plan invented.
+        /// </summary>
+        private bool TryBuildDepartureClimb(ShipState ship, BodyRuntime body,
+            double ceilingRadiusM, double availableSeconds, double seedBreakSeconds,
+            bool cheap, out DepartureClimb climb, out string reason)
+        {
+            climb = default;
+            reason = null;
+
+            if (!TryDepartureBasis(ship, body, out Vector3d radial, out Vector3d tangent,
+                    out Vector3d normal, out double radius, out double angularRate))
+            {
+                reason = "the ship has no prograde direction about the departure body " +
+                         "to break out along";
+                return false;
+            }
+
+            if (!(radius < ceilingRadiusM))
+            {
+                reason = $"the ship starts at {radius / 1000.0:F0} km from " +
+                         $"{body.Name}'s centre, at or outside the " +
+                         $"{ceilingRadiusM / 1000.0:F0} km departure ceiling";
+                return false;
+            }
+
+            double escapeSpeed = Math.Sqrt(2.0 * body.Gm / radius);
+            double speedChange = Math.Abs(escapeSpeed
+                                          - Vector3d.Dot(ship.VelocityMps
+                                                         - BodyVelocity(body, ship.JulianDate),
+                                              tangent));
+            double seed = Math.Max(seedBreakSeconds, speedChange / FixedBurnAccelerationMps2);
+            double cap = Math.Max(MinimumArcSeconds, availableSeconds);
+
+            double periapsisSpeed = escapeSpeed;
+            double breakSeconds = SolveBreakSecondsToEscapeState(ship, body, radial,
+                tangent, normal, radius, angularRate, periapsisSpeed, seed, cap, cheap);
+
+            if (!TryEscapeCeilingState(body, radial, tangent, radius, periapsisSpeed,
+                    ceilingRadiusM, out ConicElements parabolicElements,
+                    out double parabolicAnomaly, out double parabolicSeconds,
+                    out Vector3d parabolicPosition, out Vector3d parabolicVelocity))
+            {
+                reason = $"the escape conic cannot reach {body.Name}'s " +
+                         $"{ceilingRadiusM / 1000.0:F0} km ceiling from the " +
+                         $"{radius / 1000.0:F0} km parking radius";
+                return false;
+            }
+
+            double vInfinity = 0.0;
+            double escapeSeconds = parabolicSeconds;
+            double anomaly = parabolicAnomaly;
+            Vector3d escapePosition = parabolicPosition;
+            Vector3d escapeVelocity = parabolicVelocity;
+            ConicElements elements = parabolicElements;
+            bool parabolic = true;
+
+            if (breakSeconds + escapeSeconds > availableSeconds + 1e-6)
+            {
+                // The trip does not leave the minimum-energy climb its own time:
+                // solve a hyperbolic excess speed that fits the escape into what
+                // is left after the break, then correct the break for the speed it
+                // now has to supply. The map is strongly contractive (the break is
+                // minutes against a climb of days), so a handful of passes settles
+                // it without a nested bisection for every evaluation.
+                parabolic = false;
+                for (int pass = 0; pass < 6; pass++)
+                {
+                    double target = availableSeconds - breakSeconds;
+                    if (!(target > MinimumArcSeconds))
+                    {
+                        reason = availableSeconds > MinimumArcSeconds
+                            ? $"the trip leaves {availableSeconds / SecondsPerDay:F5} d " +
+                              $"for the break and the escape climb, and the break alone " +
+                              $"needs {breakSeconds / SecondsPerDay:F5} d at the " +
+                              $"{FixedBurnAccelerationMps2:F3} m/s² level"
+                            : $"the trip time leaves no room for the break and the " +
+                              $"escape climb at the {FixedBurnAccelerationMps2:F3} m/s² level";
+                        return false;
+                    }
+
+                    if (!TrySolveVInfinityForEscapeSeconds(body, radial, tangent, radius,
+                            ceilingRadiusM, target, out vInfinity, out periapsisSpeed,
+                            out escapeSeconds))
+                    {
+                        reason = $"the trip leaves {target / SecondsPerDay:F5} d for the " +
+                                 $"escape climb from {body.Name}, which needs a hyperbolic " +
+                                 "excess speed beyond the break's range";
+                        return false;
+                    }
+
+                    breakSeconds = SolveBreakSecondsToEscapeState(ship, body, radial,
+                        tangent, normal, radius, angularRate, periapsisSpeed, seed, cap,
+                        cheap);
+
+                    if (breakSeconds + escapeSeconds <= availableSeconds + 1e-6) break;
+                }
+
+                if (!(breakSeconds + escapeSeconds <= availableSeconds + 1e-6))
+                {
+                    reason = $"the break and the fastest escape climb need " +
+                             $"{(breakSeconds + escapeSeconds) / SecondsPerDay:F5} d at " +
+                             $"the {FixedBurnAccelerationMps2:F3} m/s² level, and the trip " +
+                             $"leaves {availableSeconds / SecondsPerDay:F5} d";
+                    return false;
+                }
+
+                // The final escape state belongs to the v∞ the last pass chose.
+                if (!TrySolveVInfinityForEscapeSeconds(body, radial, tangent, radius,
+                        ceilingRadiusM, availableSeconds - breakSeconds,
+                        out vInfinity, out periapsisSpeed, out escapeSeconds))
+                {
+                    reason = $"the escape climb cannot be placed in " +
+                             $"{(availableSeconds - breakSeconds) / SecondsPerDay:F5} d";
+                    return false;
+                }
+
+                if (!TryEscapeCeilingState(body, radial, tangent, radius, periapsisSpeed,
+                        ceilingRadiusM, out elements, out anomaly, out escapeSeconds,
+                        out escapePosition, out escapeVelocity))
+                {
+                    reason = "the hyperbolic escape conic has no ceiling crossing";
+                    return false;
+                }
+            }
+
+            BreakEndpoint(ship, body, radial, tangent, normal, radius, angularRate,
+                periapsisSpeed, breakSeconds,
+                out Vector3d breakLocalPosition, out Vector3d breakLocalVelocity,
+                out _, out _, out double breakEndJd);
+
+            // The conic's shape and duration were solved from the unrotated
+            // periapsis state; the break actually ends at the parking position
+            // advanced by the phase it swept, so the whole conic is that same
+            // conic rotated forward by the phase. Rotation about the focus leaves
+            // the radius, anomaly and time unchanged, so the ceiling crossing is
+            // the same state in the ship's own plane.
+            double breakPhase = angularRate * breakSeconds;
+            escapePosition = RotateAbout(escapePosition, normal, breakPhase);
+            escapeVelocity = RotateAbout(escapeVelocity, normal, breakPhase);
+
+            double burnStartJd = breakEndJd + escapeSeconds / SecondsPerDay;
+
+            climb = new DepartureClimb(radius, periapsisSpeed, vInfinity, parabolic,
+                breakSeconds, escapeSeconds,
+                BreakPeakToEndpoint(ship, body, radial, tangent, normal, radius,
+                    angularRate, periapsisSpeed, breakSeconds, cheap: false),
+                breakEndJd, burnStartJd, breakLocalPosition, breakLocalVelocity,
+                escapePosition, escapeVelocity);
+            return true;
+        }
+
+        /// <summary>The departure body's velocity at a date, in the heliocentric
+        /// frame. A convenience for the climb's speed-change seed.</summary>
+        private Vector3d BodyVelocity(BodyRuntime body, double julianDate)
+        {
+            _model.ComputeState(body, julianDate, out _, out Vector3d velocity);
+            return velocity;
+        }
+
+        /// <summary>The break arc and the escape conic for a solved climb, in the
+        /// plan's arc chain. The break is a quintic from the ship's state to the
+        /// conic's periapsis; the escape is a Keplerian coast about the departure
+        /// body from there to the ceiling, and its end state is the departure
+        /// burn's start state.</summary>
+        private void AppendDepartureClimb(List<PlanArc> arcs, ShipState ship,
+            BodyRuntime body, DepartureClimb climb, bool fast)
+        {
+            _model.ComputeState(body, climb.BreakEndJulianDate,
+                out Vector3d bodyAtBreakEnd, out Vector3d bodyVelocityAtBreakEnd);
+            Vector3d breakEndPosition = bodyAtBreakEnd + climb.BreakEndLocalPositionM;
+            Vector3d breakEndVelocity = bodyVelocityAtBreakEnd
+                                        + climb.BreakEndLocalVelocityMps;
+
+            arcs.Add(MakeArc(FlightPhase.Departure, body.Id, ship.JulianDate,
+                climb.BreakEndJulianDate, ship.PositionM, ship.VelocityMps,
+                breakEndPosition, breakEndVelocity, fast: fast));
+
+            ConicArc escape = ConicArc.Create(_model, body, climb.BreakEndJulianDate,
+                climb.EscapeSeconds, climb.BreakEndLocalPositionM,
+                climb.BreakEndLocalVelocityMps);
+            arcs.Add(MakeConicArc(FlightPhase.Escape, body.Id, climb.BreakEndJulianDate,
+                climb.BurnStartJulianDate, escape, Vector3d.Zero, fast));
+        }
+
+        /// <summary>The departure burn's start state in the heliocentric frame:
+        /// the escape conic's ceiling state, which the climb fixed. The position
+        /// and velocity are both states, not an (escape ray, radius, speed) triple,
+        /// so the burn starts exactly where the ballistic climb ends.</summary>
+        private void ClimbBurnStart(BodyRuntime body, DepartureClimb climb,
+            out Vector3d positionM, out Vector3d velocityMps)
+        {
+            _model.ComputeState(body, climb.BurnStartJulianDate,
+                out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            positionM = bodyPosition + climb.EscapeEndLocalPositionM;
+            velocityMps = bodyVelocity + climb.EscapeEndLocalVelocityMps;
+        }
+
+        /// <summary>The climb's seed break duration as a fraction of the trip: the
+        /// old reference coast gave the break a time share, and the new break only
+        /// uses it as a starting duration for its own peak solve.</summary>
+        private static double ClimbSeedSeconds(double availableSeconds) =>
+            Math.Max(MinimumArcSeconds, Math.Min(availableSeconds, 3_600.0));
 
         /// <summary>The norm the burn-only seam solve reduces: the seam's
         /// position and velocity, each measured against the chain gate, so a norm
@@ -2943,12 +3128,12 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// One evaluation of the burn-only seam: the pinned break for the trial
-        /// ray, the departure burn forward from where it ends, the brake backward
-        /// from the capture chain's entry, and the six residuals between them.
-        /// The handover date is the crossing's own — the brake's end — so the two
-        /// burns meet at one instant by construction and the total time stays an
-        /// output.
+        /// One evaluation of the burn-only seam: the fixed departure climb (short
+        /// break and escape conic), the departure burn forward from the conic's
+        /// ceiling state, the brake backward from the capture chain's entry, and
+        /// the six residuals between them. The handover date is the crossing's own
+        /// — the brake's end — so the two burns meet at one instant by construction
+        /// and the total time stays an output.
         /// </summary>
         private bool EvaluateBurnOnlySeam(BurnOnlyGeometry geometry, ShipState ship,
             Vector3d raySeed, Vector3d rayTangent1, Vector3d rayTangent2,
@@ -2965,16 +3150,10 @@ namespace TimeToExplore.Simulation
             Vector3d brakeDirection = Ray(brakeSeed, brakeTangent1, brakeTangent2,
                 x[3], x[4]);
 
-            double breakSeconds = SolveBreakSecondsForCommandPeakWithin(ship,
-                geometry.DepartureBody, ray, geometry.ClearanceRadiusM,
-                geometry.EscapeSpeedMps, geometry.BreakSeedSeconds,
-                geometry.BreakCapSeconds, cheap: false);
-            double burnStartJd = ship.JulianDate + breakSeconds / SecondsPerDay;
-
-            _model.ComputeState(geometry.DepartureBody, burnStartJd,
-                out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            Vector3d burnStartPosition = anchorPosition + ray * geometry.ClearanceRadiusM;
-            Vector3d burnStartVelocity = anchorVelocity + ray * geometry.EscapeSpeedMps;
+            double breakSeconds = geometry.Climb.BreakSeconds;
+            double burnStartJd = geometry.Climb.BurnStartJulianDate;
+            ClimbBurnStart(geometry.DepartureBody, geometry.Climb,
+                out Vector3d burnStartPosition, out Vector3d burnStartVelocity);
 
             double brakeStartJd = burnStartJd + burnSeconds / SecondsPerDay;
             double entryJd = brakeStartJd + brakeSeconds / SecondsPerDay;
@@ -3236,18 +3415,13 @@ namespace TimeToExplore.Simulation
             Vector3d brakeDirection = Ray(brakeSeed, brakeTangent1, brakeTangent2,
                 x[4], x[5]);
 
-            double breakSeconds = SolveBreakSecondsForCommandPeakWithin(ship,
-                geometry.DepartureBody, ray, geometry.ClearanceRadiusM,
-                geometry.EscapeSpeedMps, geometry.BreakSeedSeconds,
-                geometry.BreakCapSeconds, cheap: false);
-            double burnStartJd = ship.JulianDate + breakSeconds / SecondsPerDay;
+            double breakSeconds = geometry.Climb.BreakSeconds;
+            double burnStartJd = geometry.Climb.BurnStartJulianDate;
+            ClimbBurnStart(geometry.DepartureBody, geometry.Climb,
+                out Vector3d burnStartPosition, out Vector3d burnStartVelocity);
 
-            _model.ComputeState(geometry.DepartureBody, burnStartJd,
-                out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            Vector3d burnStartPosition = anchorPosition + ray * geometry.ClearanceRadiusM;
-            Vector3d burnStartVelocity = anchorVelocity + ray * geometry.EscapeSpeedMps;
-
-            double brakeSeconds = geometry.TotalSeconds - breakSeconds - burnSeconds
+            double brakeSeconds = geometry.TotalSeconds - breakSeconds
+                                  - geometry.Climb.EscapeSeconds - burnSeconds
                                   - coastSeconds - geometry.Chain.TotalSeconds;
             if (!(brakeSeconds > MinimumArcSeconds)) return false;
 
@@ -3667,16 +3841,19 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Solve the departure burn's escape ray and duration so that a burn
-        /// integrated forward from the pinned clearance state ends on the Lambert
-        /// coast's departure velocity. Three equations (the velocity mismatch) in
-        /// three unknowns (two ray angles and the burn's duration), solved by a
-        /// damped Newton with a finite-difference Jacobian. The coast runs from the
-        /// burn's end to the coast's end in the time the trip leaves it.
+        /// Solve the departure burn's thrust direction and duration so that a burn
+        /// integrated forward from the escape conic's ceiling state ends on the
+        /// Lambert coast's departure velocity. Three equations (the velocity
+        /// mismatch) in three unknowns (two thrust-direction angles and the burn's
+        /// duration), solved by a damped Newton with a finite-difference Jacobian.
+        /// The burn's start state and date are fixed by the climb; only its
+        /// attitude and length are free, because the position the burn ends at is
+        /// the coast's start. The coast runs from the burn's end to the coast's end
+        /// in the time the trip leaves it.
         /// </summary>
         private bool TrySolvePinnedDeparture(ShipState ship, BodyRuntime departureBody,
-            double clearanceRadius, double escapeSpeed, double acceleration,
-            double burnStartJd, double coastEndJd, Vector3d coastEnd,
+            double acceleration, double burnStartJd, Vector3d burnStartPosition,
+            Vector3d burnStartVelocity, double coastEndJd, Vector3d coastEnd,
             ref Vector3d direction, ref double burnSeconds, int samples,
             IGravityField burnGravity,
             out Vector3d coastStartPosition, out Vector3d coastStartVelocity,
@@ -3706,10 +3883,9 @@ namespace TimeToExplore.Simulation
             for (int iteration = 0; iteration < DepartureSolveIterations; iteration++)
             {
                 if (!EvaluatePinnedDeparture(ship, departureBody, direction,
-                        tangent1, tangent2, clearanceRadius, escapeSpeed,
-                        acceleration, burnStartJd, coastEndJd, coastEnd,
-                        angle1, angle2, seconds, samples, burnGravity,
-                        out Vector3d mismatch, out coastStartPosition,
+                        tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                        burnStartVelocity, coastEndJd, coastEnd, angle1, angle2, seconds,
+                        samples, burnGravity, out Vector3d mismatch, out coastStartPosition,
                         out coastStartVelocity, out coastArrivalVelocity,
                         out coastSeconds))
                 {
@@ -3737,33 +3913,33 @@ namespace TimeToExplore.Simulation
                     double angleStep = 1e-3;
                     double timeStep = Math.Max(0.5, Math.Min(10.0, 0.001 * seconds));
                     if (!EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1 + angleStep, angle2, seconds, samples, burnGravity,
                             out Vector3d mismatch1, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1 - angleStep, angle2, seconds, samples, burnGravity,
                             out Vector3d mismatch1Low, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1, angle2 + angleStep, seconds, samples, burnGravity,
                             out Vector3d mismatch2, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1, angle2 - angleStep, seconds, samples, burnGravity,
                             out Vector3d mismatch2Low, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1, angle2, seconds + timeStep, samples, burnGravity,
                             out Vector3d mismatch3, out _, out _, out _, out _)
                         || !EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             angle1, angle2, seconds - timeStep, samples, burnGravity,
                             out Vector3d mismatch3Low, out _, out _, out _, out _))
                     {
@@ -3820,8 +3996,8 @@ namespace TimeToExplore.Simulation
                     double trialSeconds = seconds + scale * step[2];
                     if (!(trialSeconds > MinimumArcSeconds)) continue;
                     if (!EvaluatePinnedDeparture(ship, departureBody, direction,
-                            tangent1, tangent2, clearanceRadius, escapeSpeed,
-                            acceleration, burnStartJd, coastEndJd, coastEnd,
+                            tangent1, tangent2, acceleration, burnStartJd, burnStartPosition,
+                            burnStartVelocity, coastEndJd, coastEnd,
                             trialAngle1, trialAngle2, trialSeconds, samples, burnGravity,
                             out Vector3d trial, out _, out _, out _, out _))
                     {
@@ -3863,16 +4039,16 @@ namespace TimeToExplore.Simulation
         /// authority.
         /// </summary>
         private bool TrySolvePinnedDepartureWithFallback(ShipState ship,
-            BodyRuntime departureBody, double clearanceRadius, double escapeSpeed,
-            double acceleration, double burnStartJd, double coastEndJd,
+            BodyRuntime departureBody, double acceleration, double burnStartJd,
+            Vector3d burnStartPosition, Vector3d burnStartVelocity, double coastEndJd,
             Vector3d coastEnd, ref Vector3d direction, ref double burnSeconds,
             int samples, int fallbackSamples, IGravityField burnGravity,
             out Vector3d coastStartPosition, out Vector3d coastStartVelocity,
             out Vector3d coastArrivalVelocity, out double coastSeconds,
             out string reason)
         {
-            if (TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
-                    escapeSpeed, acceleration, burnStartJd, coastEndJd, coastEnd,
+            if (TrySolvePinnedDeparture(ship, departureBody, acceleration, burnStartJd,
+                    burnStartPosition, burnStartVelocity, coastEndJd, coastEnd,
                     ref direction, ref burnSeconds, samples, burnGravity,
                     out coastStartPosition, out coastStartVelocity,
                     out coastArrivalVelocity, out coastSeconds, out reason))
@@ -3882,8 +4058,8 @@ namespace TimeToExplore.Simulation
 
             if (fallbackSamples <= samples) return false;
 
-            return TrySolvePinnedDeparture(ship, departureBody, clearanceRadius,
-                escapeSpeed, acceleration, burnStartJd, coastEndJd, coastEnd,
+            return TrySolvePinnedDeparture(ship, departureBody, acceleration, burnStartJd,
+                burnStartPosition, burnStartVelocity, coastEndJd, coastEnd,
                 ref direction, ref burnSeconds, fallbackSamples, burnGravity,
                 out coastStartPosition, out coastStartVelocity,
                 out coastArrivalVelocity, out coastSeconds, out reason);
@@ -3891,8 +4067,8 @@ namespace TimeToExplore.Simulation
 
         private bool EvaluatePinnedDeparture(ShipState ship, BodyRuntime departureBody,
             Vector3d direction, Vector3d tangent1, Vector3d tangent2,
-            double clearanceRadius, double escapeSpeed, double acceleration,
-            double burnStartJd, double coastEndJd, Vector3d coastEnd,
+            double acceleration, double burnStartJd, Vector3d burnStartPosition,
+            Vector3d burnStartVelocity, double coastEndJd, Vector3d coastEnd,
             double angle1, double angle2, double seconds, int samples,
             IGravityField burnGravity,
             out Vector3d mismatch, out Vector3d coastStartPosition,
@@ -3908,10 +4084,6 @@ namespace TimeToExplore.Simulation
             if (!(seconds > MinimumArcSeconds)) return false;
 
             Vector3d ray = Ray(direction, tangent1, tangent2, angle1, angle2);
-            _model.ComputeState(departureBody, burnStartJd,
-                out Vector3d anchorPosition, out Vector3d anchorVelocity);
-            Vector3d startPosition = anchorPosition + ray * clearanceRadius;
-            Vector3d startVelocity = anchorVelocity + ray * escapeSpeed;
 
             double coastStartJd = burnStartJd + seconds / SecondsPerDay;
             coastSeconds = (coastEndJd - coastStartJd) * SecondsPerDay;
@@ -3920,7 +4092,8 @@ namespace TimeToExplore.Simulation
             _model.ComputeState(_model.Sun, burnStartJd,
                 out Vector3d sunAtStart, out Vector3d sunVelocityAtStart);
             FiniteBurnArc burn = FiniteBurnArc.Create(_model, _model.Sun, burnStartJd,
-                seconds, startPosition - sunAtStart, startVelocity - sunVelocityAtStart,
+                seconds, burnStartPosition - sunAtStart,
+                burnStartVelocity - sunVelocityAtStart,
                 acceleration, retrograde: false, samples: samples,
                 fixedThrustDirection: ray, gravity: burnGravity);
 
@@ -4698,11 +4871,58 @@ namespace TimeToExplore.Simulation
             arc.NearestBodyId = null;
         }
 
-        private double BaseDuration(double distanceM)
+        /// <summary>One departure: the short break out of the parking orbit, the
+        /// ballistic escape conic it hands over to, and the exact states and
+        /// dates the two arcs meet at. The break is a quintic to the parking
+        /// radius on the ship's own prograde direction; the conic starts there and
+        /// ends on the departure handover ceiling. The departure burn starts at the
+        /// conic's ceiling state, which is why the burn's start is a state and not
+        /// an (escape ray, radius, speed) triple.</summary>
+        private readonly struct DepartureClimb
         {
-            double distance = Math.Max(distanceM, 1.0);
-            double kinematic = 2.0 * Math.Sqrt(distance / MaxAccelerationMps2);
-            return Math.Max(kinematic, MinimumArcSeconds);
+            public DepartureClimb(double parkingRadiusM, double periapsisSpeedMps,
+                double vInfinityMps, bool parabolic, double breakSeconds,
+                double escapeSeconds, double breakPeakMps2,
+                double breakEndJulianDate, double burnStartJulianDate,
+                Vector3d breakEndLocalPositionM, Vector3d breakEndLocalVelocityMps,
+                Vector3d escapeEndLocalPositionM, Vector3d escapeEndLocalVelocityMps)
+            {
+                ParkingRadiusM = parkingRadiusM;
+                PeriapsisSpeedMps = periapsisSpeedMps;
+                VInfinityMps = vInfinityMps;
+                IsParabolic = parabolic;
+                BreakSeconds = breakSeconds;
+                EscapeSeconds = escapeSeconds;
+                BreakPeakMps2 = breakPeakMps2;
+                BreakEndJulianDate = breakEndJulianDate;
+                BurnStartJulianDate = burnStartJulianDate;
+                BreakEndLocalPositionM = breakEndLocalPositionM;
+                BreakEndLocalVelocityMps = breakEndLocalVelocityMps;
+                EscapeEndLocalPositionM = escapeEndLocalPositionM;
+                EscapeEndLocalVelocityMps = escapeEndLocalVelocityMps;
+            }
+
+            public double ParkingRadiusM { get; }
+            public double PeriapsisSpeedMps { get; }
+            public double VInfinityMps { get; }
+            public bool IsParabolic { get; }
+            public double BreakSeconds { get; }
+            public double EscapeSeconds { get; }
+            public double BreakPeakMps2 { get; }
+            public double BreakEndJulianDate { get; }
+            public double BurnStartJulianDate { get; }
+
+            /// <summary>Break end state, relative to the departure body at the
+            /// break's end. This is the escape conic's start state.</summary>
+            public Vector3d BreakEndLocalPositionM { get; }
+            public Vector3d BreakEndLocalVelocityMps { get; }
+
+            /// <summary>Escape conic end state, relative to the departure body at
+            /// the ceiling. This is the departure burn's start state.</summary>
+            public Vector3d EscapeEndLocalPositionM { get; }
+            public Vector3d EscapeEndLocalVelocityMps { get; }
+
+            public double ClimbSeconds => BreakSeconds + EscapeSeconds;
         }
 
         /// <summary>One seed for the burn-only seam: the two directions and the
@@ -4726,31 +4946,25 @@ namespace TimeToExplore.Simulation
 
         /// <summary>The fixed part of a burn-only crossing: the departure and
         /// arrival bodies, the capture chain the supplied date chose, the level,
-        /// the pinned departure state, and the break's cap.</summary>
+        /// and the solved departure climb whose ceiling state is the burn's
+        /// start.</summary>
         private readonly struct BurnOnlyGeometry
         {
             public BurnOnlyGeometry(BodyRuntime departureBody, BodyRuntime target,
-                TransferConic chain, double accelerationMps2, double clearanceRadiusM,
-                double escapeSpeedMps, double breakSeedSeconds, double breakCapSeconds)
+                TransferConic chain, double accelerationMps2, DepartureClimb climb)
             {
                 DepartureBody = departureBody;
                 Target = target;
                 Chain = chain;
                 AccelerationMps2 = accelerationMps2;
-                ClearanceRadiusM = clearanceRadiusM;
-                EscapeSpeedMps = escapeSpeedMps;
-                BreakSeedSeconds = breakSeedSeconds;
-                BreakCapSeconds = breakCapSeconds;
+                Climb = climb;
             }
 
             public BodyRuntime DepartureBody { get; }
             public BodyRuntime Target { get; }
             public TransferConic Chain { get; }
             public double AccelerationMps2 { get; }
-            public double ClearanceRadiusM { get; }
-            public double EscapeSpeedMps { get; }
-            public double BreakSeedSeconds { get; }
-            public double BreakCapSeconds { get; }
+            public DepartureClimb Climb { get; }
         }
 
         /// <summary>The fixed part of a short-coast crossing: the burn-only
@@ -4758,18 +4972,14 @@ namespace TimeToExplore.Simulation
         private readonly struct ShortCoastGeometry
         {
             public ShortCoastGeometry(BodyRuntime departureBody, BodyRuntime target,
-                TransferConic chain, double accelerationMps2, double clearanceRadiusM,
-                double escapeSpeedMps, double breakSeedSeconds, double breakCapSeconds,
+                TransferConic chain, double accelerationMps2, DepartureClimb climb,
                 double totalSeconds)
             {
                 DepartureBody = departureBody;
                 Target = target;
                 Chain = chain;
                 AccelerationMps2 = accelerationMps2;
-                ClearanceRadiusM = clearanceRadiusM;
-                EscapeSpeedMps = escapeSpeedMps;
-                BreakSeedSeconds = breakSeedSeconds;
-                BreakCapSeconds = breakCapSeconds;
+                Climb = climb;
                 TotalSeconds = totalSeconds;
             }
 
@@ -4777,10 +4987,7 @@ namespace TimeToExplore.Simulation
             public BodyRuntime Target { get; }
             public TransferConic Chain { get; }
             public double AccelerationMps2 { get; }
-            public double ClearanceRadiusM { get; }
-            public double EscapeSpeedMps { get; }
-            public double BreakSeedSeconds { get; }
-            public double BreakCapSeconds { get; }
+            public DepartureClimb Climb { get; }
             public double TotalSeconds { get; }
         }
 

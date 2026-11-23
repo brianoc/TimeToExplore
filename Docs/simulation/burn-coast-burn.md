@@ -4,14 +4,14 @@ title: Burn–coast–burn trips
 description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T22:46:56Z }
 ---
 
 # The trip
 
 Leave a planet, cross to another, and park there. The ship:
 
-1. breaks out of its parking orbit,
+1. breaks out of its parking orbit and climbs ballistically to escape,
 2. burns hard for a while and builds speed,
 3. coasts with the drive off, still travelling fast,
 4. flips and burns hard to slow down,
@@ -37,8 +37,8 @@ The crossing is always the profile. It is built from the same ingredients:
 
 | Ingredient | What it is | Drive | Best at |
 |---|---|---|---|
-| **Quintic** | a powered arc matching position, velocity, and acceleration at both ends; the thrust can point anywhere | continuous | the exact, fiddly ends: leaving a parking orbit and a gentle capture |
-| **Conic** | a Keplerian free-fall arc | zero | the coast |
+| **Quintic** | a powered arc matching position, velocity, and acceleration at both ends; the thrust can point anywhere | continuous | the exact, fiddly ends: the short break out of a parking orbit and a gentle capture |
+| **Conic** | a Keplerian free-fall arc | zero | the coast, and the ballistic escape climb out of the departure well |
 | **Fixed burn** | a powered arc at a constant commanded acceleration | fixed, e.g. 1 g | the long, visible "burn hard" legs |
 | **Lambert** | not an arc: a solver that picks the conic connecting two positions in a chosen time | — | choosing the coast so it arrives on time |
 
@@ -50,15 +50,26 @@ cheap one. Same solver, different input.
 # The profile's arc chain
 
 ```text
-leave orbit      burn hard        coast         approach        brake         enter orbit
-[ quintic ]  →  [ fixed burn ] → [ conic ]  →  [ conic ]   →  [ fixed burn ] →  [ capture ]
-    gold             red            blue          blue             red          blue/gold
+leave orbit     escape        burn hard         coast        approach        brake         enter orbit
+[ quintic ]  →  [ conic ]  →  [ fixed burn ] → [ conic ]  →  [ conic ]   →  [ fixed burn ] →  [ capture ]
+    gold          blue             red           blue          blue             red          blue/gold
 ```
 
 Every arc type already existed. The planner emits this recipe as its only
 crossing: there is no profile selector and no zero-thrust version. A trip that
 starts inside the target's sphere of influence has no crossing to plan and is a
 single quintic capture instead.
+
+The **escape** is the ballistic planetocentric leg out of the departure body's
+well: a `ConicArc` about the departure body from the parking radius to the
+handover ceiling (`1.02 × SOI`). It exists because the break is now a short burn,
+not a multi-day powered hover: the break raises the ship onto its own prograde
+escape state and the free climb does the rest. A long trip gets the minimum-energy
+parabolic climb; a trip that leaves the departure less than that gets a hyperbolic
+excess speed so the conic still reaches the ceiling in the time available. The
+coast absorbs whatever time is left, so the total trip time stays the caller's
+input. A fast trip therefore costs more, not less: a larger excess speed raises the
+break's delta-v and lengthens its commanded-level burn.
 
 The **approach** is the planetocentric leg of the final approach: a `ConicArc`
 about the target from the handover band's ceiling (`1.02 × SOI`) down to where the
@@ -117,224 +128,222 @@ profile.
    throwing. A short arc that runs clockwise about the ecliptic pole is the
    retrograde branch, which is not implemented, so those dates are rejected as
    well; the Mars→Earth return at the epoch is one.
-2. **The reference coast.** `TripPlanner` builds a private coast skeleton: a
-   quintic departure retargeted to the Lambert `v₁`, a heliocentric `ConicArc`,
-   and the existing conic or hybrid capture. The skeleton supplies the capture
-   chain, the handover the brake spends, and a first guess at the outbound
-   direction and the burn's size. It is a search input, never a plan the planner
-   returns, and it enters at the arrival handover floor.
-3. **The burns.** The profile is a quintic break →
-   departure burn → Lambert coast → planetocentric approach → brake → conic or
-   hybrid capture. The break ends on the departure clearance sphere
-   (`1.02 × SOI`) at the local escape speed along the escape ray, and the
-   departure burn starts there. The burn holds that ray — its prograde direction
-   in the departure body's frame — and its duration and the coast's start are
-   solved together: the burn is integrated forward through the summed gravity
-   field, the Lambert coast from its end to the arrival handover, and the two ray
-   angles and the duration are driven until the burn's end velocity is the
-   coast's departure velocity. The coast ends on the target's handover ceiling
-   and the approach — a `ConicArc` about the target, built backwards from the
-   brake's own start state — covers the deep part of the final approach; the
-   brake then starts where the approach ends and spends the rest of the handover
-   the coast skeleton would have made an impulse. Every seam is continuous and
-   the arrival is exact. The break's duration is solved as well: it keeps the
-   reference coast's departure share while that is gentle enough for the drive,
-   and lengthens it to the drive's limit when the share is too short.
+2. **The reference coast.** `TripPlanner` builds a private coast skeleton: the
+   physical departure (the short break and the escape conic) out to the handover
+   ceiling, a heliocentric `ConicArc`, and the existing conic or hybrid capture.
+   The skeleton supplies the capture chain, the handover the brake spends, and a
+   first guess at the departure direction and the burn's size. It is a search
+   input, never a plan the planner returns, and it enters at the arrival handover
+   floor.
+3. **The departure and the burns.** The profile is a short quintic break → a
+   ballistic escape conic → departure burn → Lambert coast → planetocentric
+   approach → brake → conic or hybrid capture. The break ends at the parking
+   radius on the ship's own prograde tangent at the planetocentric escape speed,
+   and the escape conic carries that state to the departure ceiling
+   (`1.02 × SOI`). The departure burn starts at the conic's ceiling **state**, and
+   its thrust direction (two angles) and duration are solved together against the
+   coast: the burn is integrated forward through the summed gravity field, the
+   Lambert coast from its end to the arrival handover, and the direction and
+   duration are driven until the burn's end velocity is the coast's departure
+   velocity. The break's duration is its own commanded-level solve, `T_break` at
+   the peak the fixed burns command, never a share of the trip. The coast ends on
+   the target's handover ceiling and the approach — a `ConicArc` about the target,
+   built backwards from the brake's own start state — covers the deep part of the
+   final approach; the brake then starts where the approach ends and spends the
+   rest of the handover the coast skeleton would have made an impulse. Every seam
+   is continuous and the arrival is exact.
 4. **The controls.** The nav computer's `ARRIVAL` row chooses **Conic** or the
    hybrid **X g burn**; the trip-time slider is the profile's speed control; the
-   burn-level slider is the level the departure burn, the brake, and the hybrid
-   capture are planned at. Its floor is **0.05 g**: the profile is two real burns
-   around a coast, so it has no zero-thrust version. The slider's window is the
-   profile's feasible range on the coast path, except that its **left end is the
-   burn-only minimum** when that is shorter (see [the nav computer's
-   minimum](#the-nav-computers-minimum)).
+   burn-level slider is the level the break, the departure burn, the brake, and
+   the hybrid capture are planned at. Its floor is **0.05 g**: the profile is two
+   real burns around a coast, so it has no zero-thrust version. The slider's
+   window is the profile's feasible range on the coast path, except that its
+   **left end is the burn-only minimum** when that is shorter (see [the nav
+   computer's minimum](#the-nav-computers-minimum)).
 
-The measured **coast** window at the epoch is **6.73 to 20.19 days** for the
-Gateway→Mars profile at 0.3 g. At 1 g the fast end is **3.21610 days** to
-Mercury (window 3.22–9.65 days); Jupiter at 0.3 g is **13.07–39.22 days** and
-Uranus is **33.60–100.81 days** at 0.3 g and **33.65–100.96 days** at 1 g. The
-window moved when the capture started
-entering at the handover floor: the old fast ends were 8.03 and 3.46 days, set
-by the capture's 1.32-day and 6.1-hour falls. The planetocentric approach leg
-moved the Uranus 1 g floor, and so its window: that floor's brake starts inside
-the ceiling, so it is the one floor plan that carries an approach arc (eight
-arcs), while the 0.3 g floor is still a seven-arc fast trip. The right-hand end is the
-three-times cap, and both ends build. The 90-day Mars
-plan in the table below is still a valid direct build, but it is outside this
-window, so the nav computer's slider cannot ask for it. The slider's **minimum**
-is the burn-only total where it wins and its right end is three times that
-minimum, so Mars's window is 6.50–19.49 days, Mercury's 3.04–9.13, and Jupiter's
-12.54–37.63; Uranus keeps the coast windows above.
+The measured **coast** windows at the epoch with the physical departure are
+**16.84 to 50.53 days** for the Gateway→Mars profile at 0.3 g and
+**14.06 to 34.27 days** for Mercury at 1 g (the three-times cap is 42.18 days,
+but the short-way transfer passes 180° first). Mars at 1 g is **14.17–42.51
+days**; Jupiter is **19.46–58.38** at 1 g and **23.73–71.20** at 0.3 g; Uranus is
+**57.02–171.07** at 1 g and **92.13–276.39** at 0.3 g; Venus is **12.73–38.18** at
+1 g and **14.32–42.95** at 0.3 g. The parabolic escape alone is 10.74 days from
+Gateway and 12.02 days from a Mars 300 km orbit, so no coast trip can be shorter
+than the climb; that is what moved every floor. The right-hand end of the Mars,
+Jupiter and Uranus windows is the three-times cap; Mercury's is the Lambert
+geometry's own slow end. The 90-day Mars plan in the table below is still a valid
+direct build, but it is outside this window, so the nav computer's slider cannot
+ask for it. The slider's **minimum** is the burn-only total where it wins and its
+right end is three times that minimum, so Mars's window is 16.49–50.53 days
+(16.49 is the burn-only minimum, 50.53 the cap), Mercury's 13.86–34.27, and
+Jupiter's 22.56–71.20; Uranus keeps the coast windows above because the burn-only
+crossing does not win there.
 
-# The pinned break
+# The physical departure
 
-The break's end state is a design decision: the point where the departure burn
-starts, on the handover band's **ceiling** at the local escape speed along the
-escape ray. The ceiling is `1.02 × SOI`, the clearance sphere the profile always
-used; a burn may now start lower inside the band, because it is integrated through
-the summed field
+The departure is a **short break and a ballistic climb**, not a powered well
+crossing. The break's end is the parking radius on the ship's own prograde
+tangent, at the planetocentric escape speed `√(2μ/r₀ + v∞²)`; the escape conic
+starts there and ends on the handover band's **ceiling** (`1.02 × SOI`) at the
+local escape speed along its own asymptote. The ceiling is the clearance sphere
+the profile always used; a burn may start lower inside the band, because it is
+integrated through the summed field
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
-For this plan the departure endpoint *is* the ceiling — the break's only job is to
-leave the parking orbit and reach escape, and the burn supplies everything above
-it — so the departure plan did not move when the constant became the band's
-ceiling. The old chain solved the coast's
-start and integrated the burn backwards, so at fast trip times the burn began
-4.7 SOI out at 32 km/s and the break was fitted to that hard backwards solve.
+The old chain pinned the break's end to a radial ray on that ceiling; that end is
+now a **state**, the conic's own ceiling state, and the departure burn's start
+position is fixed by it. The old chain solved the coast's start and integrated the
+burn backwards, so at fast trip times the burn began 4.7 SOI out at 32 km/s and the
+break was fitted to that hard backwards solve.
 
-The escape ray is the outbound asymptote the crossing needs, not the ship's own
-relative velocity. A station's orbital direction has no relation to the
-transfer, and a burn that follows the heliocentric velocity cannot start at
-escape speed: at the boundary the heliocentric velocity is the departure body's
-own orbital velocity, so the thrust would point along the body's motion rather
-than at the target. Scanning the ray and duration of a velocity-following burn
-at 8 days to Mercury found a best seam of 269 km/s; holding the escape ray
-closes it below 1e-5 m/s.
+The escape state is the **ship's own prograde tangent**, not the outbound
+asymptote the crossing needs. A station's orbital direction has no relation to the
+transfer, so the old profile pinned the break to a radial ray chosen by the coast
+solver; that ray is 99–118° from the ship's velocity at a Mars 300 km orbit and
+166.6° at Gateway, and a quintic to a fixed radial state flew a huge out-and-back
+loop. The new break ends at the parking radius on the ship's own prograde tangent
+at the planetocentric escape speed, advanced by the phase the ship sweeps during
+the burn. That phase is negligible at Gateway (the Earth-relative angular rate is
+3.4 × 10⁻⁶ rad/s, so a 928-second break sweeps 0.003 rad) and real from a Mars
+300 km orbit (9.2 × 10⁻⁴ rad/s × 1,832 s = 1.69 rad, 97°): the burn really does
+carry the ship a quarter-orbit round before it is fast enough to leave.
 
-The burn's ray angles and duration and the coast's start are one solve: three
-equations (the burn's end velocity is the coast's departure velocity) in three
-unknowns, with the burn integrated forward from the pinned state and the
-Lambert coast running from its end to the brake's start. The departure burn's
-duration is therefore no longer the coast's excess speed divided by the
-acceleration; it is the duration that lands on the coast. The break's duration
-is solved separately against the drive's limit: the reference coast's departure
-share is kept while its peak thrust fits, and it is lengthened to the shortest
-duration that fits when the share is too short. The burn's speed and the
-coast's departure speed still set its delta-v, so the level still scales its
-duration as `1/level`.
+The break's duration is its own solve. It seeds at `|Δv| / a`, where `Δv` is the
+speed change to the prograde escape state (`√(2μ/r₀ + v∞²) − v_circ`), and the
+quintic's peak commanded thrust falls as the duration grows, so the solve grows
+or shrinks from the seed and bisects until the peak is
+`FixedBurnAccelerationMps2` — 9.70 m/s² at 1 g, 2.9467 at 0.3 g. Nothing about the
+trip enters except the available-time cap, and at the documented trip times the
+cap is not binding. Measured at the epoch: **928 s / 1.404 km/s** at Gateway and
+**1,832 s / 2.854 km/s** from a Mars 300 km orbit, both peaking at the commanded
+level. The integral is larger than the speed change because the quintic still
+cancels the station's motion and carries the phase.
 
-Measured at the epoch (2026-11-15) from Gateway at 1 g (9.70 m/s²), conic
-capture, after the arrival leg became planetocentric. The old totals in the last
-column are what the same build cost with the chain entering on the target's
-sphere of influence:
+The **escape conic** is built from that endpoint: a Keplerian state whose
+periapsis is the parking radius, so it never dips into the planet. Its duration is
+the conic's own radius crossing, not a share of the trip. A long trip gets the
+minimum-energy **parabolic** climb — 10.74066 days from Gateway's 308,455 km
+radius to Earth's 943,144 km ceiling, and 12.02249 days from a Mars 300 km orbit
+to 588,786 km. A trip that leaves the departure less than that gets a
+**hyperbolic** excess speed: the flight time falls monotonically as `v∞` rises, so
+the solve bisects `v∞` until the conic reaches the ceiling in the time left after
+the break and the other legs. A larger `v∞` raises the periapsis speed, so the
+break's commanded-level duration and delta-v grow with it. If the break and even
+the fastest climb cannot fit the time available, the trip is refused with the
+numbers rather than stretched; that is why the old 8-day Mercury, 10-day Mars and
+35-day Uranus anchors are now below the floor.
 
-| Target | Days | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Burn (d) | Burn Δv (km/s) | Coast (d) | Approach | Brake (min) | Brake Δv (km/s) | Inbound fall | Total Δv (km/s) | Old total | Feasible |
-|---|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---|
-| Mercury | 8 | 0.569 | 2.85 | 90.2 | 0.298 | 250.0 | 6.841 | — | 366.5 | 213.3 | 3.3 min | 557.0 | 569.9 | yes |
-| Mercury | 6 | 0.438 | 4.84 | 118.1 | 0.394 | 329.8 | 4.787 | — | 497.6 | 289.6 | 3.3 min | 741.1 | 770.1 | yes |
-| Mercury | 12.3 | 0.837 | 1.30 | 60.5 | 0.203 | 170.5 | 11.053 | — | 244.5 | 142.3 | 3.3 min | 376.9 | 379.9 | yes |
-| Mars | 90 | 4.844 | 0.033 | 8.8 | 0.053 | 13.4 | 84.729 | 6.03 h | 104.9 | 18.5 | 13.6 min | 44.4 | 45.4 | yes |
+The departure burn starts at the conic's ceiling **state**. Its free variables are
+its thrust direction (two angles) and its duration: three equations (the burn's
+end velocity is the coast's departure velocity) in three unknowns, with the burn
+integrated forward through the summed field and the Lambert coast running from its
+end to the brake's start. The burn's position is no longer a free ray on the
+sphere. The burn's speed and the coast's departure speed still set its delta-v,
+so the level still scales its duration as `1/level`.
 
-The Mars row is at 0.3 g; its two burns are 76.0 and 104.9 minutes at that level.
-The 90-day build is a direct `PlanAtDuration` outside the nav computer's window.
-The fall column is the capture chain's inbound coast, which used to be 6.09 hours
-at Mercury and 1.32 days at Mars: the brake now ends at the handover floor
-(2,805.7 km at Mercury, 6,032.7 km at Mars) instead of the sphere (112,410 km and
-577,241 km), and the chain's entry speed is unchanged at the planted 5 km/s. The
-approach column is the planetocentric leg: it is absent on the fast Mercury
-trips, whose brakes start outside the ceiling, and 6.03 hours from the 588,786 km
-ceiling to 92,923 km on the 90-day Mars build.
+Measured at the epoch (2026-11-15) from Gateway to **Mars at 90 days and 0.3 g**,
+conic capture. This is a direct `PlanAtDuration` build outside the nav computer's
+window:
 
-Measured at the epoch from Gateway at 1 g and 400 days to **Uranus**, which is
-the case that motivated the change. The middle column is the sphere-of-influence
-entry the profile used before the floor; the right column is the floor entry with
-the planetocentric approach:
+| Arc | Duration | Peak (m/s²) | Δv (km/s) | Note |
+|---|---:|---:|---:|---|
+| Break (quintic) | 928 s | 2.9467 | 1.404 | ends at 308,455 km on the prograde tangent |
+| Escape (conic) | 10.74066 d | 0.0016 | 0.252 | parabolic, periapsis 308,455 km |
+| Departure burn | 79.5 min | 2.9420 | 14.040 | starts at the 943,144 km ceiling state |
+| Coast (conic) | 78.83112 d | 0.0004 | 0.039 | heliocentric Lambert |
+| Approach (conic) | 5.64 h | 0.0000 | 0.000 | 588,786 km ceiling to 374,027 km |
+| Brake | 111.6 min | 2.9420 | 19.699 | retrograde, ends at the chain entry |
+| Capture chain | 0.0494 d | — | 3.458 + 0.076 | 6,033 km entry, 814.8 s fall |
+| **Total** | **90.00000 d** | **2.9467** | **38.968** | 9 arcs, exact arrival |
+
+The design note's estimate for the same trip was 36.9 km/s: subtract the old
+break's 8.845 km/s and add the new break's 1.405, holding the burns fixed. The
+measured 38.968 is higher because the climb takes **10.74 days** where the old
+break took 4.84, so the fixed 90-day trip leaves the coast 5.9 days shorter and
+the two fixed burns grow: 13.418 → 14.040 and 18.522 → 19.699 km/s. That is the
+honest consequence of replacing a powered hover with a free climb at a fixed total
+time; the old 44.35 km/s anchor is not preserved, and neither is the naive 36.9.
+
+Measured at the epoch from a **Mars 300 km equatorial orbit** at 0.3 g. The break
+is 1,832 s (0.02123 d) and 2.854 km/s in every row; the escape is the 12.02249-day
+parabolic climb. The capture chain is independent of the departure, so its entry
+and fall are the same as the Gateway plans':
+
+| Target | Days | Departure burn (d) | Departure Δv (km/s) | Coast (d) | Approach | Brake (min) | Brake Δv (km/s) | Total Δv (km/s) | Arcs |
+|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| Earth | 60 | 0.11253 | 28.603 | 47.44657 | 3.87 h | 256.6 | 45.286 | **81.045** | 9 |
+| Earth | 90 | 0.05162 | 13.120 | 77.32297 | 9.78 h | 168.0 | 29.649 | **49.940** | 9 |
+| Earth | 120 | 0.03277 | 8.329 | 107.02647 | 18.23 h | 115.0 | 20.303 | **35.823** | 9 |
+| Moon | 60 | 0.11256 | 28.611 | 47.60918 | — | 270.8 | 47.798 | **83.166** | 8 |
+| Moon | 90 | 0.05151 | 13.093 | 77.74119 | — | 168.6 | 29.763 | **49.644** | 8 |
+| Moon | 120 | 0.03266 | 8.301 | 107.77150 | 42 min | 109.9 | 19.396 | **34.520** | 9 |
+
+The old totals were 337.1 / 369.2 / 387.0 km/s to Earth and 339.7 / 369.2 / 385.8
+to the Moon: the old break alone spent 267.0 / 324.3 / 355.1 km/s over four to six
+days. The new shape is the same monotone trade in the other direction: a longer
+trip spends less, and the fast end is expensive because the short coast forces
+large burns, not because the break is stretched. The Earth chain enters at
+18,404 km and falls 2,048.7 s; the Moon chain at 2,042 km and 169.3 s. Every seam
+closes inside **1.3 m and 2.5 × 10⁻⁴ m/s**, and the arrival is exact.
+
+The **fixed-duration anchors are re-baselined**, not preserved. The old set was
+Mercury 1 g 8 d (557.038), Uranus 1 g 400 d (182.312), Mars 0.3 g 20 d (270.850),
+Mars 0.3 g 10 d (607.826) and Uranus 1 g 35 d (1,984.448). Three of those times are
+now below the departure's floor and are refused; the feasible references measured
+at the epoch are:
+
+| Target | Level | Days | Total Δv (km/s) | Note |
+|---|---|---:|---:|---|
+| Mars | 0.3 g | 90 | 38.9678 | the table above |
+| Mars | 0.3 g | 20 | 495.9818 | old anchor time, new value |
+| Mars | 0.3 g | 18 | 706.0906 | replacement for the refused 10 d |
+| Mercury | 1 g | 16 | 869.0568 | replacement for the refused 8 d |
+| Uranus | 1 g | 60 | 1,329.6508 | replacement for the refused 35 d |
+| Uranus | 1 g | 400 | 183.9153 | old anchor time, new value |
+The three old times that are refused are worth stating plainly: Mercury 1 g 8 d,
+Mars 0.3 g 10 d and Uranus 1 g 35 d each ask for less time than the parabolic
+climb plus the departure burn and the minimum coast, and the planner reports the
+refusal with the departure time rather than inventing a plan. A **0.3 g drive
+cannot lift a 400 km Earth orbit at all** with the short break (local gravity
+8.7 m/s² against 2.94 m/s² of thrust); the same orbit at 1 g builds a 30–120-day
+trip. The short break is a real burn, and a drive weaker than the local gravity
+cannot fly it.
+
+Measured at the epoch from Gateway at 1 g and 400 days to **Uranus**. The middle
+column is the sphere-of-influence entry the profile used before the floor; the
+right column is the floor entry with the planetocentric approach and the physical
+departure:
 
 | Quantity | Sphere-of-influence entry (before) | Floor entry, planetocentric approach |
 |---|---:|---:|
 | Capture entry radius | 51,760,023 km | **38,643 km** |
 | Inbound fall | 117.13 days | **31 min** |
 | Capture Δv (periapsis) | 6.37 km/s | 6.37 km/s |
-| Departure burn / brake | 118.8 / 112.7 km/s | **90.2 / 81.4 km/s** |
-| Coast | 277.3 days | 384.8 days |
-| Approach | — | **7.54 days, 52.8 million km → 368,111 km** |
-| Total | 242.1 km/s | **182.3 km/s** |
-| Brake start radius | 51.96 million km (1.004 SOI) | **368,111 km (0.0071 SOI)** |
-| Profile floor | 150.73 days | **33.65 days** (editor; 30.56 .NET) |
+| Departure burn / brake | 118.8 / 112.7 km/s | **93.5 / 82.0 km/s** |
+| Coast | 277.3 days | 381.5 days |
+| Escape | — | **10.74 days, 308,455 → 943,144 km** |
+| Approach | — | **7.48 days, 52.8 million km → 374,027 km** |
+| Total | 242.1 km/s | **183.9 km/s** |
+| Brake start radius | 51.96 million km (1.004 SOI) | **374,027 km (0.0072 SOI)** |
+| Profile floor | 150.73 days | **57.02 days** (editor) |
 
-At 0.3 g the same comparison is a 7.43-day approach from the ceiling to
-1,160,664 km against 117.13 days, 79.8 km/s of brake, 180.8 km/s in total, and a
-floor of **33.60 days in the editor (40.71 in .NET)** against 160.47. The brake
-starts 0.0071 spheres out at 1 g and 0.0224 at 0.3 g because the approach, not
-the coast, now flies most of the deep approach; at the fast floor the brake
-itself spans the sphere (28.4 hours of 990 km/s from 50.55 million km, 0.976
-SOI). Those numbers are in
+The approach's periapsis is 84,719 km, above the floor, so the brake still spans
+the last part of the descent. The brake starts 0.0072 spheres out because the
+approach, not the coast, now flies most of the deep approach. Those numbers are in
 [the arrival leg](/simulation/powered-leg-floor.md#the-arrival-leg-a-planetocentric-approach).
 
-The 8-day trip at Mercury closes with a break peak of 2.85 m/s²; the plan's
-9.70 m/s² peak is the two fixed burns at the commanded level. The break ends at
-1.02 SOI at 0.919 km/s, the local escape speed. The seams close to under a
-metre and 3.7 × 10⁻⁴ m/s — still three orders inside the 1 km / 1 m/s gate, and
-wider than before because the brake's fixed point now ends at the floor — and
-the 8-day flight arrives 0.05 m and 4.4 × 10⁻⁵ m/s from the reference state on
-the conic parking orbit.
+**A slow crossing closes cheaply.** A 200-day Mars build at 0.3 g is a
+**11.21 km/s** plan with the same 6,032.7 km entry; its last 27.2 hours are a
+planetocentric approach, and the coast no longer commands solar tide to hold a
+heliocentric conic deep in the well. The slow end is set by the coast: at 305 days
+the prograde short-way Lambert transfer has no solution (175.6°). The acceleration
+branch is still in the solver; it did not trigger at Mars between 20 and 200 days
+after this change.
 
-**A slow crossing closes now, and the approach makes it cheaper.** With the fall
-gone, a 200-day Mars build at 0.3 g that used to be refused for needing an
-acceleration is a **11.86 km/s** plan (2.70 km/s of brake) with the same
-6,032.7 km entry, 0.60 km/s less than the deep-coast build: its last 27.3 hours
-are a planetocentric approach, and the coast no longer commands 0.90 km/s of
-solar tide to hold a heliocentric conic deep in the well. The slow end is set by
-the coast instead: at 305 days the prograde short-way Lambert transfer has no
-solution (179.4°). The acceleration branch is still in the solver; it did not
-trigger at Mars between 200 and 300 days after this change.
-
-
-The **break Δv** is the integrated thrust over the quintic, not the speed change
-at the boundary. The quintic still cancels the station's motion and flies the
-distance, so a gentle break spends tens of kilometres per second even though it
-ends at 0.92 km/s. What the pin removes is the 53 m/s² peak and the
-four-sphere-long backwards burn.
-
-## The level pin is opt-in
-
-The shipped break aims at the drive's **limit**, not at the level the player
-chose. `TripPlanner.PinBreakToCommandAcceleration` (default **false**) is the
-alternative: the break's duration is solved so the quintic's peak **commanded**
-thrust equals `FixedBurnAccelerationMps2` — the level the departure burn, the
-brake, and the hybrid capture already command, 9.70 m/s² at 1 g and 2.942 at
-0.3 g. The peak falls as the duration grows, so the solve brackets the crossing
-from the coast's share and bisects, on the fast central-body model; the plan
-that is reported is still the full-field measurement, so its peak can sit a
-fraction of a percent from the target at 0.3 g, where the 5% screen leaves the
-departure body alone in charge.
-
-The duration is then a property of the departure state, the level, and the
-escape ray, not of the trip. With one ray held fixed, 30, 90 and 200 days to
-Mars at 0.3 g solve the same duration to **8.4 × 10⁻⁸** relative, and the
-available-time cap is nowhere near binding (29.1, 89.5 and 198.7 days). The
-plans' own rays are not identical: the outbound asymptote the crossing needs
-rotates **10.96°** by 90 days and **27.67°** by 200, and the reported break
-durations follow it by 0.66% and 3.05%. That is the ray moving, not the trip
-scaling the break.
-
-Measured at the epoch from Gateway, conic capture. The Mercury row is the
-8-day plan the table above records; the Mars rows are the pinned break at three
-trip times, against the 90-day default build:
-
-| Plan | Pin | Break (d) | Break peak (m/s²) | Break Δv (km/s) | Total Δv (km/s) |
-|---|---|---:|---:|---:|---:|
-| Mercury, 1 g, 8 d | off | 0.569 | 2.85 | 90.2 | 557.0 |
-| Mercury, 1 g, 8 d | **on** | 0.3086 | 9.7000 | 167.2 | 615 |
-| Mars, 0.3 g, 30 d | **on** | 0.5632 | 2.9400 | 92.7 | 232.2 |
-| Mars, 0.3 g, 90 d | **on** | 0.5669 | 2.9392 | 93.2 | 127.7 |
-| Mars, 0.3 g, 200 d | **on** | 0.5461 | 2.9419 | 90.0 | 99.4 |
-| Mars, 0.3 g, 90 d | off | 4.844 | 0.033 | 8.8 | 44.4 |
-
-The trade is the point: **a short break at a high level spends more delta-v.**
-Pinning Mercury's 8-day break to 1 g nearly doubles its spend, 90.2 → 167.2
-km/s, because the quintic has to cancel the station's motion and cross the
-sphere in a third of the time. At Mars 0.3 g the pinned break costs 90–93 km/s
-at any trip time, against 8.8 for the 4.844-day gentle break the default
-builds; the long trip's saving shows in the coast and the total, not in the
-break. The level pin is not a fuel optimisation; it is a way to make the departure
-burn and the two fixed burns command the same acceleration. [Fuel versus
-delta-v](#fuel-versus-delta-v) measures what it costs in propellant at a fixed
-trip time and at each floor.
-
-The floors move only when the option is on, and only through the near-floor
-basin: Mercury at 1 g stays **3.217 d**, Mars at 0.3 g is **6.864** against
-6.730, Jupiter at 0.3 g **13.713** against 13.072, and Uranus at 0.3 g lands at
-**40.874** against 33.604 — the pinned break's changed basin selects a different
-certified point, not a different profile. The eight-case sweep, its windows,
-and the arc breakdown are the measurement the caretaker reviews before deciding
-whether the level pin becomes the default; keeping the option off leaves every number
-above and every anchor in this document unchanged.
-
-At 1 g the target is the drive's own margin limit (9.7 m/s² of 10.0), so a
-certified peak above it would spend the plan's feasibility. The 5% screen puts
-the full field in charge at that level, which is why the measured pinned peaks
-are 9.7000 m/s², and the solver retargets a fifth of a percent lower once if a
-certified peak ever lands above the 10.0 m/s² drive.
+The **break Δv** is the integrated thrust over the quintic, not the speed change at
+the boundary. The quintic still cancels the station's motion and carries the
+swept phase, so a short break spends 1.4–2.9 km/s even though it ends at the local
+escape speed. What the physical departure removes is the multi-day hover: the old
+Mars break's 267–355 km/s and the old Gateway break's 8.8 km/s are gone.
 
 # The burn-only crossing
 
@@ -345,21 +354,20 @@ with the coast taken out. It is the fastest shape this profile can fly at a
 given level, and the most expensive. Since step 3 it is the **nav computer's
 minimum trip time** whenever it beats the coast floor
 (`TripPlanner.PlanFastest`), and **Begin flies it** when the preview's minimum is
-that plan. `Plan()` stays on the coast path, so the profile's floors, windows,
-and fixed-duration delta-v anchors in this document are unchanged;
-`PlanAtDuration` uses the short coast only for a duration the coast path refuses
-between this minimum and the floor.
+that plan. `Plan()` stays on the coast path, so the profile's floors and windows
+in this document are the coast floor's; `PlanAtDuration` uses the short coast only
+for a duration the coast path refuses between this minimum and the floor.
 
-The seam is solved as one system. The break is pinned to the commanded
-acceleration; the departure burn starts where it ends — the departure ceiling,
-along the escape ray, at the local escape speed — and integrates forward through
-the summed field; the brake integrates **backward** from the capture chain's
-entry. The unknowns are the escape ray (two angles), the departure burn's
-duration, the brake's direction (two angles), and the brake's duration: six
-unknowns for the six seam components, the forward burn's end position and
-velocity against the backward brake's start. The solver is a damped Newton with
-a finite-difference Jacobian, seeded by the reference coast's ray, the chain's
-arrival direction, and a half-and-half kinematic split
+The seam is solved as one system. The departure climb — the short break and the
+escape conic — is fixed by the crossing's available time; the departure burn
+starts at the conic's ceiling **state** and integrates forward through the summed
+field; the brake integrates **backward** from the capture chain's entry. The
+unknowns are the departure burn's thrust direction (two angles), its duration, the
+brake's direction (two angles), and the brake's duration: six unknowns for the six
+seam components, the forward burn's end position and velocity against the backward
+brake's start. The solver is a damped Newton with a finite-difference Jacobian,
+seeded by the reference coast's departure direction, the chain's arrival
+direction, and a half-and-half kinematic split
 (`t_burn = t_brake = sqrt(distance / acceleration)`). A point at the chain gate
 (1 km, 1 m/s) is accepted; a failure reports the residual it reached rather than
 calling it a solution.
@@ -390,11 +398,14 @@ at the plan's own arrival date reproduces the same total, which is the
 self-consistency the tests assert.
 
 Measured at the epoch from Gateway to **Mercury at 1 g**, the moving-target loop
-settles in **two passes**: the chain is built at 3.21610 d and the plan arrives
-3.04470 d (**step −14,808.9 s**); the chain is rebuilt at 3.04470 d and the plan
-arrives 3.04470 d (**step −0.3 s**). The rebuilt plan's seam is **2.2 m and
-9.9 × 10⁻⁶ m/s**, and the crossing costs **3.5 s** including the coast floor it
-seeds from. The fixed-date build at that same date agrees to 0.00001 d.
+settles on a total of **13.86287 days** (2,588.5 km/s, seven arcs): break →
+escape → departure burn → brake → the conic capture, with **no Cruise coast**.
+The rebuilt plan's worst seam is **58 m and 0.401 m/s** (the brake rebuilt
+forward against the chain's entry), inside the profile's 1 km / 1 m/s gate. The
+brake starts far outside Mercury's 114,658 km ceiling, so the fast case needs no
+planetocentric approach. The plan flies: `Begin` at the 1 g minimum puts it in the
+air and the autopilot reaches the arrival state inside the test's 10 m / 0.1 m/s
+bound.
 
 ## The nav computer's minimum
 
@@ -410,26 +421,27 @@ Gateway:
 
 | Target | Level | Burn-only minimum | Coast floor | Burn-only Δv | Coast Δv |
 |---|---|---:|---:|---:|---:|
-| Mercury | 1 g | **3.04470 d** | 3.21610 d | 2,433 km/s | 1,766 km/s |
-| Mars | 0.3 g | **6.49501 d** | 6.73042 d | 1,592 km/s | 1,172 km/s |
-| Jupiter | 0.3 g | **12.54280 d** | 13.07 d | 3,109 km/s | 2,271 km/s (editor) |
-| Uranus | 0.3 g | coast floor | **33.60 d** | — | 2,301 km/s (editor) |
-| Uranus | 1 g | coast floor | **33.65 d** | — | 2,070 km/s (editor) |
+| Mercury | 1 g | **13.86287 d** | 14.06070 d | 2,588.5 km/s | 1,821.1 km/s |
+| Mercury | 0.3 g | **16.44442 d** | 16.81142 d | 1,441.8 km/s | 1,015.7 km/s |
+| Mars | 1 g | **13.94010 d** | 14.16958 d | 2,647.6 km/s | 1,810.4 km/s |
+| Mars | 0.3 g | **16.48669 d** | 16.84485 d | 1,450.4 km/s | 1,017.1 km/s |
+| Jupiter | 1 g | **17.30657 d** | 19.45997 d | 5,417.8 km/s | 2,436.4 km/s |
+| Jupiter | 0.3 g | **22.55555 d** | 23.73299 d | 2,972.8 km/s | 1,899.5 km/s |
+| Uranus | 1 g | coast floor | **57.02223 d** | — | 1,417.8 km/s |
+| Uranus | 0.3 g | coast floor | **92.13088 d** | — | 811.1 km/s |
 
 At the giants the zero-coast crossing does not win, so the coast floor is the
-minimum and every documented Uranus floor and window is unchanged. Jupiter's
-window shortens at the top end because the window's right end is three times its
-minimum: **12.54–37.63 d** against the old 13.07–39.22 d. Mercury's is
-**3.04–9.13 d** and Mars's **6.50–19.49 d**.
+minimum. The slider's right end is three times the minimum where the coast
+geometry allows it: Mercury's window is **13.86–34.27 d** (the short-way transfer
+passes 180° before the 41.59-day cap), Mars's **16.49–50.53**, Jupiter's
+**22.56–71.20**, Uranus's **57.02–171.07** at 1 g and **92.13–276.39** at 0.3 g.
 
 ## The gap
 
 The burn-only minimum is below the coast floor, so the range between them is
 not a coast trip the Lambert path can build: `BuildBurnCoastBurn` allocates a
-coast of at least `MinimumCoastSeconds`, and a duration in the gap squeezes the
-break until it commands far more than the drive. Before step 5 a request there
-came back over-thrust or stretched and the panel said so. The **short-coast
-branch** now fills it.
+coast of at least `MinimumCoastSeconds`, and a duration in the gap leaves the
+climb or the burns squeezed. The **short-coast branch** fills it.
 
 ## The short coast
 
@@ -438,11 +450,11 @@ of duration `c` between the departure burn and the brake**. It is not a Lambert
 solve: the coast is the conic the forward burn's end state defines, propagated
 for `c` about the Sun, and its end state must equal the backward brake's start
 state. The requested total `T` is an input, and the brake's duration is
-`T − break − burn − c − capture`. That leaves six unknowns — the escape ray (two
-angles), the departure burn's duration, the coast's duration, and the brake's
-direction (two angles) — against the six seam components. At `c = 0` the conic
-is a point and the system is the burn-only seam again, so the family is
-continuous by construction.
+`T − break − escape − burn − c − capture`. That leaves six unknowns — the
+departure burn's thrust direction (two angles), its duration, the coast's
+duration, and the brake's direction (two angles) — against the six seam
+components. At `c = 0` the conic is a point and the system is the burn-only seam
+again, so the family is continuous by construction.
 
 `PlanAtDuration` hands a coast refusal to this branch only when the refusal is
 the trip time squeezing the coast path — the departure burn cannot be placed or
@@ -460,48 +472,29 @@ Measured at the epoch (2026-11-15) from Gateway, conic capture. The burn-only
 minimum and the coast floor are the two ends of each row; the middle row is the
 gap's midpoint:
 
-| Target | Level | Burn-only minimum | Gap midpoint | Coast floor | Δv | Worst seam |
-|---|---|---:|---:|---:|---:|---:|
-| Mercury | 1 g | 3.044696 d, 2,433 km/s | **3.10 d** | 3.216099 d, 1,766 km/s | **2,023 km/s** | 3.7 m / 4.0 × 10⁻⁵ m/s |
-| Mars | 0.3 g | 6.495014 d, 1,592 km/s | **6.60 d** | 6.730422 d, 1,172 km/s | **1,333 km/s** | 26.4 m / 7.6 × 10⁻⁵ m/s |
-| Jupiter | 0.3 g | 12.542796 d, 3,109 km/s | **12.80 d** | 13.072112 d, 2,271 km/s | **2,540 km/s** | 0.7 m / 7.8 × 10⁻⁷ m/s |
+| Target | Level | Burn-only minimum | Gap midpoint | Coast floor | Δv |
+|---|---|---:|---:|---:|---:|
+| Mercury | 1 g | 13.86287 d, 2,588.5 km/s | **13.96 d** | 14.06070 d, 1,821.1 km/s | **2,021.4 km/s** |
+| Mars | 0.3 g | 16.48669 d, 1,450.4 km/s | **16.65 d** | 16.84485 d, 1,017.1 km/s | **1,140.8 km/s** |
+| Jupiter | 0.3 g | 22.55555 d, 2,972.8 km/s | **23.10 d** | 23.73299 d, 1,899.5 km/s | **2,189.8 km/s** |
 
-Each midpoint is a seven-arc plan — break → departure burn → conic coast → brake
-→ the conic capture — and its total is exactly the requested duration. Mercury's
-3.10 d build spends 0.3098 d on the break (167.9 km/s), 1.1312 d on the
-departure burn (948.0), 0.5438 d coasting, and 1.0786 d on the brake (904.0);
-Mars's 6.60 d build is 0.5581 d (91.9 km/s), 2.4115 d (613.0), 1.1232 d coast,
-and 2.4576 d (624.7). Jupiter's coast is 2.4953 d. The coast is real: its
-duration is hours to days, not a seam.
+Each midpoint is an eight-arc plan — break → escape → departure burn → conic
+coast → brake → the conic capture chain — and its total is exactly the requested
+duration. The three values inside the Mercury gap are **13.90 d / 2,220.7 km/s**,
+**13.96 d / 2,021.4** and **14.02 d / 1,891.2**; Mars 0.3 g runs **16.55 /
+1,248.8**, **16.65 / 1,140.8** and **16.75 / 1,069.6**; Jupiter 0.3 g **22.80 /
+2,421.4**, **23.10 / 2,189.8** and **23.50 / 1,989.3**. The delta-v falls smoothly
+as the coast takes more of the crossing, and the propellant with it ([fuel versus
+delta-v](#fuel-versus-delta-v)); the two branches meet inside the gate at the
+floor. The branch switch is not free: the short coast is a single conic that has
+to carry the whole crossing, while the floor lets the coast solver choose the
+transfer.
 
-The family's measured shape at Mercury 1 g, in days and km/s:
-
-| Total | Branch | Δv | Coast |
-|---:|---|---:|---:|
-| 3.044696 (minimum) | burn-only, `c = 0` | 2,433 | 0 |
-| 3.045391 (+60 s) | short coast | 2,383 | 1,627 s |
-| 3.087547 | short coast | 2,068 | 41,300 s |
-| 3.130398 | short coast | 1,936 | 58,659 s |
-| 3.173249 | short coast | 1,841 | 72,076 s |
-| 3.216099 (floor) | coast (Lambert) | 1,766 | 0.9677 d |
-
-The delta-v falls smoothly as the coast takes more of the crossing, and the
-propellant with it ([fuel versus delta-v](#fuel-versus-delta-v)), and the two
-branches meet inside the gate at the floor. Mars 0.3 g runs 1,592 → 1,569 →
-1,394 / 1,319 / 1,195 → 1,172 km/s and Jupiter 0.3 g 3,109 → 3,076 → 2,689 /
-2,533 / 2,420 → 2,271 the same way. The branch switch is not free — Mercury's
-last short-coast probe spends 75 km/s more than the Lambert floor, and Jupiter's
-149 km/s more — because the short coast is a single conic that has to carry the
-whole crossing, while the floor lets the coast solver choose the transfer. That
-difference is the price of the gap's freedom to ask for any duration; it is
-measured, not hidden.
-
-The range now has **no hole**: for Mercury 1 g, Mars 0.3 g, and Jupiter 0.3 g,
-every probe from the advertised minimum to the coast floor and a little above it
-builds, and each plan's total is the duration asked for. Below the minimum the
-old refusal stands (Mercury 3.0 d: the break needs 44.2 m/s², above the
-10.0 m/s² drive; Mars 6.4 d: 531.1 m/s²). The slow end still refuses on the
-Lambert geometry (Mars 305 d: 179.4°).
+The range has **no hole**: every probe from the advertised minimum to the coast
+floor and a little above it builds, and each plan's total is the duration asked
+for. Below the minimum the refusal stands: Mercury 13.0 d is below the burn-only
+crossing, and Mars 16.0 d is below its 16.49-day minimum. The slow end still
+refuses on the Lambert geometry (Mars 305 d: 175.6°).
 
 Two smaller consequences are deliberate. The crossing always ends on the
 **conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does not
@@ -511,55 +504,25 @@ burn-only minimum flies the no-coast plan the preview drew; at a coast-floor
 target the base is the coast floor. A preview that sat at its minimum flies the
 fresh minimum, because the clock may have moved and the old number can sit a few
 seconds above the new minimum. A chosen duration above that base retimes with
-`PlanAtDuration`, including inside the gap, where it now builds the short coast
-instead of reporting a refusal.
+`PlanAtDuration`, including inside the gap, where it builds the short coast.
 
-The break's available time is circular here too — the total is the answer — so
-this step gives it a generous cap: twice the kinematic duration of the climb to
-the clearance sphere at the commanded acceleration. The plan reports whether the
-cap bound, because a capped break is no longer the pin.
+The burn-only crossing's total is an output, so its climb uses the time left
+after the solved burn and brake; the plan reports whether the available-time cap
+bound rather than claiming a break it could not fit.
 
-Measured at the epoch (2026-11-15) from Gateway to **Mercury at 1 g**, on the
-date of the certified 1 g floor (3.21610 d) — the fixed-date plan, which the
-moving-target loop reproduces. The break's cap is **0.5160 d** and the break uses
-**0.30986 d** of it, so it is **not binding**.
-
-| Arc | Duration | Peak | Δv |
-|---|---:|---:|---:|
-| Break (quintic) | 0.30986 d | 9.7000 m/s² | 167.9 km/s |
-| Departure burn | 1.37544 d | 9.7000 | 1,152.7 |
-| Brake | 1.32285 d | 9.7000 | 1,108.7 |
-| Capture chain | 0.03655 d | — | 3.56 |
-| **Total** | **3.04470 d** | **9.70** | **2,432.9** |
-
-The seam closes. The fixed-date solve's own residual is **151.4 m and
-1.65 × 10⁻³ m/s**, and the built plan's worst seam — the brake rebuilt forward
-against the chain's entry — is **102.2 m and 0.209 m/s**; both are inside the
-1 km / 1 m/s gate. The moving-target rebuild closes tighter (**2.2 m and
-9.9 × 10⁻⁶ m/s**). The plan is six arcs, break → departure burn → brake →
-capture, with **no Cruise coast**. The brake starts 63.4 million km from Mercury,
-553 of the handover ceilings out, so this fast case needs no planetocentric
-approach leg. It also flies: `Begin` at the 1 g minimum puts the Mercury plan in
-the air and the autopilot reaches the arrival state **0.1 m and 0.0001 m/s**
-from the parking orbit, so the burn-only crossing is not only a build.
-
-Against the certified 1 g floor the burn-only crossing is **0.17140 d
-(4 h 7 min) shorter** — 3.04470 against 3.21610 d — and **667 km/s (38%) more
-expensive**, 2,432.9 against 1,766 km/s. That is the trade the coast makes: the
-floor spends 0.97 d coasting for free, and the burn-only crossing spends it
-thrusting. It is fast enough to be the nav computer's minimum at a high level,
-and too expensive to replace the coast at a fixed trip time.
-
-The short coast fills what this section left open: the range between the
-burn-only minimum and the coast floor is now a buildable family, and the coast
-floor itself still comes from the unchanged coast path. No default `Plan()`
-floor, window, or delta-v anchor moved.
+Against the certified 1 g floor the burn-only crossing is **0.19783 d
+(4 h 45 min) shorter** — 13.86287 against 14.06070 d — and **767.4 km/s (42%)
+more expensive**, 2,588.5 against 1,821.1 km/s, about **96 t more propellant** at
+1,000 t dry. That is the trade the coast makes: the floor spends the difference
+coasting for free, and the burn-only crossing spends it thrusting. It is fast
+enough to be the nav computer's minimum at a high level, and too expensive to
+replace the coast at a fixed trip time.
 
 # Fuel versus delta-v
 
-The pin and the short coast are argued in delta-v, but the nav computer quotes
-**propellant**. Its `Fuel` row is the rocket equation at the design exhaust
-velocity, `v_e = 10,000 km/s`, against the ship's 1,000 t dry mass
+The short coast and the profile's fast end are argued in delta-v, but the nav
+computer quotes **propellant**. Its `Fuel` row is the rocket equation at the
+design exhaust velocity, `v_e = 10,000 km/s`, against the ship's 1,000 t dry mass
 ([the fuel readout](/simulation/flight-model.md#the-fuel-readout)):
 
 ```text
@@ -567,69 +530,10 @@ m_p = m_dry (exp(delta-v / v_e) - 1)      PropellantFraction = m_p / m_0
 ```
 
 `TrajectoryPlan.PropellantKg` and `PropellantFraction` are that readout, and
-every table below is printed from them by
-`TheFastPlansSpendMorePropellantNotLess` rather than recomputed by hand. The
-exponential is the reason to measure in propellant: it exaggerates each delta-v
-difference. At 1,000 t dry, 1,766 km/s is 193 t, 2,433 km/s is 275 t, and
-3,109 km/s is 365 t.
-
-## The pin at a fixed trip time
-
-Measured at the epoch (2026-11-15) from Gateway with the conic capture. The trip
-time is the same on both sides of each comparison, so the fuel difference is the
-pin's own cost:
-
-| Plan | Pin | Trip (d) | Delta-v (km/s) | Propellant (t) | Share of departure mass |
-|---|---|---:|---:|---:|---:|
-| Mercury 1 g, 8 d | off | 8.00000 | 557.0 | 57.3 | 5.42% |
-| Mercury 1 g, 8 d | **on** | 8.00000 | 615.5 | 63.5 | 5.97% |
-| Mars 0.3 g, 30 d | **on** | 30.00000 | 232.2 | 23.5 | 2.30% |
-| Mars 0.3 g, 90 d | **on** | 90.00000 | 127.7 | 12.8 | 1.27% |
-| Mars 0.3 g, 200 d | **on** | 200.00000 | 99.4 | 10.0 | 0.99% |
-| Mars 0.3 g, 90 d | off | 90.00000 | 44.4 | 4.4 | 0.44% |
-
-At a fixed time the pin is a **cost**, not a saving. Mercury's 8-day break goes
-90.2 → 167.2 km/s, so the total goes 557.0 → 615.5 and the propellant 57.3 →
-63.5 t — 6.2 t more for the same 8 days. Mars at 0.3 g is the same shape: the
-pinned 30, 90 and 200-day plans spend 232.2 / 127.7 / 99.4 km/s and 23.5 / 12.8
-/ 10.0 t, against the 90-day default build's 44.4 km/s and 4.4 t. Spending falls
-as the trip lengthens, but the pin never becomes free at a fixed time: its break
-must command the level whatever the coast is doing.
-
-## The pin at a floor
-
-The floors are the case where the sign can go the other way, because the pin
-selects a different **certified duration** and the two sides are not the same
-trip. Both time and fuel are quoted for that reason.
-
-| Target | Level | Pin | Floor (d) | Delta-v (km/s) | Propellant (t) | Share |
-|---|---|---:|---:|---:|---:|---:|
-| Mercury | 1 g | off | 3.21610 | 1,765.5 | 193.1 | 16.18% |
-| Mercury | 1 g | **on** | 3.21686 | 1,764.3 | 193.0 | 16.17% |
-| Mars | 0.3 g | off | 6.73042 | 1,171.6 | 124.3 | 11.06% |
-| Mars | 0.3 g | **on** | 6.86413 | 1,144.4 | 121.2 | 10.81% |
-| Jupiter | 0.3 g | off | 13.07211 | 2,271.0 | 255.0 | 20.32% |
-| Jupiter | 0.3 g | **on** | 13.71332 | 2,028.1 | 224.8 | 18.36% |
-| Uranus | 1 g | off | 33.65372 | 2,070.0 | 230.0 | 18.70% |
-| Uranus | 1 g | **on** | 32.48399 | 2,208.3 | 247.1 | 19.81% |
-| Uranus | 0.3 g | off | 33.60438 | 2,300.8 | 258.7 | 20.55% |
-| Uranus | 0.3 g | **on** | 40.87407 | 1,808.0 | 198.2 | 16.54% |
-
-Read as a time/fuel trade, not as like-for-like trips:
-
-* **Mercury 1 g** is the same certified point on both sides: 3.21610 against
-  3.21686 d, 193.1 against 193.0 t. The pin changes nothing it can reach there.
-* **Mars 0.3 g** is 3.1 t cheaper (124.3 → 121.2 t) but takes **3 h 12 min
-  longer** (6.86413 against 6.73042 d).
-* **Jupiter 0.3 g** is 30.2 t cheaper (255.0 → 224.8 t) for **15 h 23 min
-  longer**.
-* **Uranus 0.3 g** is 60.5 t cheaper (258.7 → 198.2 t) but **7.27 days longer**.
-* **Uranus 1 g** goes the other way: the pin is **17.1 t dearer** (230.0 →
-  247.1 t) even though it is **28 h 4 min shorter**. Its changed basin selects a
-  different 1 g floor.
-
-So the pin is cheaper at some 0.3 g floors and dearer at long fixed trips and at
-Uranus 1 g. It is a level choice, not a fuel optimisation.
+`TheFastPlansSpendMorePropellantNotLess` prints the table from the plans
+themselves rather than recomputing it by hand. The exponential is the reason to
+measure in propellant: it exaggerates each delta-v difference. At 1,000 t dry,
+1,821 km/s is about 200 t, 2,589 km/s about 295 t, and 2,973 km/s about 346 t.
 
 ## The new family
 
@@ -639,49 +543,54 @@ coast](#the-short-coast):
 
 | Target | Level | Plan | Trip (d) | Delta-v (km/s) | Propellant (t) | Share |
 |---|---|---:|---:|---:|---:|---:|
-| Mercury | 1 g | burn-only minimum | 3.04470 | 2,432.8 | 275.4 | 21.60% |
-| Mercury | 1 g | short coast | 3.10000 | 2,023.4 | 224.3 | 18.32% |
-| Mercury | 1 g | coast floor | 3.21610 | 1,765.5 | 193.1 | 16.18% |
-| Mars | 0.3 g | burn-only minimum | 6.49501 | 1,591.9 | 172.6 | 14.72% |
-| Mars | 0.3 g | short coast | 6.60000 | 1,333.1 | 142.6 | 12.48% |
-| Mars | 0.3 g | coast floor | 6.73042 | 1,171.6 | 124.3 | 11.06% |
-| Jupiter | 0.3 g | burn-only minimum | 12.54280 | 3,109.0 | 364.6 | 26.72% |
-| Jupiter | 0.3 g | short coast | 12.80000 | 2,540.1 | 289.2 | 22.43% |
-| Jupiter | 0.3 g | coast floor | 13.07211 | 2,271.0 | 255.0 | 20.32% |
+| Mercury | 1 g | burn-only minimum | 13.86287 | 2,588.5 | 295.4 | 22.80% |
+| Mercury | 1 g | short coast | 13.96000 | 2,021.4 | 224.0 | 18.30% |
+| Mercury | 1 g | coast floor | 14.06070 | 1,821.1 | 199.8 | 16.65% |
+| Mars | 0.3 g | burn-only minimum | 16.48669 | 1,450.4 | 156.1 | 13.50% |
+| Mars | 0.3 g | short coast | 16.65000 | 1,140.8 | 120.8 | 10.78% |
+| Mars | 0.3 g | coast floor | 16.84485 | 1,017.1 | 107.1 | 9.67% |
+| Jupiter | 0.3 g | burn-only minimum | 22.55555 | 2,972.8 | 346.2 | 25.72% |
+| Jupiter | 0.3 g | short coast | 23.10000 | 2,189.8 | 244.8 | 19.66% |
+| Jupiter | 0.3 g | coast floor | 23.73299 | 1,899.5 | 209.2 | 17.30% |
 
 Propellant falls monotonically as the trip lengthens, in the same order as
 delta-v. The short coast is the part the player controls: every hour added
 between the minimum and the floor buys propellant back. The measured rate is
-about **20 t per hour** at Mercury and **8.6 t per hour** at Mars and Jupiter.
+about **20 t per hour** at Mercury, **5.7 t per hour** at Mars and **4.8 t per
+hour** at Jupiter.
 
-The branch switch is still a step, not a smooth continuation. The last
-short-coast probe (three quarters of the way across the gap) spends **75.5 km/s**
-more than the Lambert floor at Mercury (3.173249 d / 1,841.0 km/s against
-3.216099 d / 1,765.5), **148.6** more at Jupiter (12.939783 d / 2,419.6 against
-13.072112 d / 2,271.0), and **23.7** more at Mars (6.671570 d / 1,195.3 against
-6.730422 d / 1,171.6). The short coast is one conic carrying the whole crossing,
-while the floor lets the Lambert solver choose the transfer. Quoting the step is
-the honest reading of the family: the gap is buildable and monotone, but it is
-not the same curve as the coast path it hands over to.
+At a **fixed trip time** the same ordering appears from the other side. Measured
+at the epoch from Gateway at 0.3 g:
+
+| Mars trip (d) | Delta-v (km/s) | Propellant (t) | Share of departure mass |
+|---:|---:|---:|---:|
+| 20 | 495.98 | 1,643 | 62.2% |
+| 30 | 209.98 | 233.6 | 18.9% |
+| 90 | 38.97 | 39.7 | 3.8% |
+| 200 | 11.21 | 11.3 | 1.1% |
+
+A fast trip is not just a shorter one: the 20-day crossing is a huge burn at both
+ends, while the 200-day crossing is almost all coast. The monotone trade is the
+point, and the short-coast branch lets the player walk along it one buildable
+duration at a time.
 
 ## The answer
 
 **The fast plans use more propellant, not less.** Against the coast floor:
 
-* **Mercury 1 g** — the burn-only minimum buys **4 h 7 min** (3.04470 against
-  3.21610 d) for **667 km/s** more and **82.3 t** more propellant: 275.4 t
-  against 193.1 t, 21.60% against 16.18% of departure mass.
-* **Mars 0.3 g** — **5 h 39 min** (6.49501 against 6.73042 d) for **420 km/s**
-  and **48.3 t**: 172.6 against 124.3 t, 14.72% against 11.06%.
-* **Jupiter 0.3 g** — **12 h 42 min** (12.54280 against 13.07211 d) for
-  **838 km/s** and **109.6 t**: 364.6 against 255.0 t, 26.72% against 20.32%.
+* **Mercury 1 g** — the burn-only minimum buys **4 h 45 min** (13.86287 against
+  14.06070 d) for **767 km/s** more and about **96 t** more propellant: 295.4 t
+  against 199.8 t, 22.80% against 16.65% of departure mass.
+* **Mars 0.3 g** — **8 h 36 min** (16.48669 against 16.84485 d) for **433 km/s**
+  and about **49 t**: 156.1 against 107.1 t, 13.50% against 9.67%.
+* **Jupiter 0.3 g** — **28 h 16 min** (22.55555 against 23.73299 d) for
+  **1,073 km/s** and about **137 t**: 346.2 against 209.2 t, 25.72% against
+  17.30%.
 
 That is the trade the whole profile exposes: a coast minute is a minute of free
 travel, and thrusting through it is what makes the fast end expensive. The
 short-coast branch does not change that — it lets the player spend time to buy
-the propellant back, one buildable duration at a time. The pin is a separate
-axis: at a fixed time it is a cost, and at a floor it is a time/fuel trade whose
-sign depends on which certified point its changed basin selects.
+the propellant back, one buildable duration at a time.
 
 The fuel readout is still a **readout, not a budget**: the ship has no finite
 tank, its mass does not change in flight, and no plan is refused for fuel. These
@@ -700,25 +609,26 @@ influence; it is never split at the boundary. The full design and its boundaries
 are in
 [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 
-Two things stay as they were. The **attitude** is the profile's: the departure
-burn holds the escape ray, the brake holds the handover change, and a
-prograde/retrograde burn follows the velocity relative to the reference body.
-And the floor probes keep the **two-body burn** as their search model; every
-fixed burn in the plan that is reported and flown is the full-field one,
-including the hybrid capture's injection arc.
+Two things stay as they were. The **attitude** is the profile's: the break follows
+the ship's own prograde direction, the departure burn holds its solved thrust
+direction, the brake holds the handover change, and a prograde/retrograde burn
+follows the velocity relative to the reference body. And the floor probes keep the
+**two-body burn** as their search model; every fixed burn in the plan that is
+reported and flown is the full-field one, including the hybrid capture's injection
+arc.
 
 Measured at the epoch, the change is real in the arcs and almost invisible in the
 reported numbers. At the 90-day Mars plan's mid-burn the summed field is
 **4.4 × 10⁻⁴ m/s²** away from the Sun's rail at the departure burn and
 **1.2 × 10⁻⁴ m/s²** at the brake; a short 120 s burn 4,000 km above Mars ends
 **0.17 m** from its two-body counterpart. But a fixed-direction burn's delta-v is
-`a T` and `T` is set by the velocity change the chain needs, so the pinned solve
-absorbs the field difference into the escape ray and the path, not the spend. The
-numbers then moved when the capture started entering at the handover floor, not
-because of the field: 557.0 km/s at 8 days to Mercury, 376.9 at 12.3, 44.4 at
-Mars 90 days, and floors of 3.22 and 6.74 days. The seams close to under a metre
-and 3.7 × 10⁻⁴ m/s, and the Mars 90-day flight arrives 0.08 m and 7 × 10⁻⁵ m/s
-from the reference state.
+`a T` and `T` is set by the velocity change the chain needs, so the departure
+solve absorbs the field difference into the burn's thrust direction and the path,
+not the spend. The numbers moved with the physical departure, not because of the
+field: 1,762.3 km/s at 14.1 days to Mercury, 869.1 at 16, 38.97 at Mars 90 days,
+and floors of 14.06 and 16.84 days. The seams close to 55.8 m and
+8.6 × 10⁻² m/s at the short Mercury trip; the Mars 90-day flight arrives exactly
+(0.0 m and 7.3 × 10⁻⁶ m/s from the reference state).
 
 The cost is planning time, not delta-v: a full-field step evaluates the summed
 field over the catalogue, and the active set refreshes every eighth step, so a
@@ -741,8 +651,8 @@ straight at the planet crosses the 924,651 km sphere while clearing the planet b
 821,258 km, and is accepted; a 30-second burn 60 km up, thrusting at the surface,
 grazes to 6,422.3 km (51.3 km altitude) against a 6,471 km clearance, and is
 refused. The 90-day Mars
-build's departure burn starts on the ceiling and climbs, so it still stays outside
-the sphere — a consequence of the pinned endpoint, not the rule
+build's departure burn starts on the climb's ceiling and moves outward, so it
+stays outside the sphere — a consequence of the endpoint, not the rule
 ([the handover band](/simulation/powered-leg-floor.md#the-body-clearance-gate)).
 
 # The break search
@@ -777,7 +687,7 @@ copy (never committed):
 | Quantity | Step 1 | After step 2 |
 |---|---:|---:|
 | One `Plan()` | 12.0 s | **1.5 s** |
-| One `PlanAtDuration(8 d)` | 105 ms | **95 ms** |
+| One fixed-duration `PlanAtDuration` | 105 ms | **95 ms** |
 | One Mars 0.3 g `Plan()` | — | **0.85 s** |
 | First selection, Mercury (Plan + window + retime) | — | **1.5 s** |
 | First selection, Mars (Plan + window + retime) | — | **0.93 s** |
@@ -785,14 +695,13 @@ copy (never committed):
 | Slider retime | 105 ms | **93–99 ms** |
 
 The break-search cost fell by **8.1×** in step 1. Step 2 cut the rest by
-searching the floor on the same fast model and settling the pinned solve on a
-physical tolerance instead of a fixed pass count. The pins, floors, and reported
-plans did not move at that step: 8 d Mercury was 3.02 m/s² and 569.9 km/s, 12.3 d
-1.35 and 379.9, Mars 90 d 0.033 and 45.4, and the floors 3.46 d and 8.03 d. (The
-arrival entry radius later moved them to 2.85 m/s² and 557.0, 1.30 and 376.9,
-0.033 and 44.4, and floors 3.22 d and 6.74 d.) The fast peak tracks the full-field peak to 0.18% at 8 d Mercury, 0.41%
-at 12.3 d, 4.5% on the very gentle 90-day Mars break, and 0.05% at the Mercury
-floor.
+searching the floor on the same fast model and settling the departure solve on a
+physical tolerance instead of a fixed pass count. The physical departure adds one
+conic solve and a one-dimensional break bisection per pass; the cost table below
+is the previous profile's measurement and was not re-profiled in step 1. The fast
+peak tracks the full-field peak closely because the break is short and the
+departure body dominates; inside the 5% screen the full field decides, which is
+why the near-limit reports are 9.7000 m/s² at 1 g and 2.9467 at 0.3 g.
 
 # The floor after the pin
 
@@ -835,35 +744,29 @@ certified full-field plan; the editor's number is the one that ships:
 
 | Target | Level | True floor | Peak | Total Δv | Just below | Why the shorter trip is refused |
 |---|---|---:|---:|---:|---|---|
-| Mercury | 1 g | **3.21610 d** | 9.70 m/s² | 1,766 km/s | 3.19 d | departure break needs 10.1 m/s², above the 10.0 m/s² drive |
-| Mars | 0.3 g | **6.73042 d** | 5.14 m/s² | 1,172 km/s | 6.60 d | departure break needs 10.03 m/s²; 6.70 d leaves the brake 8,073 m and 0.8 m/s short of the entry |
-| Jupiter | 0.3 g | **13.07 d** in the editor (13.33520 .NET) | 9.70 m/s² | 2,271 km/s (editor) | not re-swept | the editor's fast high certifies after one pin retry; the .NET basin selects a different needle |
-| Uranus | 1 g | **33.65 d** in the editor (30.56 .NET) | 9.70 m/s² | 2,070 km/s (editor) | not re-swept | step 1 re-measured the .NET floor lower; the 128-sample certified solve converges where 512 stalled, and both points are certified. The editor's floor is the eight-arc approach plan |
-| Uranus | 0.3 g | **33.60 d** in the editor (40.71 .NET) | 2.94 m/s² | 2,301 km/s (editor) | not re-swept | the basin is needles; in .NET the certified build closes 40.5, 40.0, and 39.0 d directly while the fast probes refuse them, so the search is conservative |
+| Mercury | 1 g | **14.06070 d** | 9.70 m/s² | 1,821.1 km/s | 13.8 d | below the 13.86287 d burn-only minimum; the climb and the burns cannot fit |
+| Mars | 0.3 g | **16.84485 d** | 2.95 m/s² | 1,017.1 km/s | 16.0 d | below the 16.48669 d burn-only minimum |
+| Jupiter | 0.3 g | **23.73299 d** | 2.95 m/s² | 1,899.5 km/s | 22.5 d | below the 22.55555 d burn-only minimum |
+| Uranus | 1 g | **57.02223 d** | 9.70 m/s² | 1,417.8 km/s | not re-swept | the editor's certified floor; the .NET harness was not re-swept in step 1 |
+| Uranus | 0.3 g | **92.13088 d** | 2.95 m/s² | 811.1 km/s | not re-swept | the editor's certified floor; the near-floor basin is still noisy |
 
-The runtime difference at the giants is the near-floor scatter, not a defect: a
-duration's feasibility is set by whether the departure Newton stalls and how
-many passes the brake pin needs, so a last-bit libm difference selects a
-different certified point. The editor's **coast** windows are **33.60–100.81 d**
-(Uranus 0.3 g), **33.65–100.96 d** (Uranus 1 g), **6.73–20.19 d** (Mars 0.3 g),
-**3.22–9.65 d** (Mercury 1 g), and **13.07–39.22 d** (Jupiter 0.3 g); the nav
+The floors are the editor's certified full-field plans. The .NET harness was not
+re-swept in this step; the near-floor scatter is a solver property and not a defect
+(a duration's feasibility is set by whether the departure Newton stalls and how
+many passes the brake pin needs, so a last-bit libm difference can select a
+different certified point). The editor's **coast** windows are **14.06–34.27 d**
+(Mercury 1 g), **16.84–50.53 d** (Mars 0.3 g), **23.73–71.20 d** (Jupiter 0.3 g),
+**57.02–171.07 d** (Uranus 1 g) and **92.13–276.39 d** (Uranus 0.3 g); the nav
 computer asks for the shorter burn-only windows where that crossing wins (see
 [the nav computer's minimum](#the-nav-computers-minimum)). The
 divergence's measurement is in [planning
 performance](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug).
 
-The Uranus 0.3 g basin is a set of **needles**, not a boundary. In the .NET
-harness the returned floor is **40.71332 d** and the search is conservative: the
-fast probes refuse the durations below it while the certified build closes 40.5,
-40.0, and 39.0 d directly (worst seams 17.6 m / 1.7 × 10⁻³ m/s or better) and
-the floor itself closes at 5.1 m / 6.5 × 10⁻⁴ m/s. The editor's scatter selects
-**33.60438 d**, also certified; the two are the same basin read through
-different libm last bits. The .NET 1 g floor is **30.55886 d** and rebuilds cold
-at 0.4 m / 1.0 × 10⁻³ m/s; the editor's is **33.65372 d** and carries the
-approach arc. [Planning
-performance](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)
-records the re-measurement and the cache reuse that keeps the background retime
-off it.
+The near-floor basin is still a set of **needles**, not a boundary: the certified
+build can close a duration just below the advertised floor while a fast probe
+refuses it, so the search is conservative. The cache and the background retime
+keep that cost off the frame ([planning
+performance](/technical/planning-performance.md#step-1-the-builds-own-cost-2026-11-20)).
 
 The floor search also requires the chain to be **closed**: a plan whose peak
 fits but whose brake misses the capture entry is not flyable. The near-floor
@@ -871,13 +774,13 @@ trips amplify the brake solve's forward/backward mismatch, so the shortest
 plan that fits the peak can end the brake hundreds of thousands of kilometres
 from the entry; the planner reports that as a trip time too short for the
 profile instead of handing it to the autopilot. The gate is a kilometre of
-position and a metre per second of velocity: the 8- and 12-day trips close to
-centimetres, the 6.73042 d Mars floor's worst seam is 9.8 m and 2.5 × 10⁻² m/s
-(and the Mercury floor's 196 m), and a broken brake misses by thousands of
-kilometres. The 8.03 d flight
-arrived 0.1 m and 10⁻⁴ m/s from the reference parking state.
+position and a metre per second of velocity: the 14.1- and 16-day trips close to
+centimetres to tens of metres, the 16.84485 d Mars floor's worst seam is 26.7 m
+and 3.3 × 10⁻² m/s (and the Mercury floor's 109 m), and a broken brake misses by
+thousands of kilometres. The 14.1 d flight arrives inside the test's 10 m /
+0.1 m/s bound.
 
-The pinned solve itself now stops on the brake's own physical mismatch (1e-6 m/s
+The departure solve itself now stops on the brake's own physical mismatch (1e-6 m/s
 at the brake's start) rather than the old `required.SqrMagnitude > 1e-18`, which
 a real brake can never satisfy. The fixed 12-pass outer loop and the three
 settle passes became a convergence loop plus up to three settles only while the
@@ -917,9 +820,11 @@ shipped route, with no impulse at the target's sphere of influence. Because a bu
 the speed, the brake's thrust direction is the change the chain needs and
 opposes the arrival velocity, not an anti-velocity direction. The first cut
 placed the departure burn backwards from the coast and followed the
-heliocentric velocity; the pinned-break follow-up replaced that with the
-forward-solved escape-ray burn above. The nav-computer control landed in the
-plan's fourth step.
+heliocentric velocity; the pinned-break follow-up replaced that with a forward
+solve to a radial ceiling pin; the physical-departure follow-up replaced the pin
+with the short prograde break and the escape conic, and the burn's start is now
+the conic's ceiling state. The nav-computer control landed in the plan's fourth
+step.
 
 # Not in the first cut
 
@@ -947,14 +852,15 @@ plan's fourth step.
   The profile's right-hand end is probed from what the planner accepts,
   not taken as three times the minimum: a long short-way transfer sweeps past
   180°, and a slow coast would need an acceleration rather than a brake.
-- **The pinned break and the escape ray.** The break ends at the handover band's
-  ceiling — `1.02 × SOI` — at the local escape speed along the escape ray, and the
-  departure burn holds that ray. That is the departure endpoint for this plan: the
-  break's job is escape, and the burn starts at the clearance sphere and moves
-  outward, so the profile's departure numbers did not move. A velocity-following
-  burn cannot close the seam at fast trip times, so the ray, not the heliocentric
-  velocity, sets the burn's attitude. The band, the arrival endpoint, and the
-  full-field integration are in
+- **The physical departure.** The break is a short commanded-level burn to the
+  parking radius on the ship's own prograde tangent at the planetocentric escape
+  speed. A ballistic conic carries that state to the handover ceiling — parabolic
+  when the trip allows it, hyperbolic when it does not — and the departure burn
+  starts at the conic's ceiling state. Its thrust direction and duration are the
+  solve's free variables, not an escape ray; the direction the ship arrived with
+  has no relation to the transfer, so the break follows the ship's own orbital
+  direction and the burn supplies the aimed departure. The band, the arrival
+  endpoint, and the full-field integration are in
   [full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md).
 - **Brake and capture split.** The brake spends only the coast's handover and
   hands the capture chain its entry state with no impulse; the split is not

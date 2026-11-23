@@ -180,9 +180,13 @@ namespace TimeToExplore.Core
                 return meanAnomaly / MeanMotionRadPerSecond;
             }
 
-            // Parabolic boundary: Barker's equation.
+            // Parabolic boundary: Barker's equation,
+            // t = ½ √(p³/μ) (D + D³/3) with D = tan(ν/2). The ½ and the
+            // cube root are both part of the standard form: the old ½√(2p³/μ)
+            // was √2 too long, which only showed up once a genuinely parabolic
+            // escape started using this branch.
             double d = Math.Tan(trueAnomalyRad / 2.0);
-            return 0.5 * Math.Sqrt(2.0 * Math.Pow(SemiLatusRectumM, 3.0)
+            return 0.5 * Math.Sqrt(Math.Pow(SemiLatusRectumM, 3.0)
                                    / GravitationalParameter)
                    * (d + d * d * d / 3.0);
         }
@@ -208,7 +212,9 @@ namespace TimeToExplore.Core
                     Math.Sqrt(Eccentricity - 1.0) * Math.Cosh(hyperbolicAnomaly / 2.0));
             }
 
-            double scale = 0.5 * Math.Sqrt(2.0 * Math.Pow(SemiLatusRectumM, 3.0)
+            // The inverse of Barker's equation, with the same ½ √(p³/μ) scale
+            // as <see cref="TimeSincePeriapsis"/>.
+            double scale = 0.5 * Math.Sqrt(Math.Pow(SemiLatusRectumM, 3.0)
                                            / GravitationalParameter);
             double a = secondsSincePeriapsis / scale;
             double term = 3.0 * a / 2.0;

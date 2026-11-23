@@ -73,7 +73,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(velocityError, Is.LessThan(10.0), "matched within 10 m/s");
 
             Assert.That(run.RealSeconds, Is.GreaterThan(5.0), "the trip is watchable, not instant");
-            Assert.That(run.RealSeconds, Is.LessThan(180.0), "and it does not take four real days");
+            Assert.That(run.RealSeconds, Is.LessThan(300.0), "and it does not take real days");
 
             Assert.That(run.MaxSubsteps, Is.LessThan(FlightSession.DefaultSubstepsPerFrame),
                 "the per-frame substep budget was never the limit");

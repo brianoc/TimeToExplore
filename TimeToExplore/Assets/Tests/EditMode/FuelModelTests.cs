@@ -88,7 +88,7 @@ namespace TimeToExplore.Tests.EditMode
             {
                 ArrivalStyle = CaptureStyle.Conic
             };
-            const double days = 12.0;
+            const double days = 30.0;
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
 
             planner.BurnLevelG = 0.3;

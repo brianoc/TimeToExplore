@@ -5,8 +5,14 @@ namespace TimeToExplore.Simulation
 {
     public enum FlightPhase
     {
-        /// <summary>Climbing out of the departure body's sphere of influence.</summary>
+        /// <summary>The short powered break out of the parking orbit: a quintic
+        /// that raises the ship onto its planetocentric escape conic.</summary>
         Departure,
+        /// <summary>The ballistic planetocentric climb from the parking radius to
+        /// the departure handover ceiling: a Keplerian conic about the departure
+        /// body, with the drive off. A long trip uses the minimum-energy
+        /// parabolic climb; a shorter one a hyperbolic excess speed.</summary>
+        Escape,
         /// <summary>Heliocentric transfer between spheres of influence.</summary>
         Cruise,
         /// <summary>The planetocentric approach: the Keplerian fall about the

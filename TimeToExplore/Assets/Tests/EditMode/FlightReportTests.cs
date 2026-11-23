@@ -57,7 +57,11 @@ namespace TimeToExplore.Tests.EditMode
         public void ALiveFlightReportsThrottleAndTheNextEvent()
         {
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
-            _session.Advance(_epoch + 0.05, 50_000);
+            // The beginning flies the burn-only minimum, whose first ten days are
+            // the break and the ballistic escape: advance into the departure burn
+            // to see a commanded throttle.
+            PlanArc burn = plan.Arcs.First(arc => arc.IsFiniteBurn);
+            _session.Advance(burn.StartJulianDate + 0.01, 50_000);
 
             List<DetailRow> rows = FlightReport.Build(_session, _model, "x10,000");
 

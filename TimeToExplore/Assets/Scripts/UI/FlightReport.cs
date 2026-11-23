@@ -136,6 +136,7 @@ namespace TimeToExplore.UI
             switch (phase)
             {
                 case FlightPhase.Departure: return "Departure";
+                case FlightPhase.Escape: return "Escape";
                 case FlightPhase.Cruise: return "Cruise";
                 case FlightPhase.Approach: return "Approach";
                 case FlightPhase.Coast: return "Coast";
@@ -198,6 +199,7 @@ namespace TimeToExplore.UI
             PlanArc brake = null;
             PlanArc coast = null;
             PlanArc approach = null;
+            PlanArc escape = null;
             int chainStart = plan.Arcs.Count;
 
             for (int i = 0; i < plan.Arcs.Count; i++)
@@ -213,6 +215,8 @@ namespace TimeToExplore.UI
                     coast = arc;
                 else if (arc.Phase == FlightPhase.Approach)
                     approach = arc;
+                else if (arc.Phase == FlightPhase.Escape)
+                    escape = arc;
 
                 if (chainStart == plan.Arcs.Count && !aboutSun &&
                     (arc.Phase == FlightPhase.Coast || arc.Phase == FlightPhase.Capture ||
@@ -223,19 +227,30 @@ namespace TimeToExplore.UI
             double level = plan.FiniteBurnAccelerationMps2
                            / TripPlanner.StandardGravityMps2;
 
+            // The break is the short quintic out of the parking orbit; the escape
+            // is the ballistic conic it hands over to. A plan without a departure
+            // burn (a trip that starts inside the target's sphere) has no escape,
+            // and a skeleton-style plan reports only the break.
+            if (plan.Arcs.Count > 0 && plan.Arcs[0].Phase == FlightPhase.Departure)
+            {
+                PlanArc breakArc = plan.Arcs[0];
+                rows.Add(DetailRow.Of("Break",
+                    $"{breakArc.DeltaVMps / 1000.0:F1} km/s  ·  " +
+                    $"{SolarSystemHud.FormatDuration(breakArc.DurationSeconds)}  ·  quintic"));
+            }
+
+            if (escape != null)
+            {
+                rows.Add(DetailRow.Of("Escape",
+                    $"drive off  ·  {SolarSystemHud.FormatDuration(escape.DurationSeconds)}"));
+            }
+
             if (departureBurn != null)
             {
                 rows.Add(DetailRow.Of("Departure burn",
                     $"{departureBurn.DeltaVMps / 1000.0:F1} km/s  ·  " +
                     $"{SolarSystemHud.FormatDuration(departureBurn.DurationSeconds)}  ·  " +
                     $"{level:0.0} g"));
-            }
-            else if (plan.Arcs.Count > 0 && plan.Arcs[0].Phase == FlightPhase.Departure)
-            {
-                PlanArc breakArc = plan.Arcs[0];
-                rows.Add(DetailRow.Of("Break",
-                    $"{breakArc.DeltaVMps / 1000.0:F1} km/s  ·  " +
-                    $"{SolarSystemHud.FormatDuration(breakArc.DurationSeconds)}  ·  quintic"));
             }
 
             if (coast != null)

@@ -349,7 +349,7 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color),
                 "the active style is marked");
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(6),
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
                 "the default is the conic capture on the zero-coast crossing");
 
             // The zero-coast minimum carries the conic capture chain whichever
@@ -358,12 +358,13 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.Flight.SetPreviewDuration(
                 2.0 * _bootstrap.Flight.PreviewMinimumSeconds);
             Update();
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "the coasting conic plan has the break, burns, coast, and capture");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(8),
+                "the coasting conic plan has the break, climb, burns, coast, and capture");
 
             double conicMinimum = _bootstrap.Flight.PreviewMinimumSeconds;
             fixedBurn.onClick.Invoke();
-            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Count == 8,
+            PumpUntil(() => _bootstrap.Flight.Preview != null
+                            && _bootstrap.Flight.Preview.Arcs.Count(arc => arc.IsFiniteBurn) == 3,
                 "the hybrid rebuild publishes");
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
@@ -373,8 +374,8 @@ namespace TimeToExplore.Tests.EditMode
                 .EntryImpulseMps, Is.GreaterThan(0.0),
                 "the hybrid circularises impulsively");
             Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
-                Is.Not.EqualTo(conicMinimum),
-                "the hybrid capture has its own fastest plan");
+                Is.EqualTo(conicMinimum).Within(1e-6),
+                "the window's minimum is the conic burn-only crossing; the retime carries the style");
             Assert.That(SliderNamed("TimeSlider").minValue,
                 Is.EqualTo((float)_bootstrap.Flight.PreviewMinimumSeconds).Within(1.0),
                 "the trip-time window follows the new style");
@@ -382,12 +383,13 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("ConicCaptureButton").color));
 
             conic.onClick.Invoke();
-            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Count == 7,
+            PumpUntil(() => _bootstrap.Flight.Preview.Arcs.Count == 8
+                            && _bootstrap.Flight.Preview.Arcs.Count(arc => arc.IsFiniteBurn) == 2,
                 "the conic rebuild publishes");
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "switching back restores the conic capture");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(8),
+                "switching back restores the conic capture at the retimed duration");
             Assert.That(ButtonLabel("ConicCaptureButton").color,
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color));
         }
@@ -489,9 +491,9 @@ namespace TimeToExplore.Tests.EditMode
                 "the minimum is the zero-coast crossing, so no cruise coast");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(7.5),
-                "the window starts at the profile's true floor, below the old 8.03 d one");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(17.5),
+                "the window starts at the profile's burn-only minimum");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(16.0),
                 "the floor is the shortest plan the profile can fly, not the torch plan");
             double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
@@ -558,11 +560,12 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.RouteLegendCount, Is.EqualTo(3),
                 "the profile draws a quintic break, fixed burns, and conic coasts");
             Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
-            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Fixed burn"));
-            Assert.That(_hud.RouteLegendColour(1), Is.EqualTo(RouteColours.FixedBurn));
-            Assert.That(_hud.RouteLegendIsDashed(1), Is.False);
-            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Conic arc"));
-            Assert.That(_hud.RouteLegendIsDashed(2), Is.True);
+            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
+            Assert.That(_hud.RouteLegendIsDashed(1), Is.True,
+                "the escape conic appears before the departure burn");
+            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Fixed burn"));
+            Assert.That(_hud.RouteLegendColour(2), Is.EqualTo(RouteColours.FixedBurn));
+            Assert.That(_hud.RouteLegendIsDashed(2), Is.False);
 
             int fixedRows = 0;
             for (int i = 0; i < _hud.RouteLegendCount; i++)
@@ -591,8 +594,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.RouteLegendLabel(0), Is.EqualTo("Quintic arc"));
             Assert.That(_hud.RouteLegendColour(0), Is.EqualTo(RouteColours.Quintic));
             Assert.That(_hud.RouteLegendIsDashed(0), Is.False);
-            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Fixed burn"));
-            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Conic arc"));
+            Assert.That(_hud.RouteLegendLabel(1), Is.EqualTo("Conic arc"));
+            Assert.That(_hud.RouteLegendLabel(2), Is.EqualTo("Fixed burn"));
 
             var flightRect = (RectTransform)Child("FlightPanel").transform;
             var legendRect = (RectTransform)Child("RouteLegend").transform;
@@ -668,7 +671,7 @@ namespace TimeToExplore.Tests.EditMode
                 FlightFixture.ShipAt(_bootstrap.Model, "gateway"), "mercury",
                 3.0 * JulianDate.SecondsPerDay);
             Assert.That(rejected.IsFeasible, Is.False);
-            Assert.That(rejected.InfeasibleReason, Does.Contain("departure break"));
+            Assert.That(rejected.InfeasibleReason, Does.Contain("trip time"));
 
             // A rejected flight is a state the planner only reaches through a
             // full Begin; put the session there directly so the display path is
@@ -685,22 +688,21 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo("Plan infeasible"));
 
             string reason = rejected.InfeasibleReason;
-            Assert.That(RowText("DetailsRow", 20), Does.Contain("departure break"),
+            Assert.That(RowText("DetailsRow", 40), Does.Contain("trip time"),
                 "the details panel names the cause beside the rejected route");
-            Assert.That(RowText("FlightRow", 30), Does.Contain("departure break"),
-                "the nav computer shows the max-thrust cause");
+            Assert.That(RowText("FlightRow", 30), Does.Contain("trip time"),
+                "the nav computer shows the cause");
             Assert.That(RowText("FlightRow", 30), Does.Contain(reason),
                 "the nav computer shows the whole reason");
         }
 
         private string RowText(string prefix, int count)
         {
-            for (int i = 0; i < count; i++)
+            foreach (Text value in _hud.GetComponentsInChildren<Text>(true))
             {
-                Text value = TextNamed(prefix + i + "Value");
-                if (value != null && value.gameObject.activeInHierarchy &&
-                    !string.IsNullOrEmpty(value.text) &&
-                    value.text.Contains("departure break"))
+                if (!value.gameObject.name.StartsWith(prefix)) continue;
+                if (value.gameObject.activeInHierarchy && !string.IsNullOrEmpty(value.text)
+                    && value.text.Contains("trip time"))
                 {
                     return value.text;
                 }

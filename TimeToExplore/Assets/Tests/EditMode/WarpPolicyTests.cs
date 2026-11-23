@@ -129,9 +129,11 @@ namespace TimeToExplore.Tests.EditMode
             TestContext.WriteLine($"Mars: {plan.FlightTimeDays:F2} d at " +
                                   $"{SolarSystemBootstrap.ScaleLabel(index)} = {realSeconds:F1} real s");
 
-            Assert.That(index, Is.GreaterThan(0), "a four-day trip cannot start at 1×");
+            Assert.That(index, Is.GreaterThan(0), "a two-week trip cannot start at 1×");
             Assert.That(realSeconds, Is.GreaterThan(10.0));
-            Assert.That(realSeconds, Is.LessThan(120.0));
+            // The ladder is powers of ten, so the 16.8-day floor lands on the
+            // 10,000× step (about 145 s) rather than the 100,000× step's 14.5 s.
+            Assert.That(realSeconds, Is.LessThan(200.0));
         }
     }
 }

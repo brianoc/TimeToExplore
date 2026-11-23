@@ -43,7 +43,7 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void NextBoundaryWalksTheArcChain()
         {
-            Assert.That(_plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(_plan.Arcs.Count, Is.EqualTo(8));
             for (int i = 0; i < _plan.Arcs.Count - 1; i++)
             {
                 Assert.That(_plan.NextBoundaryJulianDate(_plan.Arcs[i].StartJulianDate),

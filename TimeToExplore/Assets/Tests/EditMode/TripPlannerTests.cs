@@ -90,7 +90,9 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(slower.FlightTimeSeconds, Is.EqualTo(requested).Within(1e-3));
             Assert.That(slower.IsFeasible, Is.True, slower.InfeasibleReason);
-            Assert.That(slower.PeakThrustMps2, Is.LessThan(fastest.PeakThrustMps2));
+            Assert.That(slower.PeakThrustMps2,
+                Is.LessThanOrEqualTo(fastest.PeakThrustMps2),
+                "the break holds the commanded level; a longer trip is not gentler than it");
             Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps));
         }
 
@@ -105,14 +107,15 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(plan.IsFeasible, Is.True, "the plan exceeds the design acceleration");
             Assert.That(plan.PeakThrustMps2, Is.LessThanOrEqualTo(10.0 * 1.000001));
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
-            Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Cruise));
-            Assert.That(plan.Arcs[1].IsFiniteBurn, Is.True);
+            Assert.That(plan.Arcs[1].Phase, Is.EqualTo(FlightPhase.Escape));
+            Assert.That(plan.Arcs[2].Phase, Is.EqualTo(FlightPhase.Cruise));
+            Assert.That(plan.Arcs[2].IsFiniteBurn, Is.True);
             Assert.That(plan.Arcs[0].ReferenceBodyId, Is.EqualTo("earth"));
             Assert.That(plan.Arcs[plan.Arcs.Count - 1].ReferenceBodyId,
                 Is.EqualTo("mars"));
-            Assert.That(plan.FlightTimeDays, Is.InRange(2.0, 15.0));
+            Assert.That(plan.FlightTimeDays, Is.InRange(14.0, 18.0));
             Assert.That(plan.DeltaVMps, Is.GreaterThan(0.0));
         }
 
@@ -184,8 +187,11 @@ namespace TimeToExplore.Tests.EditMode
             TestContext.WriteLine($"kinematic {kinematic / 3600.0:F1} h, plan " +
                                   $"{plan.FlightTimeSeconds / 3600.0:F1} h");
 
+            // The escape climb is a physical lower bound the kinematic estimate
+            // does not model: the parabolic climb alone is about 10.7 days.
             Assert.That(plan.FlightTimeSeconds, Is.GreaterThan(kinematic * 0.95));
-            Assert.That(plan.FlightTimeSeconds, Is.LessThan(kinematic * 4.0));
+            Assert.That(plan.FlightTimeSeconds,
+                Is.LessThan(kinematic * 4.0 + 12.0 * JulianDate.SecondsPerDay));
         }
 
         [Test]
@@ -196,9 +202,9 @@ namespace TimeToExplore.Tests.EditMode
 
             TestContext.WriteLine(plan.ToString());
             Assert.That(plan.IsFeasible, Is.True);
-            Assert.That(plan.Arcs.Count, Is.InRange(7, 8),
+            Assert.That(plan.Arcs.Count, Is.InRange(8, 9),
                 "the approach leg depends on whether the certified floor's brake starts inside the ceiling");
-            Assert.That(plan.FlightTimeDays, Is.InRange(2.0, 30.0));
+            Assert.That(plan.FlightTimeDays, Is.InRange(12.0, 30.0));
             Assert.That(plan.MinimumClearanceM, Is.GreaterThan(0.0),
                 "the reference path does not pass through a body");
         }
@@ -223,7 +229,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(parkingRadius, Is.LessThan(
                 ParkingOrbit.RadiusM(jupiter, _planner.MaxAccelerationMps2)),
                 "the conic orbit is below the quintic gravity ceiling");
-            Assert.That(plan.Arcs.Count, Is.EqualTo(7));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(8));
         }
 
         [Test]
@@ -257,6 +263,10 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void DepartureFromLowEarthOrbitNeedsADepartureArc()
         {
+            // A 0.3 g drive cannot lift a 400 km Earth orbit with the short
+            // break (the local gravity is 8.7 m/s² against 2.94 m/s² of thrust),
+            // so this case runs at the drive's own level.
+            _planner.BurnLevelG = 1.0;
             ShipState ship = FlightFixture.ShipInEquatorialOrbit(_model, "earth", 400_000.0);
             TrajectoryPlan plan = _planner.Plan(ship, "mars");
 
@@ -265,8 +275,35 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(plan.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
             Assert.That(plan.Arcs[0].ReferenceBodyId, Is.EqualTo("earth"));
-            Assert.That(plan.IsFeasible, Is.True);
-            Assert.That(plan.FlightTimeDays, Is.LessThan(30.0));
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.FlightTimeDays, Is.LessThan(60.0));
+        }
+
+        [Test]
+        public void AWeakDriveCannotUseTheShortBreakFromLowEarthOrbit()
+        {
+            // A 400 km Earth orbit has 8.7 m/s² of local gravity against 2.94 m/s²
+            // of thrust at 0.3 g: the short break cannot lift it, and the refusal
+            // names the level it cannot hold. The same orbit at 1 g builds.
+            _planner.BurnLevelG = 0.3;
+            ShipState ship = FlightFixture.ShipInEquatorialOrbit(_model, "earth", 400_000.0);
+            TrajectoryPlan refused = _planner.PlanAtDuration(ship, "mars",
+                60.0 * JulianDate.SecondsPerDay);
+
+            TestContext.WriteLine("weak LEO: " + refused.InfeasibleReason);
+            Assert.That(refused.IsFeasible, Is.False,
+                "0.3 g cannot fly the short break from low Earth orbit");
+            Assert.That(refused.InfeasibleReason, Does.Contain("2.942 m/s²"),
+                "the reason names the level the break cannot hold");
+            Assert.That(refused.InfeasibleReason, Does.Contain("break"),
+                "the reason names the arc that is over the drive");
+
+            _planner.BurnLevelG = 1.0;
+            TrajectoryPlan built = _planner.PlanAtDuration(ship, "mars",
+                60.0 * JulianDate.SecondsPerDay);
+            Assert.That(built.IsFeasible, Is.True, built.InfeasibleReason);
+            Assert.That(built.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
+            Assert.That(built.Arcs[0].ReferenceBodyId, Is.EqualTo("earth"));
         }
 
         [Test]
@@ -289,8 +326,9 @@ namespace TimeToExplore.Tests.EditMode
                 "the pinned duration is the plan's own flight time");
             Assert.That(slower.DepartureJulianDate, Is.EqualTo(ship.JulianDate).Within(1e-12));
             Assert.That(slower.IsFeasible, Is.True);
-            Assert.That(slower.PeakThrustMps2, Is.LessThan(fastest.PeakThrustMps2),
-                "more time means a gentler burn");
+            Assert.That(slower.PeakThrustMps2,
+                Is.LessThanOrEqualTo(fastest.PeakThrustMps2),
+                "the commanded-level break is the same peak on both plans");
             Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps),
                 "more time also means less delta-v");
             Assert.That(slower.Arcs.Count, Is.GreaterThanOrEqualTo(fastest.Arcs.Count),
@@ -303,16 +341,16 @@ namespace TimeToExplore.Tests.EditMode
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             TrajectoryPlan fastest = _planner.Plan(ship, "mars");
 
-            // 95% is below the feasible minimum but still above the arcs'
-            // kinematic floor, so the pinned duration is exact and the peak
-            // thrust, which rises as 1/T², is over the drive.
+            // 95% is below the feasible minimum: the escape climb alone needs the
+            // trip's departure time, and the build reports the refusal rather than
+            // a stretched plan.
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
                 0.95 * fastest.FlightTimeSeconds);
 
-            Assert.That(tooFast.FlightTimeSeconds,
-                Is.EqualTo(0.95 * fastest.FlightTimeSeconds).Within(1e-3));
             Assert.That(tooFast.IsFeasible, Is.False,
                 "the drive cannot fly the fastest plan at 95% of its time");
+            Assert.That(tooFast.InfeasibleReason, Is.Not.Empty,
+                "the refusal carries a cause");
         }
 
         [Test]

@@ -58,6 +58,50 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(1e-3));
         }
 
+        /// <summary>
+        /// The parabolic branch of <see cref="ConicElements"/> is Barker's
+        /// equation, checked against the universal-variable propagator at the same
+        /// radius. The old branch carried an extra √2 in the time scale, which only
+        /// showed up once a genuinely parabolic escape started using it: the
+        /// forward and inverse maps agreed with each other but not with a
+        /// propagation.
+        /// </summary>
+        [TestCase(2.0)]
+        [TestCase(10.0)]
+        [TestCase(100.0)]
+        public void ParabolicPropagationMatchesTheBarkerTime(double multiple)
+        {
+            double radius = 7.0e6;
+            double periapsisSpeed = Math.Sqrt(2.0 * EarthMu / radius);
+            var position = new Vector3d(radius, 0.0, 0.0);
+            var velocity = new Vector3d(0.0, periapsisSpeed, 0.0);
+
+            ConicElements elements = ConicElements.FromState(position, velocity, EarthMu);
+            Assert.That(elements.IsNearParabolic, Is.True,
+                $"the state is parabolic, not e={elements.Eccentricity:F9}");
+
+            double targetRadius = multiple * radius;
+            double cos = (elements.SemiLatusRectumM / targetRadius - 1.0)
+                         / elements.Eccentricity;
+            double anomaly = Math.Acos(cos);
+            double seconds = elements.TimeSincePeriapsis(anomaly);
+
+            KeplerPropagator.Propagate(position, velocity, EarthMu, seconds,
+                out Vector3d propagatedPosition, out _);
+
+            TestContext.WriteLine($"{multiple} r_p: t {seconds:F3} s " +
+                                  $"({seconds / JulianDate.SecondsPerDay:F6} d), " +
+                                  $"propagated {propagatedPosition.Magnitude / 1000.0:F3} km " +
+                                  $"against {targetRadius / 1000.0:F3} km");
+
+            Assert.That(propagatedPosition.Magnitude,
+                Is.EqualTo(targetRadius).Within(1.0),
+                "Barker's time reaches the same radius the propagator does");
+            Assert.That(elements.TrueAnomalyAtTime(seconds),
+                Is.EqualTo(anomaly).Within(1e-9),
+                "the inverse Barker map is consistent with the forward one");
+        }
+
         [Test]
         public void HyperbolicPropagationReachesTheAnalyticPeriapsis()
         {
