@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T17:29:55Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T19:20:27Z }
 ---
 
 # The problem
@@ -98,16 +98,18 @@ cache. This is what makes a repeat selection free rather than merely fast.
 The retimed plans are cached as well, keyed by the same window inputs plus the
 requested flight time. A finished background build is stored even when a newer
 ask superseded it — the plan is still the right answer for that duration, and it
-is exactly the work a returned handle would otherwise repeat. The newest twelve
-per window are kept, and a repeat ask is matched when it lies within **0.2% of
-the window**, because a continuous slider put back near its old position is not
-bit-identical; that is under a pixel of the track and far below a physical
-difference in the route. Both the synchronous `SetPreviewDuration` and the
-slider's `RequestPreviewDuration` read the cache before queueing work, and a hit
-is published directly, so a duration the player has already waited for costs a
-dictionary lookup instead of another multi-second build. The cache shares the
-window's lifetime: a changed departure date, a place/teleport, or clearing the
-windows drops it.
+is exactly the work a returned handle would otherwise repeat. The newest
+**sixty-four** per window are kept, and a repeat ask is matched when it lies
+within **0.2% of the window**, because a continuous slider put back near its old
+position is not bit-identical; that is under a pixel of the track and far below
+a physical difference in the route. A plan is about **50 KB**, dominated by the
+departure burn's and brake's 512-sample interpolation tables at 24 bytes a
+sample, so the bound is about **3 MB per window**. Both the synchronous
+`SetPreviewDuration` and the slider's `RequestPreviewDuration` read the cache
+before queueing work, and a hit is published directly, so a duration the player
+has already waited for costs a dictionary lookup instead of another multi-second
+build. The cache shares the window's lifetime: a changed departure date, a
+place/teleport, or clearing the windows drops it.
 
 # The background planner
 

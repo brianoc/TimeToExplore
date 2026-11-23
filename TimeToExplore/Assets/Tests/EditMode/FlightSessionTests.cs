@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using NUnit.Framework;
 using TimeToExplore.Core;
@@ -916,6 +918,54 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(again, Is.Not.SameAs(first),
                 "the date change dropped the retimed plans instead of reading " +
                 "one back");
+        }
+
+        /// <summary>
+        /// The cache bound is a memory trade, so pin the size that justifies it.
+        /// A plan is dominated by the finite burns' interpolation tables — a
+        /// position and a velocity <see cref="Vector3d"/> per sample, at the
+        /// certified 512 samples for the departure burn and the brake. This is
+        /// the measurement behind keeping dozens of plans rather than a handful.
+        /// </summary>
+        [Test]
+        public void APreviewPlanCostsAboutFiftyKilobytes()
+        {
+            TrajectoryPlan plan = _session.Plot("mars", _epoch);
+            int elementBytes = Marshal.SizeOf<Vector3d>();
+
+            long tables = 0;
+            int burns = 0;
+            foreach (PlanArc arc in plan.Arcs)
+            {
+                if (!(arc.Path is FiniteBurnArc burn)) continue;
+                burns++;
+                tables += ArrayBytes(burn, "_localPositionsM", elementBytes);
+                tables += ArrayBytes(burn, "_localVelocitiesMps", elementBytes);
+            }
+
+            TestContext.WriteLine(
+                $"plan tables {tables / 1024.0:F1} KiB over {burns} burns and " +
+                $"{plan.Arcs.Count} arcs; one cached plan is about " +
+                $"{tables / 1024.0:F1} KiB");
+
+            Assert.That(burns, Is.GreaterThanOrEqualTo(2),
+                "the profile has a departure burn and a brake");
+            Assert.That(tables, Is.GreaterThan(32L * 1024),
+                "the finite-burn tables are the plan's memory; this is not an " +
+                "empty measure");
+            Assert.That(tables, Is.LessThan(128L * 1024),
+                "a plan must stay small enough for the retime cache to keep dozens");
+        }
+
+        /// <summary>Bytes an array field holds, including the array header and
+        /// length word, for the test's memory estimate.</summary>
+        private static long ArrayBytes(object owner, string fieldName, int elementBytes)
+        {
+            FieldInfo field = owner.GetType().GetField(fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return field?.GetValue(owner) is Array array
+                ? (long)elementBytes * array.Length + 32L
+                : 0L;
         }
 
         [Test]
