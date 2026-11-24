@@ -335,6 +335,12 @@ namespace TimeToExplore.Simulation
         /// <summary>Optional diagnostic sink for the planning loop.</summary>
         public Action<string> Trace { get; set; }
 
+        /// <summary>Optional counters and phase timings for one call. The
+        /// planner only writes to it, so attaching one never changes a plan,
+        /// a tolerance, a gate, or a pass cap. Reset it before the call to
+        /// measure and read it afterwards.</summary>
+        public PlanMetrics Metrics { get; set; }
+
         /// <summary>
         /// The profile's fastest **coast** crossing: the burn–coast–burn floor.
         /// This is the default plan the nav computer's fixed-duration anchors and
@@ -944,7 +950,12 @@ namespace TimeToExplore.Simulation
         public TrajectoryPlan PlanFastest(ShipState ship, string targetId)
         {
             BodyRuntime target = RequireTarget(targetId);
+            PlanMetrics metrics = Metrics;
+            long coastStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             TrajectoryPlan coast = PlanCoastFloor(ship, target);
+            if (metrics != null)
+                metrics.AddFastestCoast(PlanMetrics.Timestamp() - coastStart,
+                    coast?.FlightTimeSeconds ?? double.NaN);
             if (target.Data.IsStation)
             {
                 // The zero-coast crossing needs a capture chain; a station has
@@ -955,8 +966,12 @@ namespace TimeToExplore.Simulation
                 return coast;
             }
 
+            long burnOnlyStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             TrajectoryPlan burnOnly = PlanBurnOnlyMovingTarget(ship, target,
                 coast.FlightTimeSeconds);
+            if (metrics != null)
+                metrics.AddFastestBurnOnly(PlanMetrics.Timestamp() - burnOnlyStart,
+                    burnOnly?.FlightTimeSeconds ?? double.NaN);
 
             bool useBurnOnly = burnOnly.IsFeasible
                                && burnOnly.FlightTimeSeconds > 0.0
@@ -1083,6 +1098,8 @@ namespace TimeToExplore.Simulation
             double arrivalJulianDate, out BurnOnlyEvaluation solution)
         {
             solution = default;
+            PlanMetrics metrics = Metrics;
+            metrics?.NoteBurnOnlyBuild();
             double totalSeconds = (arrivalJulianDate - ship.JulianDate) * SecondsPerDay;
             double acceleration = FixedBurnAccelerationMps2;
             if (!(acceleration > 0.0))
@@ -1264,6 +1281,7 @@ namespace TimeToExplore.Simulation
 
             BurnOnlyEvaluation solved = default;
             string failure = null;
+            long seamStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             foreach (BurnOnlySeed seed in seeds)
             {
                 if (TrySolveBurnOnlySeam(geometry, ship, seed, out solved, out failure))
@@ -1274,6 +1292,9 @@ namespace TimeToExplore.Simulation
 
                 Trace?.Invoke("burn-only: attempt failed: " + failure);
             }
+
+            if (metrics != null)
+                metrics.AddBurnOnlySeam(PlanMetrics.Timestamp() - seamStart);
 
             if (failure != null)
             {
@@ -1303,12 +1324,15 @@ namespace TimeToExplore.Simulation
             // forward/backward integration difference.
             _model.ComputeState(_model.Sun, solved.BurnStartJulianDate,
                 out Vector3d sunAtBurnStart, out Vector3d sunVelocityAtBurnStart);
+            long departureCreateStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
                 solved.BurnStartJulianDate, solved.BurnSeconds,
                 solved.BurnStartPositionM - sunAtBurnStart,
                 solved.BurnStartVelocityMps - sunVelocityAtBurnStart, acceleration,
                 retrograde: false, samples: Math.Max(512, ArcSamples),
                 fixedThrustDirection: solved.Ray, gravity: _gravity);
+            long departureCreateTicks =
+                metrics != null ? PlanMetrics.Timestamp() - departureCreateStart : 0L;
 
             double brakeStartJd = solved.BurnStartJulianDate
                                   + solved.BurnSeconds / SecondsPerDay;
@@ -1340,18 +1364,34 @@ namespace TimeToExplore.Simulation
                     "this step"));
             }
 
+            long brakeCreateStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             FiniteBurnArc brake = FiniteBurnArc.Create(_model, _model.Sun, brakeStartJd,
                 solved.BrakeSeconds, brakeStartPosition - sunPositionAtBrakeStart,
                 brakeStartVelocity - sunVelocityAtBrakeStart, acceleration,
                 retrograde: true, samples: Math.Max(512, ArcSamples),
                 fixedThrustDirection: solved.BrakeDirection, gravity: _gravity);
+            long brakeCreateTicks =
+                metrics != null ? PlanMetrics.Timestamp() - brakeCreateStart : 0L;
 
             var arcs = new List<PlanArc>(8);
             if (hasClimb) AppendDepartureClimb(arcs, ship, departureBody, climb, fast: false);
-            arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
-                solved.BurnStartJulianDate, brakeStartJd, departureBurn));
-            arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id, brakeStartJd,
-                entryJd, brake));
+            long departureMeasureStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+            PlanArc departureBurnArc = MakeFiniteBurnArc(FlightPhase.Cruise,
+                _model.Sun.Id, solved.BurnStartJulianDate, brakeStartJd, departureBurn);
+            long departureMeasureTicks =
+                metrics != null ? PlanMetrics.Timestamp() - departureMeasureStart : 0L;
+            metrics?.AddBurn(Math.Max(512, ArcSamples), departureCreateTicks,
+                departureMeasureTicks, certified: true);
+            arcs.Add(departureBurnArc);
+
+            long brakeMeasureStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+            PlanArc brakeArc = MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
+                brakeStartJd, entryJd, brake);
+            long brakeMeasureTicks =
+                metrics != null ? PlanMetrics.Timestamp() - brakeMeasureStart : 0L;
+            metrics?.AddBurn(Math.Max(512, ArcSamples), brakeCreateTicks,
+                brakeMeasureTicks, certified: true);
+            arcs.Add(brakeArc);
 
             double parkingEndJd;
             ConicArc parking;
@@ -1718,6 +1758,7 @@ namespace TimeToExplore.Simulation
                 Trace?.Invoke($"pin retry at {totalSeconds / SecondsPerDay:F5} d: " +
                               $"{DefaultOuterPasses} -> {RetryOuterPasses} passes, " +
                               $"after {result.Plan.InfeasibleReason}");
+                Metrics?.NotePinRetry();
                 result = station
                     ? BuildStationTrip(ship, target, totalSeconds, fast, probe,
                         RetryOuterPasses)
@@ -2057,6 +2098,12 @@ namespace TimeToExplore.Simulation
             double totalSeconds, bool fast = false, bool probe = false,
             int outerPassesLimit = DefaultOuterPasses)
         {
+            PlanMetrics metrics = Metrics;
+            PlanBuildQuality quality = fast ? PlanBuildQuality.FastProbe
+                : probe ? PlanBuildQuality.FullFieldProbe
+                : PlanBuildQuality.Certified;
+            metrics?.NoteBuild(quality);
+
             double acceleration = FixedBurnAccelerationMps2;
             double t0 = ship.JulianDate;
             bool cheap = fast || probe;
@@ -2266,10 +2313,13 @@ namespace TimeToExplore.Simulation
             int outerPasses = fast ? FastProbeOuterPasses : outerPassesLimit;
             for (int pass = 0; pass < outerPasses; pass++)
             {
+                long passStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+                metrics?.NotePinPass(quality);
                 _model.ComputeState(_model.Sun, entryJd,
                     out Vector3d sunAtEntry, out Vector3d sunVelocityAtEntry);
                 Vector3d brakeLocalPosition;
                 Vector3d brakeLocalVelocity;
+                long brakeStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
                 if (burnGravity == null)
                 {
                     FiniteBurnArc.SimulateBackward(_model.Sun,
@@ -2286,6 +2336,9 @@ namespace TimeToExplore.Simulation
                         out brakeLocalPosition, out brakeLocalVelocity,
                         brakeDirection);
                 }
+
+                if (metrics != null)
+                    metrics.AddPinBrake(PlanMetrics.Timestamp() - brakeStart);
 
                 brakeStartJd = entryJd - brakeSeconds / SecondsPerDay;
                 _model.ComputeState(_model.Sun, brakeStartJd,
@@ -2304,6 +2357,8 @@ namespace TimeToExplore.Simulation
                     out approachStartLocalVelocity, out string approachReason);
                 if (!hasApproach && !string.IsNullOrEmpty(approachReason))
                 {
+                    if (metrics != null)
+                        metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                     return StretchedPlan(ship, target, totalSeconds, approachReason);
                 }
 
@@ -2332,6 +2387,8 @@ namespace TimeToExplore.Simulation
                 // more than the trip; there is no departure climb to place.
                 if (!(coastEndJd > t0))
                 {
+                    if (metrics != null)
+                        metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                     return StretchedPlan(ship, target, totalSeconds,
                         "burn-coast-burn: the trip time leaves no room for the " +
                         "departure climb and the coast", shortCoastWorthy: true);
@@ -2355,6 +2412,8 @@ namespace TimeToExplore.Simulation
                             ClimbSeedSeconds(climbAvailable), cheap, out climb,
                             out string climbReason))
                     {
+                        if (metrics != null)
+                            metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                         return StretchedPlan(ship, target, totalSeconds,
                             "burn-coast-burn: " + climbReason, shortCoastWorthy: true);
                     }
@@ -2375,13 +2434,20 @@ namespace TimeToExplore.Simulation
                     burnStartVelocity = ship.VelocityMps;
                 }
 
-                if (!TrySolvePinnedDepartureWithFallback(ship, departureBody,
-                        acceleration, burnStartJd, burnStartPosition, burnStartVelocity,
-                        coastEndJd, coastEndPosition, ref burnDirection, ref burnSeconds,
-                        solveSamples, fallbackSamples, burnGravity,
-                        out coastStartPosition, out coastStartVelocity,
-                        out coastArrivalVelocity, out coastSeconds, out string reason))
+                long solveStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+                bool departureSolved = TrySolvePinnedDepartureWithFallback(
+                    ship, departureBody,
+                    acceleration, burnStartJd, burnStartPosition, burnStartVelocity,
+                    coastEndJd, coastEndPosition, ref burnDirection, ref burnSeconds,
+                    solveSamples, fallbackSamples, burnGravity,
+                    out coastStartPosition, out coastStartVelocity,
+                    out coastArrivalVelocity, out coastSeconds, out string reason);
+                if (metrics != null)
+                    metrics.AddPinSolve(PlanMetrics.Timestamp() - solveStart);
+                if (!departureSolved)
                 {
+                    if (metrics != null)
+                        metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                     return StretchedPlan(ship, target, totalSeconds, reason,
                         shortCoastWorthy: true);
                 }
@@ -2437,6 +2503,8 @@ namespace TimeToExplore.Simulation
                 previousDirection = burnDirection;
                 brakeSeconds = nextBrakeSeconds;
                 brakeDirection = nextBrakeDirection;
+                if (metrics != null)
+                    metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                 if (converged)
                 {
                     pinSettled = true;
@@ -2451,6 +2519,8 @@ namespace TimeToExplore.Simulation
             int settlePasses = cheap ? 0 : 3;
             for (int settle = 0; settle < settlePasses; settle++)
             {
+                long settleStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+                metrics?.NoteSettlePass();
                 double previousSettleBurn = burnSeconds;
                 Vector3d previousSettleDirection = burnDirection;
 
@@ -2500,6 +2570,8 @@ namespace TimeToExplore.Simulation
                         shortCoastWorthy: true);
                 }
 
+                if (metrics != null)
+                    metrics.AddSettleLoop(PlanMetrics.Timestamp() - settleStart);
                 if (Math.Abs(burnSeconds - previousSettleBurn) <= durationTolerance
                     && (burnDirection - previousSettleDirection).Magnitude
                     <= directionTolerance)
@@ -2554,11 +2626,14 @@ namespace TimeToExplore.Simulation
             // difference (metres, not kilometres).
             _model.ComputeState(_model.Sun, burnStartJd,
                 out Vector3d sunForBurn, out Vector3d sunVelocityForBurn);
+            long departureCreateStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
                 burnStartJd, burnSeconds, burnStartPosition - sunForBurn,
                 burnStartVelocity - sunVelocityForBurn, acceleration,
                 retrograde: false, samples: burnSamples,
                 fixedThrustDirection: burnDirection, gravity: burnGravity);
+            long departureCreateTicks =
+                metrics != null ? PlanMetrics.Timestamp() - departureCreateStart : 0L;
 
             // The coast is solved to the approach's start on the ceiling (or to
             // the brake's start when the brake begins outside the ceiling and
@@ -2630,17 +2705,26 @@ namespace TimeToExplore.Simulation
             Vector3d brakeStartFinalVelocity = hasApproach
                 ? brakeStartVelocity
                 : coastSolution.ArrivalVelocityMps;
+            long brakeCreateStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             FiniteBurnArc brake = FiniteBurnArc.Create(_model, _model.Sun,
                 brakeStartJd, brakeSeconds, brakeStartPosition - sunAtBrakeArc,
                 brakeStartFinalVelocity - sunVelocityAtBrakeArc, acceleration,
                 retrograde: true, samples: brakeSamples,
                 fixedThrustDirection: brakeDirection, gravity: burnGravity);
+            long brakeCreateTicks =
+                metrics != null ? PlanMetrics.Timestamp() - brakeCreateStart : 0L;
 
             var arcs = new List<PlanArc>(10);
             if (hasClimb) AppendDepartureClimb(arcs, ship, departureBody, climb, cheap);
 
-            arcs.Add(MakeFiniteBurnArc(FlightPhase.Cruise, _model.Sun.Id,
-                burnStartJd, coastStartJd, departureBurn, cheap));
+            long departureMeasureStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
+            PlanArc departureBurnArc = MakeFiniteBurnArc(FlightPhase.Cruise,
+                _model.Sun.Id, burnStartJd, coastStartJd, departureBurn, cheap);
+            long departureMeasureTicks =
+                metrics != null ? PlanMetrics.Timestamp() - departureMeasureStart : 0L;
+            metrics?.AddBurn(burnSamples, departureCreateTicks, departureMeasureTicks,
+                quality == PlanBuildQuality.Certified);
+            arcs.Add(departureBurnArc);
 
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, coastStartJd,
                 coastEndFinalJd, coast, Vector3d.Zero, cheap));
@@ -2650,8 +2734,15 @@ namespace TimeToExplore.Simulation
 
             if (brakeSeconds > 0.0)
             {
-                arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
-                    brakeStartJd, entryJd, brake, cheap));
+                long brakeMeasureStart =
+                    metrics != null ? PlanMetrics.Timestamp() : 0L;
+                PlanArc brakeArc = MakeFiniteBurnArc(FlightPhase.Capture,
+                    _model.Sun.Id, brakeStartJd, entryJd, brake, cheap);
+                long brakeMeasureTicks =
+                    metrics != null ? PlanMetrics.Timestamp() - brakeMeasureStart : 0L;
+                metrics?.AddBurn(brakeSamples, brakeCreateTicks, brakeMeasureTicks,
+                    quality == PlanBuildQuality.Certified);
+                arcs.Add(brakeArc);
             }
 
             double parkingEndJd;

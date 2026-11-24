@@ -26,8 +26,19 @@ Reasoning: [Planning performance](/technical/planning-performance.md) and
 Step 3 is the caller's own change to the earlier sketch: at plot, two each side;
 on drag, three in the direction of travel.
 
+The split step 1 measured is in
+[Planning performance](/technical/planning-performance.md#where-one-builds-time-goes-2026-11-24):
+a retime's pin loop is 71% of the build, its reported 512-sample arcs 8%; a first
+plot is 62% coast floor and 38% burn-only, with 162 of its 174 pin passes in the
+fast probes.
+
 ## Traps
 
+- Anchor values: the live Mars 0.3 g coast floor is **16.84485 d** and the Mars
+  90 d anchor **38.9678 km/s** after ADR-019's departure break. The
+  planning-performance doc's earlier 6.73042 d and 44.3543 km/s are the
+  pre-departure values and must not be used as the comparison; `tools/check.sh`
+  enforces the live ones.
 - The preview starts at the window **minimum**, so a fresh plot has no lower
   side. Prefetch clamps at the window edges; expect the low side to be empty.
 - The cache key is the **preview's frozen departure state**
@@ -54,6 +65,6 @@ Report the command and its result; do not write a test count anywhere.
 
 ## State
 
-- [ ] Step 1 — measure
+- [x] Step 1 — measure
 - [ ] Step 2 — warm start
 - [ ] Step 3 — prefetch

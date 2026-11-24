@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T20:58:36Z }
 ---
 
 # The problem
@@ -842,6 +842,96 @@ tree (`tools/check.sh --tests flight`) passes; the exact run is reported in the
 merge's log entry. The tables above are the current anchors; the earlier
 sections record how each measurement was reached.
 
+## Where one build's time goes (2026-11-24)
+
+The route-cost plan assumed the outer pin's passes and the 512-sample arcs were
+where a build spends its time. This step measured it instead, for the two calls
+the player waits on, so that the next step aims at the phase that actually
+dominates.
+
+**Machine and runtime.** Apple **M4 Max** (Mac16,5, 64 GB), macOS 27.2.1, Unity
+**6000.3.28f1** editor in batch mode (`-nographics`), **Mono**, in the warm
+EditMode test project. These are **editor/Mono numbers**, not the Release .NET
+harness's, and they do not transfer as absolute times. Two sessions were run;
+the one below is the second (warm test project, no suite around it). The first
+was **441 ms** and **3.82 s**, about 7% slower in both cases.
+
+**Warm-up rule.** Each case is called once untimed to JIT the path and warm the
+field, then three measured runs; the table's wall, allocation, and phases are
+the median run. The planner and its `GravityField` are shared by the warm-up and
+the runs, so one-time field setup is not charged to a build. One further run per
+case with `TripPlanner.Metrics = null` checks the instrumentation itself: **413.7
+ms** against 412.5 and **3.560 s** against 3.563, inside the run-to-run spread.
+
+**Allocations.** Mono returns **0** from
+`GC.GetAllocatedBytesForCurrentThread` in this editor, so the allocation column
+is Unity's **GC Allocated In Frame** profiler counter, read before and after the
+synchronous call. No planner worker runs during the measurement, so the delta is
+the call's own managed allocation; it includes the returned plan, which the
+planner keeps.
+
+**Cases.** Epoch JD 2461359.5, Gateway departure, Mars at 0.3 g, conic capture.
+A **retime** is one `PlanAtDuration` at **33.70 d**, mid-window. A **first plot**
+is `PlanFastest`: the coast floor plus the burn-only moving target. It does not
+include the window's six duration probes, which `FlightSession.WindowFor` adds
+on the real plot.
+
+| | Retime, 33.70 d | First plot (`PlanFastest`) |
+|---|---:|---:|
+| Wall, median of three | **412 ms** | **3.56 s** |
+| Allocated (`GC Allocated In Frame`) | **615 KiB** | **31.8 MiB** |
+| Certified builds / fast probes / full-field probes | 1 / 0 / 0 | 1 / 21 / 0 |
+| Burn-only builds | — | 3 |
+| Outer pin passes | **10** | **174** (162 fast, 12 certified) |
+| Pin retries | 0 | 0 |
+| **Pin loop** | **294 ms, 71.3%** | **1.79 s, 50.3%** |
+| — brake integration | 82 ms, 19.9% | 280 ms, 7.8% |
+| — pinned departure solve | 165 ms, 39.9% | 739 ms, 20.7% |
+| Settle loop | 7 ms, 1.7% | 7 ms, 0.2% |
+| Burn-only seam solve | — | 1.04 s, 29.1% |
+| **Reported 512-sample arcs** | **2, 1,024 samples** | **8, 4,096 samples** |
+| — integrate and tabulate | 17 ms, 4.1% | 69 ms, 1.9% |
+| — measure | 17 ms, 4.0% | 68 ms, 1.9% |
+| Probe finite-burn arcs | — | 26, 28,288 samples, 0.4% |
+| Untimed remainder | 78 ms, 18.8% | ~16% |
+
+The retime is **one certified build with ten outer passes**. The **pin loop is
+71% of the wall time**; inside a pass the departure solve takes about 16.5 ms and
+the brake about 8.2 ms, and the other ~20 ms is the climb, the approach, and the
+seam arithmetic. The two reported arcs that the plan keeps are only **8%** of
+the build: integrating and tabulating them is 4.1%, measuring them another 4.0%.
+Their two interpolation tables are about 49 KB of the 615 KiB the build
+allocates; the rest is the build's own churn. **Warm-starting the pin is
+therefore the retime's lever**, and trimming the reported arcs is not.
+
+The first plot is now dominated by its **search**, not its answer: 162 of the
+174 outer passes belong to 21 fast probes, and the floor certificate is the
+other 12. The coast floor is **61.7%** of the plot and the burn-only crossing
+**38.3%**; within those, the pin loop is **50.3%**, the burn-only seam solve
+**29.1%**, and all reported arcs, probe arcs included, are under **5%**. The
+eight reported arcs are 512 samples each because the certificate and the three
+burn-only moving-target passes each build a departure burn and a brake.
+
+The counts are exact; the time split is `Stopwatch` timestamps at phase
+boundaries and carries the run-to-run spread above. Work that is not bracketed —
+the coast skeleton, the Lambert solve, the capture chain, the conic arcs'
+measurement, and the plan's construction — is the remainder. The pin loop's early
+refusals add their elapsed time before returning; the settle loop's do not,
+though neither occurs in these two cases.
+
+**The plan values did not move.** The retime reports 33.70000 d. The first plot's
+coast floor is the live anchor at **16.84485 d**; the plan it returns is the
+shorter burn-only crossing at **16.48669 d**, the nav minimum. Both are after
+[ADR-019](/decisions/adr-019-station-calls-and-departure.md)'s short escape
+break and ballistic climb re-baselined the pre-departure values (Mars 0.3 g
+**6.73042 d**, Mars 90 d **44.3543 km/s**) to **16.84485 d** and **38.9678
+km/s**. The flight suite enforces the new ones; this step changed no tolerance,
+gate, pass cap, or returned plan.
+
+The diagnostic is `TripPlanner.Metrics` and `PlanMetrics`; the measurement is
+`RouteBuildMetricsTests`, which prints this split and asserts only structure and
+the Mars floor, never a time.
+
 
 # Where it lives
 
@@ -855,6 +945,7 @@ sections record how each measurement was reached.
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `SetPreviewDuration`'s floor reuse |
 | Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
+| Build metrics | `TripPlanner.Metrics`, `PlanMetrics`, `RouteBuildMetricsTests` |
 
 # Verification
 
@@ -873,7 +964,10 @@ synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, a retime to the floor
 reusing the window on both the synchronous and the background paths, and
 `Dispose` stopping the worker. `SolarSystemHudTests` and `BootstrapSmokeTests`
-pump the real handover through the frame loop. See
+pump the real handover through the frame loop. `RouteBuildMetricsTests` prints
+the retime and first-plot split — pin passes, brake integration, the reported
+512-sample arcs, and allocation — and asserts only the counts, the phases
+belonging to the call, and the Mars floor; it never asserts a time. See
 [Testing and verification](/technical/testing.md#numerical-references-at-the-epoch).
 
 The design and the numbers for the profile are in
