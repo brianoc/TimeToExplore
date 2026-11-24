@@ -1212,8 +1212,12 @@ namespace TimeToExplore.Simulation
         /// inside <see cref="TripPlanner.MaxDurationScale"/> times the minimum,
         /// found by probing; the slider can never ask for a plan the planner
         /// refuses.
+        ///
+        /// Internal so the route benchmark can time the exact pair
+        /// <see cref="WindowFor"/> runs, instead of timing a copy that can drift
+        /// from the real probe count. It reads no session state.
         /// </summary>
-        private double MaximumPreviewSeconds(string targetId, double minimum,
+        internal double MaximumPreviewSeconds(string targetId, double minimum,
             TripPlanner planner, ShipState departure)
         {
             if (!(minimum > 0.0) || !double.IsFinite(minimum))

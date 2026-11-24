@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T20:58:36Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T22:05:36Z }
 ---
 
 # The problem
@@ -742,6 +742,13 @@ certified build: a `pin retry` (12 → 24 passes) and still one certificate. No
 measured case reaches the continuation, so nothing is left for a bracket to
 save.
 
+**Historical, pre-crossing.** The table below is the editor's first `Plot()` as
+it stood **before the trip-time window solved the zero-coast crossing**. It is
+kept as history and its 1.28–3.03 s must not be quoted as the current cost; the
+current numbers are in [the route benchmark](#the-route-benchmark-2026-11-24).
+The floors and windows in it are also pre-[ADR-019](/decisions/adr-019-station-calls-and-departure.md)
+and have been re-baselined.
+
 Final editor first `Plot()` on the warm test project (epoch 2026-11-15, Gateway,
 conic capture), the same measurement the plan opened with:
 
@@ -754,17 +761,19 @@ conic capture), the same measurement the plan opened with:
 | Jupiter 0.3 g | 33.6 s | **3.03 s** | 13.07211 d | 13.07–39.22 d |
 
 The goal was a certified first plot in roughly 3 s in the editor at both levels,
-and the merged tree meets it: the five cases are 1.28–3.03 s (a second run gave
-1.98, 1.30, 3.02, 2.29, and 3.05 s). .NET's `Plan()` on the
+and the merged tree met it **before the crossing**: the five cases were 1.28–3.03 s
+(a second run gave 1.98, 1.30, 3.02, 2.29, and 3.05 s). .NET's `Plan()` on the
 same tree is 0.21–0.38 s, so the editor's remaining gap is per-build cost, not
 search shape.
 
 **Since step 3 of the burn-only plan the preview window also solves the
 moving-target minimum** (`PlanFastest`: the coast floor plus the zero-coast
 crossing), so the same five first plots are **2.81, 3.08, 5.07, 3.89, and 4.61 s**
-in that order — the added 1–2 s is the crossing, not a longer floor search. The
-floors and the .NET `Plan()` costs above are unchanged; Uranus does not win the
-zero-coast branch but pays for the attempt.
+in that order — the added 1–2 s is the crossing, not a longer floor search. Those
+are still pre-ADR-019 Editor numbers; the current six-route measurement is in
+[the route benchmark](#the-route-benchmark-2026-11-24). The floors and the .NET
+`Plan()` costs above are unchanged; Uranus does not win the zero-coast branch but
+pays for the attempt.
 
 ### What the remaining time is
 
@@ -931,6 +940,114 @@ gate, pass cap, or returned plan.
 The diagnostic is `TripPlanner.Metrics` and `PlanMetrics`; the measurement is
 `RouteBuildMetricsTests`, which prints this split and asserts only structure and
 the Mars floor, never a time.
+
+## The route benchmark (2026-11-24)
+
+The route-cost plan's steps 3 and 4 change how a plot, a retime, and Begin are
+built, so they need a repeatable instrument that can tell a real change from the
+editor's own spread. `tools/bench.sh` is that instrument. It is **not part of
+`tools/check.sh`**: it is an editor `-executeMethod` entry point
+(`PlanningBenchmark.Run`), and the default check runs `-runTests` only, so a
+default check cannot start it. Step 2 also confirmed the default path writes no
+benchmark output.
+
+**Command.**
+
+```bash
+tools/bench.sh              # run and compare against the committed baseline
+tools/bench.sh --record     # run, show the deltas, then replace the baseline
+```
+
+**Machine and runtime.** Apple **M4 Max** (16 cores, 64 GB), macOS 27.2.1, Unity
+**6000.3.28f1** editor in batch mode (`-nographics`), **Mono**, in the warm test
+project. These are editor/Mono numbers. The player's is a Play Mode number with
+the editor attached; this step did **not** measure the Play Mode figure, so it
+claims no ratio. The player's ~4 s first plot is close to the Earth→Mars plot
+below (4.1 s), but the headless Begin there is **9.0 s**, not ~4 s, so the two
+numbers are not the same measurement yet.
+
+**Warm-up rule.** One untimed call per case, then three measured runs; the
+reported number is the **median of three**. The planner, its `GravityField`, and
+the session live across all six routes, so one-time field setup is not charged to
+a measured call. Two repeat runs against a baseline recorded in the same session
+moved every measured phase by **at most 2.5%**, and most by under 1%: that is
+the instrument's noise floor here. A change smaller than a few percent needs
+several runs to see. The suite records times only; step 1's split above already
+carries the allocation for both calls.
+
+**Cases.** Epoch JD 2461359.5, conic capture. The Earth departures start on the
+**Gateway** station, the anchor every earlier measurement uses. The reverses
+start in the planet's **conic parking orbit**, with the orbit's phase prograde
+relative to the planet's own flight. All routes use the **0.3 g** default except
+Venus→Earth and Uranus→Earth at **1 g**: 0.3 g cannot lift out of those wells.
+The phases are:
+
+* **Plot** — `PlanFastest` followed by the cold window build
+  (`FlightSession.MaximumPreviewSeconds`), the exact pair `WindowFor` runs. It
+  bypasses the session's window cache, so it is the player's first plot, not a
+  repeat selection.
+* **Retime mid / max** — one `PlanAtDuration` at the window's middle and at its
+  maximum (the slider's right end).
+* **Begin** — `PlanFastest` at a departure date **three hours** later, then
+  `PlanAtDuration` at the window maximum when that is above the fresh minimum.
+
+All six routes, median milliseconds with the repeat run's delta in each cell and
+the sum of the measured phases in the last column:
+
+| Route | Level | Plot | Retime mid | Retime max | Begin | Begin @max | Begin total | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Earth → Mars | 0.3 g | **4,121** (+2.5%) | 468 (+2.1%) | 377 (+2.3%) | **9,024** (+1.2%) | 347 (+1.7%) | **9,370** (+1.2%) | +1.5% |
+| Earth → Venus | 0.3 g | **9,663** (+0.7%) | 475 (+1.0%) | 466 (+0.9%) | 4,326 (+0.5%) | 481 (+1.0%) | 4,807 (+0.4%) | +0.6% |
+| Earth → Uranus | 0.3 g | **2,046** (+0.4%) | 494 (+0.8%) | 482 (+1.2%) | 1,656 (+0.6%) | 489 (−0.1%) | 2,145 (+0.4%) | +0.5% |
+| Mars → Earth | 0.3 g | 396 (+0.5%) | — | — | — | — | — | +0.5% |
+| Venus → Earth | 1.0 g | 413 (+0.5%) | — | — | — | — | — | +0.5% |
+| Uranus → Earth | 1.0 g | 492 (−0.2%) | — | — | — | — | — | −0.2% |
+
+**The three reverses cannot plot at this epoch**, so their retime and Begin
+phases are not measured; a refused plot has no window to slide. The refusals are
+recorded, not tuned away:
+
+* **Mars → Earth** refuses in the coast floor search. Its duration seed is
+  **4.36 d** (it scales with the square root of the planet-to-planet distance),
+  the search grows in twelve 20% steps to **38.84 d**, and every probe's short
+  arc is retrograde (`transfer angle 21.0°`). A fixed **90 d** build is
+  **feasible** (90.00000 d), so the trip exists and the floor search's growth cap
+  cannot reach it. This is a planner gap, not a benchmark input.
+* **Venus → Earth** refuses the same way at a **1.0°** short arc, and a fixed
+  90 d build is refused too (*the approach conic cannot reach the handover
+  ceiling from the brake's start*). No root cause is established.
+* **Uranus → Earth** refuses with *no room for the break and the escape climb* at
+  every probe up to **143.6 d**, and at 90 d. A departure from Uranus's parking
+  orbit must climb through the giant's very large sphere before the departure
+  burn, which does not fit a trip of that length.
+
+The Earth plots show the cost the player pays. **Earth → Venus is the slowest at
+9.7 s**, and **Begin at Earth → Mars is 2.2× its plot (9.0 s against 4.1 s)**: the
+coast floor's certificate refuses once at the moved date and the full-field
+continuation is paid, where the epoch's plot certifies first time. The retimes
+are 0.37–0.49 s at every measured point, so a slider drag is an order of
+magnitude cheaper than a plot.
+
+**The plans did not move.** Earth → Mars still plots the nav minimum at
+**16.48669 d** over the **16.84485 d** coast floor; Earth → Venus is 14.10909 d,
+Earth → Uranus 92.13088 d, and the window maxima are 49.46, 42.33, and 276.39 d.
+No tolerance, gate, pass cap, seed, or returned plan changed. The one production
+edit is visibility: `FlightSession.MaximumPreviewSeconds` is `internal` and the
+Simulation assembly grants `InternalsVisibleTo("TimeToExplore.Editor")`, so the
+benchmark times the real probe loop instead of a copy that can drift.
+
+The baseline is `tools/planning-benchmark-baseline.json`: machine, Unity version,
+date, and the per-route per-phase milliseconds. A run whose machine or Unity
+version differs says so and states that its deltas compare the machines, not the
+code. The report stays quiet below a **25%** rise and lists every phase at or
+above it. The threshold is not a gate in `tools/check.sh`.
+
+`PlanningBenchmarkTests` (the `core` category) covers the parts that must not
+drift: every route resolves its bodies and departs from the right place, the
+baseline round-trips and refuses a malformed one, a baseline from another machine
+or Unity version is called not comparable, the delta is a percentage, only a 25%
+rise is a regression, and the table shows each phase's milliseconds and delta,
+plus the summed total. It never asserts a time.
 
 
 # Where it lives

@@ -44,6 +44,15 @@ a retime's pin loop is 71% of the build, its reported 512-sample arcs 8%; a firs
 plot is 62% coast floor and 38% burn-only, with 162 of its 174 pin passes in the
 fast probes.
 
+Step 2's instrument is **`tools/bench.sh`**; its six-route table and the three
+reverse refusals are in
+[Planning performance](/technical/planning-performance.md#the-route-benchmark-2026-11-24).
+The Earth routes at the epoch are: Earth→Mars **4.1 s plot, 0.46/0.37 s retimes,
+9.0 s Begin**; Earth→Venus **9.6 s plot, 0.47/0.46 s, 4.3 s Begin**; Earth→Uranus
+**2.0 s plot, 0.49/0.48 s, 1.7 s Begin**. Repeat runs move every measured phase
+by **at most 2.5%**, most under 1%, so treat anything under a few percent as
+noise.
+
 ## Traps
 
 - Anchor values: the live Mars 0.3 g coast floor is **16.84485 d** and the Mars
@@ -66,16 +75,37 @@ fast probes.
   differences. A seeded build that converges to a different needle is a real
   risk; the guard is the cold fallback, not a tolerance change.
 - The player sees **~4 s per plot and another ~4 s at Begin** in Play Mode. The
-  doc's current editor record is 2.81–5.07 s after the zero-coast crossing; the
-  1.28–3.03 s table is pre-crossing and must not be quoted. A headless benchmark
-  will read lower than Play Mode with the editor attached — record both and the
-  ratio, and talk to the player in Play Mode numbers.
+  current editor record is the step-2 benchmark: Earth→Mars plots in **4.1 s**
+  headless and Begin in **9.0 s**, so the plot numbers agree to one decimal but
+  Begin does not. **No Play-Mode-versus-headless ratio was measured**; do not
+  equate the two, and do not quote the pre-crossing 1.28–3.03 s table.
+- **`tools/bench.sh` is the only way to run the benchmark.** It is an editor
+  `-executeMethod` (`PlanningBenchmark.Run`), not a test; a default
+  `tools/check.sh` writes no benchmark output and never fails on timing. Do not
+  add it to `check.sh` or its category allow-list, and do not make the 25%
+  threshold a gate.
+- **The three reverse routes cannot plot at the epoch** (Mars/Venus/Uranus→Earth
+  from the planet's parking orbit). Their retime and Begin phases are therefore
+  not measured, and the suite records the refusal with its reason. Do not "fix"
+  it by changing the route's level, date or orbit in the benchmark: Mars→Earth
+  at **90 d fixed is feasible**, so the coast floor search's growth cap (**4.36 d
+  seed, twelve 1.2× steps to 38.84 d**) is the limit there; Venus→Earth refuses
+  at a 1.0° short arc and at 90 d too; Uranus→Earth needs more than 143.6 d for
+  the break and escape climb. Fixing that is planning work, not this plan's.
+- **Begin can be 2.2× the plot.** At Earth→Mars the date three hours later
+  refuses one floor certificate and pays the full-field continuation, so a change
+  that only speeds the plot may move Begin the other way. Measure Begin, not just
+  the plot.
+- A full `tools/bench.sh` run costs **about 2 min 40 s** wall clock on this
+  machine (157 s measured, including Unity startup); the run prints medians of
+  three, so use the deltas, not a single number.
 
 ## Verification
 
 ```bash
 tools/check.sh --fast
 tools/check.sh --tests flight
+tools/bench.sh
 ```
 
 Report the command and its result; do not write a test count anywhere.
@@ -83,6 +113,6 @@ Report the command and its result; do not write a test count anywhere.
 ## State
 
 - [x] Step 1 — measure
-- [ ] Step 2 — benchmark the routes
+- [x] Step 2 — benchmark the routes
 - [ ] Step 3 — warm start
 - [ ] Step 4 — prefetch

@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T19:10:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T22:06:00Z }
 ---
 
 # One command
@@ -17,6 +17,18 @@ tools/check.sh --tests playmode   # the PlayMode suite only
 tools/check.sh --tests core,smoke # any comma-separated categories
 tools/check.sh --reset            # drop the warm test project first
 ```
+
+The route benchmark is a **separate command**, not a gate:
+
+```bash
+tools/bench.sh                    # plot, retime and Begin cost, with deltas
+tools/bench.sh --record           # replace the committed baseline
+```
+
+It is an editor `-executeMethod` entry point, so `check.sh`'s `-runTests` never
+starts it, and running it never fails the build. See
+[Planning performance](/technical/planning-performance.md#the-route-benchmark-2026-11-24)
+for the numbers and the warm-up rule.
 
 `check.sh` runs seven gates in order:
 
