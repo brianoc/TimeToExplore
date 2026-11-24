@@ -28,6 +28,7 @@ namespace TimeToExplore.UI
             if (plan == null) return rows;
 
             BodyRuntime target = model?.Get(plan.TargetId);
+            bool stationTarget = target != null && target.Data.IsStation;
 
             rows.Add(DetailRow.Heading("PLAN"));
             rows.Add(DetailRow.Of("Target", target != null ? target.Name : plan.TargetId));
@@ -37,7 +38,7 @@ namespace TimeToExplore.UI
                 rows.Add(DetailRow.Of(PhaseLabel(arc.Phase),
                     $"{JulianDate.FormatShort(arc.StartJulianDate)}  ·  " +
                     $"{SolarSystemHud.FormatDuration(arc.DurationSeconds)}  ·  " +
-                    DriveLabel(arc, model)));
+                    DriveLabel(arc, model, stationTarget)));
             }
 
             rows.Add(DetailRow.Of("Arrival", JulianDate.FormatShort(plan.ArrivalJulianDate)));
@@ -49,7 +50,7 @@ namespace TimeToExplore.UI
             bool coastProfile = IsCoastProfile(plan);
             if (coastProfile)
             {
-                AddDriveRows(rows, plan, model);
+                AddDriveRows(rows, plan, model, stationTarget);
             }
             else
             {
@@ -149,14 +150,18 @@ namespace TimeToExplore.UI
         /// <summary>What the drive is doing on one arc. The same path type reads
         /// differently by phase: a fixed burn on the cruise is the profile's
         /// departure burn, the one at the target's sphere of influence is the
-        /// brake, and the hybrid's is the capture burn.</summary>
-        public static string DriveLabel(PlanArc arc, SolarSystemModel model = null)
+        /// brake, and the hybrid's is the capture burn. A station's final finite
+        /// burn is a **velocity match** — a rendezvous may add or shed speed —
+        /// so it is never labelled a brake.</summary>
+        public static string DriveLabel(PlanArc arc, SolarSystemModel model = null,
+            bool stationTarget = false)
         {
             if (arc == null) return "—";
 
             bool aboutSun = model?.Sun != null && arc.ReferenceBodyId == model.Sun.Id;
             if (arc.IsFiniteBurn)
             {
+                if (stationTarget && arc.Phase == FlightPhase.Capture) return "match";
                 if (aboutSun && arc.Phase == FlightPhase.Cruise) return "prograde burn";
                 if (aboutSun && arc.Phase == FlightPhase.Capture) return "brake";
                 return "capture burn";
@@ -188,9 +193,12 @@ namespace TimeToExplore.UI
         /// the capture chain's own cost. The brake's direction is the change the
         /// chain needs, not a velocity-aligned retrograde burn, so the row says
         /// what it spends and how long it takes, not that it is anti-velocity.
+        /// A station target has no capture chain at all: its one terminal burn
+        /// is the velocity match that ends the rendezvous, so it is reported as
+        /// <b>Match</b> and no chain row is shown.
         /// </summary>
         private static void AddDriveRows(List<DetailRow> rows, TrajectoryPlan plan,
-            SolarSystemModel model)
+            SolarSystemModel model, bool stationTarget)
         {
             rows.Add(DetailRow.Heading("DRIVE"));
 
@@ -223,6 +231,11 @@ namespace TimeToExplore.UI
                      arc.Phase == FlightPhase.Parking))
                     chainStart = i;
             }
+
+            // A station arrival is a point-target rendezvous: the terminal
+            // velocity match is not a capture chain, so there is no chain row
+            // even when the final arc is about the Sun.
+            if (stationTarget) chainStart = plan.Arcs.Count;
 
             double level = plan.FiniteBurnAccelerationMps2
                            / TripPlanner.StandardGravityMps2;
@@ -267,7 +280,7 @@ namespace TimeToExplore.UI
 
             if (brake != null)
             {
-                rows.Add(DetailRow.Of("Brake",
+                rows.Add(DetailRow.Of(stationTarget ? "Match" : "Brake",
                     $"{brake.DeltaVMps / 1000.0:F1} km/s  ·  " +
                     $"{SolarSystemHud.FormatDuration(brake.DurationSeconds)}  ·  " +
                     $"{level:0.0} g"));

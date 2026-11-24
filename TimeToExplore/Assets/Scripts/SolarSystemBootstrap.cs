@@ -350,11 +350,13 @@ namespace TimeToExplore
         /// <summary>Start a Go To flight to a body. Raises the clock so the trip
         /// is watchable, and draws the plan. The ship's position becomes the
         /// flight session's for the duration. Begin always replans, so it
-        /// consumes a plotted preview and flies the fresh plan.</summary>
+        /// consumes a plotted preview and flies the fresh plan. A station is a
+        /// point target with no gravitational parameter of its own, so it is
+        /// allowed through; only a genuinely massless non-station is refused.</summary>
         public void BeginGoTo(BodyRuntime body)
         {
             if (body == null || Flight == null || Model == null) return;
-            if (body.Gm <= 0.0) return;
+            if (body.Gm <= 0.0 && !body.Data.IsStation) return;
 
             Focus?.Cancel();
             SetFreeFlight(false);
@@ -379,12 +381,14 @@ namespace TimeToExplore
         /// never moves the ship; Begin flight replans from the current state.
         /// The plan is built on the background planner (see
         /// <see cref="FlightSession.PlotAsync"/>), and the HUD's per-frame
-        /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready.
+        /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready. A
+        /// station is a valid point target; only a genuinely massless
+        /// non-station is refused.
         /// </summary>
         public void PlotRoute(BodyRuntime body)
         {
             if (body == null || Flight == null || Model == null) return;
-            if (body.Gm <= 0.0) return;
+            if (body.Gm <= 0.0 && !body.Data.IsStation) return;
 
             Flight.PlotAsync(body.Id, Clock.JulianDate);
         }

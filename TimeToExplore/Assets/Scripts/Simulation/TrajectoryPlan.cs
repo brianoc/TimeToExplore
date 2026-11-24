@@ -35,7 +35,8 @@ namespace TimeToExplore.Simulation
         /// <summary>Reference state at the start of the plan.</summary>
         public ShipState DepartureState { get; }
 
-        /// <summary>Reference state at the end of the plan, on the parking orbit.</summary>
+        /// <summary>Reference state at the end of the plan: the parking orbit for
+        /// a planet target, or the hold point for a station.</summary>
         public ShipState ArrivalState { get; }
 
         public double DepartureJulianDate => _arcs[0].StartJulianDate;
@@ -238,7 +239,7 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>No thrust once the plan is complete: the ship is on the
-        /// parking orbit and gravity does the rest.</summary>
+        /// parking orbit (or holding at a station) and gravity does the rest.</summary>
         public ThrustCommand ThrustAt(double julianDate, IGravityField gravity)
         {
             if (IsComplete(julianDate)) return ThrustCommand.None;

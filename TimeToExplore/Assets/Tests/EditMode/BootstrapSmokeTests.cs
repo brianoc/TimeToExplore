@@ -192,6 +192,63 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(1e-3f), "the ghost marks where Mars will be on arrival");
         }
 
+        /// <summary>
+        /// A station is a Go To target with no gravitational parameter of its
+        /// own. From a ship parked at Ares Junction (outside every sphere) the
+        /// route to Gateway must plot, draw every arc and the arrival ghost, and
+        /// then begin as a flight — not silently do nothing at the
+        /// <c>Gm &gt; 0</c> guard.
+        /// </summary>
+        [Test]
+        public void AStationCanBePlottedAndBegunFromOutsideEverySphere()
+        {
+            Build();
+            _bootstrap.Flight.PlaceAt("ares_junction", _bootstrap.Clock.JulianDate);
+            BodyRuntime gateway = _bootstrap.Model.Get("gateway");
+
+            _bootstrap.PlotRoute(gateway);
+            WaitForPreview();
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("gateway"));
+            Assert.That(_bootstrap.Flight.Preview.IsFeasible, Is.True,
+                _bootstrap.Flight.Preview.InfeasibleReason);
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.Trajectory.ArcCount,
+                Is.EqualTo(_bootstrap.Flight.Preview.Arcs.Count));
+            Assert.That(_bootstrap.Trajectory.ArcCount, Is.GreaterThan(0));
+            for (int i = 0; i < _bootstrap.Trajectory.ArcCount; i++)
+                Assert.That(_bootstrap.Trajectory.ArcLabel(i), Is.Not.Null,
+                    $"arc {i} is drawn with a legend label");
+            Assert.That(_bootstrap.Trajectory.HasGhost, Is.True,
+                "the arrival ghost still marks the target at the arrival date");
+
+            // The ghost is placed during the frame's LateUpdate, as in the
+            // planet plot test.
+            Invoke("LateUpdate");
+            _bootstrap.Model.ComputeState(gateway,
+                _bootstrap.Flight.Preview.ArrivalJulianDate,
+                out Vector3d gatewayAtArrival, out _);
+            Vector3 expected = ((gatewayAtArrival - _bootstrap.ShipPositionM) *
+                                _bootstrap.UnitsPerMeter).ToUnity();
+            Assert.That(Vector3.Distance(_bootstrap.Trajectory.GhostMarkerPosition, expected),
+                Is.LessThan(1e-3f), "the ghost marks where the station will be");
+
+            _bootstrap.BeginGoTo(gateway);
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying),
+                _bootstrap.Flight.Failure);
+            Assert.That(_bootstrap.Flight.TargetId, Is.EqualTo("gateway"));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0),
+                "a fifty-day station trip must not start at 1x");
+
+            Invoke("Update");
+            Invoke("LateUpdate");
+            Assert.That(_bootstrap.Flight.IsFlying, Is.True);
+        }
+
         [Test]
         public void TheRouteDrawsOneColouredLinePerArc()
         {

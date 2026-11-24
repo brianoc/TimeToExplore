@@ -19,6 +19,13 @@ namespace TimeToExplore.Simulation
     /// * <b>Plan events</b> — 5% of the time remaining to the next arc boundary
     ///   or the arrival, so the countdown paces itself down to the event.
     ///
+    /// A station is a massless point target, so the gravity field never makes
+    /// it the nearest body and the clearance cap cannot see it. A plan that
+    /// targets one adds two of its own: the time to the station's surface at
+    /// the current relative speed, and — much tighter near the end — 5% of the
+    /// time to the hold point. Without the second, a frame at cruise speed
+    /// could jump over the last few hundred kilometres and the hold state.
+    ///
     /// The result is expressed in the clock's existing power-of-ten scales, so
     /// the HUD keeps showing an honest scale. The player's requested scale is
     /// always the ceiling; the policy only ever drops below it.
@@ -35,6 +42,10 @@ namespace TimeToExplore.Simulation
 
         /// <summary>Fraction of the time remaining to the next event that may pass in one frame.</summary>
         public const double EventFraction = 0.05;
+
+        /// <summary>Fraction of the time to the station's hold point that may
+        /// pass in one frame while a station plan is being flown.</summary>
+        public const double StationHoldFraction = 0.05;
 
         /// <summary>Floor on the allowed frame span, so the drop never stalls the clock.</summary>
         public const double MinFrameSeconds = 1.0;
@@ -80,6 +91,8 @@ namespace TimeToExplore.Simulation
 
             if (plan != null)
             {
+                AddStationCaps(ref maxSeconds, state, julianDate, model, plan);
+
                 double boundary = plan.NextBoundaryJulianDate(julianDate);
                 if (double.IsFinite(boundary))
                 {
@@ -89,6 +102,46 @@ namespace TimeToExplore.Simulation
             }
 
             return maxSeconds;
+        }
+
+        /// <summary>
+        /// The station-specific clearance caps. A station has no gravitational
+        /// parameter, so the gravity field never selects it as the nearest body
+        /// and the ordinary clearance cap cannot see it. Two caps replace it
+        /// while the plan is still live: the time to the station's surface at
+        /// the current relative speed with the same
+        /// <see cref="ClearanceFraction"/>, and the much tighter time to the
+        /// hold point with <see cref="StationHoldFraction"/>. The station's
+        /// state comes from the model, never from the frame loop's
+        /// finite-difference velocity. Once the plan is complete the ship is
+        /// holding, matched, so the caps are released with the event pacing.
+        /// </summary>
+        private static void AddStationCaps(ref double maxSeconds, ShipState state,
+            double julianDate, SolarSystemModel model, TrajectoryPlan plan)
+        {
+            if (model == null || plan.IsComplete(julianDate)) return;
+
+            BodyRuntime target = model.Get(plan.TargetId);
+            if (target == null || !target.Data.IsStation) return;
+
+            model.ComputeState(target, julianDate,
+                out Vector3d stationPosition, out Vector3d stationVelocity);
+
+            double relativeSpeed = (state.VelocityMps - stationVelocity).Magnitude;
+            double speed = Math.Max(relativeSpeed, 1.0);
+
+            double clearance = Math.Max(
+                Vector3d.Distance(state.PositionM, stationPosition) - target.RadiusM, 0.0);
+            maxSeconds = Math.Min(maxSeconds,
+                AtLeastOneFrame(clearance / speed * ClearanceFraction));
+
+            Vector3d holdPosition = stationPosition;
+            if (stationVelocity.SqrMagnitude > 1e-12)
+                holdPosition -= stationVelocity.Normalized * TripPlanner.StationHoldDistanceM;
+
+            double toHold = Vector3d.Distance(state.PositionM, holdPosition);
+            maxSeconds = Math.Min(maxSeconds,
+                AtLeastOneFrame(toHold / speed * StationHoldFraction));
         }
 
         private static double AtLeastOneFrame(double seconds) =>

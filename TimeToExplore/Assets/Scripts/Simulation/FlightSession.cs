@@ -12,7 +12,8 @@ namespace TimeToExplore.Simulation
         Idle,
         /// <summary>A plan is being flown.</summary>
         Flying,
-        /// <summary>The plan completed and the ship is coasting in the parking orbit.</summary>
+        /// <summary>The plan completed and the ship is holding at the arrival
+        /// state: a parking orbit for a planet, the hold point for a station.</summary>
         Arrived,
         /// <summary>The integration hit a body or another fatal condition.</summary>
         Aborted,
@@ -208,7 +209,8 @@ namespace TimeToExplore.Simulation
         /// <summary>Why the flight stopped, when it did not arrive.</summary>
         public string Failure { get; private set; }
 
-        /// <summary>The date the ship arrived on the parking orbit.</summary>
+        /// <summary>The date the ship arrived on its arrival state: a parking
+        /// orbit for a planet, the hold point for a station.</summary>
         public double ArrivedJulianDate { get; private set; } = double.NaN;
 
         /// <summary>The commanded thrust at the current state, refreshed after
@@ -1351,8 +1353,18 @@ namespace TimeToExplore.Simulation
         private ThrustCommand ThrustForArc(PlanArc arc, ShipState state, double julianDate)
         {
             if (Status != FlightStatus.Flying) return ThrustCommand.None;
-            if (_autopilot == null || Plan == null || Plan.IsComplete(julianDate))
+            if (_autopilot == null || Plan == null)
                 return ThrustCommand.None;
+
+            // The last RK4 stage of the arrival step lands exactly on the
+            // arrival date, and that stage still belongs to the terminal finite
+            // burn: dropping its thrust here loses h/6 of the match command
+            // (metres per second) from the tracked arrival. The tolerance is the
+            // same one arrival detection uses, so only the stage at the arrival
+            // instant is kept and a completed plan still commands nothing.
+            if (Plan.IsComplete(julianDate - ArrivalToleranceDays))
+                return ThrustCommand.None;
+
             return _autopilot.ComputeForArc(state, arc, julianDate);
         }
 

@@ -503,7 +503,9 @@ namespace TimeToExplore.UI
                             flight.TargetId == body.Id;
             bool hasPreview = flight != null && flight.HasPreview &&
                               flight.Preview.TargetId == body.Id;
-            bool plottable = body.Gm > 0.0 && !rejected;
+            // A station has no gravitational parameter of its own, but it is a
+            // valid point target: its route and Begin controls must stay live.
+            bool plottable = (body.Gm > 0.0 || body.Data.IsStation) && !rejected;
             bool showSlider = hasPreview;
 
             // The rejected route button says "Plan infeasible"; the row above it

@@ -173,6 +173,151 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// A station is a valid <c>PlaceAt</c> target: the ship starts in the
+        /// station's own <see cref="SolarSystemModel.ComputeState"/> state, so a
+        /// ship parked at Ares Junction is a legitimate departure for a Go To.
+        /// </summary>
+        [Test]
+        public void PlaceAtAStationSeedsTheShipInTheStationsOwnState()
+        {
+            foreach (string id in new[]
+                     {
+                         "gateway", "ares_junction", "helios_watch", "nyx_anchor",
+                         "jovian_yard", "titan_reach"
+                     })
+            {
+                _session.PlaceAt(id, _epoch);
+                _model.ComputeState(_model.Get(id), _epoch,
+                    out Vector3d position, out Vector3d velocity);
+
+                Assert.That(Vector3d.Distance(_session.State.PositionM, position),
+                    Is.LessThan(1e-6), id);
+                Assert.That((_session.State.VelocityMps - velocity).Magnitude,
+                    Is.LessThan(1e-9), id);
+                Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle), id);
+            }
+        }
+
+        /// <summary>
+        /// A plot to a station produces the hold-point rendezvous: a feasible
+        /// plan with a trip-time window, no capture entry radius and no inbound
+        /// fall, and an arrival state on the station's 500 m hold point with the
+        /// station's velocity. The preview never moves the ship.
+        /// </summary>
+        [Test]
+        public void PlottingAStationReturnsAFeasibleHoldPreview()
+        {
+            _session.PlaceAt("ares_junction", _epoch);
+            ShipState before = _session.State;
+
+            TrajectoryPlan preview = _session.Plot("gateway", _epoch);
+
+            Assert.That(_session.HasPreview, Is.True);
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
+            Assert.That(preview.IsFeasible, Is.True, preview.InfeasibleReason);
+            Assert.That(preview.TargetId, Is.EqualTo("gateway"));
+            Assert.That(preview.Arcs.Count, Is.EqualTo(3),
+                "no climb: cruise burn, coast, velocity match");
+            Assert.That(preview.Arcs[preview.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Capture));
+            Assert.That(preview.Arcs[preview.Arcs.Count - 1].IsFiniteBurn, Is.True);
+            Assert.That(preview.Arcs.Any(arc =>
+                    arc.Phase == FlightPhase.Approach || arc.Phase == FlightPhase.Parking),
+                Is.False, "a station has no approach or parking orbit");
+            Assert.That(preview.CaptureEntryRadiusM, Is.EqualTo(0.0));
+            Assert.That(preview.CaptureInboundSeconds, Is.EqualTo(0.0));
+
+            _model.ComputeState(_model.Get("gateway"), preview.ArrivalJulianDate,
+                out Vector3d stationPosition, out Vector3d stationVelocity);
+            Vector3d hold = stationPosition
+                            - stationVelocity.Normalized * TripPlanner.StationHoldDistanceM;
+            Assert.That(Vector3d.Distance(preview.ArrivalState.PositionM, hold),
+                Is.LessThan(1.0), "the arrival state is the hold point");
+            Assert.That((preview.ArrivalState.VelocityMps - stationVelocity).Magnitude,
+                Is.LessThan(1e-3), "the arrival velocity matches the station's");
+
+            Assert.That(_session.PreviewMinimumSeconds, Is.GreaterThan(0.0));
+            Assert.That(_session.PreviewMaximumSeconds,
+                Is.GreaterThanOrEqualTo(_session.PreviewMinimumSeconds));
+            Assert.That(Vector3d.Distance(_session.State.PositionM, before.PositionM),
+                Is.Zero, "a preview never moves the ship");
+        }
+
+        /// <summary>
+        /// Begin a station trip and fly it through <see cref="FlightSession.Advance"/>.
+        /// Ares Junction to Gateway is the measured 54.16210-day, three-arc
+        /// rendezvous, and the session reaches the hold state with no parking
+        /// capture: the terminal arc is the finite velocity match and the status
+        /// is <see cref="FlightStatus.Arrived"/>.
+        ///
+        /// The arrival is the plan's hold contract, not a looser tracked one:
+        /// the match arc carries a finer integrator hint
+        /// (<see cref="TripPlanner.StationMatchStepSamples"/>) so its own
+        /// truncation stays well inside the contract, and the arrival step keeps
+        /// the terminal burn's final RK4 stage (<see cref="FlightSession"/>'s
+        /// thrust gate) — without that stage the tracked match loses h/6 of the
+        /// command and misses by tenths of a metre per second. Every other arc
+        /// keeps the default cost.
+        /// </summary>
+        [Test]
+        public void BeginningAStationTripArrivesOnTheHoldState()
+        {
+            _session.PlaceAt("ares_junction", _epoch);
+            TrajectoryPlan plan = _session.Begin("gateway", _epoch);
+
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_session.HasPreview, Is.False);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+            Assert.That(plan.TargetId, Is.EqualTo("gateway"));
+            Assert.That(plan.Arcs.Count, Is.EqualTo(3));
+            Assert.That(plan.Arcs.Any(arc =>
+                    arc.Phase == FlightPhase.Approach || arc.Phase == FlightPhase.Parking),
+                Is.False, "a station has no parking capture to fall into");
+
+            PlanArc match = plan.Arcs[plan.Arcs.Count - 1];
+            Assert.That(match.Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(match.IsFiniteBurn, Is.True);
+            Assert.That(match.SuggestedMaxStepSeconds, Is.LessThan(
+                    match.DurationSeconds / 250.0),
+                "the terminal match carries the finer station step policy");
+            Assert.That(match.SuggestedMaxStepSeconds,
+                Is.EqualTo(Math.Clamp(match.DurationSeconds / TripPlanner.StationMatchStepSamples,
+                    0.5, 600.0)).Within(1e-9));
+
+            FlightStep step = _session.Advance(plan.ArrivalJulianDate, 50_000);
+
+            Assert.That(step.Arrived, Is.True);
+            Assert.That(step.BudgetExhausted, Is.False);
+            Assert.That(step.CollisionDetected, Is.False);
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived));
+            Assert.That(_session.ArrivedJulianDate,
+                Is.EqualTo(plan.ArrivalJulianDate).Within(1e-6));
+
+            double positionError = Vector3d.Distance(_session.State.PositionM,
+                plan.ArrivalState.PositionM);
+            double velocityError = (_session.State.VelocityMps - plan.ArrivalState.VelocityMps)
+                .Magnitude;
+            TestContext.WriteLine($"station arrival error {positionError:F4} m, " +
+                                  $"{velocityError:E4} m/s, {step.Substeps} substeps, " +
+                                  $"match hint {match.SuggestedMaxStepSeconds:F2} s");
+
+            _model.ComputeState(_model.Get("gateway"), plan.ArrivalJulianDate,
+                out Vector3d stationPosition, out Vector3d stationVelocity);
+            Vector3d hold = stationPosition
+                            - stationVelocity.Normalized * TripPlanner.StationHoldDistanceM;
+            TestContext.WriteLine($"tracked hold error " +
+                $"{Vector3d.Distance(_session.State.PositionM, hold):F4} m, " +
+                $"{(_session.State.VelocityMps - stationVelocity).Magnitude:E4} m/s");
+
+            Assert.That(positionError, Is.LessThan(1.0), "the tracked hold point, in metres");
+            Assert.That(velocityError, Is.LessThan(1e-3),
+                "the tracked match, within a millimetre per second");
+            Assert.That(plan.ArrivalState.VelocityMps, Is.EqualTo(stationVelocity)
+                .Within(1e-3), "the plan's own hold state matches the station");
+            Assert.That(_session.CurrentThrust.IsActive, Is.False, "the drive is off");
+        }
+
+        /// <summary>
         /// At a giant the zero-coast crossing does not win, so PlanFastest
         /// returns the coast floor and Begin must fly that: the same rule, the
         /// other branch.

@@ -95,9 +95,18 @@ namespace TimeToExplore.Simulation
         public double DurationSeconds => (EndJulianDate - StartJulianDate) * JulianDate.SecondsPerDay;
 
         /// <summary>Step hint for the integrator: about 250 steps per arc,
-        /// clipped to a range that is useful at both solar and orbital scale.</summary>
-        public double SuggestedMaxStepSeconds =>
-            Math.Clamp(DurationSeconds / 250.0, 0.5, 600.0);
+        /// clipped to a range that is useful at both solar and orbital scale.
+        /// <see cref="StepHintSecondsOverride"/> takes precedence when the
+        /// planner has set one.</summary>
+        public double SuggestedMaxStepSeconds => StepHintSecondsOverride
+            ?? Math.Clamp(DurationSeconds / 250.0, 0.5, 600.0);
+
+        /// <summary>Optional integrator step hint, in seconds, set by the
+        /// planner when an arc's tracked end matters more than its own cost.
+        /// A station's terminal velocity match is the case: it is a short,
+        /// high-acceleration burn whose own truncation is the whole tracked
+        /// arrival error. Null keeps the duration-derived hint.</summary>
+        public double? StepHintSecondsOverride { get; internal set; }
 
         public bool Contains(double julianDate) =>
             julianDate >= StartJulianDate && julianDate < EndJulianDate;

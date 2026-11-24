@@ -270,6 +270,54 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_hud.DetailsOpen, Is.False);
         }
 
+        /// <summary>
+        /// A station has no gravitational parameter, so the details screen's
+        /// <c>Gm &gt; 0</c> gate must not disable its Go To controls. With the
+        /// ship at Ares Junction, Gateway plots and begins through the real
+        /// buttons, and the flight panel shows a station target.
+        /// </summary>
+        [Test]
+        public void AStationDetailsScreenPlotsAndBeginsThroughItsButtons()
+        {
+            Build();
+            _bootstrap.Flight.PlaceAt("ares_junction", _bootstrap.Clock.JulianDate);
+            BodyRuntime gateway = _bootstrap.Model.Get("gateway");
+            _bootstrap.Select(gateway);
+            _hud.OpenDetails();
+
+            Update();
+            Update();
+            Button route = ButtonNamed("RouteButton");
+            Button begin = ButtonNamed("BeginButton");
+
+            Assert.That(route.interactable, Is.True, "a station is a valid point target");
+            Assert.That(begin.interactable, Is.False, "Begin flight needs a plotted route");
+            Assert.That(ButtonLabel("RouteButton").text,
+                Is.EqualTo("Plot route to Gateway Station"));
+
+            route.onClick.Invoke();
+            WaitForPreview();
+            Update();
+
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("gateway"));
+            Assert.That(_bootstrap.Flight.Preview.IsFeasible, Is.True,
+                _bootstrap.Flight.Preview.InfeasibleReason);
+            Assert.That(ButtonLabel("RouteButton").text,
+                Is.EqualTo("Replot route to Gateway Station"));
+            Assert.That(begin.interactable, Is.True);
+
+            begin.onClick.Invoke();
+
+            Assert.That(_bootstrap.Flight.IsFlying, Is.True, _bootstrap.Flight.Failure);
+            Assert.That(_bootstrap.Flight.TargetId, Is.EqualTo("gateway"));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
+
+            Update();
+            Assert.That(ButtonLabel("RouteButton").text,
+                Is.EqualTo("Replan to Gateway Station"));
+        }
+
         [Test]
         public void TheTripTimeSliderAppearsForAPreviewAndRetimesIt()
         {

@@ -228,6 +228,17 @@ namespace TimeToExplore.Simulation
         /// parking orbit and no capture chain to hand over to.</summary>
         public const double StationHoldDistanceM = 500.0;
 
+        /// <summary>Integrator step samples for a station's terminal velocity
+        /// match. The match is the one short, high-acceleration burn in a
+        /// multi-week plan and the one arc whose end is the arrival, so its own
+        /// truncation is the whole tracked hold error: the default 250-step hint
+        /// leaves about 4 × 10⁻⁴ m/s even with the arrival step keeping its final
+        /// stage (<see cref="FlightSession.ThrustForArc"/>). Four times finer
+        /// costs a few percent more substeps on the plan and keeps the tracked
+        /// hold at centimetres and 10⁻⁴ m/s. Only this one arc pays; a planet
+        /// brake keeps the default hint.</summary>
+        public const double StationMatchStepSamples = 1_000.0;
+
         /// <summary>Seed duration of a station trip's final velocity-match burn.
         /// The brake's real length follows the arrival relative speed, so this is
         /// only the search's first guess along the distance, climb, and brake
@@ -3120,8 +3131,16 @@ namespace TimeToExplore.Simulation
                 burnStartJd, coastStartJd, departureBurn, cheap));
             arcs.Add(MakeConicArc(FlightPhase.Cruise, _model.Sun.Id, coastStartJd,
                 brakeStartJd, coast, Vector3d.Zero, cheap));
-            arcs.Add(MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
-                brakeStartJd, arrivalJd, brake, cheap));
+
+            // The velocity match is the arrival. Give that one arc a finer
+            // integrator hint than the default 250-step one so the match's own
+            // truncation stays well below the hold-point contract; the rest of
+            // the plan keeps its default cost.
+            PlanArc match = MakeFiniteBurnArc(FlightPhase.Capture, _model.Sun.Id,
+                brakeStartJd, arrivalJd, brake, cheap);
+            match.StepHintSecondsOverride = Math.Clamp(
+                match.DurationSeconds / StationMatchStepSamples, 0.5, 600.0);
+            arcs.Add(match);
 
             // A station is a point target with no surface to clear: its hold
             // point is the arrival's own clearance, so only the departure burn

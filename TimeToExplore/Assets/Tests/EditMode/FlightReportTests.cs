@@ -193,6 +193,41 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// A station plan has no capture chain and its one terminal finite burn
+        /// is a rendezvous velocity match, so the drive summary calls it
+        /// <b>Match</b>, never <b>Brake</b>, and the chain row is absent. The
+        /// phase table still lists the arc's phase, whose drive label reads
+        /// match.
+        /// </summary>
+        [Test]
+        public void AStationPlanShowsAVelocityMatchAndNoCaptureChain()
+        {
+            _session.PlaceAt("ares_junction", _epoch);
+            TrajectoryPlan plan = _session.Begin("gateway", _epoch);
+            Assert.That(plan.IsFeasible, Is.True, plan.InfeasibleReason);
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x10,000");
+
+            Assert.That(Find(rows, "Target")?.Value, Is.EqualTo("Gateway Station"));
+            Assert.That(Find(rows, "Match"), Is.Not.Null, "the terminal burn is a match");
+            Assert.That(Find(rows, "Match")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Brake"), Is.Null,
+                "a rendezvous may add speed; the burn is not a retrograde brake");
+
+            int captureRows = rows.Count(row => !row.IsHeading && row.Label == "Capture");
+            Assert.That(captureRows, Is.EqualTo(1),
+                "only the phase row: a station has no capture chain row");
+            Assert.That(rows.First(row => !row.IsHeading && row.Label == "Capture").Value,
+                Does.Contain("match"), "the terminal arc's drive label is the match");
+
+            Assert.That(Find(rows, "Approach"), Is.Null);
+            Assert.That(Find(rows, "Parking"), Is.Null);
+            Assert.That(Find(rows, "Cruise")?.Value, Does.Contain("prograde burn"),
+                "the heliocentric departure burn is still the cruise burn");
+            Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+        }
+
+        /// <summary>
         /// Begin replans and consumes the preview, so the panel must show the
         /// plan it is flying — the burn-only minimum — not the coast floor the
         /// old Begin built and not a stale preview's numbers.
