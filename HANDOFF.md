@@ -19,11 +19,19 @@ Reasoning: [Planning performance](/technical/planning-performance.md) and
    Begin (`PlanFastest` at a moved date plus the retime). Its own command, a
    baseline file keyed by machine and Unity version, and a percentage delta
    table. Must not run in the default `tools/check.sh`; prove that it does not.
-3. **Warm-start the pin.** Seed the next build from the nearest cached plan:
-   brake duration and direction, departure-burn direction and duration, and the
-   approach on pass 0. Never seed the escape ray. Fall back to the cold seed if
-   the seeded run does not converge, and do not seed the two lowest slider steps
-   or across the burn-only/coast gap.
+3. **Warm-start the pin.** Seed each build from the nearest solved neighbour:
+   brake duration and direction, departure-burn duration and direction, and the
+   approach on pass 0. Two call sites matter, both measured in step 1: the retime
+   path, where the pin is 71% of a 412 ms build, and the floor search's probes,
+   where **162 of a plot's 174 pin passes** are. `SearchFloor` builds through one
+   `Probe(seconds)` closure, so carry the converged state from one probe to the
+   next; that needs `BuildResult` to return the pin state it settled on. Never
+   seed the escape ray. Fall back to the cold seed when the seeded run does not
+   converge, and do not seed the two lowest steps or across the burn-only/coast
+   gap.
+   Judge the step against `tools/bench.sh` and the committed baseline, not against
+   hand figures: Mars plots at 4.1 s, Venus at 9.7 s, Uranus at 2.0 s, the
+   retimes at 0.37–0.49 s, and Mars's Begin at 9.0 s.
 4. **Prefetch the slider's neighbours.** After a plot, build two steps each side
    of the plotted duration; while the player drags, build three steps in the
    drag direction. Prefetch uses the preview's frozen departure state, never
@@ -60,6 +68,13 @@ noise.
   planning-performance doc's earlier 6.73042 d and 44.3543 km/s are the
   pre-departure values and must not be used as the comparison; `tools/check.sh`
   enforces the live ones.
+- The three reverse routes **do not plot at the epoch**: the floor search's twelve
+  20% growth steps stop before the profile's floor. Mars→Earth builds at a fixed
+  90 d, so this is a search limit, not geometry. It is out of this plan; do not
+  "fix" the growth cap inside the warm start.
+- `Begin`'s cost does not track the plot. Earth→Mars plots in 4.1 s but Begin
+  takes 9.0 s at +3 h, because the coast floor's certificate refuses once and the
+  continuation is paid. Measure both.
 - The preview starts at the window **minimum**, so a fresh plot has no lower
   side. Prefetch clamps at the window edges; expect the low side to be empty.
 - The cache key is the **preview's frozen departure state**
