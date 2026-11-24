@@ -60,6 +60,20 @@ namespace TimeToExplore.Rendering
         public bool ArcIsDashed(int index) =>
             index >= 0 && index < _activeLines.Count && _activeLines[index].Dashed;
 
+        /// <summary>
+        /// World-space length of one dash cycle on an arc, recovered from the
+        /// material's texture scale. Zero for a solid arc. Tests use it to
+        /// prove the dash does not shrink as an arc gets longer.
+        /// </summary>
+        public float ArcDashPeriodUnits(int index)
+        {
+            if (index < 0 || index >= _activeLines.Count) return 0f;
+            ArcLine line = _activeLines[index];
+            if (!line.Dashed || line.Material == null) return 0f;
+            float scale = line.Material.mainTextureScale.x;
+            return scale > 0f ? 1f / scale : 0f;
+        }
+
         /// <summary>The legend label of one arc line, for the HUD.</summary>
         public string ArcLabel(int index) =>
             index >= 0 && index < _activeLines.Count ? _activeLines[index].Label : null;
@@ -318,11 +332,7 @@ namespace TimeToExplore.Rendering
                 SetPositions(arcLine, shipPositionM, camera, baseWidth, baseDepth);
 
                 if (arcLine.Dashed)
-                {
-                    UpdateDashScale(arcLine.Material,
-                        DashLengthUnits(arcLine.Points, shipPositionM),
-                        Mathf.Max(baseWidth * 8f, 1e-6f));
-                }
+                    UpdateDashScale(arcLine.Material, DashPeriodUnits(baseWidth));
             }
 
             UpdateMarker(_arrivalMarker, _arrivalPositionM, shipPositionM, camera);
@@ -332,19 +342,30 @@ namespace TimeToExplore.Rendering
                 UpdateMarker(_burnMarkers[i], _burnPositionsM[i], shipPositionM, camera, 1.6f);
         }
 
-        private void UpdateDashScale(Material material, float lengthUnits, float periodUnits)
+        /// <summary>
+        /// A dash cycle in render units: eight line widths at the route's
+        /// anchor depth, so a coast reads as a dashed line rather than a
+        /// thread. Four of the eight are drawn and four are the gap.
+        /// </summary>
+        public static float DashPeriodUnits(float lineWidthUnits) =>
+            Mathf.Max(lineWidthUnits * 8f, 1e-6f);
+
+        /// <summary>
+        /// Point the dash texture at a world-space period. Unity's
+        /// <see cref="LineTextureMode.Tile"/> puts one texture repeat per world
+        /// unit along the line, so the scale is the inverse of the period.
+        ///
+        /// The old rule also multiplied the scale by the arc's whole length, so
+        /// the repeat count grew with the square of the length. A long coast
+        /// drew thousands of sub-pixel dashes and point sampling turned them
+        /// into a broken, shimmering smear instead of a dotted line. The period
+        /// is now independent of the arc's length, so every dashed arc of the
+        /// plan gets the same dash at the same depth.
+        /// </summary>
+        private void UpdateDashScale(Material material, float periodUnits)
         {
             if (material == null) return;
-            float scale = Mathf.Max(1f, lengthUnits / periodUnits);
-            material.mainTextureScale = new Vector2(scale, 1f);
-        }
-
-        private float DashLengthUnits(List<Vector3d> points, Vector3d shipPositionM)
-        {
-            double length = 0.0;
-            for (int i = 1; i < points.Count; i++)
-                length += Vector3d.Distance(points[i - 1], points[i]);
-            return (float)(length * _unitsPerMeter);
+            material.mainTextureScale = new Vector2(1f / Mathf.Max(periodUnits, 1e-6f), 1f);
         }
 
         private void UpdateMarker(Transform marker, Vector3d positionM, Vector3d shipPositionM,

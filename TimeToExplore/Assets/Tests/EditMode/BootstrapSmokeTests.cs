@@ -308,6 +308,44 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void EveryDashedArcUsesTheSameWorldDashHoweverLongItIs()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
+            Invoke("LateUpdate");
+
+            float period = 0f;
+            int dashed = 0;
+            for (int i = 0; i < _bootstrap.Trajectory.ArcCount; i++)
+            {
+                if (!_bootstrap.Trajectory.ArcIsDashed(i)) continue;
+
+                float arcPeriod = _bootstrap.Trajectory.ArcDashPeriodUnits(i);
+                Assert.That(arcPeriod, Is.GreaterThan(0f),
+                    $"dashed arc {i} has no dash period");
+                if (dashed == 0) period = arcPeriod;
+                else
+                    Assert.That(arcPeriod, Is.EqualTo(period).Within(1e-9f),
+                        $"arc {i} has a different dash period, so a longer arc " +
+                        "would draw a denser dash instead of the same dotted line");
+
+                dashed++;
+            }
+
+            Assert.That(dashed, Is.GreaterThanOrEqualTo(2),
+                "the conic plan has several dashed arcs of different lengths");
+        }
+
+        [Test]
+        public void TheDashPeriodIsEightLineWidths()
+        {
+            Assert.That(TrajectoryLine.DashPeriodUnits(2f), Is.EqualTo(16f).Within(1e-6f));
+            Assert.That(TrajectoryLine.DashPeriodUnits(0f), Is.GreaterThan(0f),
+                "a zero detail must not divide by zero in the texture scale");
+        }
+
+        [Test]
         public void BeginningAPlottedRouteReplansAtTheCurrentDateAndFlies()
         {
             Build();

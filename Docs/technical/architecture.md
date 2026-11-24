@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T19:10:00Z }
 ---
 
 # Shape of the prototype
@@ -399,9 +399,16 @@ samples each arc once when the plan is made with `PathTessellation`, which
 subdivides by curvature until every chord's midpoint is within 5 × 10⁻⁴ of its
 own length; uniform sampling in time spent the budget on the straight cruise and
 left visible chords in the tight departure and capture turns. Each dashed arc
-uses a repeating alpha texture in `LineTextureMode.Tile`, with its own texture
-scale tied to the line width, so the dashes stay the same apparent length at any
-zoom. It applies the same camera-plane clip as the orbit lines, then takes
+uses a repeating alpha texture in `LineTextureMode.Tile`. That mode puts one
+texture repeat per world unit along the line, so the material's texture scale is
+the inverse of the wanted world-space dash period: eight line widths at the
+route's anchor depth, one dash and one gap per cycle. The period does not depend
+on the arc's length, so every conic draws the same dotted line; the old rule
+also multiplied the scale by the arc's whole length, so the repeat count grew
+with the square of the length and a long coast became thousands of sub-pixel
+dashes and a broken, shimmering smear. Perspective still foreshortens a heavy recession, but the
+anchor end holds the same apparent dash at any zoom. It applies the same
+camera-plane clip as the orbit lines, then takes
 per-vertex widths from the same rule: the far end holds the 2 px floor instead
 of fading out, and the near end is capped at the route's 3 px instead of
 widening into a ribbon. `TimeToExplore/Line` feathers both
