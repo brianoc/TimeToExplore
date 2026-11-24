@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T19:10:00Z }
 ---
 
 # What this adds to the orrery
@@ -302,8 +302,10 @@ still read as one family. A fixed burn between two conic runs starts the second
 run again at the base shade.
 
 Each line is a pooled `LineRenderer` with its own material, so a dashed arc
-tiles its repeating alpha texture along its own length, with the dash length
-tied to the line width so it stays readable at any zoom. Beyond the lines it
+tiles its repeating alpha texture along the path in world units, with the dash
+period fixed at eight line widths at the route's anchor depth. The period is
+independent of the arc's length, so a long coast and a short parking arc draw
+the same dots, and the anchor end stays readable at any zoom. Beyond the lines it
 draws
 
 * **burn markers** at the departure burn, the brake, and (on a hybrid arrival)
