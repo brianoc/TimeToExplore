@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # The problem
@@ -21,6 +21,13 @@ The fix keeps the physics of the plan and the flight exactly as they were and
 changes only **what the search uses to steer**. It is described in
 [Burn–coast–burn trips](/simulation/burn-coast-burn.md#the-break-search); this
 note records the whole shape, its boundary, and the measurements.
+
+**The measurements below are the pre-physical-departure profile's.** They were
+taken between 2026-11-20 and 2026-11-21; the departure became a short prograde
+break and a ballistic climb on 2026-11-23, which adds one conic solve and a
+break bisection per pass and was **not** re-profiled here. The planning structure
+and the two-tier boundary are unchanged; the current floors and anchors are in
+[Testing and verification](/technical/testing.md#numerical-references-at-the-epoch).
 
 # Two tiers
 

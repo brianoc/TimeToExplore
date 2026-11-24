@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: route families, camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # Glossary
@@ -86,7 +86,8 @@ Five different questions hide under the word "thrust". Keep them apart:
 
 An **impulse** is a manoeuvre model, not a thrust profile. It is a Δv applied
 at an instant; the ship cannot fly it. The conic style's burns are *modelled*
-as impulses; the hybrid style integrates one real capture burn. The terms below
+as impulses; the hybrid style integrates one real capture burn. A **station**
+leg has no arrival choice and no capture: it ends on the hold point. The terms below
 are the agreed vocabulary for the hybrid capture; the linked concepts own the
 mechanics and the measured numbers.
 
@@ -207,15 +208,24 @@ feasibility are always full-field numbers.
 influence is a single quintic capture and has no arrival choice.
 
 **Cruise profile** — how the ship crosses between the spheres of influence. It
-is always the burn–coast–burn route: a quintic break, a departure fixed burn, a
+is always the burn–coast–burn route: a quintic break, a ballistic escape conic, a
+departure fixed burn, a
 Lambert coast, a planetocentric approach, a fixed brake, and the capture. The
 old powered quintic cruise and the plain Lambert coast are retired; there is no
-profile selector and no zero-thrust version.
+profile selector and no zero-thrust version. A station target has no crossing to
+a sphere and no capture: its plan ends on a hold point.
 
-**Break** — the quintic departure arc that leaves the parking orbit and reaches
-the departure body's handover ceiling (`1.02 × SOI`, the band's ceiling) at the
-local escape speed along the escape ray. The departure burn starts there and holds
-the ray; the break's duration is solved against the drive's limit.
+**Break** — the quintic departure arc that leaves the parking orbit and ends at
+the parking radius on the ship's own prograde tangent at the planetocentric
+escape speed `√(2μ/r₀ + v∞²)`. A ballistic planetocentric conic (the escape)
+carries that state to the departure body's handover ceiling (`1.02 × SOI`, the
+band's ceiling), where the departure fixed burn starts. The break's duration is
+its own solve at the commanded level, not a share of the trip.
+
+**Hold point** — a station's arrival contract: the station's own state at the
+arrival date offset 500 m astern along its velocity
+(`TripPlanner.StationHoldDistanceM`), with the ship's velocity matched. A station
+call ends there; docking is a later phase.
 
 **Handover band** — the radial band a fixed burn hands over to a shaped end
 inside: the floor `sqrt(μ / (0.4 a_drive))` clamped to the body clearance, and the

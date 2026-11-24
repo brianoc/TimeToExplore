@@ -466,7 +466,8 @@ namespace TimeToExplore.UI
                     return $"{FormatSpeed(flight.State.VelocityMps.Magnitude)} · " +
                            $"{flight.Throttle * 100.0:0}% thrust";
                 case FlightStatus.Arrived:
-                    return $"{FormatSpeed(flight.State.VelocityMps.Magnitude)} · in orbit";
+                    return $"{FormatSpeed(flight.State.VelocityMps.Magnitude)} · " +
+                           (flight.TargetIsStation ? "at the hold point" : "in orbit");
                 case FlightStatus.Rejected:
                     return "plan rejected";
                 case FlightStatus.Aborted:

@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # The one big assumption
@@ -204,8 +204,9 @@ The conic flights arrive 0.1–1.1 m and 0.0001–0.003 m/s from the reference
 state, and hold the lower parking orbit with eccentricities of 10⁻⁴ or less
 after three orbits. The coast's measured peak thrust is below 0.01 m/s²: the
 two-body reference is a true coast, and the drive only trims the third-body
-tide. The total plan delta-v is usually lower (Jupiter 2,783 km/s against
-5,189), but not always: a compressed cruise over a short conic capture can spend
+tide. In those measurements the total plan delta-v was usually lower (Jupiter
+2,783 km/s against 5,189), but not always: a compressed cruise over a short
+conic capture spent
 slightly more than the quintic plan even while the capture itself is 20–100×
 cheaper. That trade is why the style is a choice, not a replacement.
 
@@ -216,54 +217,58 @@ departure burn is about the Sun and the brake is about the Sun as
 well: the reference body is a label, each burn integrates the summed field, and
 the burns span thousands to millions of kilometres
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
-The measured plan at 90 days, after the capture started entering at the arrival
-handover floor:
+The measured plan at 90 days, after the physical departure:
 
 | Leg | Duration | Delta-v | Peak thrust |
 |---|---:|---:|---:|
-| Quintic break | 4.84 d | 8.8 km/s | 0.03 m/s² |
-| Departure burn (prograde) | 76 min | 13.4 km/s | 2.94 m/s² |
-| Lambert coast | 85.0 d | 0.05 km/s | 0.005 m/s² |
-| Brake (fixed thrust) | 1.7 h | 18.5 km/s | 2.94 m/s² |
-| Conic capture | 13.6 min | 3.53 km/s (impulse) | 0 |
+| Quintic break | 928 s | 1.404 km/s | 2.9467 m/s² |
+| Escape conic | 10.74 d | 0.252 km/s | 0.0016 m/s² |
+| Departure burn (prograde) | 79.5 min | 14.040 km/s | 2.9420 m/s² |
+| Lambert coast | 78.83 d | 0.039 km/s | 0.0004 m/s² |
+| Approach conic | 5.64 h | 0.000 km/s | 0 |
+| Brake (fixed thrust) | 111.6 min | 19.699 km/s | 2.9420 m/s² |
+| Capture chain | 1.2 h | 3.458 + 0.076 km/s (impulse) | 0 |
+| **Total** | **90.00000 d** | **38.968 km/s** | **2.9467 m/s²** |
 
-The total is 44.4 km/s against the coast plan's 14 km/s at 200 days: the burns
-buy the speed. The break ends on the departure clearance sphere (`1.02 × SOI`)
-at the local escape speed, and the departure burn starts there and holds the
-escape ray. The burns are sized from velocity changes, not from a time share. The
+The total is 38.968 km/s against the coast plan's 11.21 km/s at 200 days: the
+burns buy the speed. The break ends at the parking radius on the ship's own
+prograde tangent at the planetocentric escape speed; a ballistic `ConicArc`
+carries that state to the departure ceiling (`1.02 × SOI`), and the departure
+burn starts at the conic's ceiling **state** with a solved thrust direction and
+duration. The burns are sized from velocity changes, not from a time share: the
 departure burn spends the coast's departure speed above the local escape speed,
-so its delta-v is the same at every level — 13.4 km/s here — while its duration
-scales inversely: 7.7 hours at 0.05 g, 76 minutes at 0.3 g, 23 minutes at 1 g.
+so its delta-v is fixed at a level — 14.040 km/s here — while its duration
+scales inversely with the level. The break is a short 928-second burn at the
+commanded 2.9467 m/s², not a multi-day hover, and a faster trip pays a larger
+hyperbolic excess speed rather than a longer break.
 The brake spends the handover the coast plan leaves as an impulse and ends at
 the arrival handover floor (6,033 km at Mars 0.3 g), so the capture
 chain is handed its entry state with no impulse and falls in for 13.6 minutes.
-Every seam is continuous to under a metre and 3.7 × 10⁻⁴ m/s, the flight arrives
-0.1 m and 0.0001 m/s from the reference state, and the parking orbit holds. The
-profile has no zero-thrust version: the burn-level slider's floor is 0.05 g. The
+Every seam is continuous to under a metre and 7.3 × 10⁻⁶ m/s, and the arrival is
+exact at the reference state. The profile has no zero-thrust version: the
+burn-level slider's floor is 0.05 g. The
 arrival adds a planetocentric approach leg; on a fast trip, whose brake starts
 outside the target's ceiling, it is absent.
 
-The profile's true floors at the epoch are **3.21610 days** to Mercury at 1 g
-(peak 9.70 m/s², 1,766 km/s) and **6.73042 days** to Mars at 0.3 g
-(5.14 m/s², 1,171.6 km/s); the Mars **coast** trip-time window ends at **20.19
+The profile's true floors at the epoch are **14.06070 days** to Mercury at 1 g
+(peak 9.70 m/s², 1,821.1 km/s) and **16.84485 days** to Mars at 0.3 g
+(2.95 m/s², 1,017.1 km/s); the Mars **coast** trip-time window ends at **50.53
 days**, three times the floor, so the 90-day plan above is a direct
 `PlanAtDuration` build outside the nav computer's window. The nav minimum is the
-burn-only total where it wins — Mercury **3.04470**, Mars **6.49501**, Jupiter
-**12.54280** days — and the coast floor is its fallback. Jupiter at 0.3 g floors
-at **13.07211 days** (coast window 13.07–39.22) and Uranus at **33.60 days** at
-0.3 g and **33.65 days** at 1 g (windows 33.60–100.81 and 33.65–100.96). The
-.NET harness
-selects a different certified point at the giants (Uranus 40.71 and 30.56,
-Jupiter 13.33520); the editor's is the one that ships
+burn-only total where it wins — Mercury **13.86287**, Mars **16.48669**, Jupiter
+**22.55555** days — and the coast floor is its fallback. Jupiter at 0.3 g floors
+at **23.73299 days** (coast window 23.73–71.20) and Uranus at **92.13088 days** at
+0.3 g and **57.02223 days** at 1 g (windows 92.13–276.39 and 57.02–171.07). The
+physical departure moved every one of these; the .NET harness
+can select a different certified point near a giants' floor and the editor's is
+the one that ships
 ([the divergence](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)).
-Faster crossings are limited by the pinned
-break reaching the drive's 10 m/s². The capture enters at the arrival handover
-floor rather than the sphere of influence, so the inbound fall is minutes; that
-is what moved the floors down from 3.46 and 8.03 days. The slow end is bounded
+Faster crossings are now limited by the ballistic climb and the
+burns, not by an over-thrusting break. The capture enters at the arrival handover
+floor rather than the sphere of influence, so the inbound fall is minutes. The
+slow end is bounded
 by the short-way coast's geometry, and a coast that arrives slower than the
-target's frame would still need an acceleration rather than a brake. Venus at
-11.66 days spends 183 km/s (departure 72, brake 58); Jupiter at 230.6 days
-spends 119 km/s (departure 40, brake 53) after its 87-day inbound coast. A plan
+target's frame would still need an acceleration rather than a brake. A plan
 the drive cannot fly carries an `InfeasibleReason` naming the arc and the peak it
 needs.
 
@@ -303,9 +308,10 @@ met where the ephemeris puts it on that date. The profile has a real upper bound
 — the short-way Lambert transfer sweeps past 180°, and a coast that arrives
 slower than the target's frame would need an acceleration — so its right-hand
 end is the slowest duration the planner still accepts, probed inside the same
-three-times span. At the epoch the window runs from **6.73 days to 20.19 days**
-to Mars, so it begins at the profile's true floor (6.73042 days at 0.3 g) and
-ends at three times that floor. A 90-day Mars plan exists as a direct
+three-times span. At the epoch the Mars coast window is **16.84–50.53 days**,
+so the coast path begins at its true floor (16.84485 days at 0.3 g) and ends at
+three times that floor; the slider starts at the shorter **16.48669-day
+burn-only minimum** where that wins. A 90-day Mars plan exists as a direct
 `PlanAtDuration` build but the slider cannot reach it.
 
 The slider is one honest axis with two costs on it:

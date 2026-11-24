@@ -4,7 +4,7 @@ title: Full-field burns and the powered-leg floor
 description: Fixed burns integrate the summed gravity field and hand over to the shaped ends inside a band, so a capture can enter hot and deep instead of falling in from the sphere of influence at a planted 5 km/s.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-20T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # The problem
@@ -95,8 +95,9 @@ is what the quintic endpoint matching, `Measure`, and the peak rely on.
 
 The **thrust law is unchanged**, and that is deliberate. A prograde or retrograde
 burn holds the velocity relative to the reference body; the departure burn and
-the brake hold a fixed inertial direction (the escape ray and the handover
-change). The field is summed; the attitude is still the frame-relative one the
+the brake hold a fixed inertial direction (the solved departure direction and the
+handover change). The field is summed; the attitude is still the frame-relative
+one the
 profile already used. Changing the attitude law is
 [the steering measurement](#steering-starts-simple), not this change.
 
@@ -168,7 +169,8 @@ Also measured: the reported plans **did not move** at their stated precision. Th
 reason is structural, not luck. A fixed-direction burn's delta-v is set by the
 chain (`a T` = the velocity change the coast needs), so the summed field changes
 where the burn is and how its attitude is placed, not how much it spends; the
-pinned solve absorbs the field difference into the escape ray and the path. The
+pinned solve absorbs the field difference into the solved departure direction and
+the path. The
 8-day Mercury plan was then still 569.9 km/s, 12.3 days 379.9, Mars 90 days
 45.4, and the floors were then still 3.46 and 8.03 days; the arrival entry
 radius moved those in the next step (see [the measurements](#what-the-floor-entry-measured)).
@@ -213,11 +215,15 @@ The band says where the handover **may** sit. Each end of the trip takes one of
 its edges. That choice is a caretaker decision for this plan, not a solved
 optimum:
 
-* **Departure: the ceiling.** The break's job is escape, so it ends on
-  `1.02 × SOI` at the local escape speed along the escape ray, and the departure
-  burn starts there and moves outward. This is the value the profile already
+* **Departure: the ceiling.** The climb's job is escape, so it ends on
+  `1.02 × SOI` at the local escape speed: the short break raises the ship to the
+  parking radius on its own prograde tangent, a ballistic planetocentric conic
+  carries that state out, and the departure burn starts at the conic's ceiling
+  **state** and moves outward. This is the ceiling value the profile already
   used — the same double, now read from the band — so the departure plan does
-  not move.
+  not move. The burn's direction is now solved against the coast; the old profile
+  pinned it to a radial escape ray, which the physical departure removed
+  ([ADR-019](/decisions/adr-019-station-calls-and-departure.md)).
 * **Arrival: the floor.** The brake ends at the deepest radius where local
   gravity is still 40% of the drive, and the capture chain is handed its entry
   state there. The fall shortens as the radius comes in, which is the point of
@@ -244,8 +250,8 @@ used to be. On a long trip that end sat **deep inside the target's sphere** —
 model. The fix is a **planetocentric approach leg**: the arrival sequence is
 
 ```text
-break → departure burn → heliocentric coast → approach conic → brake → capture chain
-quintic   fixed burn        Sun conic          target conic    fixed burn  conic chain
+break → escape conic → departure burn → heliocentric coast → approach conic → brake → capture chain
+quintic  planetocentric      fixed burn         Sun conic          target conic    fixed burn  conic chain
 ```
 
 1. **The heliocentric coast ends on the target's ceiling**, `1.02 × SOI`. At
@@ -292,6 +298,17 @@ are unchanged. A conic about Mercury at twenty spheres would be a worse model
 than the heliocentric coast it replaced.
 
 ## What the approach measured
+
+**These are the powered-quintic profile's measurements.** The old/new columns
+below and in the next section record the approach leg's own change on the
+pre-physical-departure profile (2026-11-18/20). The physical departure
+(2026-11-23) re-baselined every total, floor and window: the shipping anchors are
+now **Mercury 1 g 14.06070 d, Mars 0.3 g 16.84485 d, Jupiter 0.3 g 23.73299 d,
+Uranus 1 g 57.02223 d and Uranus 0.3 g 92.13088 d**
+([ADR-019](/decisions/adr-019-station-calls-and-departure.md),
+[Testing and verification](/technical/testing.md#numerical-references-at-the-epoch)).
+Read the sections below as the measurement history of the approach leg and the
+floor search, not as current trip numbers.
 
 At the epoch (2026-11-15), from Gateway, conic capture. Old is the deep
 heliocentric coast; new is the approach leg. The coast's end radius is measured
@@ -458,24 +475,33 @@ spheres out and pushed straight at the planet crosses the 924,651 km sphere and
 still clears the planet by 821,258 km, and is **accepted**; a 30-second burn
 60 km up, thrusting at the surface, grazes to 6,422.3 km (51.3 km altitude)
 against a 6,471 km clearance and is **refused**. The 90-day Mars build's departure
-burn starts on the ceiling and climbs, so it still stays outside the sphere; that
-is a consequence of the pinned endpoint, not the rule.
+burn starts at the escape conic's ceiling state and climbs, so it still stays
+outside the sphere; that is a consequence of the climb's endpoint, not the rule.
 
 # The shaped ends stay
 
 The break and the conic/hybrid capture keep their jobs. Only the handover radius,
 the field the burn is integrated in, and the arrival leg change.
 
-The break is still the quintic that leaves the parking orbit and ends on the
-handover at the local escape speed along the escape ray; the capture is still the
+The break is still the quintic that leaves the parking orbit; it now ends at the
+parking radius on the ship's own prograde tangent at the local escape speed, and
+a ballistic planetocentric `ConicArc` (the escape) carries that state to the
+handover ceiling. The capture is still the
 conic or hybrid chain the profile already uses. The break's duration solve (an
 opt-in variant now pins it to the commanded level rather than the drive limit —
 [the level pin](/simulation/burn-coast-burn.md#the-level-pin-is-opt-in)), the
-pinned fixed point, the escape-ray attitude, the brake's direction, the trim, the
-transfer ellipse, and the circularisation are otherwise unchanged. No new arc
-*type* is introduced — the approach is a `ConicArc` like the coast.
+pinned fixed point, the brake's direction, the trim, the
+transfer ellipse, and the circularisation are otherwise unchanged. The departure
+burn's attitude is a solved inertial direction rather than the old escape ray;
+the escape itself is a `ConicArc` like the coast, so no new arc
+*type* is introduced.
 
 # What the floor entry measured
+
+**Superseded totals, kept as the floor-search history.** The physical departure
+re-baselined these (see the note at
+[what the approach measured](#what-the-approach-measured)). The entry-radius and
+capture-Δv lessons still hold; the trip totals and floors do not.
 
 Measured at the epoch (2026-11-15), from Gateway, conic capture. The old build
 enters on the target's sphere of influence at the planted 5 km/s; the new one
@@ -564,19 +590,23 @@ every seam is inside the 1 km / 1 m/s gate; the six fixed-duration Δv anchors
 did not move.
 
 **Step 4 closed the first-plot plan with the final floors and windows.** The
-editor is the runtime that ships, so its first `Plot()` measurements are the
-anchors the docs carry: **Uranus 0.3 g 33.60438 d** (coast window 33.60–100.81
+editor is the runtime that ships, so its first `Plot()` measurements were the
+anchors the docs carried at that time: **Uranus 0.3 g 33.60438 d** (coast window
+33.60–100.81
 d), **Uranus 1 g 33.65372 d** (33.65–100.96 d), **Mars 0.3 g 6.73042 d**
 (6.73–20.19 d), **Mercury 1 g 3.21610 d** (3.22–9.65 d), and **Jupiter 0.3 g
-13.07211 d** (13.07–39.22 d). Since step 3 of the burn-only plan the nav
+13.07211 d** (13.07–39.22 d). The physical departure re-baselined them; the
+current floors are **Mercury 1 g 14.06070, Mars 0.3 g 16.84485, Jupiter 0.3 g
+23.73299, Uranus 1 g 57.02223 and 0.3 g 92.13088 d**. Since step 3 of the
+burn-only plan the nav
 computer's minimum is the burn-only total where it wins — Mercury 3.04470, Mars
-6.49501, Jupiter 12.54280 d — so the slider's left end and its three-times
-upper end are shorter than those coast windows; the floors above are unchanged.
-Every one is a certified full-field plan: the
+6.49501, Jupiter 12.54280 d at that time — so the slider's left end and its
+three-times upper end were shorter than those coast windows. Every one is a
+certified full-field plan: the
 returned duration is rebuilt with the summed field, every arc has its measured
 clearance and delta-v, and every seam is inside the 1 km / 1 m/s gate. Each of
-the five now certifies on its **first** certificate with no continuation probes,
-so the floor is a single certified build rather than the end of a search; the
+the five then certified on its **first** certificate with no continuation probes,
+so the floor was a single certified build rather than the end of a search; the
 measurements are in [step 4 of planning
 performance](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20).
 
@@ -603,15 +633,19 @@ So the entry speed is not free: the fall falls as the speed rises, but the
 periapsis burn grows faster than the brake shrinks. That is why the brake-produced
 residual is the next decision rather than a number to plant.
 
-These numbers are the **floor entry's own measurement** (step 4). The approach
+These numbers are the **floor entry's own measurement** (step 4), taken on the
+pre-physical-departure profile. The approach
 leg moved the brake's start a few hundred kilometres outward at Uranus and left
-the entry radius, the fall and the capture's delta-v unchanged. On the merged
-tree the floors are **33.65 / 33.60 / 3.21610 / 6.73042 days in the editor** and
+the entry radius, the fall and the capture's delta-v unchanged. At the time the
+floors were **33.65 / 33.60 / 3.21610 / 6.73042 days in the editor** and
 **30.56 / 40.71 / 3.21610 / 6.73042 in the .NET harness** at Uranus 1 g, Uranus
-0.3 g, Mercury 1 g and Mars 0.3 g; the totals are 182.312 / 180.834 / 557.038 /
-44.354 km/s at the fixed-duration anchors. The .NET floors are seven-arc fast
-trips with no approach; the editor's 1 g floor is the one floor plan whose brake
-starts inside the ceiling, so it carries an approach arc and eight arcs in all.
+0.3 g, Mercury 1 g and Mars 0.3 g; the totals were 182.312 / 180.834 / 557.038 /
+44.354 km/s at the fixed-duration anchors. The physical departure moved every one
+of them: the current shipping floors are in
+[Testing and verification](/technical/testing.md#numerical-references-at-the-epoch).
+At the time the .NET floors were seven-arc fast
+trips with no approach; the editor's 1 g floor was the one floor plan whose brake
+starts inside the ceiling, so it carried an approach arc and eight arcs in all.
 See [what the approach measured](#what-the-approach-measured).
 
 ## The binding question: where the coast ends — resolved
@@ -713,7 +747,8 @@ not a control law. A shooting solve is the last resort, not the first.
 Measured at the epoch, the fixed direction is the right law at both ends. It is
 exact where it is used, and neither a tracking law nor segmenting recovers
 anything. The texture already existed — the brake holds a fixed direction along
-the change the chain needs, and the departure burn holds the escape ray — and
+the change the chain needs, and the departure burn holds its solved direction —
+and
 the measurement now says keeping it is not a compromise.
 
 ## What was measured

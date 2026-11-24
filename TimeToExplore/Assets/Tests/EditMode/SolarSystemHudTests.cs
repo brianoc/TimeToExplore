@@ -316,6 +316,15 @@ namespace TimeToExplore.Tests.EditMode
             Update();
             Assert.That(ButtonLabel("RouteButton").text,
                 Is.EqualTo("Replan to Gateway Station"));
+
+            // A station arrival is the hold point, not an orbit, so the status
+            // line must not borrow the planet's wording.
+            _bootstrap.Flight.Advance(_bootstrap.Flight.Plan.ArrivalJulianDate, 50_000);
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Arrived));
+
+            Update();
+            Assert.That(TextNamed("StatusDistance").text, Does.Contain("at the hold point"));
+            Assert.That(TextNamed("StatusDistance").text, Does.Not.Contain("in orbit"));
         }
 
         [Test]

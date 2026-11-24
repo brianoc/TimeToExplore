@@ -4,7 +4,7 @@ title: Time and scale
 description: Units, epoch, time acceleration, and the precision budget for a true-scale solar system.
 tags: [simulation, time, scale, precision]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-15T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # Why this document exists
@@ -82,21 +82,32 @@ Reference transit times at 1 g continuous thrust (see
 The high end is for crossing the outer system, not for docking. The prototype
 lets the player change warp at any time with keys 1–7 and toggle pause with P.
 
-**Future rule:** warp should drop automatically when the ship is close to a
-body, when a planned burn is due, or when a collision is possible. Warping
-through a moon at 1,000,000x is not a gameplay feature.
+**Automatic drop:** warp now drops by itself when the ship is close to a body,
+when a planned burn is due, when a collision is possible, and on the run in to a
+station's hold point. The policy is below; warping through a moon at 1,000,000×
+is not a gameplay feature.
 
 ## Automatic warp drop
 
 The player's setting is a **ceiling**; the flight policy may lower it. Three
-physical limits set the most simulated time one frame may span, and the smallest
-wins:
+ordinary limits set the most simulated time one frame may span. A station plan
+adds two more, because a station is a massless point target the gravity field
+never selects. The smallest wins:
 
 | Rule | Limit | Measured at 60 fps |
 |---|---|---|
 | Clearance | 25% of the time to the nearest body's surface at the current relative speed | — |
 | Local dynamics | 2% of `sqrt(r³/GM)` for the nearest body | Mars parking orbit: 23.5 s per frame, so 1,000× |
-| Plan events | 5% of the time to the next arc boundary or the arrival | mid-cruise: 8,673 s per frame, so 100,000× |
+| Plan events | 5% of the time to the next arc boundary or the arrival | mid-cruise: 10,061 s per frame, so 100,000× |
+| Station clearance | 25% of the time to the station's catalogue surface at the current relative speed | station plan only; the same quarter rule |
+| Station hold | 5% of the time to the 500 m hold point | station plan only, released once the plan completes |
+
+Measured on a real Ares Junction → Gateway plan, sampled a day before departure
+so the event pacing is not binding: 200 km astern closing at 100 m/s caps a
+frame at **99.8 s** where the gravity field alone allows 3,709 s; at the hold
+point the cap is the **1 s floor**; 2 × 10⁹ m away neither station cap binds and
+the event cap's 130,059 s wins. The station caps are released when the plan
+completes, so the clock is not pinned after arrival.
 
 Deep space, half an AU from Earth, allows 328,932 s per frame, which is above the
 top scale. The cap is rounded down to the clock's power-of-ten steps, and the HUD
@@ -110,7 +121,8 @@ cap keeps the budget slack: the Mars acceptance flight peaked at 63 substeps in 
 frame.
 
 Warping through a moon at 1,000,000× is no longer possible, and neither is
-arriving without seeing the final approach.
+arriving without seeing the final approach — or, at a station, the last few
+hundred metres to its hold point.
 
 
 # Precision budget

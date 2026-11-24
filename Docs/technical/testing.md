@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T23:20:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # One command
@@ -109,15 +109,16 @@ because Unity test assemblies cannot reference the predefined
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
 | `PlanGeometryTests` | quintic endpoint conditions and peak factors, parking radius and its gravity ceiling across the catalogue, circular/equatorial/prograde orbits, SOI radii |
 | `ShipIntegratorTests` | orbit stability, Kepler agreement, kinematic thrust, the brachistochrone table, step-size independence, collision, step cap |
-| `TripPlannerTests` | the profile's arc chain and phases, exact arrival on the conic parking orbit, seam continuity, flight-time envelope, Venus, Jupiter on the conic radius, the Moon as one inside-sphere capture, LEO departure at 1 g as the new short-break case and its 0.3 g refusal at the 2.942 m/s² level, determinism, no mutation, the default conic capture, the fixed-thrust style's 0.3 g level and its clamp to 0.05–1 g, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
+| `TripPlannerTests` | the profile's arc chain and phases, exact arrival on the conic parking orbit, seam continuity, flight-time envelope, Venus, Jupiter on the conic radius, the Moon as one inside-sphere capture, LEO departure at 1 g as the new short-break case and its 0.3 g refusal at the 2.942 m/s² level, determinism, no mutation, the default conic capture, the fixed-thrust style's 0.3 g level and its clamp to 0.05–1 g, an unknown target refused, and pinned durations: exact flight time at twice the minimum with a gentler burn and less delta-v, a conic plan at 1.5× the fastest time landing exactly there, an infeasible report at 95%, and rejection of a non-positive or non-finite request |
+| `StationTripPlannerTests` | a station is a point target: the hold state (arrival state and the last arc inside 1 m and 0.001 m/s), no approach, parking-orbit or capture-chain arc and no arc about the station, the heliocentric starts (first arc a finite burn on the ship's own state, no Departure/Escape), station-to-station, the fastest station route, the unchanged planet anchor, and a station accepted where a genuinely massless non-station is refused |
 | `FlightExecutionTests` | plan, fly, and arrive at Mars and Jupiter in stable orbits; feedback from a perturbed start; the Mars→Earth return at the epoch is refused because its short arc is retrograde and the profile has only the prograde branch; the orrery is untouched |
-| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic capture applying its burns and arriving matched, the hybrid capture stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the `[minimum, 3 × minimum]` trip-time window and its clamp, retiming without moving the ship, and Begin keeping the chosen time), the preview-window cache (a repeat plot at the same date returns the same plan, another target misses, a burn-level change misses, and a changed departure date invalidates the cache), the background retime (the newest of two requests made while the first builds is published and the older build is dropped, the worker's plan equals the synchronous plan, the previous preview stays published until the new one is ready, a synchronous retime supersedes an outstanding ask, a discard drops an outstanding request, and Dispose joins the worker and refuses new work), the background preview planner (the async plot and the async style rebuild publish through `TryApplyCompletedPreview`, `APlotAsyncPublishesTheFastestFeasiblePlan` matches the synchronous `Plot` through the shared window cache, the newest async plot wins, a failed async plot reports and publishes nothing, and a disposed session refuses new work), and the idle coast that keeps the ship moving with the clock |
-| `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps; scale rounding; the suggested Go To warp |
+| `FlightSessionTests` | ship ownership, the Go To plan from Gateway, exact arrival through the session, budget clamping, cancel, teleport, a flight through a body, no mutation, the conic capture applying its burns and arriving matched, the hybrid capture stepping through one finite burn and the trim, the session arrival style reaching the planner, a style switch rebuilding the preview at the pinned date while keeping a flight time that fits the new window and leaving the ship still, the station cases (`PlaceAt` at every station, the feasible hold preview at 500 m astern with the station's velocity, and a full Ares Junction → Gateway flight that reaches the tracked hold point at 0.0254 m / 7.7 × 10⁻⁵ m/s with no parking capture), the preview (never moves the ship, one-at-a-time, Begin consumes and replans, Cancel clears, the 1% staleness window, the `[minimum, 3 × minimum]` trip-time window and its clamp, retiming without moving the ship, and Begin keeping the chosen time), the preview-window cache (a repeat plot at the same date returns the same plan, another target misses, a burn-level change misses, and a changed departure date invalidates the cache), the background retime (the newest of two requests made while the first builds is published and the older build is dropped, the worker's plan equals the synchronous plan, the previous preview stays published until the new one is ready, a synchronous retime supersedes an outstanding ask, a discard drops an outstanding request, and Dispose joins the worker and refuses new work), the background preview planner (the async plot and the async style rebuild publish through `TryApplyCompletedPreview`, `APlotAsyncPublishesTheFastestFeasiblePlan` matches the synchronous `Plot` through the shared window cache, the newest async plot wins, a failed async plot reports and publishes nothing, and a disposed session refuses new work), and the idle coast that keeps the ship moving with the clock |
+| `WarpPolicyTests` | clearance, local-dynamics, and plan-event caps, the two station caps (the quarter-rule clearance to the station's surface, the 5% hold-point cap and its release on completion), the 1 s floor, the non-binding far case, scale rounding, the suggested Go To warp |
 | `PlanPathTests` | arc boundary walking, a straight arc staying one chord, every adaptive chord on the Mars plan meeting the sagitta tolerance with exact endpoints, the conic coast's flatness and dense periapsis sampling, the periapsis and circularisation as plan boundaries, the hybrid arcs meeting the same flatness tolerance, and one finite burn with the trim and circularisation as the two impulses |
 | `RouteColourTests` | exactly three path types, one distinct colour each, solid for a quintic or fixed burn and dashed for a conic, distinct same-hue shades inside a run of one type, and the real profile plans: the escape conic and the conic capture's runs around the departure burn and brake, and the hybrid capture's new conic run after its capture burn |
-| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, the `Fuel` row, a re-timed preview's flight time, later arrival and lower fuel, the profile's break/coast/approach/departure-burn/brake/capture rows with no torch peak, the hybrid capture burn, status labels, countdown formatting |
+| `FlightReportTests` | the phase table, live rows, arrival rows, preview and stale rows, the `Fuel` row, a re-timed preview's flight time, later arrival and lower fuel, the profile's break/escape/coast/approach/departure-burn/brake/capture rows with no torch peak, the hybrid capture burn, a station's **Match** phase and drive rows with no capture-chain row, the **Arrived, at the hold point** status and the **Match** next event, status labels, countdown formatting |
 | `FuelModelTests` | the rocket equation at the design exhaust velocity (1,000 t dry and a delta-v of 10,000 km/s needs 1,718.28 t), the mass ratio and propellant fraction, propellant rising faster than delta-v, a plan's readout matching its own delta-v and dry mass, and the burn level barely moving the fuel at a fixed trip time (30 days to Mars at 0.3 g against 1 g) |
-| `KeplerPropagatorTests` | universal-variable propagation against the elements path on circular and eccentric ellipses, the hyperbolic periapsis and its analytic speed, forward/backward round trip, energy and angular momentum over 40 steps, state ↔ conic elements, a circular conic arc, its two-body reference acceleration, and Barker's parabolic time against universal-variable propagation at 2, 10 and 100 periapsis radii |
+| `KeplerPropagatorTests` | universal-variable propagation against the elements path on circular and eccentric ellipses, the hyperbolic periapsis and its analytic speed, forward/backward round trip, energy and angular momentum over 40 steps, state ↔ conic elements, a circular conic arc, its two-body reference acceleration, and the parabolic branch: Barker's standard `½ √(p³/μ)` time against universal-variable propagation at 2, 10 and 100 periapsis radii, and the inverse anomaly |
 | `LambertSolverTests` | the zero-rev prograde short-way solve: propagating `v₁` onto `r₂`, a 90° circular quarter turn, a Hohmann-like transfer against the vis-viva speeds, a high-energy hyperbolic transfer, the short-way branch returned while the long way is refused, the 180° guard returning no solution instead of throwing, degenerate arguments throwing, and an epoch Earth→Mars coast landing at Mars |
 | `TransferConicTests` | the entry radius (the sphere of influence or the handover floor), an inbound coast to a low periapsis, the fall shortening as the entry radius comes in (Uranus 117.1323 d from the sphere against 0.02153 d from the 38,643.0 km floor) and as the entry speed rises (0.00623 d at 50 km/s), the periapsis capture burn being set by the entry speed and not the entry radius (6.3691 km/s at 5 km/s from either radius, 39.0952 at 50 km/s), the capture plane and prograde direction, the retrograde periapsis and prograde apoapsis burns, the conic parking radius below the gravity ceiling, and invalid geometries reported rather than built |
 | `FiniteBurnTests` | a constant-magnitude arc starting exactly at its state, accelerating at the fixed level opposite the velocity, the time mapping being the identity, matching the standalone RK4 simulation, the radius-crossing solver matching a post-hoc simulation, and meeting the plan's sagitta tolerance; a full-field burn crossing the sphere of influence matching an independent 20,000-step RK4 of the same field and thrust, its acceleration at a sample being the field plus the thrust rather than the two-body value, a short local burn agreeing with the two-body burn, and the reference body being a label (one inertial path, two local decompositions differing by exactly the two bodies' states); the hybrid capture solver on Venus, Earth, Mars, Jupiter, Saturn, and the Moon with a safe injection radius, the trim landing on the exact transfer ellipse, the circularisation leaving a circular parking orbit, a stronger burn leaving a smaller trim, and the conic parking radius at 0.3, 0.5, and 1.0 g |
@@ -129,12 +130,12 @@ because Unity test assemblies cannot reference the predefined
 | `ThrustVectorTests` | the thrust arrow points along the commanded acceleration rather than the velocity, hides at zero and below-threshold thrust, keeps a fixed apparent length as the camera distance doubles, and hides and returns with the ship marker |
 | `DrawingRulesTests` | the 4.5 px marker minimum and true-scale override, the viewport angular conversion, the Sun/planet/station always-on labels, the 2-million-km moon and 200,000-km asteroid windows, the selection always labelling, the 3 px line width at every zoom, proportional to camera distance and resolution-independent; the bounded width: the far arc holding 2 px, the near arc capped at the line's own look-at width, a vertex at or behind the camera having no width, a thinner line not being inflated, both real line renderers carrying a width key per vertex, a zoomed-in curved route staying between 2 and 3 px, and the camera-plane clip keeping the near-plane crossing and the longest of two visible runs; and Mercury warm, Neptune cool, eight distinct planet colours in orbital order |
 | `SceneFlightTests` | the scene's frame loop: clock, warp cap, session advance, clamp; the full Gateway→Mars acceptance flight and three orbits |
-| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, a plot draws the preview and arrival ghost without flying and eases the camera to the whole route, the route draws one coloured line per arc with same-type shades and the arrival-style switch redraws the conic and hybrid palettes, the trip-time slider requests a retime through the real HUD, holds the handle and the previous full-field preview while the plan lags, publishes the finished plan on the main thread without moving the ship, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the 12-billion-km ceiling and returns to the exact remembered angle, one wheel gesture eases through the frame loop instead of snapping, the Mars acceptance — select, plot, Begin — arrives on the parking orbit and re-captures the arrival framing distance through the bootstrap's own frame loop, the profile acceptance — plot, Begin, and arrive on the conic parking orbit through the same frame loop — plus the frame loop dropping a frame until the model, clock, and renderer exist and skipping a body view destroyed mid-teardown |
+| `BootstrapSmokeTests` | the real composition root: `Awake` builds the world and the camera rig, Go To wires the flight and the trajectory line, cancel and reset behave, the debug jump is refused in flight, a plot draws the preview and arrival ghost without flying and eases the camera to the whole route, the route draws one coloured line per arc with same-type shades and the arrival-style switch redraws the conic and hybrid palettes, the trip-time slider requests a retime through the real HUD, holds the handle and the previous full-field preview while the plan lags, publishes the finished plan on the main thread without moving the ship, Begin replans at the current date, the clock runs while idle so a preview can age, discard leaves the ship alone, one wheel gesture through the rig reaches the 12-billion-km ceiling and returns to the exact remembered angle, one wheel gesture eases through the frame loop instead of snapping, the Mars acceptance — select, plot, Begin — arrives on the parking orbit and re-captures the arrival framing distance through the bootstrap's own frame loop, the profile acceptance — plot, Begin, and arrive on the conic parking orbit through the same frame loop — the station acceptance — Gateway from Ares Junction plots, draws its arcs and arrival ghost, and begins the flight — plus the frame loop dropping a frame until the model, clock, and renderer exist and skipping a body view destroyed mid-teardown |
 | `InputMappingTests` | the explicit digit table (`1`–`9` → indices 0–8, `0` → 9), Space as the camera home and `P` as pause, every other hotkey toggle, the highest-digit rule, `WASDQE` axes, Shift ×10 and Ctrl ×0.1, comma/period speed steps, the legacy 0.1 mouse sensitivity, macOS ≈ 1 and Windows 120 → 1 scroll normalisation, the screen-to-picking pointer flip, the 4 px click slop that separates a click from a drag, and null devices returning neutral values |
 | `InputSeamTests` | a source scan of `Assets/Scripts`: no legacy `UnityEngine.Input` call outside `PlayerControls`, the Input System named by exactly two runtime files (`PlayerControls` and `UiInput`), the seam polling `Keyboard.current`/`Mouse.current` with no `InputActionAsset`, the UI module assigning the default actions without double-equipping an EventSystem, no `OnGUI`/`GUI.*`/`GUIStyle`/`Texture2D.whiteTexture` in the runtime, and `activeInputHandler: 1` pinned |
 | `InputDeviceTests` | a virtual keyboard and mouse through `InputTestFixture`: a device-free frame is neutral, key edges feed the hotkey intents (Space home, `P` pause), held keys feed the movement and modifier intents, mouse buttons feed click press/hold/release and right-drag begin/end, and device deltas and scroll pass through the 0.1 and normalisation rules |
 | `AssemblyLayoutTests` | the six `.asmdef` files as the source of truth: Core has no references, Simulation references only Core and opts out of UnityEngine references, Presentation references Core + Simulation + the Input System + Unity UI, Editor is Editor-only, the EditMode suite is Editor-only and the PlayMode suite is all-platform, both test suites reference the three runtime assemblies, no assembly references a later layer, every project reference names a known assembly, exactly one asmdef per layer with no stray under `Player`/`Rendering`/`UI`, unique GUIDs, and the compiled assembly names of representative types |
-| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the profile's *Quintic arc*, *Conic arc*, and *Fixed burn* rows (the escape conic comes before the departure burn), collapsing its conic arcs into one row, stacking above the flight panel, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and requesting a retime through its `onValueChanged` while the handle and label keep the player's ask and the finished plan is published on the main thread, the two arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the conic capture), the `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider running from 0.05 to 1 g and rebuilding the preview at 0.5 g with the minimum clamped, the profile's own 16.84–50.53 day window and its report rows through the shared level control, `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
+| `SolarSystemHudTests` | the runtime uGUI HUD: one Screen Space Overlay Canvas with the 1920×1080 scaler and a GraphicRaycaster, exactly one EventSystem with an `InputSystemUIInputModule`, no legacy module, and navigation events off so Space/Enter stay gameplay keys, the status text tracking the clock/ship/selection, the details panel opening for Mars with every `BodyDetails` row and closing, the flight panel for a preview and a live plan, the route legend appearing with the profile's *Quintic arc*, *Conic arc*, and *Fixed burn* rows (the escape conic comes before the departure burn), collapsing its conic arcs into one row, stacking above the flight panel, staying non-raycast, hiding with `ShowHud`, and hiding when the route is discarded, the trip-time slider appearing with a preview, holding the fastest plan at its left end, and requesting a retime through its `onValueChanged` while the handle and label keep the player's ask and the finished plan is published on the main thread, the two arrival-style buttons marking the active capture and rebuilding the preview against the chosen style (the trip-time window follows, and switching back restores the conic capture), the `0.3 g burn` button rebuilding the preview with the hybrid finite burn and its impulsive circularisation, the burn-level slider running from 0.05 to 1 g and rebuilding the preview at 0.5 g with the minimum clamped, the profile's own 16.84–50.53 day window and its report rows through the shared level control, the station details screen plotting and beginning Gateway from Ares Junction through the real buttons (its plan shows and its status line reads `at the hold point` on arrival), `ShowHud`/`ShowLabels`, the one-frame opening guard, the route/begin/jump/close `onClick` handlers reaching the same owner methods, and pointer picking skipping a view destroyed mid-teardown |
 
 The suite deliberately tests the shipped catalogue as well as the maths, so a
 bad regeneration fails before Unity opens a scene. Each class carries a
@@ -201,12 +202,11 @@ with a 10 m/s² drive:
 
 | Quantity | Value |
 |---|---|
-| Gateway to Mars plan | 4.44 days, 2,345 km/s, 9.76 m/s² peak |
-| Gateway to Venus plan | 2.85 days, 1,171 km/s, 8.42 m/s² peak |
-| Gateway to Jupiter plan | 10.32 days, 5,189 km/s, 9.78 m/s² peak |
-| Mars parking orbit | 3,898 km radius, 3.315 km/s |
-| Jupiter parking orbit | 177,965 km radius, 4.0 m/s², 26.7 km/s |
-| Arrival error after the Mars flight | 0.01 m, 0.0000 m/s |
+| Gateway to Mars plan (coast floor, 0.3 g) | 16.84485 days, 1,017.1 km/s, 2.95 m/s² peak |
+| Gateway to Mercury plan (coast floor, 1 g) | 14.06070 days, 1,821.1 km/s, 9.70 m/s² peak |
+| Gateway to Jupiter plan (coast floor, 0.3 g) | 23.73299 days, 1,899.5 km/s, 2.95 m/s² peak |
+| Mars parking orbit (conic) | 3,898 km radius, 3.315 km/s |
+| Jupiter parking orbit (gravity ceiling, quintic inside-sphere capture) | 177,965 km radius, 4.0 m/s², 26.7 km/s |
 | Mars eccentricity after three orbits | 3.1 × 10⁻⁶ |
 | Jupiter eccentricity after three orbits | 1.9 × 10⁻⁵ |
 | Gateway to the Moon | 1.56 hours, one arc |
@@ -222,20 +222,23 @@ the suggested initial warp of 10,000×:
 
 | Quantity | Value |
 |---|---|
-| Gateway→Mars arrival | 2026-11-19 10:29:02 UTC, 4.44 days after departure |
-| Arrival error through the frame loop | 0.0 m, 0.0000 m/s |
-| Three orbits after arrival | 3,898 km, eccentricity 3.07 × 10⁻⁶, drive off |
-| Real time | 65.7 s over 3,939 frames |
-| Peak substeps in one frame | 63 of the 2,000 budget |
+| Gateway→Mars arrival | 2026-12-01 11:40:50 UTC, 16.49 days after departure |
+| Arrival error through the frame loop | 0.1 m, 0.0001 m/s |
+| Three orbits after arrival | 3,898 km, eccentricity 3.12 × 10⁻⁶, drive off |
+| Real time | 202.0 s over 12,118 frames |
+| Peak substeps in one frame | 14 of the 2,000 budget |
 | Warp | x10,000 → x10, auto-limited |
 | Deep-space frame cap | 328,932 s (above 1,000,000×) |
 | Mars parking-orbit frame cap | 23.5 s (1,000×) |
-| Mid-cruise plan-event cap | 8,673 s (100,000×) |
-| Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 05:53, clock never ahead of the ship |
+| Mid-cruise plan-event cap | 10,061 s (100,000×) |
+| Starved budget, 2 substeps/frame, 400 frames | reaches 2026-11-15 00:15, clock never ahead of the ship |
 
 `BootstrapSmokeTests` repeats the same flight through the real composition
-root: 3,939 frames, 65.7 s, arrival 2026-11-19 10:29:02 UTC, 0.0 m and
-0.0000 m/s, 3,898 km and e = 4.3 × 10⁻⁹ at arrival. The identical counts are
+root: 12,118 frames, 202.0 s, arrival 2026-12-01 11:40:50 UTC, 0.1 m and
+0.0001 m/s, 3,898 km and e = 1.95 × 10⁻⁹ at arrival. The shorter
+`AProfileFlightArrivesThroughTheBootstrap` run (4,922 frames, 82.0 s) uses the
+bootstrap's larger default frame step and reaches the same state at
+e = 2.19 × 10⁻⁹. The identical counts are
 the point: the camera is a pose, so the flight path does not depend on how the
 player found the target.
 
@@ -279,7 +282,7 @@ performance](/technical/planning-performance.md#the-runtime-divergence-is-a-prop
 | True floor, Mercury at 1 g | 14.06070 days, peak 9.70 m/s², 1,821.1 km/s |
 | True floor, Uranus at 1 g | 57.02223 days, peak 9.70 m/s², 1,417.8 km/s, nine arcs |
 | True floor, Uranus at 0.3 g | 92.13088 days, peak 2.95 m/s², 811.1 km/s, nine arcs |
-| True floor, Jupiter at 0.3 g | 23.73299 days, peak 2.95 m/s², 1,899.5 km/s, eight arcs |
+| True floor, Jupiter at 0.3 g | 23.73299 days, peak 2.95 m/s², 1,899.5 km/s |
 | Just below the Mercury minimum | 13.8 days refused: below the 13.86287-day burn-only minimum; 8 days is refused with the departure-time reason |
 | Just below the Mars minimum | 16.0 days refused: below the 16.48669-day burn-only minimum |
 | 90-day Mars plan, total | 38.9678 km/s (direct build, outside the nav window) |
@@ -298,9 +301,30 @@ performance](/technical/planning-performance.md#the-runtime-divergence-is-a-prop
 | Arrival error | exact at the reference state; the flown 14.1-day Mercury flight arrives inside 10 m / 0.1 m/s |
 | Parabolic time | Barker's branch matches `KeplerPropagator` to 1 m at 2, 10 and 100 periapsis radii; the old branch was √2 too long (17.002 d against 12.022 d at Mars) |
 
+The **station call** has its own anchors, measured at the epoch at 0.3 g (the
+measured values are in the 2026-11-24 update log):
+
+| Quantity | Value |
+|---|---|
+| Hold point | `ComputeState(station, arrivalJd)` offset 500 m astern along the station's velocity (`TripPlanner.StationHoldDistanceM`) |
+| Ares Junction → Gateway, 160 d | 12.239 km/s, three arcs: burn 6.206, coast 0.451, match 5.583 |
+| Ares Junction → Gateway, fastest | 54.16210 d, 69.541 km/s, three arcs |
+| Mars 300 km → Gateway, 120 d | 25.648 km/s, five arcs: break 2.854, escape 0.004, burn 8.300, coast 0.110, match 14.379 |
+| Mars 300 km → Gateway, coast floor | 59.57357 d, 76.494 km/s, five arcs |
+| Gateway → Ares Junction, 120 d | 24.733 km/s, five arcs: break 1.404, escape 0.252, burn 7.577, coast 0.063, match 15.437 |
+| Ares Junction → Earth, 230 d | 24.091 km/s, seven arcs, a heliocentric start |
+| Helios Watch → Mars, 200 d | 10.747 km/s, seven arcs, a heliocentric start |
+| Station flight, tracked arrival | 0.0254 m and 7.68 × 10⁻⁵ m/s over 9,198 substeps |
+| Station warp cap, 200 km astern at 100 m/s | 99.8 s per frame (the gravity field alone allows 3,709 s) |
+| Station warp cap, at the hold point | the 1 s floor |
+| Station warp cap, 2 × 10⁹ m away | non-binding; the event cap's 130,059 s wins |
+
 The profile's capture chain enters at the arrival handover floor, not the
 sphere of influence. The entry, the fall,
-and the capture are measured at the epoch against the sphere-of-influence build:
+and the capture are measured at the epoch against the sphere-of-influence build.
+The floor-entry column's Mars and Uranus totals match the shipping anchors; the
+sphere-entry column records the earlier build that motivated the floor and is
+not a plan the planner returns today.
 
 | Quantity | Sphere entry | Floor entry |
 |---|---:|---:|
@@ -659,6 +683,9 @@ non-empty `parent` for orbits) and keep a regression test for it.
   *spiral* cruise. The Lambert coast, the prograde departure burn,
   and the brake are covered; a slow continuous spiral that does not coast on a
   conic is not.
+* Docking and the station's final relative approach. A station flight is tested
+  to its 500 m hold point with the velocity matched; the last few hundred metres
+  are not implemented, so nothing flies them.
 * Continuous integration. The repository is under version control and `main` is
   published, but no CI pipeline runs yet; when one does, `tools/check.sh` is its
   single entry point.

@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # Shape of the prototype
@@ -96,7 +96,8 @@ graph and reads the `.asmdef` files as the source of truth. See
    * `SolarSystemModel.Update` recomputes every body's position and velocity at
      the clock date.
    * `WarpPolicy` caps the requested time scale from the nearest body's clear-
-     ance, its local orbital timescale, and the next plan boundary.
+     ance, its local orbital timescale, the next plan boundary, and — while a
+     station plan is live — the station's own clearance and its hold point.
    * `SimulationClock.Advance` adds `deltaTime × cappedScale` to the Julian date.
    * `FlightSession.Advance` integrates the ship to the clock's date in legs
      split at plan arc boundaries, with a substep budget.
@@ -119,7 +120,8 @@ graph and reads the `.asmdef` files as the source of truth. See
    `TripPlanner.PlanAtDuration` inside that profile's window on the worker as
    well; the HUD publishes finished plans on the main thread, and **Begin
    flight** replans and hands the ship to the session. On arrival the plan
-   completes, the drive goes off, and the ship coasts in the parking orbit.
+   completes, the drive goes off, and the ship coasts in the parking orbit — or
+   holds at a station's 500 m hold point with its velocity matched.
 
 # Core types
 
@@ -163,17 +165,19 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `ParkingOrbit` | `Scripts/Simulation/ParkingOrbit.cs` | The quintic orbit with its gravity ceiling, and the lower conic/hybrid orbit |
 | `SphereOfInfluence` | `Scripts/Simulation/SphereOfInfluence.cs` | Patched-conic radius, used only for planning waypoints |
 | `HandoverBand` | `Scripts/Simulation/HandoverBand.cs` | The handover floor (`0.4` of the drive, clamped to the body clearance), the `1.02 × SOI` ceiling, the two endpoints, and the empty-band reason |
-| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (the burn–coast–burn profile with two capture styles; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
+| `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (the burn–coast–burn profile with two capture styles for a planet, and a point-target hold-point rendezvous for a station; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes the profile's slowest accepted trip; builds route plans synchronously or on the background worker — `PlotAsync`, style/burn-level rebuilds, the slider's re-time — with its own planner and field, publishing finished plans on the main thread; coasts an idle ship; the scene's flight loop |
-| `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, and the next plan event |
+| `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, the next plan event, and a station's clearance and hold point while a station plan is live |
 
 The planner crosses on the **burn–coast–burn** profile: a zero-revolution
 prograde Lambert conic chosen by `LambertSolver.SolveShortWay`, bookended by a
-prograde departure finite burn and a brake. The break ends on the departure
-handover band's ceiling (`1.02 × SOI`) at the local escape speed along the
-escape ray, and the departure burn starts there and holds the ray; its angles,
-its duration, and the coast's start are solved forward, while the brake is still
+prograde departure finite burn and a brake. The break is a short prograde quintic
+that ends at the parking radius on the ship's own tangent at the planetocentric
+escape speed; a ballistic `ConicArc` about the departure body carries that state
+to the handover band's ceiling (`1.02 × SOI`), and the departure burn starts at
+the conic's ceiling **state** and holds a solved thrust direction, with its
+angles, its duration, and the coast's start solved forward. The brake is still
 built backwards from the capture chain's entry state with
 `FiniteBurnArc.SimulateBackward`. Every seam is continuous and the arrival is
 exact; the brake's thrust direction is the change the chain needs, not the
@@ -188,7 +192,10 @@ probes keep the cheap two-body burn; the plan that is reported and flown is the
 full-field build. `CaptureStyle` chooses the capture: the conic chain (default)
 or the hybrid fixed-thrust chain. A quintic capture survives only for a trip
 that starts inside the target's sphere of influence, where there is no crossing
-to plan.
+to plan. A **station** target takes the planner's point-target branch instead:
+the same departure and coast, then a finite velocity match onto the 500 m hold
+point, with no sphere, parking orbit or capture chain
+([ADR-019](/decisions/adr-019-station-calls-and-departure.md)).
 
 Gateway→Mars and Mars→Earth are both exercised end to end by the suite, and the
 same Mars trip is flown through the scene's frame loop.

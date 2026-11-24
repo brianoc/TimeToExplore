@@ -4,18 +4,20 @@ title: Burn–coast–burn trips
 description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T22:46:56Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # The trip
 
-Leave a planet, cross to another, and park there. The ship:
+Leave a planet, cross to another, and park there — or arrive at a station and
+hold at its hold point. The ship:
 
 1. breaks out of its parking orbit and climbs ballistically to escape,
 2. burns hard for a while and builds speed,
 3. coasts with the drive off, still travelling fast,
 4. flips and burns hard to slow down,
-5. drops into the target's parking orbit.
+5. drops into the target's parking orbit, or matches the station's velocity at
+   its hold point.
 
 This is the standard **burn–coast–burn** profile, sometimes called a
 brachistochrone with a coast. It is not exotic physics. It is the profile most
@@ -28,10 +30,12 @@ plain Lambert coast were retired once this profile landed.
 The route colours once made three fixed recipes — all-quintic, conic arrival,
 and hybrid arrival — look like three separate kinds of trip. They are really
 three **arc shapes**, plus one solver, and a trip can mix them. The nav
-computer now asks one question:
+computer now asks one question for a planet:
 
 * the **`ARRIVAL`** row chooses the capture — **Conic** or the hybrid
   **X g burn**.
+
+A station has no capture to choose; its plan ends on a hold point.
 
 The crossing is always the profile. It is built from the same ingredients:
 
@@ -56,7 +60,8 @@ leave orbit     escape        burn hard         coast        approach        bra
 ```
 
 Every arc type already existed. The planner emits this recipe as its only
-crossing: there is no profile selector and no zero-thrust version. A trip that
+crossing for a **planet** destination: there is no profile selector and no
+zero-thrust version. A trip that
 starts inside the target's sphere of influence has no crossing to plan and is a
 single quintic capture instead.
 
@@ -89,6 +94,27 @@ cheap ([ADR-014](/decisions/adr-014-keplerian-coast.md),
 fine and is the right tool for the exact orbital break. The quintic capture
 survives only for a trip that starts inside the target's sphere of influence,
 where there is no crossing at all.
+
+## The station terminal
+
+A **station** target takes the same departure and coast and then ends before the
+capture: break → escape (only if the ship starts inside a planet's sphere) →
+departure burn → coast → **velocity match** → **hold point**. The target is a
+massless point, so there is no sphere of influence, handover band, parking orbit,
+planetocentric approach or capture chain. The terminal condition is
+`SolarSystemModel.ComputeState(station, arrivalJd)` offset 500 m astern along the
+station's own velocity (`TripPlanner.StationHoldDistanceM`), with the ship's
+velocity matched to the station's. Because a rendezvous may **add** speed as well
+as shed it, the final burn is a match and not the planet arrival's retrograde
+brake; the planet path's retrograde-only refusal is dropped for a station.
+
+A station outside every sphere — Helios Watch, Nyx Anchor, Ares Junction and the
+Jovian Transfer Yard — has no departure or escape arc at all: its plan starts
+with a finite burn on the ship's own heliocentric state, and the measured three-arc
+Ares Junction → Gateway trip is the reference. Gateway and Titan Reach are inside
+a sphere, so they keep the break and the climb and still end on the point target.
+Docking is not implemented; the plan ends at the hold point
+([ADR-019](/decisions/adr-019-station-calls-and-departure.md)).
 
 # Speed is the input
 
@@ -151,7 +177,9 @@ profile.
    built backwards from the brake's own start state — covers the deep part of the
    final approach; the brake then starts where the approach ends and spends the
    rest of the handover the coast skeleton would have made an impulse. Every seam
-   is continuous and the arrival is exact.
+   is continuous and the arrival is exact. A **station** plan replaces the final
+   approach/brake/capture with one velocity match onto the 500 m hold point
+   ([the station terminal](#the-station-terminal)).
 4. **The controls.** The nav computer's `ARRIVAL` row chooses **Conic** or the
    hybrid **X g burn**; the trip-time slider is the profile's speed control; the
    burn-level slider is the level the break, the departure burn, the brake, and
@@ -174,10 +202,10 @@ Jupiter and Uranus windows is the three-times cap; Mercury's is the Lambert
 geometry's own slow end. The 90-day Mars plan in the table below is still a valid
 direct build, but it is outside this window, so the nav computer's slider cannot
 ask for it. The slider's **minimum** is the burn-only total where it wins and its
-right end is three times that minimum, so Mars's window is 16.49–50.53 days
-(16.49 is the burn-only minimum, 50.53 the cap), Mercury's 13.86–34.27, and
-Jupiter's 22.56–71.20; Uranus keeps the coast windows above because the burn-only
-crossing does not win there.
+right end is three times that minimum, so Mars's slider is 16.49–49.46 days
+(16.49 is the burn-only minimum), Mercury's 13.86–34.27 (its coast geometry stops
+it before the 41.59-day cap), and Jupiter's 22.56–67.67; Uranus keeps the coast
+windows above because the burn-only crossing does not win there.
 
 # The physical departure
 
@@ -432,9 +460,10 @@ Gateway:
 
 At the giants the zero-coast crossing does not win, so the coast floor is the
 minimum. The slider's right end is three times the minimum where the coast
-geometry allows it: Mercury's window is **13.86–34.27 d** (the short-way transfer
-passes 180° before the 41.59-day cap), Mars's **16.49–50.53**, Jupiter's
-**22.56–71.20**, Uranus's **57.02–171.07** at 1 g and **92.13–276.39** at 0.3 g.
+geometry allows it: Mercury's slider is **13.86–34.27 d** (the short-way transfer
+passes 180° before the 41.59-day cap), Mars's **16.49–49.46**, Jupiter's
+**22.56–67.67**, and Uranus's coast **57.02–171.07** at 1 g and
+**92.13–276.39** at 0.3 g.
 
 ## The gap
 

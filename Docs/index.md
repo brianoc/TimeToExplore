@@ -32,8 +32,8 @@ bundle-relative paths that stay valid when a document moves.
 * [Orbital mechanics](/simulation/orbital-mechanics.md) — Keplerian ephemerides, frames, and station Lagrange points.
 * [Time and scale](/simulation/time-and-scale.md) — units, epoch, time acceleration, and the precision budget.
 * [Flight model](/simulation/flight-model.md) — the 10 m/s² torch drive, travel times, the burn–coast–burn profile, and the delta-v economy.
-* [Navigation and arrival](/simulation/navigation-and-arrival.md) — how the player plans an intercept, inserts into orbit, and docks.
-* [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the shipped burn-hard, coast-fast, brake-into-orbit profile, its pinned departure break, the true floor and trip-time window, the Lambert solver, and the four arc ingredients it mixes.
+* [Navigation and arrival](/simulation/navigation-and-arrival.md) — how the player plans an intercept, arrives in orbit at a planet or at a station's hold point, and why docking is a later phase.
+* [Burn–coast–burn trips](/simulation/burn-coast-burn.md) — the shipped burn-hard, coast-fast profile: brake into a planet's orbit or match a station's hold point, with its short escape departure, the true floor and trip-time window, the Lambert solver, and the four arc ingredients it mixes.
 * [Full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md) — why a fixed burn integrates the summed field, where it hands over to the shaped ends, and why the capture's entry speed becomes an output instead of a planted 5 km/s.
 
 # World
@@ -81,3 +81,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-016: Show what a journey costs in fuel, without a tank](/decisions/adr-016-fuel-readout.md) — charge the plan's delta-v through the rocket equation at 10,000 km/s and print the propellant, while the tank stays unlimited and mass constant.
 * [ADR-017: Zoom toward the pointer, and Space to go home](/decisions/adr-017-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, and ease the view back to the ship in one second.
 * [ADR-018: one orbit camera, no system map](/decisions/adr-018-one-orbit-camera.md) — remove the top-down map and its comparison scene, keep one 2,000 km–12 billion km orbit camera, and capture the framing distance once.
+* [ADR-019: station calls and the departure break](/decisions/adr-019-station-calls-and-departure.md) — a station call is a point-target rendezvous ending 500 m astern on a hold point with no capture chain or docking, and a go-to departure is a short prograde escape break and a ballistic climb, never a share of the trip time.

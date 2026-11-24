@@ -28,14 +28,14 @@ namespace TimeToExplore.UI
             if (plan == null) return rows;
 
             BodyRuntime target = model?.Get(plan.TargetId);
-            bool stationTarget = target != null && target.Data.IsStation;
+            bool stationTarget = session.TargetIsStation;
 
             rows.Add(DetailRow.Heading("PLAN"));
             rows.Add(DetailRow.Of("Target", target != null ? target.Name : plan.TargetId));
 
             foreach (PlanArc arc in plan.Arcs)
             {
-                rows.Add(DetailRow.Of(PhaseLabel(arc.Phase),
+                rows.Add(DetailRow.Of(PhaseLabel(arc.Phase, stationTarget),
                     $"{JulianDate.FormatShort(arc.StartJulianDate)}  ·  " +
                     $"{SolarSystemHud.FormatDuration(arc.DurationSeconds)}  ·  " +
                     DriveLabel(arc, model, stationTarget)));
@@ -109,7 +109,9 @@ namespace TimeToExplore.UI
             if (session.Status == FlightStatus.Flying || session.Status == FlightStatus.Arrived)
             {
                 rows.Add(DetailRow.Of("Phase",
-                    session.Phase.HasValue ? PhaseLabel(session.Phase.Value) : "—"));
+                    session.Phase.HasValue
+                        ? PhaseLabel(session.Phase.Value, stationTarget)
+                        : "—"));
                 rows.Add(DetailRow.Of("Next event", NextEvent(session)));
 
                 if (session.Status == FlightStatus.Flying)
@@ -134,6 +136,18 @@ namespace TimeToExplore.UI
 
         public static string PhaseLabel(FlightPhase phase)
         {
+            return PhaseLabel(phase, false);
+        }
+
+        /// <summary>
+        /// The phase as the panel names it. A station's terminal phase is the
+        /// velocity **match** that ends its rendezvous, not a capture; every
+        /// planet label is unchanged.
+        /// </summary>
+        public static string PhaseLabel(FlightPhase phase, bool stationTarget)
+        {
+            if (stationTarget && phase == FlightPhase.Capture) return "Match";
+
             switch (phase)
             {
                 case FlightPhase.Departure: return "Departure";
@@ -331,7 +345,13 @@ namespace TimeToExplore.UI
         public static string StatusLabel(FlightSession session, double currentJulianDate)
         {
             if (session == null) return "—";
-            if (session.Plan != null) return StatusLabel(session.Status);
+            if (session.Plan != null)
+            {
+                if (session.Status == FlightStatus.Arrived && session.TargetIsStation)
+                    return "Arrived, at the hold point";
+                return StatusLabel(session.Status);
+            }
+
             return PreviewStatusLabel(session, currentJulianDate);
         }
 
@@ -364,8 +384,9 @@ namespace TimeToExplore.UI
             }
         }
 
-        /// <summary>`CAPTURE  T− 18h 12m`, or `Arriving` when the next boundary
-        /// is the end of the plan.</summary>
+        /// <summary>`CAPTURE  T− 18h 12m`, `MATCH  T− 18h 12m` before a station's
+        /// terminal velocity match, or `Arrived` when the next boundary is the
+        /// end of the plan.</summary>
         public static string NextEvent(FlightSession session)
         {
             if (session == null || session.Plan == null) return "—";
@@ -374,7 +395,7 @@ namespace TimeToExplore.UI
             if (!double.IsFinite(seconds)) return "Arrived";
 
             string phase = session.NextPhase.HasValue
-                ? PhaseLabel(session.NextPhase.Value)
+                ? PhaseLabel(session.NextPhase.Value, session.TargetIsStation)
                 : "Arrival";
             return $"{phase}  {FormatCountdown(seconds)}";
         }

@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # Current state — milestone 0
@@ -48,8 +48,9 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
   ellipse, and the conic parking radius, with the throttle stepping instead of
   blending ([ADR-015](../decisions/adr-015-fixed-thrust-burns.md)).
 * The **burn–coast–burn** profile as the planner's only crossing: a zero-rev
-  prograde `LambertSolver`, a heliocentric `ConicArc` coast, a pinned departure
-  break at `1.02 × SOI` at escape speed, a forward departure burn, and a brake
+  prograde `LambertSolver`, a heliocentric `ConicArc` coast, a short prograde
+  escape break and a ballistic climb to the `1.02 × SOI` ceiling, a forward
+  departure burn from the conic's ceiling state, and a brake
   reverse-placed from the capture chain's entry state. The trip-time slider is
   the profile's speed control
   ([Burn–coast–burn trips](/simulation/burn-coast-burn.md)). Planning it is
@@ -58,6 +59,11 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
   probes, the floor and window are cached, and the slider retimes on a
   latest-wins background worker
   ([Planning performance](/technical/planning-performance.md)).
+* **Station calls**: a station is a point-target Go To whose plan ends on a
+  500 m hold point with the velocity matched, with no sphere, parking orbit or
+  capture chain. Four stations are heliocentric rendezvous and Gateway and Titan
+  Reach start inside a planet's sphere; docking is a later phase
+  ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)).
 * Shipped scene at `Assets/Scenes/SolarSystem.unity`, an editor menu to rebuild
   it, and a bootstrap that also self-installs in an empty scene.
 * Automated verification: `tools/check.sh` runs the OKF validator, the catalogue
@@ -127,10 +133,14 @@ Done in `Assets/Scripts/` and verified through the scene's frame loop:
   under the player: an orbit camera (right-drag, wheel zoom) that frames the
   destination automatically until they take it ([ADR-008](../decisions/adr-008-orbit-camera.md)).
 
-**Acceptance met:** Gateway → Mars, 4.44 days, arrives 0.0 m and 0.0000 m/s from
+**Acceptance met at the time:** Gateway → Mars, 4.44 days, arrives 0.0 m and
+0.0000 m/s from
 the parking orbit, holds 3,898 km at e = 3.07 × 10⁻⁶ for three orbits, and does
 it in 65.7 real seconds over 3,939 frames at the suggested 10,000×. Peak 63
 substeps in a frame; warp auto-drops to 10× for the last second. No teleport.
+(The 4.44-day plan was the pre-physical-departure profile; the departure change
+on 2026-11-23 re-baselined the trip times and totals — see
+[Done: station calls and the departure fix](#done-station-calls-and-the-departure-fix-2026-11-24).)
 
 **Known gaps:** the warp drop is in power-of-ten steps; the ship is a marker
 rather than a model; the camera can still be orbited inside a planet (it is
@@ -170,13 +180,15 @@ distance.
 * `Space` still eases home in one second; the 60 AU look-at cap still bounds an
   off-centre zoom.
 
-**Acceptance met:** one wheel gesture climbs from the Gateway neighbourhood to
+**Acceptance met at the time:** one wheel gesture climbs from the Gateway
+neighbourhood to
 the 12-billion-km ceiling with the pose unchanged, and the reverse gesture
 returns to the exact remembered yaw, pitch, and rotation. Mars can be selected
 and plotted; the curve and the arrival ghost draw without flying, and Begin
 replans and arrives on the 3,898 km parking orbit in 4.44 days with 0.0 m and
 0.0000 m/s, 3,939 frames and 65.7 real seconds — the same numbers as the scene
-flight. Importance-ordered picking lets a planet win an overlapping station and
+flight. (The plan's duration and totals have since been re-baselined by the
+physical departure.) Importance-ordered picking lets a planet win an overlapping station and
 repeated clicks cycle the stack.
 
 **Known gaps:** the zoom tween's feel and real pointer hits still need a
@@ -282,10 +294,12 @@ torch-ship fiction uses is flyable. The design is
   to `v₁` and the conic/hybrid capture chain at the far end. It is now private:
   the planner never returns it as a plan.
 * The profile adds a prograde departure finite burn and a brake,
-  both about the Sun. The quintic break ends on the departure clearance sphere
-  (`1.02 × SOI`) at the local escape speed along the escape ray, and the
-  departure burn starts there and holds that ray; its angles, its duration, and
-  the coast's start are solved forward. The brake is still built backwards from
+  both about the Sun. At the time the quintic break ended on the departure
+  clearance sphere (`1.02 × SOI`) at the local escape speed along the escape ray,
+  and the departure burn started there and held that ray; the physical departure
+  later replaced that with a short prograde break and a ballistic climb (see
+  [Done: station calls and the departure fix](#done-station-calls-and-the-departure-fix-2026-11-24)).
+  The brake is still built backwards from
   the capture chain's entry state with `FiniteBurnArc.SimulateBackward`, so every
   seam is continuous and the arrival is exact. The brake spends the handover the
   coast skeleton would have made an impulse, so there is no impulse at the
@@ -296,25 +310,30 @@ torch-ship fiction uses is flyable. The design is
   is the slowest duration the planner accepts, probed because a long short-way
   transfer sweeps past 180° and a slow coast would need an acceleration rather
   than a brake. `Plan()` searches for the true burn–coast–burn floor and gates on
-  the chain closing, so at the epoch the Mars coast window is **6.73–20.19 days**
-  and the Mercury fast end is 3.21610 days at 1 g; Jupiter's is 13.07–39.22 and
-  Uranus's 33.60–100.81 at 0.3 g and 33.65–100.96 at 1 g. The slider's left end
-  is the burn-only minimum where that wins (Mercury 3.04470, Mars 6.49501,
-  Jupiter 12.54280 days), and the range between it and the coast floor is the
-  gap the short-coast step fills. A 90-day Mars plan is a
+  the chain closing. At the time the epoch's Mars coast window was **6.73–20.19
+  days** and the Mercury fast end was 3.21610 days at 1 g; Jupiter's was
+  13.07–39.22 and Uranus's 33.60–100.81 at 0.3 g and 33.65–100.96 at 1 g. The
+  physical departure re-baselined every one of those: Mars is now **16.84–50.53
+  days** on the coast path and the nav minimum is the 16.48669-day burn-only
+  crossing. The slider's left end
+  is the burn-only minimum where that wins (Mercury 13.86287, Mars 16.48669,
+  Jupiter 22.55555 days), and the range between it and the coast floor is the
+  short-coast regime. A 90-day Mars plan is a
   direct `PlanAtDuration` build outside that window. The floor plan and window are
   cached per date, target, level, cruise and arrival style, and moving the
   slider retimes on a latest-wins background worker; every published preview is
   the full-field build, never the fast search estimate
   ([Planning performance](/technical/planning-performance.md)).
-* Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: 44.4 km/s in
+* Measured at the epoch on the pre-physical-departure profile, from Gateway to
+  Mars at 90 days and 0.3 g: 44.4 km/s in
   total (a 4.84-day break at 8.8 km/s, a 13.4 km/s departure burn in 76 minutes,
   an 85.0-day coast, an 18.5 km/s brake in 1.7 hours, and the 3.5 km/s conic
   capture into a 6,033 km entry), against the cheap coast's 14 km/s at 200 days
-  and the torch plan's 2,345 km/s at 4.4 days. Seams close under a metre and
-  3.7 × 10⁻⁴ m/s; the flight arrives 0.1 m and 0.0001 m/s from the reference
-  state. The true floors are 3.21610 days to Mercury at 1 g (1,766 km/s) and
-  6.73042 days to Mars at 0.3 g (1,171.6 km/s), and an over-thrust plan carries an
+  and the torch plan's 2,345 km/s at 4.4 days. The re-measured profile is
+  **38.9678 km/s over nine arcs** at the same 90 days, with a 10.74-day parabolic
+  climb; seams close under a metre and 3.7 × 10⁻⁴ m/s. The true floors are
+  14.06070 days to Mercury at 1 g (1,821.1 km/s) and 16.84485 days to Mars at
+  0.3 g (1,017.1 km/s), and an over-thrust plan carries an
   `InfeasibleReason` naming the arc and the peak it needs.
 
 # Done: PlayMode suite (2026-11-22)
@@ -331,17 +350,73 @@ the PlayMode suite is about half a minute on the warm project. It runs under
 `-nographics`, so rendered pixels and a real pointer through the EventSystem
 remain human checks ([Testing and verification](/technical/testing.md#unity-playmode-suite)).
 
+# Done: station calls and the departure fix (2026-11-24)
+
+Stations are destinations, and the departure is a short escape instead of a
+multi-day hover. The decisions are
+[ADR-019](../decisions/adr-019-station-calls-and-departure.md); the profile is
+[Burn–coast–burn trips](/simulation/burn-coast-burn.md), the rendezvous is
+[Navigation and arrival](/simulation/navigation-and-arrival.md), and the
+stations are [Lagrange stations](/world/lagrange-stations.md).
+
+* **A station call is a point-target rendezvous.** The arrival is the station's
+  own state at the arrival date offset **500 m astern along its velocity**
+  (`TripPlanner.StationHoldDistanceM`), with the ship's velocity matched. There
+  is no sphere of influence, handover band, parking orbit, planetocentric
+  approach or capture chain. Four stations are outside every planet's sphere and
+  are heliocentric rendezvous; Gateway is inside the Moon's and the Earth's, and
+  Titan Reach is inside Saturn's, but they end on the same point target. Docking
+  is not implemented: the plan ends at the hold point.
+* **A station plots, flies and arrives.** The bootstrap and the HUD let
+  `BodyData.IsStation` through the massless-body guard, so Go To works from the
+  details screen. Ares Junction → Gateway at 160 days is **12.239 km/s** over
+  three arcs; the fastest is **54.16210 days / 69.541 km/s**. The flown arrival
+  tracks the hold point to **0.0254 m and 7.68 × 10⁻⁵ m/s**.
+* **The departure is a short prograde escape burn and a ballistic climb.** The
+  break ends at the parking radius on the ship's own tangent at the planetary
+  escape speed; a planetocentric `ConicArc` carries it to the `1.02 × SOI`
+  ceiling (parabolic when the trip allows, hyperbolic when it does not), and the
+  departure burn starts at the conic's ceiling state. The break's duration is its
+  own commanded-level solve, never a share of the trip: **2.854 km/s from a Mars
+  300 km orbit** (2.02× the impulsive `v_esc − v_circ`) and **1.404 km/s from
+  Gateway** (2.98×). A 0.3 g departure from a 400 km Earth orbit is refused
+  because the break cannot lift it.
+* **The trip totals are re-baselined, not preserved.** Gateway → Mars at 90 days
+  is **38.9678 km/s over nine arcs**, not the old 44.35. Mars 300 km → Earth is
+  **81.045 / 49.940 / 35.823 km/s** at 60/90/120 days and → the Moon **83.166 /
+  49.644 / 34.520**; the floors moved to **16.84485 days** at Mars 0.3 g,
+  **14.06070** at Mercury 1 g, **23.73299** at Jupiter 0.3 g, and **57.02223 /
+  92.13088** at Uranus 1 g / 0.3 g.
+* **The station is paced into its hold.** Two warp caps apply while a station
+  plan is live — clearance to the station's catalogue surface at the current
+  relative speed, and 5% of the time to the hold point — and are released when
+  the plan completes. Measured: **99.8 s per frame** at 200 km astern closing at
+  100 m/s, where the gravity field alone allows 3,709 s; the **1 s floor** at
+  the hold point; no effect 2 × 10⁹ m away.
+* **The panel and the HUD say what the arrival is.** A station's terminal phase
+  and drive row read **Match** (never Capture or Brake), the next event reads
+  `Match T− …`, and the status reads **Arrived, at the hold point**; every
+  planet label is unchanged.
+
 # Immediate next tasks
 
-1. Add the porkchop search now that a Lambert solve exists: sample departure and
+1. Start the **trade and cargo loop**: make the station services in
+   [Lagrange stations](/world/lagrange-stations.md#station-services) real, give a
+   delivery a cargo mass the fuel readout has to carry, and pay for a trip from
+   the propellant it spends.
+2. Implement **docking** as the phase after the hold point: a short relative
+   approach with RCS authority, a closing-rate limit, and the hard mate the
+   docking section of [Navigation and arrival](/simulation/navigation-and-arrival.md#docking)
+   describes.
+3. Add the porkchop search now that a Lambert solve exists: sample departure and
    arrival dates, draw the time/cost heat map, and let the coast profiles choose
    a window instead of planning "leave now".
-2. Add a mid-course correction that keeps the current plan instead of replanning
+4. Add a mid-course correction that keeps the current plan instead of replanning
    from the current state. Begin's replan is the first place this matters: a
    correction would keep the plotted curve instead of solving a new one.
-3. Give warp a continuous scale so the drop near a body is smooth rather than a
+5. Give warp a continuous scale so the drop near a body is smooth rather than a
    step down the power-of-ten ladder.
-4. Label a handful of constellations, or draw faint asterism outlines, now that
+6. Label a handful of constellations, or draw faint asterism outlines, now that
    the real stars are in place
    ([The sky](/technical/sky.md#the-real-stars)).
 
@@ -350,7 +425,7 @@ remain human checks ([Testing and verification](/technical/testing.md#unity-play
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | The 1 g torch is physically implausible | Certain | Medium | Treat it as the one admitted lie: a mature compact fusion torch whose waste heat leaves with the exhaust; fuel is the balance lever |
-| Time warp makes arrival trivial or chaotic | Medium | High | Implemented: the warp policy caps a frame at 25% of the time to the nearest surface, 2% of the local orbital timescale, and 5% of the time to the next plan event, and clamps the clock to the ship when the substep budget runs out |
+| Time warp makes arrival trivial or chaotic | Medium | High | Implemented: the warp policy caps a frame at 25% of the time to the nearest surface, 2% of the local orbital timescale, and 5% of the time to the next plan event — plus, at a station, 25% of the time to its catalogue surface and 5% of the time to the hold point — and clamps the clock to the ship when the substep budget runs out |
 | True scale is unreadable without UI | High | High | Labels, markers, trajectory lines, target-relative HUD; the flight panel carries the phase table and countdown |
 | Float/depth artefacts on a target platform | Medium | Medium | Ship-relative rendering; reversed-Z; two-camera fallback |
 | Autopilot removes the gameplay | Medium | High | Autopilot handles long burns; the current build is plan-and-watch, and manual override and fuel are the milestone-3 answer |

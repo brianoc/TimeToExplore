@@ -194,10 +194,9 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// A station plan has no capture chain and its one terminal finite burn
-        /// is a rendezvous velocity match, so the drive summary calls it
-        /// <b>Match</b>, never <b>Brake</b>, and the chain row is absent. The
-        /// phase table still lists the arc's phase, whose drive label reads
-        /// match.
+        /// is a rendezvous velocity match, so the phase row and the drive
+        /// summary both read <b>Match</b>, never <b>Capture</b> or
+        /// <b>Brake</b>, and the chain row is absent.
         /// </summary>
         [Test]
         public void AStationPlanShowsAVelocityMatchAndNoCaptureChain()
@@ -209,22 +208,70 @@ namespace TimeToExplore.Tests.EditMode
             List<DetailRow> rows = FlightReport.Build(_session, _model, "x10,000");
 
             Assert.That(Find(rows, "Target")?.Value, Is.EqualTo("Gateway Station"));
-            Assert.That(Find(rows, "Match"), Is.Not.Null, "the terminal burn is a match");
-            Assert.That(Find(rows, "Match")?.Value, Does.Contain("km/s"));
+            Assert.That(Find(rows, "Capture"), Is.Null,
+                "a station's terminal phase and chain row are both the match");
             Assert.That(Find(rows, "Brake"), Is.Null,
                 "a rendezvous may add speed; the burn is not a retrograde brake");
 
-            int captureRows = rows.Count(row => !row.IsHeading && row.Label == "Capture");
-            Assert.That(captureRows, Is.EqualTo(1),
-                "only the phase row: a station has no capture chain row");
-            Assert.That(rows.First(row => !row.IsHeading && row.Label == "Capture").Value,
-                Does.Contain("match"), "the terminal arc's drive label is the match");
+            List<DetailRow> matches = rows
+                .Where(row => !row.IsHeading && row.Label == "Match")
+                .ToList();
+            Assert.That(matches.Count, Is.EqualTo(2),
+                "the phase row and the drive row both say Match");
+            Assert.That(matches[0].Value, Does.Contain("match"),
+                "the terminal arc's drive label is the match");
+            Assert.That(matches[1].Value, Does.Contain("km/s"),
+                "the drive row reports the burn's cost");
 
             Assert.That(Find(rows, "Approach"), Is.Null);
             Assert.That(Find(rows, "Parking"), Is.Null);
             Assert.That(Find(rows, "Cruise")?.Value, Does.Contain("prograde burn"),
                 "the heliocentric departure burn is still the cruise burn");
             Assert.That(Find(rows, "Delta-v")?.Value, Does.Contain("km/s"));
+        }
+
+        /// <summary>
+        /// A station's arrival is the hold point, not an orbit: the header and
+        /// the phase row say so, and the countdown lands on the arrival with no
+        /// parking orbit to report.
+        /// </summary>
+        [Test]
+        public void AnArrivedStationShipReportsTheHoldPoint()
+        {
+            _session.PlaceAt("ares_junction", _epoch);
+            TrajectoryPlan plan = _session.Begin("gateway", _epoch);
+            _session.Advance(plan.ArrivalJulianDate, 50_000);
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x1,000");
+
+            Assert.That(Find(rows, "Status")?.Value,
+                Is.EqualTo("Arrived, at the hold point"));
+            Assert.That(Find(rows, "Phase")?.Value, Is.EqualTo("Match"));
+            Assert.That(Find(rows, "Next event")?.Value, Is.EqualTo("Arrived"));
+            Assert.That(Find(rows, "Throttle"), Is.Null,
+                "the drive is off, so there is no throttle row");
+        }
+
+        /// <summary>
+        /// Before a station's terminal match the countdown names the match, not
+        /// a capture. Approaching the last arc's start means every boundary the
+        /// countdown can land on from here is that arc's.
+        /// </summary>
+        [Test]
+        public void AStationFlightsNextEventIsTheMatch()
+        {
+            _session.PlaceAt("ares_junction", _epoch);
+            TrajectoryPlan plan = _session.Begin("gateway", _epoch);
+            PlanArc match = plan.Arcs[plan.Arcs.Count - 1];
+            Assert.That(match.Phase, Is.EqualTo(FlightPhase.Capture));
+
+            _session.Advance(match.StartJulianDate - 0.01, 50_000);
+
+            List<DetailRow> rows = FlightReport.Build(_session, _model, "x1,000");
+
+            Assert.That(Find(rows, "Next event")?.Value, Does.StartWith("Match  T−"));
+            Assert.That(Find(rows, "Capture"), Is.Null,
+                "the station phase table never says Capture");
         }
 
         /// <summary>

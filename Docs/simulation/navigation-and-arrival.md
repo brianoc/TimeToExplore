@@ -1,10 +1,10 @@
 ---
 type: Design Document
 title: Navigation and arrival
-description: How the player plans a moving-target intercept, crosses a sphere of influence, inserts into orbit, and docks.
+description: How the player plans a moving-target intercept, arrives in orbit at a planet or at a station's hold point, and why docking is a later phase.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-23T22:46:56Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
 ---
 
 # The problem
@@ -34,7 +34,8 @@ The navigation computer has four layers, in increasing fidelity:
 
 **The trajectory solve exists for every profile.** `TripPlanner` builds a complete
 plan, `Autopilot` flies it, and the EditMode suite checks that the ship arrives on
-the parking orbit and stays there. In the scene, `FlightSession` owns the plan and
+the parking orbit over a planet — or on a station's 500 m hold point — and stays
+there. In the scene, `FlightSession` owns the plan and
 advances the ship each frame, so plotting a route and pressing **Begin flight**
 flies it for real ([The flight session](../technical/flight-session.md)). The
 porkchop search is not implemented: a plan is "leave now" at the first feasible
@@ -45,14 +46,16 @@ coasts the inbound leg and captures impulsively at periapsis
 **burn–coast–burn** profile: a zero-revolution prograde Lambert coast between a
 departure fixed burn and a brake, with a planetocentric approach on the arrival
 side. The nav computer's `ARRIVAL` buttons choose **Conic** or the hybrid
-**X g burn** capture.
+**X g burn** capture. A **station** is the third kind of destination: a massless
+point target whose plan ends on a hold point, with no sphere, parking orbit or
+capture ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)).
 
 The rest of this document describes what the solver does, then the general
 problem it is approximating.
 
 # The implemented plan
 
-A Go To plan is the **burn–coast–burn** chain:
+A Go To plan to a **planet** is the **burn–coast–burn** chain:
 
 ```text
 t0 ── break ──► escape ──► departure burn ──► coast ──► approach ──► brake ──► capture ──► t_f
@@ -75,25 +78,52 @@ t0 ── break ──► escape ──► departure burn ──► coast ──
 * A trip that starts inside the target's sphere of influence is a single
   quintic capture arc. Gateway to the Moon is one arc of 1.6 hours.
 
+A station target takes the **station-call** chain instead:
+
+```text
+t0 ── break ──► escape ──► departure burn ──► coast ──► velocity match ──► hold point
+     planetocentric (only when the ship starts inside a planet's sphere)   heliocentric        at the station
+```
+
+* **Hold point** is `SolarSystemModel.ComputeState(station, arrivalJd)` offset
+  **500 m astern along the station's own velocity**
+  (`TripPlanner.StationHoldDistanceM`), with the ship's velocity matched to the
+  station's. That state, not an orbit, is the arrival contract.
+* There is **no sphere of influence, handover band, parking orbit, approach or
+  capture chain**: a station is a massless point. The final arc is a finite
+  **velocity match** that may add or shed speed, so the planet arrival's
+  retrograde-only refusal does not apply.
+* A station outside every planet's sphere — Helios Watch, Nyx Anchor, Ares
+  Junction and the Jovian Transfer Yard — is a **heliocentric rendezvous**: the
+  first arc is a finite burn on the ship's own state, with no departure or
+  escape arc. **Gateway** (inside the Moon's and the Earth's sphere) and **Titan
+  Reach** (inside Saturn's) start with the local break and ballistic climb and
+  still end on the same point target.
+* Docking is **not implemented**: the plan ends at the hold point
+  ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)).
+
 That chain is one choice from a wider menu. The other families a real mission
 can fly — Hohmann, bi-elliptic, low-energy, gravity assist, low-thrust spiral —
 and where the profile sits among them are in the
 [glossary's route families](/glossary.md#route-families).
 
 Every seam is continuous in position and velocity, and the plan finishes at the
-parking orbit's position and velocity at the instant the last arc ends, so
-arrival is exact rather than approximate. The profile's floor is found by
-probing durations; the chosen plan is rebuilt with the full field and certified
-before it leaves the planner.
+parking orbit's — or, at a station, the hold point's — position and velocity at
+the instant the last arc ends, so arrival is exact rather than approximate. The
+profile's floor is found by probing durations; the chosen plan is rebuilt with
+the full field and certified before it leaves the planner.
 
 The burn and capture decisions are in
-[ADR-014](../decisions/adr-014-keplerian-coast.md) and
-[ADR-015](../decisions/adr-015-fixed-thrust-burns.md). The measured flight times
+[ADR-014](../decisions/adr-014-keplerian-coast.md),
+[ADR-015](../decisions/adr-015-fixed-thrust-burns.md) and, for the station call
+and the physical departure, [ADR-019](../decisions/adr-019-station-calls-and-departure.md). The measured flight times
 are in the [flight model](flight-model.md#the-burncoastburn-profile-in-numbers).
 
-The planner's arrival is a **conic capture** (`CaptureStyle.Conic`, the
-default) or a **hybrid fixed-thrust capture** (`CaptureStyle.FiniteBurn`). Both
-take over where the brake hands over at the target's handover floor. The conic
+The planner's **planet** arrival is a **conic capture** (`CaptureStyle.Conic`,
+the default) or a **hybrid fixed-thrust capture** (`CaptureStyle.FiniteBurn`).
+Both take over where the brake hands over at the target's handover floor. A
+station has neither: its terminal arc is the velocity match that ends on the hold
+point, and the panel reports that arc as **Match**. The conic
 capture is a planetocentric hyperbola from that entry to a low periapsis, an
 impulsive retrograde capture burn, a transfer ellipse, and a prograde
 circularisation burn at apoapsis. On the two-body reference the coast's
@@ -163,7 +193,8 @@ station whose drive is weaker than the local gravity cannot use the short break 
 all: a 0.3 g departure from a 400 km Earth orbit is refused, while the same orbit
 at 1 g builds.
 
-The arrival has one more leg than a heliocentric plan: **the heliocentric coast
+For a **planet** target, the arrival has one more leg than a heliocentric plan:
+**the heliocentric coast
 ends on the target's handover ceiling** (`1.02 × SOI`, where the Sun dominates
 and its conic is fair), a **planetocentric approach conic** falls from there to
 where the brake begins, and then the brake is a fixed-thrust burn whose direction
@@ -207,7 +238,8 @@ and the 3.5 km/s conic capture, **38.97 km/s** in total. The capture enters at
 6,033 km (the Mars 0.3 g floor) and falls for 13.6 minutes. The old plan at the
 same 90 days cost 44.35 km/s; the climb takes 5.9 days more of the trip than the
 old break did, so the remaining coast is shorter and the two burns are larger
-(13.4 → 14.0 and 18.5 → 19.7 km/s). The profile's true floor at the epoch is
+(13.4 → 14.0 and 18.5 → 19.7 km/s); that old anchor is deliberately not
+preserved ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)). The profile's true floor at the epoch is
 **16.84485 days** to Mars at 0.3 g (1,017.1 km/s) and **14.06070 days** to
 Mercury at 1 g (1,821.1 km/s); the Mars trip-time window ends at **50.53 days**,
 so the 90-day plan above is a direct `PlanAtDuration` build outside the nav
@@ -227,16 +259,21 @@ a **duration** control, not a throttle cap, because `MaxAccelerationMps2` also
 sets the parking-orbit radius; lowering it would silently move where the ship
 parks.
 
-The span starts at the profile's fastest plan and a has a real upper bound: the
-prograde short-way Lambert transfer sweeps past 180° as the trip lengthens, and a
-slow coast arrives slower than the target's frame, which would need an
-acceleration rather than a brake. The right end is therefore the slowest duration
-the planner still accepts, found by probing inside the three-times span. At the
-epoch the window runs from **6.73 days to 20.19 days** to Mars. The right-hand
-end is exactly three times the true floor, so a 90-day Mars build is outside the
-control's reach; it can only be built directly with `PlanAtDuration`. The
-slider's value line says what the drive is doing — `0.3 g burns · coast` —
-instead of quoting a peak throttle for a plan that coasts.
+The span starts at the profile's fastest plan — `PlanFastest`: the zero-coast
+burn-only crossing when that is the shorter feasible plan, otherwise the coast
+floor — and has a real upper bound: the prograde short-way Lambert transfer
+sweeps past 180° as the trip lengthens, and a slow coast arrives slower than the
+target's frame, which would need an acceleration rather than a brake. At the
+epoch the profile's **coast windows** are **16.84–50.53 days** to Mars at 0.3 g,
+**14.06–34.27** to Mercury at 1 g, **23.73–71.20** to Jupiter at 0.3 g,
+**57.02–171.07** to Uranus at 1 g and **92.13–276.39** at 0.3 g. The slider
+starts at the shorter **burn-only minimum** where that wins — 16.48669 days to
+Mars, 13.86287 to Mercury, 22.55555 to Jupiter — and its right end is the
+largest accepted duration inside three times that minimum. The 90-day Mars
+build above is outside both the window and the cap, so it can only be built
+directly with `PlanAtDuration`. The slider's value
+line says what the drive is doing — `0.3 g burns · coast` — instead of quoting a
+peak throttle for a plan that coasts.
 
 Finding that window is the expensive part of a selection, so `FlightSession`
 caches the floor plan and the window per departure date, target, burn level, and
@@ -251,15 +288,19 @@ the route-planning freeze the player used to feel is gone, and the route
 redraws when the plan is ready. Every plan the nav computer shows is the
 full-field build — the planner's fast search model only chooses a duration.
 
-The arrival buttons and the burn level remain the player's trade: the conic
+The arrival buttons and the burn level remain the player's trade for a **planet**:
+the conic
 capture is cheap and the hybrid capture is a real finite burn at the chosen
 level, so the arrival is a time/delta-v choice the nav computer exposes as
-fast-and-expensive against slow-and-cheap. There is no second crossing to
-switch to, so the slider never pretends a different profile is a coast.
+fast-and-expensive against slow-and-cheap. A station plan has no arrival-style
+choice at all — it ends on the hold point with a velocity match — so its panel
+shows no `Coast`/`Capture`/`Parking` chain and the burn level only scales the
+burns it does fly. There is no second crossing to switch to, so the slider never
+pretends a different profile is a coast.
 
 ## The parking orbit
 
-The arrival state is a **circular orbit in the target's equatorial plane** at
+A **planet** arrival is a **circular orbit in the target's equatorial plane** at
 
 ```text
 r_park = max( 1.15 R , R + 300 km )
@@ -272,6 +313,10 @@ pays its periapsis loss with the terminal trim, not a higher orbit.
 
 The capture's periapsis is lower still,
 `max(1.05 R, R + 100 km)`, which is where the Oberth burn happens.
+
+A **station** has no parking orbit and no capture radius: its arrival is the
+500 m hold point defined above, and the only "radius" it has is the catalogue's
+visual placeholder, which never enters the physics.
 
 | Body | Parking radius | Altitude | Why |
 |---|---:|---:|---|
@@ -536,7 +581,10 @@ heliocentric coast.
 
 # Docking
 
-Docking is the final geometry problem:
+**Docking is not implemented.** The implemented station call ends at the 500 m
+hold point with the velocity matched, and the plan reports that terminal arc as
+**Match** ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)). The
+last few hundred metres are a future docking phase:
 
 1. **Plane match.** Be in the station's orbital plane, or close enough to correct.
 2. **Phasing.** Arrive behind or ahead of the station and close the along-track
@@ -570,8 +618,10 @@ and budget, not stick-and-rudder for six days. Manual override must always be
 available, and arrival should hand back control early enough to matter.
 
 **Where the prototype is:** **Automatic**. Pressing Go To plans the trip, raises
-the warp, flies it, and leaves the ship in the parking orbit; the player watches
-and can cancel. Manual override is not available yet — the debug free flight is a
+the warp, flies it, and leaves the ship in the parking orbit over a planet or
+holding at a station's hold point; the player watches and can cancel. The HUD
+says which: `Arrived, in orbit` at a planet, `Arrived, at the hold point` at a
+station. Manual override is not available yet — the debug free flight is a
 teleport, not a hand-flown ship. Milestone 3 (fuel) is where a manual burn starts
 to matter, because it is the first decision the autopilot cannot make for the
 player.
@@ -602,7 +652,8 @@ the simulation, not decoration.
 a quintic, blue dashed for a conic, red solid for a fixed burn, with consecutive
 same-type arcs taking darker or paler shades of the same hue — burn markers at
 each impulsive periapsis or circularisation and at each fixed burn start, an
-arrival marker at the parking-orbit point, a countdown to the next arc boundary,
+arrival marker at the parking-orbit point or the station's hold point, a
+countdown to the next arc boundary,
 a phase table with each leg's start, duration, and what the drive is doing, the
 arrival date, planned delta-v and the burn total, **the fuel
 readout** — the propellant a journey would burn and its share of the departure
@@ -661,8 +712,10 @@ The design wants failure to create stories, not reloads:
   casual players, or is the orbital mechanics the point?
 * How much time can pass during a close approach before the player notices?
   **Partly settled:** the warp policy caps a frame at 25% of the time to the
-  nearest surface and 5% of the time to the next plan event, so the approach is
-  paced rather than skipped. The drop is still in power-of-ten steps.
+  nearest surface (and, at a station point target, 25% of the time to its
+  catalogue surface plus 5% of the time to the hold point) and 5% of the time to
+  the next plan event, so the approach is paced rather than skipped. The drop is
+  still in power-of-ten steps.
 * When does a plan need re-solving? The autopilot corrects a few kilometres, but
   a large deviation or a long wait needs a fresh Go To. The scene currently
   re-plans only when the player presses Go To again.

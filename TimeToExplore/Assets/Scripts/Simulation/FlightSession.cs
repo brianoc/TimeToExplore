@@ -229,6 +229,25 @@ namespace TimeToExplore.Simulation
         public bool IsActive => Status == FlightStatus.Flying || Status == FlightStatus.Arrived;
         public string TargetId => Plan?.TargetId;
 
+        /// <summary>
+        /// True when the plan being flown, or the preview when nothing is
+        /// flying, targets a station. A station is a point target, so its
+        /// arrival is a hold-point rendezvous rather than an orbit: the panel,
+        /// the status line, and the phase table read it from here instead of
+        /// guessing from the arc shapes.
+        /// </summary>
+        public bool TargetIsStation
+        {
+            get
+            {
+                TrajectoryPlan plan = Plan ?? Preview;
+                if (plan == null) return false;
+
+                BodyRuntime body = _model.Get(plan.TargetId);
+                return body != null && body.Data.IsStation;
+            }
+        }
+
         public ShipIntegrator Integrator => _integrator;
 
         /// <summary>Arrival style used for the next plan. The conic capture is
