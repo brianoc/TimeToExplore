@@ -1,7 +1,7 @@
 # Handoff
 
-**Active plan:** route planning cost — measure, warm-start the brake/departure
-pin, then prefetch the slider's neighbours.
+**Active plan:** route planning cost — measure, benchmark the routes, warm-start
+the brake/departure pin, then prefetch the slider's neighbours.
 
 Branch `work/route-warm-start`, worktree
 `/Users/brian.oconnor/.local/share/opencode/worktree/6479b2/route-warm-start`.
@@ -13,18 +13,30 @@ Reasoning: [Planning performance](/technical/planning-performance.md) and
 1. **Measure a build.** Split one retime and one first plot into pin passes,
    reported arcs, brake integration, and allocation. Record the numbers in
    `Docs/technical/planning-performance.md`. No behaviour change.
-2. **Warm-start the pin.** Seed the next build from the nearest cached plan:
+2. **Benchmark the routes.** Six routes — Earth→Mars, Earth→Venus, Earth→Uranus
+   and the three reverses — each through a plot (`PlanFastest` plus the window
+   build, the real first plot), a retime at mid-window and at the maximum, and a
+   Begin (`PlanFastest` at a moved date plus the retime). Its own command, a
+   baseline file keyed by machine and Unity version, and a percentage delta
+   table. Must not run in the default `tools/check.sh`; prove that it does not.
+3. **Warm-start the pin.** Seed the next build from the nearest cached plan:
    brake duration and direction, departure-burn direction and duration, and the
    approach on pass 0. Never seed the escape ray. Fall back to the cold seed if
    the seeded run does not converge, and do not seed the two lowest slider steps
    or across the burn-only/coast gap.
-3. **Prefetch the slider's neighbours.** After a plot, build two steps each side
+4. **Prefetch the slider's neighbours.** After a plot, build two steps each side
    of the plotted duration; while the player drags, build three steps in the
    drag direction. Prefetch uses the preview's frozen departure state, never
    publishes, and yields to retimes and previews.
 
-Step 3 is the caller's own change to the earlier sketch: at plot, two each side;
+Step 4 is the caller's own change to the earlier sketch: at plot, two each side;
 on drag, three in the direction of travel.
+
+Not in this plan, but the biggest player-visible win if it is ever taken: `Begin`
+replans with `PlanFastest` from the current state even when the preview is
+seconds old and unmoved, so the player pays the plot twice. Reusing a fresh
+preview is a semantics question (arrival date, requested duration, staleness
+threshold), not an optimisation.
 
 The split step 1 measured is in
 [Planning performance](/technical/planning-performance.md#where-one-builds-time-goes-2026-11-24):
@@ -53,6 +65,11 @@ fast probes.
 - The near-floor basin is a needle and the runtime selects it by last-bit libm
   differences. A seeded build that converges to a different needle is a real
   risk; the guard is the cold fallback, not a tolerance change.
+- The player sees **~4 s per plot and another ~4 s at Begin** in Play Mode. The
+  doc's current editor record is 2.81–5.07 s after the zero-coast crossing; the
+  1.28–3.03 s table is pre-crossing and must not be quoted. A headless benchmark
+  will read lower than Play Mode with the editor attached — record both and the
+  ratio, and talk to the player in Play Mode numbers.
 
 ## Verification
 
@@ -66,5 +83,6 @@ Report the command and its result; do not write a test count anywhere.
 ## State
 
 - [x] Step 1 — measure
-- [ ] Step 2 — warm start
-- [ ] Step 3 — prefetch
+- [ ] Step 2 — benchmark the routes
+- [ ] Step 3 — warm start
+- [ ] Step 4 — prefetch
