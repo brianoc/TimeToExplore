@@ -1,7 +1,7 @@
 # Handoff
 
-No active handoff. The station-flights and departure-profile plan is closed; the
-work is on `work/flight-stations` and ready for review. History is in the
+No active handoff. The station-flights and departure-profile plan is closed and
+merged into `main`, ready for human testing. History is in the
 [update log](Docs/log.md), the decisions are
 [ADR-019](Docs/decisions/adr-019-station-calls-and-departure.md), and the three
 concepts are [Navigation and arrival](Docs/simulation/navigation-and-arrival.md),
