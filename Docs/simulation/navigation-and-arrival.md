@@ -251,13 +251,13 @@ zero-thrust version.
 
 ## The trip-time control
 
-The preview carries a trip-time slider whose range is the selected profile's
-fastest feasible plan to the slowest one the planner accepts. Each value is a
-build at an explicit duration: the arcs, the arrival date, and the intercept all
-move, and the panel reports the new flight time, peak thrust, and delta-v. It is
-a **duration** control, not a throttle cap, because `MaxAccelerationMps2` also
-sets the parking-orbit radius; lowering it would silently move where the ship
-parks.
+The preview carries a trip-time slider whose handle is one of **64 integer
+steps** across the selected profile's fastest feasible plan to the slowest one
+the planner accepts. Each step is a build at an explicit duration: the arcs, the
+arrival date, and the intercept all move, and the panel reports the new flight
+time, peak thrust, and delta-v. It is a **duration** control, not a throttle
+cap, because `MaxAccelerationMps2` also sets the parking-orbit radius; lowering
+it would silently move where the ship parks.
 
 The span starts at the profile's fastest plan — `PlanFastest`: the zero-coast
 burn-only crossing when that is the shorter feasible plan, otherwise the coast

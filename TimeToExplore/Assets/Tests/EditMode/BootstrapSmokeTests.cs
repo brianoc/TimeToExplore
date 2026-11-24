@@ -348,13 +348,18 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(slider.gameObject.activeInHierarchy, Is.True);
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(slider.minValue, Is.EqualTo((float)minimum).Within(1.0));
+            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
+            Assert.That(slider.wholeNumbers, Is.True);
+            Assert.That(slider.minValue, Is.EqualTo(0f).Within(1e-6));
             Assert.That(slider.maxValue,
-                Is.EqualTo((float)(minimum * TripPlanner.MaxDurationScale)).Within(10.0));
+                Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
+                "the handle offers 64 distinct trips");
 
             Vector3d before = _bootstrap.ShipPositionM;
-            float chosen = (float)(2.0 * minimum);
-            slider.value = chosen;
+            float step = (float)System.Math.Round(
+                (2.0 * minimum - minimum) / (maximum - minimum) * slider.maxValue);
+            double chosen = minimum + step / slider.maxValue * (maximum - minimum);
+            slider.value = step;
 
             Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
                 "the handle requests a retime; it does not block the frame");

@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor cache, and the latest-wins background planner (retimes and route plans).
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
@@ -101,6 +101,43 @@ buys no time
 `(departure date, target, burn level, cruise style, arrival style)`. A repeat
 plot reuses both; a changed departure date, or a place/teleport, clears the
 cache. This is what makes a repeat selection free rather than merely fast.
+
+The retimed plans are cached as well, keyed by the same window inputs plus the
+requested flight time. A finished background build is stored even when a newer
+ask superseded it — the plan is still the right answer for that duration, and it
+is exactly the work a returned handle would otherwise repeat. The trip-time
+handle is **64 integer steps** across the window, so each step is a distinct
+trip and exactly one cache slot. The newest **sixty-four** per window are kept,
+and a repeat ask is matched when it lies within **0.2% of the window**: that
+absorbs the small difference between a requested step and the plan's own total,
+while a neighbouring step is about 1.6% away and properly builds. A plan is
+about **50 KB**, dominated by the departure burn's and brake's 512-sample
+interpolation tables at 24 bytes a sample, so the bound is about **3 MB per
+window**. Both the synchronous `SetPreviewDuration` and the slider's
+`RequestPreviewDuration` read the cache before queueing work, and a hit is
+published directly, so a duration the player has already waited for costs a
+dictionary lookup instead of another multi-second build. The cache shares the
+window's lifetime: a changed departure date, a place/teleport, or clearing the
+windows drops it.
+
+## What is not shared between routes
+
+The break is not a reusable prefix. A route's escape ray, departure-burn
+duration, coast, and brake are one fixed point: the reference coast is built at
+the requested total, the break is placed on the ray that coast needs, and the
+brake is integrated backwards from the arrival the same total puts the target
+at. Move the slider and the target has moved, so the ray and both burns move
+with it; reusing the break would fly a route the coast no longer joins. The
+departure body, its clearance sphere, and the handover bands are cheap and are
+recomputed rather than carried between builds.
+
+The cache is therefore the reuse: a whole retimed plan at a step costs a
+dictionary lookup, and the window's floor plan and maximum are solved once. The
+plausible next lever is not sharing arcs but **warm-starting the outer
+break/brake/departure fixed point** with the previous plan's ray and durations at
+a nearby step, which could cut the passes without changing the converged plan.
+That is a measurement and a risk to the near-floor anchors, not a free swap, so
+it is not implemented.
 
 # The background planner
 
@@ -815,7 +852,7 @@ sections record how each measurement was reached.
 | The certified pin's pass cap and its retry | `TripPlanner.DefaultOuterPasses`, `RetryOuterPasses`, `Build`'s certified burn–coast–burn branch, `BuildResult.PinStalled` |
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
-| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `SetPreviewDuration`'s floor reuse |
+| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `SetPreviewDuration`'s floor reuse |
 | Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 

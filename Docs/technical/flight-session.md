@@ -118,17 +118,21 @@ The details footer splits the old one-press **Go To** into two actions:
    preview, so nothing stale is ever flown if the clock has moved.
 
 Once a preview exists, the details footer grows a **trip-time slider**. Its
-range is `PreviewMinimumSeconds` to `PreviewMaximumSeconds`, and its value is the
-flight time in seconds. The **minimum is the planner's `PlanFastest`**: the
-zero-coast burn-only crossing when it is the shorter feasible plan, otherwise
-the coast floor. The upper end is still `PlanAtDuration` — three times the
-minimum, or the slowest duration the planner accepts inside that cap. At the
-epoch the profile's **coast windows** are 16.84–50.53 days to Mars at 0.3 g,
-14.06–34.27 to Mercury at 1 g, 23.73–71.20 to Jupiter at 0.3 g, 57.02–171.07 to
-Uranus at 1 g and 92.13–276.39 at 0.3 g; the slider starts at the shorter
-**burn-only minimum** where that wins (16.48669 days to Mars, 13.86287 to
-Mercury, 22.55555 to Jupiter) and stops at the largest accepted duration inside
-three times it. A 90-day Mars build is outside that window and the cap.
+handle is one of **64 integer steps**, mapped linearly onto
+`PreviewMinimumSeconds` to `PreviewMaximumSeconds`, so each position is a
+distinct flight time rather than a continuous value. A step is about a fifth of
+a day on the Mars window below, which reads as a smooth drag and puts exactly
+one trip in each slot of the retimed-plan cache. The **minimum is the planner's
+`PlanFastest`**: the zero-coast burn-only crossing when it is the shorter
+feasible plan, otherwise the coast floor. The upper end is still
+`PlanAtDuration` — three times the minimum, or the slowest duration the planner
+still accepts when the cap itself is refused. At the epoch the profile's
+**coast windows** are 16.84–50.53 days to Mars at 0.3 g, 14.06–34.27 to Mercury
+at 1 g, 23.73–71.20 to Jupiter at 0.3 g, 57.02–171.07 to Uranus at 1 g and
+92.13–276.39 at 0.3 g; the slider starts at the shorter **burn-only minimum**
+where that wins (16.48669 days to Mars, 13.86287 to Mercury, 22.55555 to
+Jupiter) and stops at the largest accepted duration inside three times it. A
+90-day Mars build is outside that window and the cap.
 
 The **range between a burn-only minimum and the coast floor is a short-coast
 regime**, not a hole. `PlanAtDuration` builds a duration the coast path refuses
@@ -168,8 +172,20 @@ state with `TripPlanner.PlanAtDuration`, using its own `TripPlanner` and
 and stays on the main thread. A request that lands on the window's floor is the
 plan the window already solved, so it is handed to the publisher directly
 instead of being rebuilt — a cold build is the profile's most expensive call,
-and near a floor needle it can refuse the very duration the window advertises. A
-plan that finishes after a newer request arrived is discarded and the newest
+and near a floor needle it can refuse the very duration the window advertises.
+A request for a duration the session has already built is answered the same
+way: every finished plan is cached by window and requested flight time (the
+newest sixty-four per window, matched within 0.2% of the window so the small
+difference between a requested step and the plan's own total still hits), so
+returning to a step the player already waited for is a dictionary hit, not
+another multi-second build. A step is about 1.6% of the window, so a
+neighbouring step is a different trip and a new build; the 64 slots hold the 64
+steps.
+A plan costs about **50 KB** — the departure burn's and brake's 512-sample
+interpolation tables dominate, at 24 bytes a sample — so the bound is about
+3 MB per window. The cache is keyed and dropped with the window, so a changed
+departure date or a place/teleport cannot read one back.
+A plan that finishes after a newer request arrived is discarded and the newest
 request is built next, so a drag never queues work behind stale plans. The
 preview stays pinned to `PreviewJulianDate`, and the
 published preview — path, arrival marker and ghost, panel flight time,
@@ -412,7 +428,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | Input | Action |
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
-| **Trip-time slider** on a preview | Request a retime at a longer duration on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship |
+| **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship |
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
@@ -508,6 +524,11 @@ the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
 target or burn level misses, and a changed departure date invalidates the cache.
+A retimed plan is cached by its requested duration too: retiming away and back
+returns the same plan, a background ask for an already-built duration publishes
+without starting the worker, a repeat within 0.2% of the window reuses it, and a
+date change drops it. The bound is measured rather than assumed: a Mars plan's
+finite-burn tables are about 50 KiB, so sixty-four plans are a few megabytes.
 Begin itself is pinned to the preview: at Mercury 1 g it flies the **13.86287 d
 burn-only minimum** (break → escape → departure burn → brake → capture, seven
 arcs, no cruise coast)
@@ -530,7 +551,7 @@ new work. `SolarSystemHudTests` covers the arrival buttons and the profile
 window: the two-button `ARRIVAL` row defaults to Conic, a switch rebuilds the
 preview, the burn-level floor is 0.05 g, the trip-time label reads `burns · no
 coast` on the zero-coast minimum and `burns · coast` after a retime, and the
-slider runs from the burn-only minimum to three times it
+slider runs in **64 whole steps** from the burn-only minimum to three times it
 (16.49–49.46 days at the epoch for Gateway→Mars, from the 16.48669-day minimum
 against the 16.84485-day coast floor).
 `TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
