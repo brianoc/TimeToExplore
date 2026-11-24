@@ -390,12 +390,18 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void UnknownOrMasslessTargetsAreRejected()
+        public void UnknownTargetsAreRejected()
         {
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
 
             Assert.Throws<ArgumentException>(() => _planner.Plan(ship, "not-a-body"));
-            Assert.Throws<ArgumentException>(() => _planner.Plan(ship, "gateway"));
+
+            // A station is no longer a "massless target" to refuse: it is a point
+            // target with its own plan. The genuinely massless non-station
+            // refusal is in StationTripPlannerTests.
+            Assert.DoesNotThrow(() =>
+                _planner.PlanAtDuration(ship, "ares_junction",
+                    120.0 * JulianDate.SecondsPerDay));
         }
     }
 }
