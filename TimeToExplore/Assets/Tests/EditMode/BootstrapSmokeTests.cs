@@ -346,23 +346,55 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void BeginningAPlottedRouteReplansAtTheCurrentDateAndFlies()
+        public void BeginningAPlottedRouteInsideTheWindowFliesTheDrawnPlan()
         {
             Build();
             _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
             WaitForPreview();
-            double later = _bootstrap.Clock.JulianDate + 0.05;
+            TrajectoryPlan drawn = _bootstrap.Flight.Preview;
+            double departure = drawn.DepartureJulianDate;
+            double arrival = drawn.ArrivalJulianDate;
+            double later = _bootstrap.Clock.JulianDate
+                           + 0.5 * _bootstrap.Flight.PreviewStaleAfterDays;
             _bootstrap.Clock.JulianDate = later;
 
             _bootstrap.BeginPlottedFlight();
 
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
             Assert.That(_bootstrap.Flight.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_bootstrap.Flight.Plan, Is.SameAs(drawn),
+                "inside the freshness window the flight is the plan that was drawn");
             Assert.That(_bootstrap.Flight.Plan.DepartureJulianDate,
-                Is.EqualTo(later).Within(1e-12));
+                Is.EqualTo(departure).Within(1e-12),
+                "the ship flies from the departure the preview was certified at");
+            Assert.That(_bootstrap.Flight.Plan.ArrivalJulianDate,
+                Is.EqualTo(arrival).Within(1e-12),
+                "and reports the arrival the preview already counted down to");
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
             Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void BeginningAPlottedRoutePastTheWindowReplansAtTheCurrentDate()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
+            TrajectoryPlan drawn = _bootstrap.Flight.Preview;
+            double later = _bootstrap.Clock.JulianDate
+                           + 1.2 * _bootstrap.Flight.PreviewStaleAfterDays;
+            _bootstrap.Clock.JulianDate = later;
+
+            _bootstrap.BeginPlottedFlight();
+
+            Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_bootstrap.Flight.Plan, Is.Not.SameAs(drawn),
+                "a preview past its window is replanned, not flown");
+            Assert.That(_bootstrap.Flight.Plan.DepartureJulianDate,
+                Is.EqualTo(later).Within(1e-12));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
         }
 
         [Test]

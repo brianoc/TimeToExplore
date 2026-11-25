@@ -5,7 +5,7 @@
     "cpu": "Apple M4 Max, 16 cores, 65536 MB",
     "operatingSystem": "Mac OS X 27.2.1",
     "recordedAt": "2026-11-25",
-    "note": "JD 2461359.5, conic capture. Plot is PlanFastest plus the cold window build. Retimes are PlanAtDuration at the window middle and maximum. Drag requests eight consecutive slider steps from the window minimum on the session's own worker, prefetch on, and reports each request's time to publish. Begin advances the clock three hours, solves the fresh minimum, then retimes to the window maximum when it is above that minimum.",
+    "note": "JD 2461359.5, conic capture. Plot is PlanFastest plus the cold window build. Retimes are PlanAtDuration at the window middle and maximum. Drag requests eight consecutive slider steps from the window minimum on the session's own worker, prefetch on, and reports each request's time to publish. Begin plots at the epoch, advances the clock three hours, then calls the session's Begin: inside the preview's freshness window it flies the drawn plan, outside it replans; the '@max' phase retimes the preview to the window maximum first.",
     "routes": [
         {
             "route": "earth-mars",
@@ -13,39 +13,39 @@
             "burnLevelG": 0.3,
             "floorDays": 16.48669373895973,
             "windowMaxDays": 49.46008121687919,
-            "note": "Gateway station, Earth's anchor departure point; 0.3 g is the default level; plot 16.48669 d, retime mid 32.97339 d, retime max 49.46008 d, begin 16.59252 d; begin retimes to the window maximum; drag of 8 steps: 362 ms median, 376 ms worst, 0 built, 8 from cache, 6 prefetched",
+            "note": "Gateway station, Earth's anchor departure point; 0.3 g is the default level; plot 16.48669 d, retime mid 32.97339 d, retime max 49.46008 d, begin 16.48669 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 377 ms median, 392 ms worst, 0 built, 8 from cache, 6 prefetched",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 3986.5784
+                    "milliseconds": 4135.8704
                 },
                 {
                     "phase": "drag-median",
-                    "milliseconds": 361.5932
+                    "milliseconds": 377.2118
                 },
                 {
                     "phase": "drag-worst",
-                    "milliseconds": 375.8969
+                    "milliseconds": 392.0619
                 },
                 {
                     "phase": "retime-mid",
-                    "milliseconds": 458.5297
+                    "milliseconds": 472.6904
                 },
                 {
                     "phase": "retime-max",
-                    "milliseconds": 367.0575
+                    "milliseconds": 379.4413
                 },
                 {
                     "phase": "begin-min",
-                    "milliseconds": 9301.6149
+                    "milliseconds": 0.0703
                 },
                 {
                     "phase": "begin-retime",
-                    "milliseconds": 341.2418
+                    "milliseconds": 0.0
                 },
                 {
                     "phase": "begin-total",
-                    "milliseconds": 9642.8567
+                    "milliseconds": 0.0653
                 }
             ]
         },
@@ -55,39 +55,39 @@
             "burnLevelG": 0.3,
             "floorDays": 14.109088856261224,
             "windowMaxDays": 42.32726656878367,
-            "note": "Gateway station; 0.3 g is the default level; plot 14.10909 d, retime mid 28.21818 d, retime max 42.32727 d, begin 14.23401 d; begin retimes to the window maximum; drag of 8 steps: 359 ms median, 405 ms worst, 1 built, 7 from cache, 5 prefetched",
+            "note": "Gateway station; 0.3 g is the default level; plot 14.10909 d, retime mid 28.21818 d, retime max 42.32727 d, begin 14.10909 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 376 ms median, 420 ms worst, 0 built, 8 from cache, 6 prefetched",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 9937.0816
+                    "milliseconds": 10323.108
                 },
                 {
                     "phase": "drag-median",
-                    "milliseconds": 359.1599
+                    "milliseconds": 375.9517
                 },
                 {
                     "phase": "drag-worst",
-                    "milliseconds": 405.1258
+                    "milliseconds": 420.0151
                 },
                 {
                     "phase": "retime-mid",
-                    "milliseconds": 468.9098
+                    "milliseconds": 486.9415
                 },
                 {
                     "phase": "retime-max",
-                    "milliseconds": 463.0396
+                    "milliseconds": 484.8921
                 },
                 {
                     "phase": "begin-min",
-                    "milliseconds": 4297.79
+                    "milliseconds": 0.0699
                 },
                 {
                     "phase": "begin-retime",
-                    "milliseconds": 476.2945
+                    "milliseconds": 0.0022999999999999967
                 },
                 {
                     "phase": "begin-total",
-                    "milliseconds": 4773.7218
+                    "milliseconds": 0.0722
                 }
             ]
         },
@@ -97,39 +97,39 @@
             "burnLevelG": 0.3,
             "floorDays": 92.13088452070952,
             "windowMaxDays": 276.39265356212857,
-            "note": "Gateway station; 0.3 g is the default level; plot 92.13088 d, retime mid 184.26177 d, retime max 276.39265 d, begin 87.21140 d; begin retimes to the window maximum; drag of 8 steps: 363 ms median, 366 ms worst, 1 built, 7 from cache, 5 prefetched",
+            "note": "Gateway station; 0.3 g is the default level; plot 92.13088 d, retime mid 184.26177 d, retime max 276.39265 d, begin 92.13088 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 379 ms median, 382 ms worst, 1 built, 7 from cache, 5 prefetched",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 2034.2768
+                    "milliseconds": 2119.9992
                 },
                 {
                     "phase": "drag-median",
-                    "milliseconds": 363.4148
+                    "milliseconds": 378.5073
                 },
                 {
                     "phase": "drag-worst",
-                    "milliseconds": 366.0093
+                    "milliseconds": 382.0696
                 },
                 {
                     "phase": "retime-mid",
-                    "milliseconds": 488.6914
+                    "milliseconds": 511.7053
                 },
                 {
                     "phase": "retime-max",
-                    "milliseconds": 479.5541
+                    "milliseconds": 500.5435
                 },
                 {
                     "phase": "begin-min",
-                    "milliseconds": 1649.1269
+                    "milliseconds": 0.0726
                 },
                 {
                     "phase": "begin-retime",
-                    "milliseconds": 489.1861
+                    "milliseconds": 0.0
                 },
                 {
                     "phase": "begin-total",
-                    "milliseconds": 2138.313
+                    "milliseconds": 0.073
                 }
             ]
         },
@@ -143,7 +143,7 @@
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 393.8807
+                    "milliseconds": 411.0062
                 }
             ]
         },
@@ -157,7 +157,7 @@
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 411.2507
+                    "milliseconds": 430.8662
                 }
             ]
         },
@@ -171,7 +171,7 @@
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 494.5609
+                    "milliseconds": 512.8711
                 }
             ]
         }
