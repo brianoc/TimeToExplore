@@ -42,6 +42,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Initial catalogue](/world/initial-catalogue.md) — the planets and major moons shipped in the first playable.
 * [Asteroid catalogue](/world/asteroid-catalogue.md) — the 100 largest main-belt asteroids, with diameters and elements.
 * [Lagrange stations](/world/lagrange-stations.md) — the six starting stations and why they sit where they do.
+* [Trade](/world/trade.md) — commodities and markets as data, a volume-limited hold, label-only prices, and trading only on arrival.
 
 # Technical
 
@@ -82,3 +83,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-017: Zoom toward the pointer, and Space to go home](/decisions/adr-017-cursor-zoom-and-home.md) — anchor the wheel zoom to the point under the pointer with the look-at offset, and ease the view back to the ship in one second.
 * [ADR-018: one orbit camera, no system map](/decisions/adr-018-one-orbit-camera.md) — remove the top-down map and its comparison scene, keep one 2,000 km–12 billion km orbit camera, and capture the framing distance once.
 * [ADR-019: station calls and the departure break](/decisions/adr-019-station-calls-and-departure.md) — a station call is a point-target rendezvous ending 500 m astern on a hold point with no capture chain or docking, and a go-to departure is a short prograde escape break and a ballistic climb, never a share of the trip time.
+* [ADR-020: trade data, cargo, and the first-pass market](/decisions/adr-020-trade-catalogue.md) — commodities and markets in a separate JSON behind a loader, integer units limited by volume, prices as labels, and trading gated on arrival rather than a new proximity test.
