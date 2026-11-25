@@ -173,6 +173,12 @@ namespace TimeToExplore.Simulation
         /// <see cref="_pendingPreview"/> when it picks up work.</summary>
         private PreviewRequest _pendingPreview;
 
+        /// <summary>The preview build the worker has taken and is running. A
+        /// repeat ask for that target continues it rather than queueing the
+        /// same work again behind it. Cleared when the build finishes, whether
+        /// it publishes, fails, or is superseded.</summary>
+        private PreviewRequest _buildingPreview;
+
         /// <summary>A finished background preview build, waiting for the main
         /// thread to publish it. Null while none is waiting or one was
         /// discarded.</summary>
@@ -453,12 +459,44 @@ namespace TimeToExplore.Simulation
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
+            // A plot for this target that is already queued or building is the
+            // answer this ask wants. Restarting it would throw away the seconds
+            // it has spent and leave the player waiting from zero, so a second
+            // ask — a selection priming the route and then a Plot click — just
+            // waits for the first one.
+            if (IsPlotPending(targetId)) return true;
+
             _previewDeparture = _state.WithJulianDate(julianDate);
             _lastPreviewRequestSeconds = double.NaN;
             var request = new PreviewRequest(PreviewKind.Plot, targetId, _previewDeparture,
                 double.NaN, ArrivalStyle, BurnLevelG, _planner);
             return EnqueuePreview(request);
         }
+
+        /// <summary>True while a plot for this target is queued or building. A
+        /// superseded build does not count: its generation no longer matches,
+        /// so it can never publish. The HUD reads this to say the route is
+        /// being planned, and <see cref="PlotAsync"/> reads it to continue work
+        /// that is already under way instead of restarting it.</summary>
+        public bool IsPlotPending(string targetId)
+        {
+            if (targetId == null) return false;
+
+            lock (_retimeLock)
+            {
+                return IsPendingPlot(_pendingPreview, targetId)
+                       || IsPendingPlot(_buildingPreview, targetId);
+            }
+        }
+
+        /// <summary>A request that is still wanted: it is a plot, it names the
+        /// target, and its generation is the current one. The caller holds
+        /// <see cref="_retimeLock"/>.</summary>
+        private bool IsPendingPlot(PreviewRequest request, string targetId) =>
+            request != null
+            && request.Kind == PreviewKind.Plot
+            && request.TargetId == targetId
+            && request.Generation == _previewGeneration;
 
         /// <summary>
         /// Re-time the current preview without re-solving the minimum or moving
@@ -1179,6 +1217,7 @@ namespace TimeToExplore.Simulation
                     {
                         preview = _pendingPreview;
                         _pendingPreview = null;
+                        _buildingPreview = preview;
                     }
                     else
                     {
@@ -1217,6 +1256,7 @@ namespace TimeToExplore.Simulation
                 {
                     _retimeBusy = false;
                     _prefetchBuilding = false;
+                    _buildingPreview = null;
                     if (_retimeStop) return;
 
                     if (failure != null)
@@ -1364,6 +1404,7 @@ namespace TimeToExplore.Simulation
                 _completedRetime = null;
                 _requestedPreviewSeconds = double.NaN;
                 _pendingPreview = null;
+                _buildingPreview = null;
                 _completedPreview = null;
                 _pendingPrefetch.Clear();
                 _prefetchBuilding = false;

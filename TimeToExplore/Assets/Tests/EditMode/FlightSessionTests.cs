@@ -551,6 +551,33 @@ namespace TimeToExplore.Tests.EditMode
                 "the second plot supersedes the first, newest-first");
         }
 
+        /// <summary>
+        /// A second plot to the same target continues the build that is already
+        /// queued or running. The published departure is the first ask's, so a
+        /// selection priming the route and a Plot click behind it pay for one
+        /// solve rather than restarting the several-second one.
+        /// </summary>
+        [Test]
+        public void ARepeatPlotToTheSameTargetContinuesTheBuild()
+        {
+            double later = _epoch + 1.0;
+
+            Assert.That(_session.PlotAsync("mars", _epoch), Is.True, "the plot is queued");
+            Assert.That(_session.IsPlotPending("mars"), Is.True);
+            Assert.That(_session.IsPlotPending("venus"), Is.False,
+                "another target is not queued");
+
+            Assert.That(_session.PlotAsync("mars", later), Is.True,
+                "a repeat ask is accepted, not refused");
+
+            TrajectoryPlan published = WaitForPublishedPreview();
+            Assert.That(published.TargetId, Is.EqualTo("mars"));
+            Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch),
+                "the first ask's departure is kept, so the solve is not restarted");
+            Assert.That(_session.IsPlotPending("mars"), Is.False,
+                "nothing is left queued once the plan publishes");
+        }
+
         [Test]
         public void APlotAsyncToAnUnknownTargetReportsTheFailure()
         {

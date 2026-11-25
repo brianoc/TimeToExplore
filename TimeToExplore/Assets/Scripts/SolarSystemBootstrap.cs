@@ -69,6 +69,12 @@ namespace TimeToExplore
         private TripPlanner _planner;
         private bool _wasFlying;
 
+        /// <summary>The body whose finished preview should take the camera, or
+        /// null for a plan that was primed by a selection. Only an explicit
+        /// Plot route click sets it, so reading a body's details never moves
+        /// the view when the background solve lands.</summary>
+        private string _frameOnPreviewTargetId;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
@@ -363,7 +369,7 @@ namespace TimeToExplore
             Focus?.Cancel();
             int current = _targets.IndexOf(Selected);
             int next = (current + direction + _targets.Count) % _targets.Count;
-            Selected = _targets[next];
+            Select(_targets[next]);
         }
 
         /// <summary>Start a Go To flight to a body. Raises the clock so the trip
@@ -383,6 +389,10 @@ namespace TimeToExplore
             SetFreeFlight(false);
             Ship.InputEnabled = false;
 
+            // The flight's own framing replaces any route framing a plot asked
+            // for; a late preview must not pull the camera off the ship.
+            _frameOnPreviewTargetId = null;
+
             TrajectoryPlan plan = Flight.Begin(body.Id, Clock.JulianDate);
 
             if (Flight.Status == FlightStatus.Flying)
@@ -398,9 +408,10 @@ namespace TimeToExplore
         }
 
         /// <summary>
-        /// Plot a route for inspection without starting the flight. The preview
-        /// never moves the ship; Begin flight flies it while it is fresh, and
-        /// replans from the current state past that.
+        /// Plot a route for inspection without starting the flight, and take
+        /// the camera to the finished route. The preview never moves the ship;
+        /// Begin flight flies it while it is fresh, and replans from the current
+        /// state past that.
         /// The plan is built on the background planner (see
         /// <see cref="FlightSession.PlotAsync"/>), and the HUD's per-frame
         /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready. A
@@ -409,10 +420,71 @@ namespace TimeToExplore
         /// </summary>
         public void PlotRoute(BodyRuntime body)
         {
+            StartPlot(body, frameWhenReady: true);
+        }
+
+        /// <summary>
+        /// Start the selected body's route plan in the background, without
+        /// taking the camera. A selection primes the plan, so the first, slow
+        /// solve runs while the player reads the details screen, and an
+        /// explicit <see cref="PlotRoute"/> later frames a route that is
+        /// usually already solved. The route line is drawn when the plan
+        /// publishes; the view is left where the player put it.
+        /// </summary>
+        public void PrimeRoute(BodyRuntime body)
+        {
+            StartPlot(body, frameWhenReady: false);
+        }
+
+        /// <summary>
+        /// The one plot path. A build already under way for this body is
+        /// continued rather than restarted, and a click that wants the camera
+        /// only adds the framing to it. An explicit click frames a preview that
+        /// is still fresh and still at the planner's fastest trip; a retimed or
+        /// stale one is replotted, which is how the panel's Replot resets the
+        /// trip time. A quiet prime never replaces a preview the player has: it
+        /// starts one only when this body has none.
+        /// </summary>
+        private void StartPlot(BodyRuntime body, bool frameWhenReady)
+        {
             if (body == null || Flight == null || Model == null) return;
             if (body.Gm <= 0.0 && !body.Data.IsStation) return;
+            if (Flight.IsFlying) return;
 
+            if (Flight.IsPlotPending(body.Id))
+            {
+                if (frameWhenReady) _frameOnPreviewTargetId = body.Id;
+                return;
+            }
+
+            bool hasPreview = Flight.HasPreview && Flight.Preview.TargetId == body.Id;
+            if (hasPreview && !frameWhenReady) return;
+            if (hasPreview && IsPreviewAtFastestTrip()
+                           && !Flight.IsPreviewStale(Clock.JulianDate))
+            {
+                _frameOnPreviewTargetId = null;
+                FramePlottedRoute(Flight.Preview, body);
+                return;
+            }
+
+            // A quiet plan never inherits an earlier click's framing, and an
+            // explicit one frames only the route it asked for.
+            _frameOnPreviewTargetId = frameWhenReady ? body.Id : null;
             Flight.PlotAsync(body.Id, Clock.JulianDate);
+        }
+
+        /// <summary>Whether the published preview is still the planner's own
+        /// fastest trip, rather than a duration the player chose on the
+        /// slider.</summary>
+        private bool IsPreviewAtFastestTrip()
+        {
+            if (Flight == null || !Flight.HasPreview) return false;
+
+            double fastest = Flight.PreviewMinimumSeconds;
+            double shown = Flight.PreviewDurationSeconds;
+            return double.IsFinite(fastest) && double.IsFinite(shown)
+                   && System.Math.Abs(shown - fastest)
+                   <= 1e-9 * System.Math.Max(1.0, System.Math.Abs(fastest));
         }
 
         /// <summary>Begin the plotted route. While the preview is fresh the drawn
@@ -464,8 +536,8 @@ namespace TimeToExplore
         /// planner worker hands its plan here once per HUD update; the HUD
         /// never touches the worker, and nothing it produces is shown before
         /// now. A failed build is logged and leaves the published preview in
-        /// place. Publishing draws the route the same way the synchronous
-        /// <see cref="PlotRoute"/> path always did; warp is raised by
+        /// place. Publishing draws the route, and takes the camera only when an
+        /// explicit <see cref="PlotRoute"/> click asked for it; warp is raised by
         /// <see cref="BeginGoTo"/>, not by a plot.
         /// </summary>
         public void ApplyPreviewIfReady()
@@ -474,13 +546,24 @@ namespace TimeToExplore
 
             string failure = Flight.TakePreviewFailure();
             if (!string.IsNullOrEmpty(failure))
+            {
                 Debug.LogWarning("Preview plan failed: " + failure);
+                // The build that would have taken the camera failed, so the
+                // click that asked for it has nothing left to wait for.
+                _frameOnPreviewTargetId = null;
+            }
 
             if (!Flight.TryApplyCompletedPreview(out TrajectoryPlan preview)) return;
 
             BodyRuntime target = Model?.Get(preview.TargetId);
             ShowPlan(preview, target);
-            FramePlottedRoute(preview, target);
+
+            // Only a click that asked for the view takes it. A selection primes
+            // the plan quietly, so the route is drawn where it is and the camera
+            // stays under the player's hand.
+            bool frame = _frameOnPreviewTargetId == preview.TargetId;
+            _frameOnPreviewTargetId = null;
+            if (frame) FramePlottedRoute(preview, target);
         }
 
         /// <summary>
@@ -523,13 +606,15 @@ namespace TimeToExplore
         /// Switch the arrival style. A plotted preview is rebuilt against the
         /// new style on the background planner — the HUD draws it through
         /// <see cref="ApplyPreviewIfReady"/> — and a live flight is left alone,
-        /// because it keeps the plan it was begun with. The camera is not
-        /// re-framed: the choice changes the arrival, not the viewer's aim.
+        /// because it keeps the plan it was begun with. A change of shape is a
+        /// new drawing of the route, so the camera follows the rebuilt plan as
+        /// it lands.
         /// </summary>
         public void SetArrivalStyle(CaptureStyle style)
         {
             if (Flight == null || Flight.ArrivalStyle == style) return;
 
+            if (Flight.HasPreview) _frameOnPreviewTargetId = Flight.Preview.TargetId;
             Flight.SetArrivalStyle(style);
         }
 
@@ -537,13 +622,20 @@ namespace TimeToExplore
         /// Set the burn level. A plotted preview is rebuilt on the background
         /// planner from the pinned departure state, because the profile's
         /// departure burn, brake, and hybrid capture all use it. A live flight
-        /// is left alone.
+        /// is left alone. The rebuilt route keeps the camera, like an arrival
+        /// style change.
         /// </summary>
         public void SetBurnLevel(double levelG)
         {
             if (Flight == null) return;
 
+            double previous = Flight.BurnLevelG;
             Flight.SetBurnLevel(levelG);
+
+            // A level the session rounds away rebuilds nothing, so it must not
+            // leave a framing request waiting for some later plan.
+            if (System.Math.Abs(Flight.BurnLevelG - previous) > 1e-9 && Flight.HasPreview)
+                _frameOnPreviewTargetId = Flight.Preview.TargetId;
         }
 
         /// <summary>Throw away a preview, leaving a live flight alone.</summary>
@@ -551,6 +643,7 @@ namespace TimeToExplore
         {
             if (Flight == null || !Flight.HasPreview) return;
 
+            _frameOnPreviewTargetId = null;
             bool flightIsLive = Flight.Plan != null;
             Flight.DiscardPreview();
             if (!flightIsLive) Trajectory?.Hide();
@@ -633,6 +726,14 @@ namespace TimeToExplore
             return Model.FindNearest(ShipPositionM);
         }
 
+        /// <summary>
+        /// Select a body, which is the player's way of naming a destination.
+        /// The route plan starts here, in the background, so the first — and
+        /// only slow — solve runs while the details screen is being read. The
+        /// plan is drawn when it publishes but does not take the camera; the
+        /// panel's Plot route button adds that. Selecting the same body again
+        /// keeps the plan that is already running or already published.
+        /// </summary>
         public void Select(BodyRuntime body)
         {
             if (body == null) return;
@@ -644,6 +745,7 @@ namespace TimeToExplore
             }
 
             Selected = body;
+            PrimeRoute(body);
         }
     }
 }

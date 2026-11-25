@@ -16,7 +16,8 @@ for tests. Now the scene has a ship:
 * it starts at Gateway Station, so the default trip is the one the suite
   measures;
 * **Plot route** on the details screen plans the trip and draws it as a
-  preview; a **trip-time slider** then re-solves that preview at a longer
+  preview, and selecting a body starts that plan early, without taking the
+  camera; a **trip-time slider** then re-solves that preview at a longer
   duration, and **Begin flight** flies the drawn plan while it is fresh and
   replans once it is stale;
 * the plan is drawn in the world as one coloured line per arc — gold for a
@@ -107,12 +108,20 @@ the flight policy · auto from x1,000,000` whenever the cap is binding.
 
 # Plot route, then Begin
 
+**Selecting a body starts its plan.** The click (or the target cycle) primes the
+route in the background at once, so the first — and only slow — solve runs while
+the player reads the details screen. The route is drawn when it publishes, but
+the view stays where the player put it, and selecting the same body again keeps
+the plan that is running or already published.
+
 The details footer splits the old one-press **Go To** into two actions:
 
-1. **Plot route** calls `FlightSession.Plot(targetId, Clock.JulianDate)`.
-   The planner runs on a copy of the ship state with the requested date, and
-   the result is held as `Preview`. It is data, not a flight: the ship, its
-   `Status`, the clock, and the warp are untouched.
+1. **Plot route** calls `SolarSystemBootstrap.PlotRoute`, which asks the session
+   for the plan and takes the camera to the finished route. It is data, not a
+   flight: the ship, its `Status`, the clock, and the warp are untouched. A
+   request already queued or building is continued, not restarted, so a click
+   during the wait only adds the camera move. If a fresh preview already sits at
+   the planner's fastest trip, the click frames it without replanning.
 2. **Begin flight** calls `BeginGoTo`. Inside the preview's own freshness
    window it flies the plan that was drawn, from the departure it was certified
    at, so the flight and the arrival date are exactly what the route and the
@@ -224,8 +233,11 @@ route without blocking the main thread: the floor plan and the trip-time window
 solve run on the worker with its own planner and gravity field, and the plan is
 published with `TryApplyCompletedPreview`, which the HUD pumps once per frame
 as part of `SolarSystemBootstrap.ApplyPreviewIfReady` — the route redraws when
-the plan is ready, and the previous preview stays on screen until then. A
-second plot replaces the first: the newest ask wins. The arrival-style and
+the plan is ready, and the previous preview stays on screen until then. A second
+plot to another target replaces the first: the newest ask wins. A second plot to
+the target already queued or building is **the same ask**, so it is continued
+and `IsPlotPending` reports the wait; that is how a selection primes a route and
+a Plot click behind it pays for the same solve. The arrival-style and
 burn-level changes go through the same pipeline — `SetArrivalStyle` and
 `SetBurnLevel` enqueue a background rebuild of the
 published preview (`RequestRebuild`), so the route updates off the main thread
@@ -307,10 +319,10 @@ zero-thrust version of the profile. A live flight is never restyled: it keeps
 the plan it was begun with, and a later replan uses the style and level
 currently selected.
 
-Only one preview exists. A second plot replaces it; selecting another body,
-`Esc`, **Close**, Cancel, teleport, and reset all discard it. `Begin` consumes
-it. While a flight is running the live panel takes over and the route stays
-usable.
+Only one preview exists. A second plot of the same body continues the plan in
+flight; a plot of another body replaces it, and selecting another body, `Esc`,
+**Close**, Cancel, teleport, and reset all discard it. `Begin` consumes it.
+While a flight is running the live panel takes over and the route stays usable.
 
 # The plan in the world
 
@@ -469,7 +481,8 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 
 | Input | Action |
 |---|---|
-| **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
+| Left click a body (or `Tab`) | Select it and start its route plan in the background; nothing is drawn or framed until the plan lands, and selecting the same body again keeps it |
+| **Plot route** / **Replot route** on the details screen | Continue the plan that is running (or frame the fresh fastest one) and draw the preview without flying; frames the route. A retimed or stale preview is replanned at its fastest trip |
 | **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship. The session prefetches the neighbouring steps in the background, lowest priority, so the first moves after a plot publish at once |
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
 | **Begin flight** | Fly the drawn plan from its own departure while the preview is fresh; replan at the current state and date once it is stale; enabled once a preview exists |
