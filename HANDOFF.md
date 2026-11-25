@@ -93,6 +93,29 @@ heliocentric start (Ares Junction → Gateway, 160 d) is bit-identical either wa
 Determinism is tested: two 18-day builds choose the same `v∞` and return the
 same plan.
 
+## Step 3 design (settled before turning it on)
+
+* **Make the chooser cheap first.** At 0.6 s the search cannot ship: it runs in
+  every `Build`, so the floor search would pay it per probe. Target **≤ 50 ms**
+  per search. The first attempt is a **rank-only single-pass** fast build (stop
+  the pin after one pass) on a **5–7 point grid**, no refinement until the
+  ranking is proven. Check the chosen `v∞` still matches the full search at 8,
+  18, 30 and 90 days; if it does not, implement a Lambert-based estimate that
+  keeps the fixed burns separate. Do not flip the flag until the cheap chooser
+  gives the same answers.
+* **Preserve the slow end of the slider.** `FlightSession.MaximumPreviewSeconds`
+  caps the window at `minimum * TripPlanner.MaxDurationScale` (3×). With the
+  minimum falling from ~16.5 to ~8 days, 3× would cut the Mars window from
+  ~49 d to ~24 d and take the cheap slow trips away. Change the right-hand end
+  to the **largest duration the planner accepts**, found by growing from the
+  minimum until refused and then bisecting (the geometry limit, about 50.53 d
+  at Mars today). The left end is the new minimum; the fix should only add fast
+  options, not remove slow ones. Record this as part of ADR-021.
+* **Stations are a follow-up.** A station plan has a velocity match instead of
+  a capture chain, and step 2 left it unforced. Do not expand step 3 to cover
+  it; note it in the ADR and the roadmap as the next departure-split change.
+
+
 ## Design settled
 
 * **Objective:** minimise the plan's total delta-v at the requested duration.
@@ -132,22 +155,22 @@ same plan.
    154.753 / 38.541 km/s. One search ≈ **0.6 s**. Flag-off anchors unchanged.
    Verified with `tools/check.sh --tests flight` (326 tests, 0 failed) and
    `tools/check.sh --fast`.
-3. **Next — Turn it on and re-baseline.** Flip the flag, re-sweep the floors,
-   windows and fixed-duration anchors, update every affected test, and update
+3. **Next — Turn it on and re-baseline.** First make the chooser cheap (see
+   "Step 3 design"): a rank-only single-pass grid, ≤ 50 ms, same answers at 8,
+   18, 30 and 90 days. Then flip `UseDepartureSplit` on. Re-sweep the floors,
+   the windows (including the new right-hand end) and the fixed-duration
+   anchors, and update every affected test. Update
    [burn–coast–burn](Docs/simulation/burn-coast-burn.md),
    [navigation and arrival](Docs/simulation/navigation-and-arrival.md),
    [the flight model](Docs/simulation/flight-model.md),
    [planning performance](Docs/technical/planning-performance.md) and
-   [testing](Docs/technical/testing.md). Add ADR-021 for the split. Fix the
-   two wrong propellant rows in the burn–coast–burn table while there (the code
-   gives 50.8 t at 20 d and 3.9 t at 90 d). **Performance first:** the search
-   runs inside every `Build`, including each floor probe, so a plot would pay
-   ~0.6 s per probe. Hoist or cache the choice per (date, target, level, style,
-   duration); if that is not enough, use the full search only for the certified
-   build and a fixed rule for probes. Measure the plot and retime with
-   `tools/bench.sh`; the 25% threshold is the regression gate. Remove the
-   `DepartureVInfinityOverrideMps` seam and its measurement tests, or keep them
-   deliberately. Verify the full `tools/check.sh` and `tools/validate_okf.py`.
+   [testing](Docs/technical/testing.md). Add ADR-021 for the split and the
+   window change. Fix the two wrong propellant rows in the burn–coast–burn
+   table while there (the code gives 50.8 t at 20 d and 3.9 t at 90 d). Measure
+   the plot and retime with `tools/bench.sh`; the 25% threshold is the
+   regression gate. Keep or remove the `DepartureVInfinityOverrideMps` seam
+   deliberately; the step-1 measurement tests may still use it. Verify the full
+   `tools/check.sh` and `tools/validate_okf.py`.
 4. **Close out.** Add a PlayMode `capture` test that plots Gateway → Mars at 18
    days and writes the HUD screenshot, run it without `-nographics`, and show
    the result in the chat. Clear this handoff to the no-active stub in the same
@@ -169,8 +192,20 @@ same plan.
   plan plus the break's delta-v, because it keeps the break and the two fixed
   burns separate.
 * **The search runs inside every `Build`.** With the flag on, the floor search
-  pays ~0.6 s per probe, so step 3 must hoist or cache the choice before the
-  plot is benchmarked.
+  pays ~0.6 s per probe, so step 3 must make the chooser cheap before the plot
+  is benchmarked. If the cheap ranking moves the chosen `v∞`, stop and report
+  rather than shipping a worse split.
+* **The window's right end is a 3× cap tied to the minimum**
+  (`FlightSession.MaximumPreviewSeconds`, `TripPlanner.MaxDurationScale`). A
+  lower minimum would shrink the slow end; step 3 replaces the cap with the
+  planner's true slow limit. Do not leave the window at `3 × 8 d`.
+* **Stations keep the unforced climb.** The split cost is a planet capture
+  chain. Gateway → station still starts with the long climb; that is a recorded
+  follow-up, not a step-3 failure.
+* **Do not chase anchors by pasting the new numbers.** The plans change by
+  design; first confirm each new plan is exact (seams and arrival) and that the
+  faster/slower trade still orders correctly, then update the pin. Keep the
+  relationships, not just the values.
 * `DepartureVInfinityOverrideMps` is a test-only seam, not a plan input, and it
   takes precedence over the search. The step-1 measurement tests and the
   step-2 choice tests both use it or rely on it; step 3 decides whether the
