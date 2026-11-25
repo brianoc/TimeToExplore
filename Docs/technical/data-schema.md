@@ -248,16 +248,23 @@ transaction moves whole units and charges nothing
 
 # Validating trade data
 
-The trade file follows the orbital catalogue's rules: ids resolve, values are
-positive, and the asset type is explicit. A validator (a sibling of
-`tools/validate_catalogue.py`) will check:
+`tools/validate_trade.py` is the fast gate. It runs in `tools/check.sh` and
+`tools/check.sh --fast` as the step after the orbital catalogue, reads the trade
+file and `solar_system.json`, and prints one `FAIL` line per problem:
 
-* every `commodityId` and every `markets[].stationId` resolves,
-* every commodity id and every market id is unique,
+* every `commodityId` resolves to a shipped commodity,
+* every `markets[].stationId` resolves to a body in `solar_system.json`,
+* every commodity id and every market station id is unique,
 * `volumePerUnitM3 > 0` and `massPerUnitKg > 0`,
 * no market lists the same commodity twice,
-* `buyPrice >= sellPrice >= 0`,
+* `buyPrice >= sellPrice >= 0`, and both prices are integers,
 * at least one market offers each shipped commodity, so no good is dead content.
+
+`TradeCatalogue.Parse` enforces the file's own schema when the asset loads and
+throws an `InvalidOperationException` naming the offending row. The cross-file
+rule stays in the validator, because `Core` does not load the orbital catalogue.
+`TradeCatalogueTests` (category `core`) pins the same rules through the runtime
+path, and `tools/test_validate_trade.py` covers the validator itself.
 
 # Why JsonUtility
 

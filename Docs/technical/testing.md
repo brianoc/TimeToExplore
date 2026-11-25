@@ -30,14 +30,16 @@ starts it, and running it never fails the build. See
 [Planning performance](/technical/planning-performance.md#the-route-benchmark-2026-11-24)
 for the numbers and the warm-up rule.
 
-`check.sh` runs seven gates in order:
+`check.sh` runs nine gates in order:
 
 | Gate | Tool | What it proves |
 |---|---|---|
 | Design bundle | `tools/validate_okf.py` | OKF v0.2 structure, frontmatter, links, index coverage |
 | Catalogue schema | `tools/validate_catalogue.py` | Field types, ids, parents, counts, orbit ranges, epoch maths |
+| Trade catalogue | `tools/validate_trade.py` | Commodity ids, positive size, market ids that resolve to a body, unique offers, `buyPrice >= sellPrice >= 0`, and a market for every commodity |
 | Catalogue generator | `tools/generate_solar_system.py --offline --output …` | The committed JSON is byte-identical to a fresh generation |
 | Sky generator | `tools/generate_skybox.py --out …` | The committed `milky_way.png` is pixel-identical to a fresh generation |
+| Bright-star generator | `tools/generate_bright_stars.py --out …` | The committed `bright_stars.json` is byte-identical to a fresh generation |
 | Tooling | `tools/test_unity_guard.py` | The guard stops a stuck run and passes through a real exit code |
 | Runtime (EditMode) | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock, the scene's frame loop |
 | Player loop (PlayMode) | Unity PlayMode suite | The runtime-built bootstrap, renderer, trajectory line, and HUD through Unity's own frames |
@@ -111,6 +113,7 @@ because Unity test assemblies cannot reference the predefined
 | `OrbitMathTests` | angle wrapping, Kepler residual, Lagrange roots and geometry, pole conversion |
 | `OrbitalElementsTests` | circular and elliptical states, vis-viva, energy and angular momentum, ellipse closure |
 | `CatalogueTests` | shipped JSON: counts, ids, names, hierarchy, units, stations, epochs |
+| `TradeCatalogueTests` | shipped trade JSON: 4 commodities, 8 markets, Earth and Mars as planet markets, every offer resolving, misses, and every rejection rule (duplicate commodity or market, unknown commodity, duplicate offer, zero volume or mass, a negative price, and a sell above the buy) |
 | `SolarSystemModelTests` | load, parent-first order, Sun at rest, epoch distances and speeds, Moon frame, stations, orbit sampling |
 | `SimulationClockTests` | warp arithmetic, pause, clamping, labels |
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the star→planet→station→moon→asteroid rank, the ordered stack and its depth tie, the repeated-click cycle, smoothstep/slerp transition, approach offset |

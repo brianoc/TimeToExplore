@@ -97,7 +97,11 @@ step "Design bundle (OKF v0.2)"
 step "Catalogue schema and epoch maths"
 "$PYTHON" tools/validate_catalogue.py || fail "catalogue validation"
 
-# 3. Generator reproducibility ---------------------------------------------
+# 3. Trade catalogue ---------------------------------------------------------
+step "Trade catalogue schema and markets"
+"$PYTHON" tools/validate_trade.py || fail "trade validation"
+
+# 4. Generator reproducibility ---------------------------------------------
 step "Generator reproducibility"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/tte-check.XXXXXX")"
 GENERATED="$WORK/solar_system.json"
@@ -110,7 +114,7 @@ if ! cmp -s "$GENERATED" TimeToExplore/Assets/Resources/solar_system.json; then
 fi
 echo "Generator output is byte-identical to the committed catalogue."
 
-# 4. Sky reproducibility ----------------------------------------------------
+# 5. Sky reproducibility ----------------------------------------------------
 step "Sky reproducibility"
 SKY="$WORK/milky_way.png"
 "$PYTHON" tools/generate_skybox.py --out "$SKY" >/dev/null || fail "sky generator"
@@ -143,7 +147,7 @@ then
 fi
 echo "Sky output matches the committed texture (2048x1024)."
 
-# 4b. Bright-star catalogue --------------------------------------------------
+# 5b. Bright-star catalogue --------------------------------------------------
 step "Bright-star catalogue reproducibility"
 STARS="$WORK/bright_stars.json"
 "$PYTHON" tools/generate_bright_stars.py --out "$STARS" >/dev/null \
@@ -155,7 +159,7 @@ if ! cmp -s "$STARS" TimeToExplore/Assets/Resources/Sky/bright_stars.json; then
 fi
 echo "Bright-star catalogue is byte-identical to a fresh generation."
 
-# 5. Tooling tests ----------------------------------------------------------
+# 6. Tooling tests ----------------------------------------------------------
 step "Tooling tests"
 "$PYTHON" -m unittest discover -s tools -p 'test_*.py' -q || fail "tooling tests"
 
@@ -164,7 +168,7 @@ if (( FAST )); then
     exit 0
 fi
 
-# 6. Unity EditMode and PlayMode tests --------------------------------------
+# 7. Unity EditMode and PlayMode tests --------------------------------------
 CATEGORIES=""
 RUN_EDITMODE=1
 RUN_PLAYMODE=1

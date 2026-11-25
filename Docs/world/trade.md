@@ -61,8 +61,11 @@ cannot be traded with, and an entity with a row need not offer every commodity.
 
 The six stations and the two inner planets (Earth and Mars) carry markets in the
 first pass, which is enough to test a short hop and a long one. Offers are
-illustrative spreads, for example at Gateway: water 8/6, food 12/9, machinery
-20/15; at Earth: water 4/3, food 6/4, rare metals 60/48.
+illustrative spreads. Gateway offers all four commodities — water 8/6, food
+12/9, machinery 20/15, rare metals 60/48 — Earth offers all four and cheaper
+(4/3, 6/4, 14/10, 60/48), and Helios Watch offers three (10/7, 14/10, 24/18).
+Mars, Ares Junction, the Jovian Transfer Yard and Titan Reach sit at the far end
+of the same spreads.
 
 # Cargo
 

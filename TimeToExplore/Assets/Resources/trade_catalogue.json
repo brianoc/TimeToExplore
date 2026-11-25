@@ -1,0 +1,104 @@
+{
+  "commodities": [
+    {
+      "id": "water",
+      "name": "Water",
+      "volumePerUnitM3": 1.0,
+      "massPerUnitKg": 1000.0,
+      "description": "Potable water and coolant."
+    },
+    {
+      "id": "food",
+      "name": "Food",
+      "volumePerUnitM3": 1.2,
+      "massPerUnitKg": 400.0,
+      "description": "Rations and hydroponics supplement."
+    },
+    {
+      "id": "machinery",
+      "name": "Machinery",
+      "volumePerUnitM3": 1.5,
+      "massPerUnitKg": 1200.0,
+      "description": "Spares, pumps and printed parts."
+    },
+    {
+      "id": "rare_metals",
+      "name": "Rare metals",
+      "volumePerUnitM3": 0.4,
+      "massPerUnitKg": 2200.0,
+      "description": "Dense electronics-grade metals."
+    }
+  ],
+  "markets": [
+    {
+      "stationId": "gateway",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 8, "sellPrice": 6 },
+        { "commodityId": "food", "buyPrice": 12, "sellPrice": 9 },
+        { "commodityId": "machinery", "buyPrice": 20, "sellPrice": 15 },
+        { "commodityId": "rare_metals", "buyPrice": 60, "sellPrice": 48 }
+      ]
+    },
+    {
+      "stationId": "earth",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 4, "sellPrice": 3 },
+        { "commodityId": "food", "buyPrice": 6, "sellPrice": 4 },
+        { "commodityId": "machinery", "buyPrice": 14, "sellPrice": 10 },
+        { "commodityId": "rare_metals", "buyPrice": 60, "sellPrice": 48 }
+      ]
+    },
+    {
+      "stationId": "mars",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 18, "sellPrice": 13 },
+        { "commodityId": "food", "buyPrice": 22, "sellPrice": 16 },
+        { "commodityId": "machinery", "buyPrice": 26, "sellPrice": 20 },
+        { "commodityId": "rare_metals", "buyPrice": 70, "sellPrice": 52 }
+      ]
+    },
+    {
+      "stationId": "helios_watch",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 10, "sellPrice": 7 },
+        { "commodityId": "food", "buyPrice": 14, "sellPrice": 10 },
+        { "commodityId": "machinery", "buyPrice": 24, "sellPrice": 18 }
+      ]
+    },
+    {
+      "stationId": "nyx_anchor",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 12, "sellPrice": 9 },
+        { "commodityId": "machinery", "buyPrice": 22, "sellPrice": 16 },
+        { "commodityId": "rare_metals", "buyPrice": 64, "sellPrice": 50 }
+      ]
+    },
+    {
+      "stationId": "ares_junction",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 16, "sellPrice": 12 },
+        { "commodityId": "food", "buyPrice": 20, "sellPrice": 15 },
+        { "commodityId": "machinery", "buyPrice": 24, "sellPrice": 18 },
+        { "commodityId": "rare_metals", "buyPrice": 68, "sellPrice": 50 }
+      ]
+    },
+    {
+      "stationId": "jovian_yard",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 24, "sellPrice": 18 },
+        { "commodityId": "food", "buyPrice": 28, "sellPrice": 21 },
+        { "commodityId": "machinery", "buyPrice": 22, "sellPrice": 16 },
+        { "commodityId": "rare_metals", "buyPrice": 58, "sellPrice": 45 }
+      ]
+    },
+    {
+      "stationId": "titan_reach",
+      "offers": [
+        { "commodityId": "water", "buyPrice": 26, "sellPrice": 20 },
+        { "commodityId": "food", "buyPrice": 24, "sellPrice": 18 },
+        { "commodityId": "machinery", "buyPrice": 30, "sellPrice": 22 },
+        { "commodityId": "rare_metals", "buyPrice": 66, "sellPrice": 49 }
+      ]
+    }
+  ]
+}

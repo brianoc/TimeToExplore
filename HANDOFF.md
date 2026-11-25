@@ -2,7 +2,7 @@
 
 **Branch:** `work/trade` in the worktree at
 `/Users/brian.oconnor/.local/share/opencode/worktree/6479b2/trade`.
-**Status:** step 1 next. Design merged to `main` at `c016ec5`.
+**Status:** step 1 done, step 2 next. Design merged to `main` at `c016ec5`.
 **Design:** [ADR-020](/decisions/adr-020-trade-catalogue.md) and
 [Trade](/world/trade.md). The plan runs one sub-agent per step; each step is one
 commit carrying code, tests, concept updates, a `Docs/log.md` entry, and this
@@ -10,9 +10,10 @@ file.
 
 ## Steps
 
-1. **Data and loader (`Core`)** — `trade_catalogue.json`, `TradeCatalogue`,
-   `TradeCatalogueLoader`, `TradeCatalogueTests` (core), `tools/validate_trade.py`
-   and its unit test, wired into `tools/check.sh`.
+1. **Data and loader (`Core`)** — **done.** `trade_catalogue.json`,
+   `TradeCatalogue`, `TradeCatalogueLoader`, `TradeCatalogueTests` (core),
+   `tools/validate_trade.py` and its unit test, wired into `tools/check.sh` as
+   gate 3.
 2. **Cargo and transactions (`Simulation`)** — `CargoHold`, `TradeSession`, the
    arrival gate, `CargoHoldTests` and `TradeSessionTests` (flight).
 3. **HUD (`Presentation`)** — a Trade button in the details panel, a Trade panel,
@@ -68,7 +69,20 @@ tools/check.sh                    # close-out
 - `check.sh` runs Unity with `-nographics`, so a rendered screenshot is not
   available from the suite; evidence for step 3 is the panel assertions plus,
   if a graphics-enabled run works, a PNG.
+- `TradeCatalogue.Parse` throws `InvalidOperationException`; `Commodity(id)`
+  throws `KeyNotFoundException` on a miss. Use `TryGetCommodity`, `TryGetMarket`
+  or `HasMarket` in the session and the UI.
+- `JsonUtility` turns an absent `offers` array into `null`. `Parse` reads that as
+  an empty offer list; the shipped file always writes the array, and the
+  validator rejects a missing one. Do not assume `offers` is non-null in new
+  code either.
+- The validator reads `solar_system.json` as well, because a market id must be a
+  body. That cross-file rule is not in `Parse`: `Core` does not load the orbital
+  catalogue. `--system` overrides the path.
+- `check.sh` step 3 is the trade validator; the later step comments were
+  renumbered, so read the numbers before inserting a gate.
 - Add `trade_catalogue.json.meta` if Unity generates one; the JSON is an asset.
+  The metas for this step are committed.
 - Keep the log entry under `## 2026-11-25` unless the date has moved.
 
 No active blocker.
