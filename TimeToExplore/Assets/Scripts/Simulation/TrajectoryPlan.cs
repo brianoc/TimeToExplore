@@ -182,6 +182,13 @@ namespace TimeToExplore.Simulation
         /// the entry radius to periapsis. Zero for the quintic capture.</summary>
         public double CaptureInboundSeconds { get; internal set; }
 
+        /// <summary>The departure escape conic's hyperbolic excess speed, in
+        /// m/s: zero for the minimum-energy parabolic climb, and `-1` when the
+        /// plan has no departure climb (a heliocentric start, a station outside
+        /// every sphere, or a trip that starts inside the target's sphere). This
+        /// is the split the planner chose, not a caller input.</summary>
+        public double DepartureVInfinityMps { get; internal set; } = -1.0;
+
         public double MinimumClearanceM
         {
             get
