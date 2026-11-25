@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), and the warm-started pin.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T00:24:01Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:40:00Z }
 ---
 
 # The problem
@@ -1177,6 +1177,123 @@ counts measure. Reading the benchmark as evidence that the retime did not
 improve would be a mistake; reading it as evidence that the plot did not improve
 is correct.
 
+## Step 4: prefetching the slider's neighbours (2026-11-25)
+
+The cache made a step the player had already waited for free, and the warm start
+made the next step's build cheaper, but a **new** step was still one build away.
+This step fills the slots the player is about to ask for, on the same worker, so
+a drag publishes from the cache instead of building.
+
+**The policy.** A slider step is `(PreviewMaximumSeconds −
+PreviewMinimumSeconds) / 63`, because the HUD offers **64** whole steps across
+the window. After a preview publishes, the session queues **two steps each side**
+of the published duration; a fresh plot starts at the window minimum, so its two
+lower steps clamp away and nothing is built below the minimum. While the player
+drags, each accepted ask queues **three steps in the direction of travel**. The
+direction is inferred inside `FlightSession`: the sign of the new ask's step
+index against the last accepted ask's, so `RequestPreviewDuration` keeps its
+signature and the HUD passes nothing extra. The index is clamped to
+`0…63`; a step outside the window is skipped, never faked.
+
+**The priority rule.** Prefetch is the **lowest** priority on the one background
+worker, which already builds retimes and previews:
+
+* the worker takes a queued retime, then a preview, then **one** prefetch item,
+  in that order, and re-checks the queues between items;
+* a real request clears the queued prefetch at once — a retime, a rebuild, a
+  plot, a synchronous retime, a discard, a style or burn-level change, and any
+  departure-date change — so the queue never sits in front of the player's ask;
+* a prefetch never publishes and never bumps `_retimeGeneration` or
+  `_previewGeneration`. It can only write a cache slot. `IsRetimePending`,
+  `PendingPreviewSeconds`, and the published preview are untouched by it.
+
+**The latency tail is one build.** An in-flight build cannot be cancelled, so a
+real request that arrives while a prefetch item is building waits for that item
+and then its own build. The remainder of the prefetch is at most one build, and a
+build's own cost varies with where it sits in the window: measured at Mars, the
+neighbour one step above the floor (16.49–17.01 d) takes **942 ms** cold against
+**442 ms** at 1.5× the minimum, while the prefetch's own builds in the drag
+table's later steps are **343–405 ms**. That is the whole added tail; there is no
+second queued prefetch behind it, because the worker takes one item at a time and
+any ask clears the rest.
+
+**The inputs are the preview's, frozen.** A prefetch builds from
+`_previewDeparture` and from the burn level and arrival style **captured when the
+preview was plotted**, not from the live values, and from the window captured at
+that publish. A slot filled under different inputs is a slot no retime can read.
+Each item also starts from the nearest cached plan's `PinSeed` (step 3's
+`RetimeSeed`), so a prefetch costs the warm build; it never starts cold near a
+neighbour. Only a **feasible** plan is cached: a step in the short-coast gap that
+`PlanAtDuration` refuses leaves no slot, and a later ask builds and reports the
+refusal exactly as before.
+
+**The cache bound does not move.** Six extra entries at most (two after a plot,
+three after a drag step) against the **64** slots per window, which already
+evict the oldest entry. `MaxCachedRetimesPerWindow` stays 64.
+
+### The drag benchmark
+
+`tools/bench.sh` gained a **drag** phase: it plots on the real session, waits for
+the plot's own prefetch to settle, then requests **eight consecutive steps from
+the window minimum**, each after the previous publish, and times every request to
+its publish. The phases are `drag-median` and `drag-worst`; the note records how
+many steps were built, how many came from the cache, and how many the prefetch
+filled. `TTE_BENCH_NO_PREFETCH=1` times the same drag with prefetch disabled.
+
+The same route set, level, epoch and runtime as the other phases (M4 Max, macOS
+27.2.1, Unity 6000.3.28f1 editor in batch mode, Mono, warm test project). Two
+runs on 2026-11-25, milliseconds. "Prefetched" counts the neighbours built
+*during the drag*; the plot has already queued two more before it starts.
+
+| Route | Prefetch | Median | Worst | Built | From cache | Prefetched |
+|---|---|---:|---:|---:|---:|---:|
+| Earth → Mars | on | **362** | **376** | **0** | **8** | 6 |
+| Earth → Mars | off | 386 | 1,113 | 8 | 0 | 0 |
+| Earth → Venus | on | **359** | **405** | **1** | **7** | 5 |
+| Earth → Venus | off | 387 | 1,064 | 8 | 0 | 0 |
+| Earth → Uranus | on | **363** | **366** | **1** | **7** | 5 |
+| Earth → Uranus | off | 372 | 496 | 8 | 0 | 0 |
+
+The eight request-to-publish times show where the win is:
+
+| Route | Prefetch | Steps 1–8 (ms) |
+|---|---|---|
+| Earth → Mars | on | 1, 0, 376, 372, 374, 362, 360, 360 |
+| Earth → Mars | off | 952, 1,113, 388, 382, 386, 371, 365, 368 |
+| Earth → Venus | on | 0, 0, 405, 376, 377, 359, 358, 343 |
+| Earth → Venus | off | 775, 1,064, 410, 383, 387, 367, 367, 347 |
+| Earth → Uranus | on | 0, 0, 366, 360, 362, 363, 363, 365 |
+| Earth → Uranus | off | 496, 476, 374, 369, 371, 372, 370, 372 |
+
+**What it buys, and what it does not.** The **first two steps after a plot** are
+answered from the cache — 0–1 ms against 775–1,113 ms — and the **worst** step
+falls by **62–66%** at Mars and Venus (1,113 → 376 ms and 1,064 → 405 ms) and
+**26%** at Uranus (496 → 366 ms). The
+expensive step is the one just above the floor, and it is the one the player is
+most likely to take first, because the plot starts at the minimum. Every step the
+prefetch has not reached still costs about one build: the **median** only moves
+2–7%, because a build (≈0.36 s) is about as long as the handle takes to produce
+the next step, so the request lands as the prefetch of that same step begins. A
+fast continuous drag is unchanged in kind: each request supersedes the last and
+the player pays one build after they stop. Six of the eight steps at Mars and
+five of the eight at Venus and Uranus were filled by a prefetch *during the
+drag*; with the plot's two, seven or eight arrived from the cache, and one step
+at Venus and one at Uranus had to build.
+
+**What the player sees.** The handle moves and the route follows on the next
+frame for the steps the prefetch has filled — the first two after a plot, and a
+small nudge back to a step already visited. The worst-case wait of about a second
+at the first step above the floor is gone. The plot itself is unchanged; it pays
+two extra background builds (about 1.3 s in total at Mars) **after** the route
+appears, on the worker, so the frame does not wait and the plan the plot
+published does not move.
+
+**Equality.** Prefetch changes no plan: the tests show a drag to step 1 publishes
+the plan built at step 1, a prefetch publishes nothing, and a real retime arriving
+mid-prefetch still publishes its own duration, waiting one in-flight build plus
+its own. No pin, tolerance, gate, seed, or window rule moved, and the floors are
+the step-3 anchors.
+
 # Where it lives
 
 | Concern | Code |
@@ -1188,6 +1305,7 @@ is correct.
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
 | Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `TryGetNearestRetimeSeed`, `RetimeSeed`, `SeedExcludedLowFraction`, `SetPreviewDuration`'s floor reuse |
+| Prefetch | `FlightSession.PlotPrefetchSteps`, `DragPrefetchSteps`, `ArmPrefetch`, `ScheduleDragPrefetch`, `SchedulePrefetch`, `EnqueuePrefetch`, `BuildPrefetch`, `PrefetchRequest`, `PrefetchEnabled` (diagnostic), `IsPrefetchPending`/`QueuedPrefetchSeconds` (diagnostics) |
 | Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 | Build metrics | `TripPlanner.Metrics`, `PlanMetrics`, `RouteBuildMetricsTests` |
@@ -1209,7 +1327,11 @@ synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, a retime to the floor
 reusing the window on both the synchronous and the background paths, and
 `Dispose` stopping the worker. `SolarSystemHudTests` and `BootstrapSmokeTests`
-pump the real handover through the frame loop. `WarmStartTests` holds the warm
+pump the real handover through the frame loop. `FlightSessionTests` also holds
+the prefetch's contract: a plot fills the two steps above it and none below the
+minimum, a drag publishes the prefetched neighbour with no build, a prefetch
+never publishes by itself, a discard drops the queue, and an ask arriving
+mid-prefetch waits for that one build and its own. `WarmStartTests` holds the warm
 start's own contract: cold and seeded builds agree to four decimals of delta-v
 and inside the 1 km / 1 m/s gate over six slider positions at Mars, Venus and
 Uranus, the seeded retime costs fewer pin passes at the same duration, the

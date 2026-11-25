@@ -7,6 +7,7 @@ using System.Threading;
 using NUnit.Framework;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
+using TimeToExplore.UI;
 
 namespace TimeToExplore.Tests.EditMode
 {
@@ -1402,6 +1403,200 @@ namespace TimeToExplore.Tests.EditMode
             WaitUntil(() => _session.TryApplyCompletedRetime(out published),
                 "no retimed plan was published");
             return published;
+        }
+
+        // --- Prefetching the slider's neighbours -------------------------------
+
+        /// <summary>A slider step in the preview's own window: the HUD offers
+        /// <see cref="SolarSystemHud.TimeSliderSteps"/> positions, so one step is
+        /// the span over the count minus one.</summary>
+        private static double StepSeconds(double minimum, double maximum, int step) =>
+            minimum + (maximum - minimum) * step / (SolarSystemHud.TimeSliderSteps - 1);
+
+        private void WaitForPrefetchIdle()
+        {
+            WaitUntil(() => !_session.IsPrefetchPending,
+                "the prefetch never settled");
+        }
+
+        /// <summary>
+        /// A published plot queues the two neighbours above its duration. The
+        /// preview starts at the window minimum, so the two below clamp away and
+        /// nothing is faked below it.
+        /// </summary>
+        [Test]
+        public void APlotPrefetchesTheTwoStepsAboveIt()
+        {
+            _session.PlotAsync("mars", _epoch);
+            TrajectoryPlan plotted = WaitForPublishedPreview();
+            WaitForPrefetchIdle();
+
+            double minimum = _session.PreviewMinimumSeconds;
+            double maximum = _session.PreviewMaximumSeconds;
+            double first = StepSeconds(minimum, maximum, 1);
+            double second = StepSeconds(minimum, maximum, 2);
+
+            TestContext.WriteLine($"plot {plotted.FlightTimeDays:F5} d: " +
+                $"{_session.PrefetchBuilds} neighbours prefetched from " +
+                $"{minimum / JulianDate.SecondsPerDay:F5} d over " +
+                $"{(maximum - minimum) / JulianDate.SecondsPerDay:F5} d");
+
+            Assert.That(_session.PrefetchBuilds, Is.GreaterThanOrEqualTo(2),
+                "the plot built its two upper neighbours");
+            Assert.That(_session.HasCachedPlanAt(first), Is.True,
+                "step 1 is in the cache");
+            Assert.That(_session.HasCachedPlanAt(second), Is.True,
+                "step 2 is in the cache");
+            Assert.That(_session.HasCachedPlanAt(minimum -
+                    (maximum - minimum) / (SolarSystemHud.TimeSliderSteps - 1)),
+                Is.False, "no plan is invented below the window minimum");
+            Assert.That(_session.Preview, Is.SameAs(plotted),
+                "prefetching never republishes the preview");
+        }
+
+        /// <summary>
+        /// The drag's first move publishes from the cache: no build, no wait.
+        /// The counters are the evidence, not a time.
+        /// </summary>
+        [Test]
+        public void ADragPublishesThePrefetchedNeighbourWithoutABuild()
+        {
+            _session.PlotAsync("mars", _epoch);
+            TrajectoryPlan plotted = WaitForPublishedPreview();
+            WaitForPrefetchIdle();
+
+            double step = StepSeconds(_session.PreviewMinimumSeconds,
+                _session.PreviewMaximumSeconds, 1);
+            int builds = _session.RetimeBuilds;
+            int hits = _session.RetimeCacheHits;
+
+            Assert.That(_session.RequestPreviewDuration(step), Is.True);
+            TrajectoryPlan published = WaitForPublishedRetime();
+
+            TestContext.WriteLine($"drag to step 1 at " +
+                $"{published.FlightTimeDays:F5} d: builds " +
+                $"{_session.RetimeBuilds - builds}, cache hits " +
+                $"{_session.RetimeCacheHits - hits}");
+
+            Assert.That(published.FlightTimeSeconds, Is.EqualTo(step).Within(1e-3));
+            Assert.That(published, Is.Not.SameAs(plotted));
+            Assert.That(_session.RetimeBuilds, Is.EqualTo(builds),
+                "the prefetched neighbour needed no build");
+            Assert.That(_session.RetimeCacheHits, Is.EqualTo(hits + 1),
+                "the ask was answered from the cache");
+        }
+
+        /// <summary>
+        /// A prefetch fills a cache slot and nothing else: it never publishes a
+        /// retime, never publishes a preview, and never leaves an ask
+        /// outstanding.
+        /// </summary>
+        [Test]
+        public void APrefetchNeverPublishesByItself()
+        {
+            _session.PlotAsync("mars", _epoch);
+            TrajectoryPlan plotted = WaitForPublishedPreview();
+            WaitForPrefetchIdle();
+
+            Assert.That(_session.PrefetchBuilds, Is.GreaterThan(0),
+                "the plot queued neighbours to prefetch");
+            Assert.That(_session.TryApplyCompletedRetime(out _), Is.False,
+                "a prefetched plan is never a published retime");
+            Assert.That(_session.TryApplyCompletedPreview(out _), Is.False,
+                "a prefetch is not a preview build");
+            Assert.That(_session.Preview, Is.SameAs(plotted));
+            Assert.That(_session.PreviewDurationSeconds,
+                Is.EqualTo(plotted.FlightTimeSeconds));
+            Assert.That(_session.IsRetimePending, Is.False);
+            Assert.That(_session.PendingPreviewSeconds, Is.NaN);
+        }
+
+        /// <summary>
+        /// Discarding the preview drops the queued neighbours: they belong to
+        /// the preview that is going away, and none of them may publish.
+        /// </summary>
+        [Test]
+        public void DiscardingThePreviewDropsQueuedPrefetch()
+        {
+            _session.PlotAsync("mars", _epoch);
+            WaitForPublishedPreview();
+
+            _session.DiscardPreview();
+
+            Assert.That(_session.QueuedPrefetchCount, Is.Zero,
+                "the queued neighbours are dropped with the preview");
+            WaitForPrefetchIdle();
+            int settled = _session.PrefetchBuilds;
+
+            Assert.That(_session.HasPreview, Is.False);
+            Assert.That(_session.TryApplyCompletedRetime(out _), Is.False,
+                "a prefetched plan cannot resurrect a discarded preview");
+            Assert.That(_session.PreviewDurationSeconds, Is.NaN);
+            Assert.That(_session.PrefetchBuilds, Is.EqualTo(settled),
+                "no new neighbour is queued after the discard");
+        }
+
+        /// <summary>
+        /// A real retime that arrives while a neighbour is building waits for
+        /// that one build and no more: an in-flight build cannot be cancelled,
+        /// so one build is the prefetch's latency tail. That build is a build's
+        /// own cost, not the warm retime's — the first step above the floor at
+        /// Mars takes about 0.9 s against a mid-window build's 0.44 s. The
+        /// queued neighbours are replaced by the ask's own direction at once.
+        /// </summary>
+        [Test]
+        public void ARetimeArrivingMidPrefetchWaitsAtMostOneBuild()
+        {
+            _session.PlotAsync("mars", _epoch);
+            WaitForPublishedPreview();
+            WaitUntil(() => _session.IsPrefetchBuilding,
+                "the plot's prefetch never started");
+
+            double target = 1.5 * _session.PreviewMinimumSeconds;
+            double[] before = _session.QueuedPrefetchSeconds();
+            long started = Stopwatch.GetTimestamp();
+            Assert.That(_session.RequestPreviewDuration(target), Is.True);
+
+            double[] after = _session.QueuedPrefetchSeconds();
+            Assert.That(after, Is.Not.Empty,
+                "the ask queues its own neighbours ahead");
+            Assert.That(after, Is.All.GreaterThan(target),
+                "the stale neighbours are replaced by the new direction's");
+            if (before.Length > 0)
+            {
+                Assert.That(before, Is.All.LessThan(target),
+                    "the plot's queued neighbours were below the new ask");
+            }
+
+            TrajectoryPlan published = WaitForPublishedRetime();
+            double waited = (Stopwatch.GetTimestamp() - started) * 1000.0
+                            / Stopwatch.Frequency;
+
+            // The same duration, built on this thread with no worker beside it,
+            // and the neighbour the plot had queued: the wait is at most that
+            // in-flight prefetch plus this ask's own build.
+            ShipState departure = _session.State.WithJulianDate(_epoch);
+            double neighbour = StepSeconds(_session.PreviewMinimumSeconds,
+                _session.PreviewMaximumSeconds, 1);
+
+            var watch = Stopwatch.StartNew();
+            TrajectoryPlan reference = _planner.PlanAtDuration(departure, "mars", target);
+            double oneBuild = watch.Elapsed.TotalMilliseconds;
+
+            watch.Restart();
+            _planner.PlanAtDuration(departure, "mars", neighbour);
+            double prefetchBuild = watch.Elapsed.TotalMilliseconds;
+
+            TestContext.WriteLine($"mid-prefetch retime: {waited:F0} ms against a " +
+                $"{oneBuild:F0} ms ask build and a {prefetchBuild:F0} ms neighbour " +
+                $"({waited / oneBuild:F2} ask builds), queued prefetch " +
+                $"{_session.QueuedPrefetchCount}");
+
+            Assert.That(published.FlightTimeSeconds, Is.EqualTo(target).Within(1e-3));
+            Assert.That(reference.IsFeasible, Is.True);
+            Assert.That(waited,
+                Is.LessThanOrEqualTo((prefetchBuild + oneBuild) * 1.25 + 150.0),
+                "the ask waits for the in-flight prefetch plus its own build, not a third");
         }
 
         private static void WaitUntil(Func<bool> condition, string message)

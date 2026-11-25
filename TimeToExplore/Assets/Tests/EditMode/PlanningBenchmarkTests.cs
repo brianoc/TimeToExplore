@@ -159,7 +159,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(table, Does.Contain("+20.0%"));
             Assert.That(table, Does.Contain("total"),
                 "the table ends with the measured phases' summed delta");
-            Assert.That(table, Does.Contain("+5.7%"));
+            Assert.That(table, Does.Contain("+4.4%"),
+                "the total sums every measured phase, drag included");
             Assert.That(table, Does.Contain("No phase regressed"),
                 "a 20% rise is below the 25% gate");
         }

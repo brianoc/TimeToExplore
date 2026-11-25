@@ -20,6 +20,13 @@ namespace TimeToExplore.EditorTools
         /// <summary>One retime at the window maximum, the slider's right end.</summary>
         public const string RetimeMax = "retime-max";
 
+        /// <summary>A drag's request-to-publish latency, the median of eight
+        /// consecutive steps from the window minimum, prefetch on.</summary>
+        public const string DragMedian = "drag-median";
+
+        /// <summary>The same drag's slowest request-to-publish step.</summary>
+        public const string DragWorst = "drag-worst";
+
         /// <summary>Begin's fresh minimum: <c>PlanFastest</c> at the moved date.</summary>
         public const string BeginMinimum = "begin-min";
 
@@ -31,16 +38,18 @@ namespace TimeToExplore.EditorTools
         /// for when they press Go.</summary>
         public const string BeginTotal = "begin-total";
 
-        /// <summary>The six phases in table order.</summary>
+        /// <summary>The eight phases in table order.</summary>
         public static readonly string[] All =
         {
-            Plot, RetimeMid, RetimeMax, BeginMinimum, BeginRetime, BeginTotal
+            Plot, RetimeMid, RetimeMax, DragMedian, DragWorst,
+            BeginMinimum, BeginRetime, BeginTotal
         };
 
         /// <summary>The column headings, in the same order as <see cref="All"/>.</summary>
         public static readonly string[] Headings =
         {
-            "plot", "retime mid", "retime max", "begin", "begin @max", "begin total"
+            "plot", "retime mid", "retime max", "drag med", "drag worst",
+            "begin", "begin @max", "begin total"
         };
     }
 

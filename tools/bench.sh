@@ -10,9 +10,14 @@
 #   tools/bench.sh --no-color  plain text
 #
 # Six routes, each through a plot (PlanFastest plus the cold window build), a
-# retime at the window middle and at its maximum, and Begin (PlanFastest at a
-# date three hours later, then the retime to the window maximum). One untimed
-# warm-up per case, then the median of three.
+# retime at the window middle and at its maximum, a drag of eight consecutive
+# slider steps on the session's own worker with prefetch on, and Begin
+# (PlanFastest at a date three hours later, then the retime to the window
+# maximum). One untimed warm-up per case, then the median of three.
+#
+# Set TTE_BENCH_NO_PREFETCH=1 to time the same drag with prefetch disabled; the
+# doc's without-prefetch column was measured that way. The switch exists only
+# for the benchmark and the scene never touches it.
 #
 # Environment overrides:
 #   PYTHON          Python interpreter (default: .venv/bin/python, then python3)
@@ -35,7 +40,7 @@ for arg in "$@"; do
         --color) COLOR=1 ;;
         --no-color) COLOR=0 ;;
         -h|--help)
-            sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)

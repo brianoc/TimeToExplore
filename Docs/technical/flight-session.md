@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T00:24:01Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:40:00Z }
 ---
 
 # What this adds to the orrery
@@ -186,6 +186,19 @@ kinematic estimate — **6 pin passes against a cold build's 12** for the same
 duration, with the same plan. The two lowest steps are not seeded, because that
 is where the burn-only crossing and the short coast meet the coast profile
 ([warm-starting the pin](/technical/planning-performance.md#step-3-warm-starting-the-pin-2026-11-24)).
+The session also **fills the neighbouring steps** on the same worker while the
+preview is up: two each side of a published plot and three in the direction the
+handle is travelling. Prefetch is the worker's **lowest priority** — a retime, a
+rebuild, or a plot clears the queue and is taken first — it never publishes and
+never moves the handle, and it is dropped on a discard, a style or burn-level
+change, or a departure-date change. It builds from the preview's frozen departure
+state and the burn level and arrival style captured when the preview was plotted,
+seeded from the nearest cached plan, so a filled slot is the plan the retime
+would have built ([prefetching the neighbours](/technical/planning-performance.md#step-4-prefetching-the-sliders-neighbours-2026-11-25)).
+The first two steps after a plot publish in a frame or two, and the worst step of
+a drag falls from about a second to about 0.4 s; a step the prefetch has not
+reached is still one build, because a build is as long as the handle takes to
+produce the next step.
 A plan costs about **50 KB** — the departure burn's and brake's 512-sample
 interpolation tables dominate, at 24 bytes a sample — so the bound is about
 3 MB per window. The cache is keyed and dropped with the window, so a changed
@@ -435,7 +448,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | Input | Action |
 |---|---|
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
-| **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship |
+| **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship. The session prefetches the neighbouring steps in the background, lowest priority, so the first moves after a plot publish at once |
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
 | **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
 using UnityEditor;
@@ -141,14 +142,18 @@ namespace TimeToExplore.EditorTools
     }
 
     /// <summary>
-    /// Times the six routes through a plot, both ends of the retime window, and
-    /// Begin. It observes the planner and the session; it never changes a
-    /// tolerance, a gate, a pass cap, or a returned plan.
+    /// Times the six routes through a plot, both ends of the retime window, a
+    /// drag of eight consecutive slider steps, and Begin. It observes the
+    /// planner and the session; it never changes a tolerance, a gate, a pass
+    /// cap, or a returned plan.
     ///
     /// Warm-up rule: one untimed call per case, then three measured runs. The
-    /// reported number is the median of the three. The planner, its gravity
-    /// field, and the session live across every route, so one-time field setup
-    /// is not charged to a measured call.
+    /// reported number is the median of the three. The drag is one sequence:
+    /// each step's answer depends on what the prefetch filled before it, so a
+    /// repeat would measure a different cache. It reports the median and the
+    /// worst of its eight steps instead. The planner, its gravity field, and the
+    /// session live across every route, so one-time field setup is not charged
+    /// to a measured call.
     ///
     /// A plot is <see cref="TripPlanner.PlanFastest"/> followed by
     /// <see cref="FlightSession.MaximumPreviewSeconds"/>, the pair
@@ -159,6 +164,12 @@ namespace TimeToExplore.EditorTools
     public static class PlanningBenchmark
     {
         private const int MeasuredRuns = 3;
+
+        /// <summary>How many consecutive slider steps the drag phase requests
+        /// from the window minimum. Eight is a short drag: enough to pass the
+        /// two neighbours a plot prefetched and to see the worker fall behind or
+        /// stay ahead of the handle.</summary>
+        private const int DragSteps = 8;
 
         /// <summary>When a plot is refused, one fixed-duration build at this many
         /// days tells the next session whether the trip exists at all or the
@@ -215,6 +226,9 @@ namespace TimeToExplore.EditorTools
                 note = $"JD {BenchmarkRoutes.EpochJulianDate:F1}, conic capture. " +
                        "Plot is PlanFastest plus the cold window build. Retimes " +
                        "are PlanAtDuration at the window middle and maximum. " +
+                       "Drag requests eight consecutive slider steps from the " +
+                       "window minimum on the session's own worker, prefetch on, " +
+                       "and reports each request's time to publish. " +
                        "Begin advances the clock three hours, solves the fresh " +
                        "minimum, then retimes to the window maximum when it is " +
                        "above that minimum.",
@@ -361,6 +375,29 @@ namespace TimeToExplore.EditorTools
                 maxRuns[i] = TimeRetime(planner, departure, route.TargetId,
                     maximum, out maxPlan, midSeed);
 
+            // ---- drag: eight consecutive steps on the real worker ----
+            // Prefetch is on. The first two steps are the neighbours the plot
+            // prefetched; each request then queues three steps of its own in the
+            // direction of travel. The phase's latency is request to publish, so
+            // a cache hit reads as the pump's own cost and a build reads as the
+            // build.
+            DragResult drag = MeasureDrag(session, route, epoch);
+            double dragMedian = drag != null ? Median(drag.Milliseconds) : 0.0;
+            double dragWorst = drag != null ? Worst(drag.Milliseconds) : 0.0;
+            if (drag != null)
+            {
+                phases.Add(new BenchmarkPhaseRecord
+                {
+                    phase = BenchmarkPhases.DragMedian,
+                    milliseconds = dragMedian
+                });
+                phases.Add(new BenchmarkPhaseRecord
+                {
+                    phase = BenchmarkPhases.DragWorst,
+                    milliseconds = dragWorst
+                });
+            }
+
             // ---- Begin: PlanFastest at a moved date, then the chosen retime ----
             double beginDate = epoch + BenchmarkRoutes.BeginAdvanceSeconds
                 / JulianDate.SecondsPerDay;
@@ -407,11 +444,22 @@ namespace TimeToExplore.EditorTools
                    + (beginsWithRetime
                        ? "begin retimes to the window maximum"
                        : "begin stays at the fresh minimum");
+            if (drag != null)
+            {
+                note += "; drag of " + DragSteps + " steps: " + dragMedian.ToString("F0",
+                            CultureInfo.InvariantCulture) + " ms median, " +
+                        dragWorst.ToString("F0", CultureInfo.InvariantCulture) +
+                        " ms worst, " + drag.Builds + " built, " + drag.CacheHits +
+                        " from cache, " + drag.Prefetched + " prefetched";
+            }
 
             Debug.Log($"{route.Name} on {machine}: " +
                       $"plot {Median(plotRuns):F0} ms, " +
                       $"retime mid {Median(midRuns):F0} ms, " +
                       $"retime max {Median(maxRuns):F0} ms, " +
+                      $"drag {dragMedian:F0}/{dragWorst:F0} ms " +
+                      $"({drag?.Builds ?? 0} built, {drag?.CacheHits ?? 0} cached), " +
+                      $"steps {Describe(drag?.Milliseconds)}, " +
                       $"begin {Median(beginRuns):F0} ms, " +
                       $"begin total {Median(beginTotalRuns):F0} ms.");
 
@@ -457,6 +505,117 @@ namespace TimeToExplore.EditorTools
             return sorted[sorted.Length / 2];
         }
 
+        private static double Worst(double[] runs)
+        {
+            double worst = double.NegativeInfinity;
+            foreach (double run in runs) worst = Math.Max(worst, run);
+            return double.IsNaN(worst) ? double.NaN : worst;
+        }
+
+        /// <summary>
+        /// The drag phase: plot on the real session, wait for the prefetch the
+        /// plot queued, then request eight consecutive steps from the window
+        /// minimum, each after the previous publish. Prefetch is on, so the
+        /// first steps may be answered from the cache and every request queues
+        /// three steps of its own ahead. Returns null when the session refuses.
+        /// </summary>
+        private static DragResult MeasureDrag(FlightSession session, BenchmarkRoute route,
+            double epoch)
+        {
+            session.PrefetchEnabled =
+                Environment.GetEnvironmentVariable("TTE_BENCH_NO_PREFETCH") != "1";
+            session.PlaceAt(route.DepartureBodyId, epoch);
+            session.BurnLevelG = route.BurnLevelG;
+            session.ArrivalStyle = CaptureStyle.Conic;
+            session.DiscardPreview();
+
+            if (!session.PlotAsync(route.TargetId, epoch)
+                || !WaitForPreview(session, out TrajectoryPlan plotted)
+                || !plotted.IsFeasible)
+            {
+                session.DiscardPreview();
+                return null;
+            }
+
+            // The plot's own ±2 neighbours: a drag that starts as soon as the
+            // route appears must not race them or time them.
+            WaitForPrefetchIdle(session);
+
+            double minimum = session.PreviewMinimumSeconds;
+            double maximum = session.PreviewMaximumSeconds;
+            double step = (maximum - minimum) / (FlightSession.SliderStepCount - 1);
+            if (!(step > 0.0) || !double.IsFinite(step))
+            {
+                session.DiscardPreview();
+                return null;
+            }
+
+            int builds = session.RetimeBuilds;
+            int cacheHits = session.RetimeCacheHits;
+            int prefetched = session.PrefetchBuilds;
+
+            var latencies = new double[DragSteps];
+            for (int i = 1; i <= DragSteps; i++)
+            {
+                double seconds = minimum + step * i;
+                long started = Stopwatch.GetTimestamp();
+                if (!session.RequestPreviewDuration(seconds) || !WaitForRetime(session))
+                {
+                    session.DiscardPreview();
+                    return null;
+                }
+
+                latencies[i - 1] = Milliseconds(started);
+            }
+
+            var result = new DragResult
+            {
+                Milliseconds = latencies,
+                Builds = session.RetimeBuilds - builds,
+                CacheHits = session.RetimeCacheHits - cacheHits,
+                Prefetched = session.PrefetchBuilds - prefetched
+            };
+
+            // Leave no background work running while the next route's phases are
+            // timed: prefetch shares the one worker.
+            session.DiscardPreview();
+            WaitForPrefetchIdle(session);
+            return result;
+        }
+
+        private static bool WaitForPreview(FlightSession session,
+            out TrajectoryPlan plan)
+        {
+            plan = null;
+            var watch = Stopwatch.StartNew();
+            while (watch.Elapsed.TotalSeconds < 120.0)
+            {
+                if (session.TryApplyCompletedPreview(out plan)) return true;
+                Thread.Sleep(1);
+            }
+
+            return false;
+        }
+
+        private static bool WaitForRetime(FlightSession session)
+        {
+            var watch = Stopwatch.StartNew();
+            while (watch.Elapsed.TotalSeconds < 60.0)
+            {
+                if (session.TryApplyCompletedRetime(out _)) return true;
+                Thread.Sleep(1);
+            }
+
+            return false;
+        }
+
+        private static void WaitForPrefetchIdle(FlightSession session)
+        {
+            var watch = Stopwatch.StartNew();
+            while (session.IsPrefetchPending && watch.Elapsed.TotalSeconds < 60.0)
+                Thread.Sleep(1);
+        }
+
         private static double TimePlot(TripPlanner planner, FlightSession session,
             ShipState departure, string target, out TrajectoryPlan plan,
             out double maximumSeconds)
@@ -495,6 +654,29 @@ namespace TimeToExplore.EditorTools
             if (string.IsNullOrWhiteSpace(processor)) processor = "unknown CPU";
             return processor + ", " + SystemInfo.processorCount + " cores, " +
                    SystemInfo.systemMemorySize + " MB";
+        }
+
+        /// <summary>One drag's request-to-publish latencies and what the worker
+        /// had to do for them.</summary>
+        private sealed class DragResult
+        {
+            public double[] Milliseconds;
+            public int Builds;
+            public int CacheHits;
+            public int Prefetched;
+        }
+
+        private static string Describe(double[] values)
+        {
+            if (values == null || values.Length == 0) return "none";
+            var text = new System.Text.StringBuilder();
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (i > 0) text.Append(' ');
+                text.Append(values[i].ToString("F0", CultureInfo.InvariantCulture));
+            }
+
+            return text.ToString();
         }
 
         private static string ReadOptional(string path)
