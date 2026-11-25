@@ -67,8 +67,11 @@ The exact output is in the `DepartureClimbSplitTests` run log; the summary is in
   then use the same `v∞` in the reference skeleton, the pin loop and the settle
   pass. It must not be re-chosen inside the pin loop, or the fixed point moves.
 * **Cost of a candidate:** the cheap skeleton's total delta-v — break, cruise
-  entry impulse, arrival trim and capture. A coarse grid (0, 1, 2, 4, 8, 16
-  km/s) plus a golden-section refinement is the proposed search.
+  entry impulse, arrival trim and capture. The curve is **not unimodal**: 10
+  km/s wins at 18 days, 3 at 30 and 1 at 90, and 10 is worse than 3 at 30. A
+  golden-section search is therefore wrong. Use a coarse grid (0, 1, 2, 3, 6,
+  10, 16 km/s), take the best, then refine once or twice between its
+  neighbours. Keep the chosen value for the whole build.
 * **Bounds:** the existing climb solver already rejects a v∞ that does not fit
   the time; cap the search at a finite value. The measured table above shows
   the best 18-day plan near 10 km/s and the best 30-day plan near 3; 24 km/s is
@@ -84,10 +87,11 @@ The exact output is in the `DepartureClimbSplitTests` run log; the summary is in
    `DepartureVInfinityOverrideMps` seam and `DepartureClimbSplitTests`
    (`flight`); measured the table and the 8.00-day floor above. No returned
    plan changed.
-2. **Next — Implement the search behind a flag.** Add the skeleton-cost search
-   and an internal `UseDepartureSplit` flag, default **off**, so the tree stays
-   green. Tests prove the chosen v∞ matches the measured optimum, the selected
-   plan is exact, and the flag off still returns today's plans. Verify with
+2. **Next — Implement the search behind a flag.** Add the skeleton-cost grid
+   search (not a golden-section: the curve is not unimodal) and an internal
+   `UseDepartureSplit` flag, default **off**, so the tree stays green. Tests
+   prove the chosen v∞ matches the measured optimum, the selected plan is exact,
+   and the flag off still returns today's plans. Verify with
    `tools/check.sh --tests flight`. Keep the seam for step 3.
 3. **Turn it on and re-baseline.** Flip the flag, re-sweep the floors, windows
    and fixed-duration anchors, update every affected test, and update
