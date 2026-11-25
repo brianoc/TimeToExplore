@@ -368,8 +368,10 @@ namespace TimeToExplore
 
         /// <summary>Start a Go To flight to a body. Raises the clock so the trip
         /// is watchable, and draws the plan. The ship's position becomes the
-        /// flight session's for the duration. Begin always replans, so it
-        /// consumes a plotted preview and flies the fresh plan. A station is a
+        /// flight session's for the duration. Begin consumes a plotted preview:
+        /// inside the preview's freshness window it flies the plan that was
+        /// drawn, otherwise it replans from the current state and date. A
+        /// station is a
         /// point target with no gravitational parameter of its own, so it is
         /// allowed through; only a genuinely massless non-station is refused.</summary>
         public void BeginGoTo(BodyRuntime body)
@@ -397,7 +399,8 @@ namespace TimeToExplore
 
         /// <summary>
         /// Plot a route for inspection without starting the flight. The preview
-        /// never moves the ship; Begin flight replans from the current state.
+        /// never moves the ship; Begin flight flies it while it is fresh, and
+        /// replans from the current state past that.
         /// The plan is built on the background planner (see
         /// <see cref="FlightSession.PlotAsync"/>), and the HUD's per-frame
         /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready. A
@@ -412,9 +415,10 @@ namespace TimeToExplore
             Flight.PlotAsync(body.Id, Clock.JulianDate);
         }
 
-        /// <summary>Begin the plotted route. Replans from the current state and
-        /// date, so the flown curve is close to the preview but never stale, and
-        /// keeps the flight time the player chose on the slider.</summary>
+        /// <summary>Begin the plotted route. While the preview is fresh the drawn
+        /// plan is flown as it stands; past its window the flight is replanned
+        /// from the current state and date, and keeps the flight time the player
+        /// chose on the slider.</summary>
         public void BeginPlottedFlight()
         {
             if (Flight == null || !Flight.HasPreview) return;

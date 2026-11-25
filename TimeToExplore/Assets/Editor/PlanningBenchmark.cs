@@ -229,9 +229,11 @@ namespace TimeToExplore.EditorTools
                        "Drag requests eight consecutive slider steps from the " +
                        "window minimum on the session's own worker, prefetch on, " +
                        "and reports each request's time to publish. " +
-                       "Begin advances the clock three hours, solves the fresh " +
-                       "minimum, then retimes to the window maximum when it is " +
-                       "above that minimum.",
+                       "Begin plots at the epoch, advances the clock three " +
+                       "hours, then calls the session's Begin: inside the " +
+                       "preview's freshness window it flies the drawn plan, " +
+                       "outside it replans; the '@max' phase retimes the " +
+                       "preview to the window maximum first.",
                 routes = new BenchmarkRouteRecord[BenchmarkRoutes.All.Length]
             };
 
@@ -398,16 +400,26 @@ namespace TimeToExplore.EditorTools
                 });
             }
 
-            // ---- Begin: PlanFastest at a moved date, then the chosen retime ----
+            // ---- Begin: the session's own path on a plotted preview ----
+            // The preview is plotted at the epoch (untimed setup, already
+            // measured by the plot phase) and Begin is asked three hours later.
+            // What is timed is FlightSession.Begin itself: inside the preview's
+            // freshness window it flies the drawn plan, outside it replans. The
+            // "@max" phase retimes the preview to the window's right end before
+            // beginning, which is the player's longer trip.
             double beginDate = epoch + BenchmarkRoutes.BeginAdvanceSeconds
                 / JulianDate.SecondsPerDay;
-            ShipState moved = departure.WithJulianDate(beginDate);
-            TimeBeginMinimum(planner, moved, route.TargetId,
+            session.PlaceAt(route.DepartureBodyId, epoch);
+            session.BurnLevelG = route.BurnLevelG;
+            session.ArrivalStyle = CaptureStyle.Conic;
+            PreparePreview(session, route.TargetId, epoch, double.NaN);
+            TimeSessionBegin(session, route.TargetId, beginDate,
                 out TrajectoryPlan beginPlan); // warm-up
             var beginRuns = new double[MeasuredRuns];
             for (int i = 0; i < MeasuredRuns; i++)
             {
-                beginRuns[i] = TimeBeginMinimum(planner, moved, route.TargetId,
+                PreparePreview(session, route.TargetId, epoch, double.NaN);
+                beginRuns[i] = TimeSessionBegin(session, route.TargetId, beginDate,
                     out beginPlan);
             }
 
@@ -416,14 +428,15 @@ namespace TimeToExplore.EditorTools
             var beginTotalRuns = new double[MeasuredRuns];
             if (beginsWithRetime)
             {
-                PinSeed beginSeed = beginPlan.PinSeed;
-                TimeRetime(planner, moved, route.TargetId, maximum,
-                    out TrajectoryPlan beginRetimed, beginSeed); // warm-up
+                PreparePreview(session, route.TargetId, epoch, maximum); // warm-up
+                TimeSessionBegin(session, route.TargetId, beginDate, out _);
                 for (int i = 0; i < MeasuredRuns; i++)
                 {
-                    beginRetimeRuns[i] = TimeRetime(planner, moved, route.TargetId,
-                        maximum, out beginRetimed, beginSeed);
-                    beginTotalRuns[i] = beginRuns[i] + beginRetimeRuns[i];
+                    PreparePreview(session, route.TargetId, epoch, maximum);
+                    beginTotalRuns[i] = TimeSessionBegin(session, route.TargetId,
+                        beginDate, out _);
+                    beginRetimeRuns[i] = Math.Max(0.0,
+                        beginTotalRuns[i] - beginRuns[i]);
                 }
             }
             else
@@ -442,8 +455,9 @@ namespace TimeToExplore.EditorTools
                    + State(maxPlan, "retime max") + ", "
                    + State(beginPlan, "begin") + "; "
                    + (beginsWithRetime
-                       ? "begin retimes to the window maximum"
-                       : "begin stays at the fresh minimum");
+                       ? "begin flies the drawn minimum; its @max phase retimes " +
+                         "the preview to the window maximum first"
+                       : "begin stays at the drawn minimum");
             if (drag != null)
             {
                 note += "; drag of " + DragSteps + " steps: " + dragMedian.ToString("F0",
@@ -637,11 +651,25 @@ namespace TimeToExplore.EditorTools
             return Milliseconds(started);
         }
 
-        private static double TimeBeginMinimum(TripPlanner planner, ShipState departure,
-            string target, out TrajectoryPlan plan)
+        /// <summary>Plot the route on the session so Begin has a preview, and
+        /// retime it when a finite duration is given. Untimed setup: the plot
+        /// phase already measured the plot, and the session's window cache makes
+        /// a repeat plot of the same route free.</summary>
+        private static void PreparePreview(FlightSession session, string target,
+            double epoch, double seconds)
+        {
+            session.Plot(target, epoch);
+            if (double.IsFinite(seconds)) session.SetPreviewDuration(seconds);
+        }
+
+        /// <summary>Time <see cref="FlightSession.Begin"/> itself: the player's
+        /// press, including the preview-reuse decision and any replan it
+        /// forces.</summary>
+        private static double TimeSessionBegin(FlightSession session, string target,
+            double julianDate, out TrajectoryPlan plan)
         {
             long started = Stopwatch.GetTimestamp();
-            plan = planner.PlanFastest(departure, target);
+            plan = session.Begin(target, julianDate);
             return Milliseconds(started);
         }
 

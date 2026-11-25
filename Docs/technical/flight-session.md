@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:40:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T22:30:00Z }
 ---
 
 # What this adds to the orrery
@@ -17,8 +17,8 @@ for tests. Now the scene has a ship:
   measures;
 * **Plot route** on the details screen plans the trip and draws it as a
   preview; a **trip-time slider** then re-solves that preview at a longer
-  duration, and **Begin flight** replans from the current state and flies the
-  chosen time;
+  duration, and **Begin flight** flies the drawn plan while it is fresh and
+  replans once it is stale;
 * the plan is drawn in the world as one coloured line per arc — gold for a
   quintic, blue dashed for a conic, red for a fixed burn, with same-type runs
   shaded — plus burn markers at each impulse or burn start, an arrival marker,
@@ -61,8 +61,9 @@ disagree and the next frame resumes from there.
 The clamp applies whether a flight is integrating or an idle ship is coasting.
 With no active plan the session coasts the ship under gravity with the drive
 off, so the clock, the ship, and a plotted preview all advance together and the
-orrery keeps moving while the player reads it. Begin then replans from the
-current state and date.
+orrery keeps moving while the player reads it. Begin flies the preview from its
+plotted departure while the preview is fresh, and replans from the current state
+and date once it is stale.
 
 The session also stops at the plan's arrival date even when the clock asks for
 longer. That is what makes the arrival exact: the last leg's target is the
@@ -112,10 +113,12 @@ The details footer splits the old one-press **Go To** into two actions:
    The planner runs on a copy of the ship state with the requested date, and
    the result is held as `Preview`. It is data, not a flight: the ship, its
    `Status`, the clock, and the warp are untouched.
-2. **Begin flight** calls `BeginGoTo`, which always replans from the current
-   state and date with the same `PlanFastest` minimum the preview used, so the
-   flight flies the plan that was drawn. `FlightSession.Begin` discards the
-   preview, so nothing stale is ever flown if the clock has moved.
+2. **Begin flight** calls `BeginGoTo`. Inside the preview's own freshness
+   window it flies the plan that was drawn, from the departure it was certified
+   at, so the flight and the arrival date are exactly what the route and the
+   countdown showed. Past that window — `PreviewStaleFraction` of the flight
+   time — it replans from the current state and date with the same
+   `PlanFastest` minimum the preview used, so nothing stale is ever flown.
 
 Once a preview exists, the details footer grows a **trip-time slider**. Its
 handle is one of **64 integer steps**, mapped linearly onto
@@ -239,27 +242,46 @@ worker and `SetPreviewDuration` build the identical plan.
 [Planning performance](/technical/planning-performance.md) has the two-tier
 model, the 5% screen, the cache, and the measurements.
 
-Begin carries the chosen duration into the flight: it solves the fastest plan at
-the current date with the planner's **`PlanFastest`** — the same burn-only
-minimum or coast floor the preview's window advertises — then re-times it above
-that minimum with `PlanAtDuration` when the preview asked for a longer trip.
-That keeps Begin's "always replan" rule while making the flight match the plan
-that was drawn. A preview that sat at its minimum flies the **fresh** minimum:
-the clock may have moved since the plot, and re-timing to the old number by a
-few seconds would ask for a duration just above the new minimum, where the
-rebuilt plan carries the moving-target loop's own date tolerance. At a
-coast-floor target the base is the coast floor; a chosen longer time still
-retimes. A request inside the gap now builds the **short coast** rather than
-reporting a refusal, so every duration the window offers is flyable; below the
-burn-only minimum the planner still refuses with the arc that is over the
-drive.
+Begin **flies the drawn plan while it is fresh**. The rule is the session's own
+staleness window: while the clock has not advanced `PreviewStaleFraction` (1%) of
+the planned flight time past `PreviewJulianDate`, `FlightSession.Begin` takes the
+preview as the flight. It adopts the preview's departure state — the ship returns
+to the state the plan was certified from — so the plan, its delta-v, and its
+arrival date are the ones the route and the countdown already show. There is no
+second plot: a Mars minimum plotted in 4.3 s begins in **0 ms** on the benchmark's
+instrument.
 
-The preview is a promise of shape, not a contract. The clock keeps running,
-warp may be raised, and the ship keeps moving, so the panel ages the preview:
-after the clock advances `PreviewStaleFraction` (1%) of the planned flight time
-since the plot, the status reads `Preview, stale` and a note says **replot or
-begin anyway**. **Replot route** refreshes it on demand. There is no automatic
-per-frame replanning.
+The date window is the deadband, and it is deliberately not an exact date match:
+an exact match would throw the drawing away on the next frame. There is no
+separate position deadband, because the only way an idle ship moves between plot
+and Begin is the coast that same window bounds, and every other mover — a place,
+a teleport, a cancel, an arrival-style or burn-level change — discards or
+rebuilds the preview. A guard fails the reuse when the preview is for another
+target or is infeasible, when a rebuild or a slider retime has not been
+published, or when the planner's drive no longer matches the plan's; Begin then
+replans exactly as it used to. The clock is not rewound: the flight starts at the
+plotted departure, and the first `Advance` carries it forward to the current
+date, at most 1% of the trip.
+
+Past the window Begin **replans** at the current state and date. Its base plan is
+`PlanFastest` — the same burn-only minimum or coast floor the preview's window
+advertises — and it re-times above that minimum with `PlanAtDuration` when the
+preview asked for a longer trip. A stale preview that sat at its minimum flies
+the **fresh** minimum: at the new date the old number can sit in the zero-coast
+gap. At a coast-floor target the base is the coast floor; a chosen longer time
+still retimes. The status already reads `Preview, stale` and the note says
+**replot or begin anyway**, so the replan is what the panel promised. A request
+inside the gap builds the **short coast** rather than reporting a refusal, so
+every duration the window offers is flyable; below the burn-only minimum the
+planner still refuses with the arc that is over the drive.
+
+The preview is a contract while it is fresh — Begin flies it exactly — and a
+promise of shape once it is stale. The clock keeps running, warp may be raised,
+and the ship keeps moving, so the panel ages the preview: after the clock
+advances `PreviewStaleFraction` (1%) of the planned flight time since the plot,
+the status reads `Preview, stale` and a note says **replot or begin anyway**.
+**Replot route** refreshes it on demand. There is no automatic per-frame
+replanning.
 
 The same footer exposes the **arrival style** as a two-button choice —
 **Conic** (the default) and **X g burn** — plus a **burn-level** slider. Pressing
@@ -450,7 +472,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | **Plot route** / **Replot route** on the details screen | Plan the route and draw the preview without flying; frames the target |
 | **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship. The session prefetches the neighbouring steps in the background, lowest priority, so the first moves after a plot publish at once |
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
-| **Begin flight** | Replan from the current state and date at the chosen duration, then fly; enabled once a preview exists |
+| **Begin flight** | Fly the drawn plan from its own departure while the preview is fresh; replan at the current state and date once it is stale; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
 | **Jump (debug)** / `F` | Three-second eased debug teleport to the selected body; disabled in flight |
 | `X` | Cancel the flight and discard any preview; the ship keeps its state |
@@ -533,7 +555,8 @@ e = 2.19 × 10⁻⁹.
 `FlightSessionTests` covers ownership, planning, the exact arrival, budget
 clamping, cancel, teleport, a flight through a body, that planning leaves the
 orrery untouched, and the preview: it never moves the ship, one replaces
-another, Begin consumes it and replans at the current date, Cancel clears it,
+another, Begin consumes it — flying it inside the freshness window and
+replanning past it — Cancel clears it,
 the staleness window is one percent of the flight, the trip-time window is
 `[minimum, 3 × minimum]` and clamps to it, the **minimum is the burn-only plan
 with no cruise coast** while a retime above the coast floor still builds the
@@ -554,11 +577,16 @@ burn-only minimum** (break → escape → departure burn → brake → capture, 
 arcs, no cruise coast)
 and the autopilot reaches the arrival state inside the test's bound, while at
 Uranus it flies the **57.02223 d coast floor** because that is the shorter plan
-there. A preview at its minimum flies the **fresh** minimum rather than its old
-number, because the clock may have moved between plot and Begin; the real-HUD
-`PressingBeginInTheRealHudFliesAndCancelClearsTheRoute` is the PlayMode guard,
-and `BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum` pins the
-EditMode side. The Mars anchor is the **16.48669 d burn-only minimum**
+there. Begin flies the **drawn** plan inside the preview's freshness window —
+`BeginInsideThePreviewWindowFliesTheDrawnPlanAndArrivesExactly` pins it to the
+same plan instance, the plotted departure, and the plotted arrival, and asserts
+the planner was never called — while past the window it replans at the current
+date and flies the **fresh** minimum rather than the old number
+(`BeginBeyondThePreviewWindowReplansAtTheCurrentDate`,
+`BeginningAtTheMinimumBeyondTheWindowFliesTheReplannedMinimum`). A Begin for
+another target never flies the preview. The real-HUD
+`PressingBeginInTheRealHudFliesAndCancelClearsTheRoute` is the PlayMode guard.
+The Mars anchor is the **16.48669 d burn-only minimum**
 (**1,450.4 km/s**, seven arcs, 156.1 t of propellant), not the 16.84485-day
 coast floor.
 It also covers the **background planner**: the second of two requests made while
@@ -596,7 +624,8 @@ easing. `CameraRigTests` covers the framing distance and the follow flags.
 `SceneFlightTests` is the frame-loop acceptance flight. `BootstrapSmokeTests`
 runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit mode,
 including drawing the preview and its arrival ghost without flying, Begin
-replanning at the current date, discard leaving the ship alone, the full
+flying the drawn plan inside the freshness window and replanning past it,
+discard leaving the ship alone, the full
 frame-loop acceptance (12,118 frames, 202.0 s, 0.1 m and 0.0001 m/s, on the
 3,898 km parking orbit), and the burn–coast–burn profile plotted and flown to
 the conic parking orbit through the same loop.

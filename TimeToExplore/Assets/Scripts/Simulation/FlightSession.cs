@@ -250,8 +250,8 @@ namespace TimeToExplore.Simulation
 
         /// <summary>A route the player plotted but has not begun, or null. The
         /// preview owns nothing: it never moves the ship and never changes
-        /// <see cref="Status"/>. Begin consumes it by replanning from the
-        /// current state.</summary>
+        /// <see cref="Status"/>. Begin consumes it, flying it while it is fresh
+        /// and replanning past that.</summary>
         public TrajectoryPlan Preview { get; private set; }
 
         /// <summary>The date the preview was plotted at, or NaN.</summary>
@@ -1796,17 +1796,37 @@ namespace TimeToExplore.Simulation
         /// <summary>Build a Go To plan from the current state and start flying
         /// it. Returns the plan even when it is rejected, so the UI can explain
         /// why. A rejected or infeasible plan leaves the ship where it was.
-        /// Begin consumes any preview; begin always replans. Its base plan is
+        ///
+        /// Begin consumes any preview. Inside the preview's own freshness
+        /// window the drawn plan **is** the flight: it is certified from the
+        /// departure it was drawn at, and replanning would reproduce a plan the
+        /// HUD still advertises at the cost of a second plot. The ship adopts
+        /// that departure state, so the plan and its arrival date do not move.
+        /// Outside the window, and whenever a rebuild is outstanding, Begin
+        /// replans at the current state and date. Its base plan is
         /// <see cref="TripPlanner.PlanFastest"/> — the same minimum the preview's
         /// trip-time window advertises — so a flight begun at a burn-only
         /// minimum flies the no-coast crossing that was drawn; a preview that
         /// asked for a longer time still re-times through
-        /// <see cref="TripPlanner.PlanAtDuration"/>. A preview that sat at its
-        /// minimum flies the fresh minimum, because the clock may have moved
-        /// since the plot and the old number can sit in the zero-coast gap.</summary>
+        /// <see cref="TripPlanner.PlanAtDuration"/>. A stale preview that sat at
+        /// its minimum flies the fresh minimum, because the old number can sit
+        /// in the zero-coast gap at the new date.</summary>
         public TrajectoryPlan Begin(string targetId, double julianDate)
         {
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
+
+            if (CanFlyPreview(targetId, julianDate))
+            {
+                TrajectoryPlan drawn = Preview;
+                _state = drawn.DepartureState;
+                DiscardPreview();
+                // The cached windows belong to this departure, which is still
+                // the ship's state, so they stay valid. Only a replan below
+                // changes the departure and drops them.
+                Plan = drawn;
+                _appliedImpulses.Clear();
+                return StartFlight();
+            }
 
             // A retimed preview carries the player's chosen flight time into
             // the flight. Read it before the preview is discarded, solve the
@@ -1830,12 +1850,55 @@ namespace TimeToExplore.Simulation
             DiscardPreview();
             ClearWindows();
             _state.JulianDate = julianDate;
-            _appliedImpulses.Clear();
-            Plan = _planner.PlanFastest(_state, targetId);
+            TrajectoryPlan fastest = _planner.PlanFastest(_state, targetId);
             if (!previewAtMinimum && !double.IsNaN(requestedSeconds)
-                && requestedSeconds > Plan.FlightTimeSeconds)
-                Plan = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
+                && requestedSeconds > fastest.FlightTimeSeconds)
+                fastest = _planner.PlanAtDuration(_state, targetId, requestedSeconds);
 
+            Plan = fastest;
+            _appliedImpulses.Clear();
+            return StartFlight();
+        }
+
+        /// <summary>True when the drawn preview can be flown as it stands. The
+        /// session already calls a preview valid until
+        /// <see cref="PreviewStaleAfterDays"/> of clock has passed, and the plan
+        /// is certified from the departure it was drawn at, so the date window
+        /// is the reuse deadband: an exact date match would throw the plan away
+        /// on the next frame. There is no separate position deadband — the only
+        /// way an idle ship moves between plot and Begin is the coast that same
+        /// window bounds, and every other mover (a place, a teleport, a cancel,
+        /// a style or burn-level change) discards or rebuilds the preview — so
+        /// Begin adopts the preview's departure state rather than comparing it.
+        /// A rebuild or a retime that has not been published fails the check:
+        /// the published plan would no longer be what the panel shows.</summary>
+        private bool CanFlyPreview(string targetId, double julianDate)
+        {
+            if (Preview == null || Preview.TargetId != targetId) return false;
+            if (!Preview.IsFeasible) return false;
+
+            // A level changed without a rebuild would fly a plan the panel's
+            // level control no longer shows.
+            double drive = _planner.MaxAccelerationMps2;
+            if (Math.Abs(Preview.MaxAccelerationMps2 - drive)
+                > 1e-9 * Math.Max(1.0, drive)) return false;
+
+            double age = julianDate - PreviewJulianDate;
+            double window = PreviewStaleAfterDays;
+            if (!(age >= 0.0) || !(window >= 0.0) || age > window) return false;
+
+            lock (_retimeLock)
+            {
+                if (_pendingPreview != null || _completedPreview != null) return false;
+            }
+
+            return !IsRetimePending;
+        }
+
+        /// <summary>Start flying <see cref="Plan"/> and report it. A rejected or
+        /// infeasible plan leaves the ship where it is and names the reason.</summary>
+        private TrajectoryPlan StartFlight()
+        {
             if (!Plan.IsFeasible)
             {
                 _autopilot = null;

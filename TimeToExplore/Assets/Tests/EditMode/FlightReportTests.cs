@@ -275,9 +275,9 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// Begin replans and consumes the preview, so the panel must show the
-        /// plan it is flying — the burn-only minimum — not the coast floor the
-        /// old Begin built and not a stale preview's numbers.
+        /// Begin consumes the preview and flies it, so the panel must show the
+        /// plan it is flying — the burn-only minimum that was drawn — not the
+        /// coast floor the old Begin built.
         /// </summary>
         [Test]
         public void TheFuelReadoutFollowsTheFlyingPlanAfterBegin()
@@ -339,7 +339,7 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>Begin a plan long enough to leave the zero-coast minimum, so
         /// the coast, approach, and a chosen capture style are visible in the
-        /// flown rows. Begin still replans and re-times from the preview.</summary>
+        /// flown rows. The preview is retimed first, and Begin flies it.</summary>
         private static TrajectoryPlan BeginAtALongerTrip(FlightSession session, double epoch)
         {
             session.Plot("mars", epoch);

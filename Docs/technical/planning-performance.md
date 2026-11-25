@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), and the warm-started pin.
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, and Begin flying the fresh preview.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:40:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T22:30:00Z }
 ---
 
 # The problem
@@ -990,8 +990,15 @@ The phases are:
   repeat selection.
 * **Retime mid / max** — one `PlanAtDuration` at the window's middle and at its
   maximum (the slider's right end).
-* **Begin** — `PlanFastest` at a departure date **three hours** later, then
-  `PlanAtDuration` at the window maximum when that is above the fresh minimum.
+* **Begin** — plot on the session at the epoch, advance the clock **three
+  hours**, then call `FlightSession.Begin` itself. Until
+  [step 5](#step-5-begin-flies-the-fresh-preview-2026-11-25) that was
+  `PlanFastest` at the moved date followed by `PlanAtDuration` at the window
+  maximum; since step 5 it is the reuse decision plus whatever it forces. The
+  plot that sets the preview up is untimed: the plot phase already measured it,
+  and the session's window cache makes the repeat free.
+* **Begin @max** — the same, after a retime of the preview to the window's
+  right end, which is the player's longer trip.
 
 All six routes, median milliseconds with the repeat run's delta in each cell and
 the sum of the measured phases in the last column:
@@ -1024,9 +1031,11 @@ recorded, not tuned away:
   burn, which does not fit a trip of that length.
 
 The Earth plots show the cost the player pays. **Earth → Venus is the slowest at
-9.7 s**, and **Begin at Earth → Mars is 2.2× its plot (9.0 s against 4.1 s)**: the
-coast floor's certificate refuses once at the moved date and the full-field
-continuation is paid, where the epoch's plot certifies first time. The retimes
+9.7 s**, and **Begin at Earth → Mars was 2.2× its plot (9.0 s against 4.1 s)**:
+the coast floor's certificate refused once at the moved date and the full-field
+continuation was paid, where the epoch's plot certifies first time. That second
+wait is gone: [step 5](#step-5-begin-flies-the-fresh-preview-2026-11-25) made
+Begin fly the drawn plan inside the preview's freshness window. The retimes
 are 0.37–0.49 s at every measured point, so a slider drag is an order of
 magnitude cheaper than a plot.
 
@@ -1294,10 +1303,99 @@ mid-prefetch still publishes its own duration, waiting one in-flight build plus
 its own. No pin, tolerance, gate, seed, or window rule moved, and the floors are
 the step-3 anchors.
 
+## Step 5: Begin flies the fresh preview (2026-11-25)
+
+The benchmark's Begin phase was the largest wait a player met after the plot:
+**Earth → Mars 10.1 s against a 4.3 s plot**, Venus 4.6 s, Uranus 1.7 s. The
+session already called the preview valid for `PreviewStaleFraction` (1%) of the
+flight time — about **4 h** on the Mars minimum — and the benchmark advanced the
+clock only **3 h**. The replan was a caution, not a requirement: it reproduced a
+plan the HUD was still advertising, and paid a second plot for it.
+
+### Candidate 1, seeding the replan, was measured and dropped
+
+The first try was to carry the preview's pin into Begin's `PlanFastest`, so the
+moved-date certificate would close without the full-field continuation. It does
+not reach the case:
+
+* At Earth → Mars the preview is the **burn-only crossing**, and that plan carries
+  no pin at all (`PinSeed.IsValid == false`); the preview has nothing to offer.
+* Taking the **epoch coast floor's** own pin instead (16.84485 d) and seeding the
+  moved-date certificate made Begin **slower**: **11,161 ms against 9,785 ms**,
+  with **5 seed fallbacks**, and it still spent 3 certificates and 7 full-field
+  probes. The pin does not fit the moved-date basin.
+* Uranus, whose preview *is* the coast floor and does carry a pin, moved only
+  **1,786 → 1,648 ms** — inside the instrument's spread.
+
+Begin's 10.1 s is the coast floor's continuation at the moved date: inside
+`PlanFastest` the coast floor alone was **8.3–9.0 s**, with 3 certificates, 22
+fast probes, 7 full-field probes and 1 pin retry. No seed avoids that; the
+session should not be replanning at all inside its own freshness window.
+
+### The rule
+
+`FlightSession.Begin` now flies `Preview` itself when all of these hold:
+
+* the preview is for the same target and is feasible;
+* the plan's drive matches the planner's current level, and no preview rebuild or
+  slider retime is waiting to be published;
+* the clock is within the session's own freshness window:
+  `0 ≤ now − PreviewJulianDate ≤ PreviewStaleAfterDays`.
+
+The date window **is** the deadband. An exact date match would throw the drawing
+away on the next frame, and a second position deadband would be redundant: the
+only way an idle ship moves between plot and Begin is the coast that same window
+bounds, and a place, teleport, cancel, style change or level change discards or
+rebuilds the preview. Begin therefore **adopts** `Preview.DepartureState` — the
+ship returns to the state the plan was certified from — rather than comparing
+the current state with it. There is no second plot and no re-time: the plan, its
+delta-v and its arrival date are the ones already on screen. Past the window
+Begin replans exactly as before, which is what the `Preview, stale · replot or
+begin anyway` note promises.
+
+The clock is not rewound. The flight starts at the plotted departure and the
+first `Advance` carries it to the current date, so at most 1% of the trip passes
+in that catch-up. The cached windows stay valid in the reuse branch because the
+departure did not move; the replan branch still clears them.
+
+### The benchmark
+
+`tools/bench.sh`'s Begin phase now calls `FlightSession.Begin` itself on a
+preview plotted at the epoch, three hours before the moved date, so the phase
+measures the player's press rather than a copy of the planner call. The plot and
+the retime that set the preview up are untimed, and the session's window cache
+makes the repeats free. Both runs are on the same machine, Unity version and warm
+test project, on 2026-11-25; milliseconds, median of three.
+
+| Route | Plot | Begin | Begin @max | Begin total |
+|---|---:|---:|---:|---:|
+| Earth → Mars | 4,324 → 4,319 (−0.1%) | **10,064 → 0** | 285 → 0 | **10,353 → 0** |
+| Earth → Venus | 10,669 → 10,668 (0.0%) | **4,573 → 0** | 499 → 0 | **5,068 → 0** |
+| Earth → Uranus | 2,164 → 2,181 (+0.8%) | **1,743 → 0** | 523 → 0 | **2,266 → 0** |
+
+Every cell that Begin does not touch is inside the **2.5%** repeat spread. The
+Begin itself is one plan adoption and an `Autopilot` construction, which the
+instrument reports as **0 ms**. The flown plans are the drawn ones:
+16.48669 d, 14.10909 d and 92.13088 d, not the replanned 16.59252, 14.23401 and
+87.21140 d, and their arrival dates are the previews' — earlier than a replan
+would have given, because the fresh minimum also moves with the date.
+
+### What did not move
+
+No floor, anchor, tolerance, gate, seed, cold pass cap, prefetch policy, or
+window rule changed. The three floors are still Mars **16.84485 d**, Venus
+**14.31827 d**, and Uranus **92.13088 d**; the six fixed-duration Δv anchors are
+unchanged. The stale path is the old code, unchanged, so a stale Begin still
+flies the fresh minimum rather than the preview's number. The benchmark's
+committed baseline was re-recorded for the new phase meaning, so a later run that
+reintroduces a Begin replan reports the full rise instead of hiding it under a
+stale phase definition.
+
 # Where it lives
 
 | Concern | Code |
 |---|---|
+| Begin on a fresh preview | `FlightSession.Begin`'s reuse branch, `FlightSession.CanFlyPreview`, `FlightSession.StartFlight`, `TrajectoryPlan.DepartureState` |
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
 | Full-field probe, certificate, and the continuation | `TripPlanner.Build(..., probe: true)`, `ProbeDepartureSamples`, `MaxFloorCertificates`, `PlanBurnCoastBurnMinimum`'s certificate loop, `BuildProbeAtDuration` (diagnostic) |
 | The certified pin's pass cap and its retry | `TripPlanner.DefaultOuterPasses`, `RetryOuterPasses`, `Build`'s certified burn–coast–burn branch, `BuildResult.PinStalled` |
@@ -1326,7 +1424,12 @@ including latest-wins with a first build in flight, background equals
 synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, a retime to the floor
 reusing the window on both the synchronous and the background paths, and
-`Dispose` stopping the worker. `SolarSystemHudTests` and `BootstrapSmokeTests`
+`Dispose` stopping the worker. `FlightSessionTests` also holds Begin's reuse
+contract: inside the freshness window it flies the same plan instance from the
+plotted departure with `TripPlanner.PlanFastest` never called, past the window it
+replans at the current date and flies the fresh minimum, and a Begin for another
+target never flies the preview. `BootstrapSmokeTests` pins the same pair through
+the real composition root. `SolarSystemHudTests` and `BootstrapSmokeTests`
 pump the real handover through the frame loop. `FlightSessionTests` also holds
 the prefetch's contract: a plot fills the two steps above it and none below the
 minimum, a drag publishes the prefetched neighbour with no build, a prefetch

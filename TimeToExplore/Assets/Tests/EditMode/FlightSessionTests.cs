@@ -792,17 +792,31 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void BeginAfterAPlotReplansFromTheCurrentDateAndArrivesExactly()
+        public void BeginInsideThePreviewWindowFliesTheDrawnPlanAndArrivesExactly()
         {
             TrajectoryPlan preview = _session.Plot("mars", _epoch);
-            double later = _epoch + 0.05;
+            double later = _epoch + 0.5 * _session.PreviewStaleAfterDays;
+            var metrics = new PlanMetrics();
+            _planner.Metrics = metrics;
+            TrajectoryPlan plan;
+            try
+            {
+                plan = _session.Begin("mars", later);
+            }
+            finally
+            {
+                _planner.Metrics = null;
+            }
 
-            TrajectoryPlan plan = _session.Begin("mars", later);
-
-            Assert.That(plan, Is.Not.SameAs(preview), "Begin must replan, not fly the preview");
-            Assert.That(plan.DepartureJulianDate, Is.EqualTo(later).Within(1e-12));
+            Assert.That(metrics.FastestCalls, Is.Zero,
+                "inside the freshness window Begin must not pay for a second plot");
+            Assert.That(plan, Is.SameAs(preview),
+                "Begin flies the plan the player was looking at");
+            Assert.That(plan.DepartureJulianDate, Is.EqualTo(_epoch).Within(1e-12),
+                "and from the departure it was certified at");
             Assert.That(_session.HasPreview, Is.False, "Begin consumes the preview");
-            Assert.That(_session.State.JulianDate, Is.EqualTo(later));
+            Assert.That(_session.State.JulianDate, Is.EqualTo(_epoch).Within(1e-12),
+                "the ship adopts the preview's own departure state");
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying));
 
             FlightStep step = _session.Advance(plan.ArrivalJulianDate, 50_000);
@@ -814,16 +828,49 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void BeginningAtTheMinimumAfterTheClockMovesFliesTheReplannedMinimum()
+        public void BeginBeyondThePreviewWindowReplansAtTheCurrentDate()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double later = _epoch + 1.2 * _session.PreviewStaleAfterDays;
+
+            TrajectoryPlan plan = _session.Begin("mars", later);
+
+            Assert.That(plan, Is.Not.SameAs(preview),
+                "a preview the session calls stale is replanned, not flown");
+            Assert.That(plan.DepartureJulianDate, Is.EqualTo(later).Within(1e-12));
+            Assert.That(_session.State.JulianDate, Is.EqualTo(later).Within(1e-12));
+            Assert.That(_session.HasPreview, Is.False, "Begin consumes the preview");
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying), _session.Failure);
+        }
+
+        [Test]
+        public void BeginningAtTheMinimumInsideTheWindowFliesTheDrawnMinimum()
         {
             TrajectoryPlan preview = _session.Plot("mars", _epoch);
             double previewMinimum = _session.PreviewMinimumSeconds;
-            double later = _epoch + 0.002;
+            double later = _epoch + 0.5 * _session.PreviewStaleAfterDays;
+
+            TrajectoryPlan plan = _session.Begin("mars", later);
+
+            Assert.That(plan, Is.SameAs(preview));
+            Assert.That(plan.FlightTimeSeconds,
+                Is.EqualTo(previewMinimum).Within(1e-6),
+                "the drawn minimum is flown, not a fresh number");
+            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.False, "the drawn minimum is still the no-coast plan");
+        }
+
+        [Test]
+        public void BeginningAtTheMinimumBeyondTheWindowFliesTheReplannedMinimum()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            double previewMinimum = _session.PreviewMinimumSeconds;
+            double later = _epoch + 1.2 * _session.PreviewStaleAfterDays;
             TrajectoryPlan replanned = _planner.PlanFastest(
                 _session.State.WithJulianDate(later), "mars");
 
             TestContext.WriteLine($"preview minimum {previewMinimum / JulianDate.SecondsPerDay:F6} d, " +
-                                  $"replanned at +0.002 d " +
+                                  $"replanned at +1.2 windows " +
                                   $"{replanned.FlightTimeSeconds / JulianDate.SecondsPerDay:F6} d");
 
             Assert.That(replanned.FlightTimeSeconds,
@@ -835,9 +882,21 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying),
                 _session.Failure);
             Assert.That(plan.FlightTimeSeconds, Is.EqualTo(replanned.FlightTimeSeconds).Within(1e-6),
-                "a preview at its minimum flies the fresh minimum, not the old number");
+                "a stale preview at its minimum flies the fresh minimum, not the old number");
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
                 Is.False, "the fresh minimum is still the no-coast plan");
+        }
+
+        [Test]
+        public void ABeginForAnotherTargetDoesNotFlyThePreview()
+        {
+            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+
+            TrajectoryPlan plan = _session.Begin("moon", _epoch);
+
+            Assert.That(plan, Is.Not.SameAs(preview));
+            Assert.That(plan.TargetId, Is.EqualTo("moon"));
+            Assert.That(_session.Status, Is.EqualTo(FlightStatus.Flying), _session.Failure);
         }
 
         [Test]
