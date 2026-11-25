@@ -59,6 +59,10 @@ namespace TimeToExplore.Simulation
         /// <see cref="TripPlanner"/>'s longer pass cap.</summary>
         public int PinRetries { get; private set; }
 
+        /// <summary>Seeded attempts that did not converge inside the seeded
+        /// pass cap and were rebuilt cold.</summary>
+        public int SeedFallbacks { get; private set; }
+
         /// <summary>Outer brake/departure passes, all build qualities.</summary>
         public int PinPasses { get; private set; }
 
@@ -155,6 +159,7 @@ namespace TimeToExplore.Simulation
             BuildsFastProbe = 0;
             BuildsFullFieldProbe = 0;
             PinRetries = 0;
+            SeedFallbacks = 0;
             PinPasses = 0;
             CertifiedPinPasses = 0;
             FastPinPasses = 0;
@@ -215,6 +220,7 @@ namespace TimeToExplore.Simulation
         internal void AddBurnOnlySeam(long ticks) => _burnOnlySeamTicks += ticks;
         internal void NoteSettlePass() => SettlePasses++;
         internal void NotePinRetry() => PinRetries++;
+        internal void NoteSeedFallback() => SeedFallbacks++;
         internal void NoteBurnOnlyBuild() => BurnOnlyBuilds++;
 
         internal void AddFastestCoast(long ticks, double planSeconds)

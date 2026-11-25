@@ -31,7 +31,7 @@ Reasoning: [Planning performance](/technical/planning-performance.md) and
    gap.
    Judge the step against `tools/bench.sh` and the committed baseline, not against
    hand figures: Mars plots at 4.1 s, Venus at 9.7 s, Uranus at 2.0 s, the
-   retimes at 0.37–0.49 s, and Mars's Begin at 9.0 s.
+   retimes at 0.37–0.49 s, and Mars's Begin at 9.0 s. **Done:** see below.
 4. **Prefetch the slider's neighbours.** After a plot, build two steps each side
    of the plotted duration; while the player drags, build three steps in the
    drag direction. Prefetch uses the preview's frozen departure state, never
@@ -61,6 +61,23 @@ The Earth routes at the epoch are: Earth→Mars **4.1 s plot, 0.46/0.37 s retime
 by **at most 2.5%**, most under 1%, so treat anything under a few percent as
 noise.
 
+**Step 3's result** is in
+[Planning performance](/technical/planning-performance.md#step-3-warm-starting-the-pin-2026-11-24).
+`PinSeed` carries the brake and departure-burn durations and directions and the
+duration they converged at; never the escape ray. `TrajectoryPlan.PinSeed`
+returns it, `FlightSession` stores it with each `CachedRetime` and with the
+window's floor plan, and the retime build starts from the nearest entry's seed.
+The retime **wins**: **12 → 6 pin passes** at Mars and Venus and **9 → 6** at
+Uranus (33 → 18, 45.5% fewer) for the same plan to four decimals. **The plot does
+not win**: below the floor every fast probe refuses, so nothing can seed until
+the floor itself, and a seed that changes a near-floor probe's verdict moves the
+floor. Seeding the fast probes walked Uranus's high from 92.13088 to 91.07860 d
+and the search then found nothing, so **only the full-field continuation probes
+are seeded**, a probe must settle its pin to be accepted, and a certified build
+may accept a chain-closed plan whose pin plateaued. The floors are unchanged at
+Mars **16.84485**, Venus **14.31827**, Uranus **92.13088 d** (measured on the
+same tree before and after). `tools/bench.sh` shows no phase beyond noise.
+
 ## Traps
 
 - Anchor values: the live Mars 0.3 g coast floor is **16.84485 d** and the Mars
@@ -84,11 +101,16 @@ noise.
   publish, and must be dropped on discard, style change, burn-level change, and
   date change.
 - Warm start must not move the anchors: the same plan to four decimals, floors
-  unchanged, every seam inside 1 km / 1 m/s. Compare cold and warm over every
-  slider step for Mars, Mercury, Jupiter, and both Uranus levels.
+  unchanged, every seam inside 1 km / 1 m/s. `WarmStartTests` checks **six slider
+  positions** at Mars, Venus and Uranus 0.3 g (the minimum, steps 1, 2, 7, 31 and
+  the maximum) and the three floors; the flight suite's own anchors still hold
+  Mercury and Jupiter.
 - The near-floor basin is a needle and the runtime selects it by last-bit libm
-  differences. A seeded build that converges to a different needle is a real
-  risk; the guard is the cold fallback, not a tolerance change.
+  differences. A seeded **probe** that settles at a duration the cold search
+  refuses moves the floor: measured at Uranus, the fast search walked its high
+  from 92.13088 to 91.07860 d. The guard is the scope — fast probes unseeded, a
+  probe accepted only when its pin settled — plus the cold certificate, not a
+  tolerance change. See the step-4 traps.
 - The player sees **~4 s per plot and another ~4 s at Begin** in Play Mode. The
   current editor record is the step-2 benchmark: Earth→Mars plots in **4.1 s**
   headless and Begin in **9.0 s**, so the plot numbers agree to one decimal but
@@ -114,6 +136,28 @@ noise.
 - A full `tools/bench.sh` run costs **about 2 min 40 s** wall clock on this
   machine (157 s measured, including Unity startup); the run prints medians of
   three, so use the deltas, not a single number.
+- **The benchmark's retimes cannot see a warm start.** Its retime phases sit at
+  the window's middle and maximum — 33.0 d and 49.5 d at Mars — which is outside
+  `PinSeed.MaxRelativeGap` (20%), so `Covers` refuses the seed and those builds
+  are cold by construction. Do not read their flat deltas as a regression. A
+  prefetch's win must be measured on **neighbouring steps** (1.6% of the window)
+  or by adding a phase to the instrument, not by changing the existing two.
+- **The fast probe search must stay unseeded.** Seeding it let stalled probes
+  close below the floor: Uranus's fast high walked 92.13088 → 91.07860 d, the
+  certificate refused, and `Plan()` returned a refusal. `SearchFloor` now seeds
+  **only** `probe: true` builds, and only while they settle their pin. A prefetch
+  must not widen that.
+- A seeded certified build accepts a chain-closed plan whose pin plateaued above
+  its tolerance (a cold build is accepted on the same terms); a **probe** must
+  settle. Keep that distinction: changing it moves floors.
+- The two lowest slider steps are never seeded (`SeedExcludedLowFraction`, 2/63,
+  pinned against `SolarSystemHud.TimeSliderSteps`), because the window's minimum
+  is where the burn-only crossing and the short coast meet the coast profile.
+  Prefetching step 1 or 2 must start cold.
+- Warm start must not move the floors: Mars **16.84485 d**, Venus **14.31827 d**,
+  Uranus **92.13088 d** at 0.3 g, measured on this tree both sides of step 3.
+  `WarmStartTests` asserts the Mars and Uranus anchors; a prefetch that seeds
+  across families would break them.
 
 ## Verification
 
@@ -129,5 +173,5 @@ Report the command and its result; do not write a test count anywhere.
 
 - [x] Step 1 — measure
 - [x] Step 2 — benchmark the routes
-- [ ] Step 3 — warm start
+- [x] Step 3 — warm start
 - [ ] Step 4 — prefetch

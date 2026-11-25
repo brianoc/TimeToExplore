@@ -456,7 +456,9 @@ namespace TimeToExplore.Simulation
                 return Preview;
             }
 
-            Preview = _planner.PlanAtDuration(_previewDeparture, targetId, duration);
+            Preview = _planner.PlanAtDuration(_previewDeparture, targetId, duration,
+                RetimeSeed(targetId, julianDate, burnLevelG, arrival, duration,
+                    minimum, PreviewMaximumSeconds));
             CacheRetime(targetId, julianDate, burnLevelG, arrival, duration, Preview);
             return Preview;
         }
@@ -539,7 +541,9 @@ namespace TimeToExplore.Simulation
             }
 
             var request = new RetimeRequest(_previewDeparture, targetId, duration,
-                arrival, _planner);
+                arrival, _planner,
+                RetimeSeed(targetId, julianDate, burnLevelG, arrival, duration,
+                    PreviewMinimumSeconds, PreviewMaximumSeconds));
 
             lock (_retimeLock)
             {
@@ -874,7 +878,7 @@ namespace TimeToExplore.Simulation
         {
             request.ApplyTo(_workerPlanner);
             TrajectoryPlan plan = _workerPlanner.PlanAtDuration(request.Departure,
-                request.TargetId, request.DurationSeconds);
+                request.TargetId, request.DurationSeconds, request.Seed);
 
             // Cache even a superseded build: the plan is still the right answer
             // for this window and duration, and it is exactly the work a
@@ -916,7 +920,10 @@ namespace TimeToExplore.Simulation
             {
                 double duration = Math.Min(request.DurationSeconds, window.MaximumSeconds);
                 plan = _workerPlanner.PlanAtDuration(request.Departure,
-                    request.TargetId, duration);
+                    request.TargetId, duration,
+                    RetimeSeed(request.TargetId, request.Departure.JulianDate,
+                        request.BurnLevelG, request.Arrival, duration,
+                        window.Plan.FlightTimeSeconds, window.MaximumSeconds));
                 CacheRetime(request.TargetId, request.Departure.JulianDate,
                     request.BurnLevelG, request.Arrival, duration, plan);
             }
@@ -1055,7 +1062,8 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan = planner.PlanFastest(departure, targetId);
             var window = new PreviewWindow(plan,
                 MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds, planner,
-                    departure));
+                    departure),
+                plan?.PinSeed ?? default);
 
             lock (_retimeLock)
             {
@@ -1135,6 +1143,85 @@ namespace TimeToExplore.Simulation
             return false;
         }
 
+        /// <summary>How many slider steps at the bottom of the window are never
+        /// seeded, and the control's step count. The two are the same numbers the
+        /// HUD's <c>TimeSliderSteps</c> uses; a test pins them together. The
+        /// window's minimum is where the burn-only crossing and the short coast
+        /// meet the coast profile, and a seed from another family would start the
+        /// build in the wrong geometry.</summary>
+        internal const int SeedExcludedSliderSteps = 2;
+        internal const int SliderStepCount = 64;
+
+        /// <summary>The fraction of the window covered by the two lowest
+        /// slider steps, which are never seeded. Public so the test that pins it
+        /// to the HUD's own step count can read it.</summary>
+        public const double SeedExcludedLowFraction =
+            SeedExcludedSliderSteps / (double)(SliderStepCount - 1);
+
+        /// <summary>
+        /// The pin a retime build at <paramref name="seconds"/> should start
+        /// from: the nearest cached retime's, else the window's floor plan's,
+        /// else the cold start. The two lowest slider steps are not seeded,
+        /// because that is where the build's geometry changes family.
+        /// </summary>
+        private PinSeed RetimeSeed(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double seconds,
+            double minimum, double maximum)
+        {
+            if (!(minimum > 0.0) || !double.IsFinite(minimum)) return default;
+            double span = maximum - minimum;
+            if (double.IsFinite(span) && span > 0.0
+                && seconds - minimum < SeedExcludedLowFraction * span)
+            {
+                return default;
+            }
+
+            if (TryGetNearestRetimeSeed(targetId, julianDate, burnLevelG, arrival,
+                    seconds, out PinSeed nearest))
+            {
+                return nearest.Nearby(seconds);
+            }
+
+            if (TryGetCachedWindow(targetId, julianDate, out PreviewWindow window))
+                return window.FloorSeed.Nearby(seconds);
+
+            return default;
+        }
+
+        /// <summary>The cached retime closest to a requested duration, if any of
+        /// them can start it. The cache already holds the window's solved trips,
+        /// so picking the nearest is its job; a miss means the caller starts
+        /// cold.</summary>
+        private bool TryGetNearestRetimeSeed(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double seconds, out PinSeed seed)
+        {
+            seed = default;
+            var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
+
+            lock (_retimeLock)
+            {
+                if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
+                    return false;
+                if (!_retimedPlans.TryGetValue(key, out List<CachedRetime> entries))
+                    return false;
+
+                double best = double.PositiveInfinity;
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    PinSeed candidate = entries[i].Seed;
+                    if (!candidate.Covers(seconds)) continue;
+
+                    double gap = Math.Abs(entries[i].RequestedSeconds - seconds);
+                    if (gap >= best) continue;
+
+                    best = gap;
+                    seed = candidate;
+                }
+            }
+
+            return seed.IsValid;
+        }
+
         /// <summary>
         /// Keep a finished plan for the window and duration that produced it, on
         /// whichever thread built it. The oldest entry of a full window is
@@ -1146,6 +1233,7 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan)
         {
             if (plan == null) return;
+            PinSeed seed = plan.PinSeed;
 
             var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
             lock (_retimeLock)
@@ -1163,13 +1251,13 @@ namespace TimeToExplore.Simulation
                 {
                     if (Math.Abs(entries[i].RequestedSeconds - requestedSeconds) <= 1e-6)
                     {
-                        entries[i] = new CachedRetime(requestedSeconds, plan);
+                        entries[i] = new CachedRetime(requestedSeconds, plan, seed);
                         return;
                     }
                 }
 
                 if (entries.Count >= MaxCachedRetimesPerWindow) entries.RemoveAt(0);
-                entries.Add(new CachedRetime(requestedSeconds, plan));
+                entries.Add(new CachedRetime(requestedSeconds, plan, seed));
             }
         }
 
@@ -1614,12 +1702,13 @@ namespace TimeToExplore.Simulation
         private sealed class RetimeRequest
         {
             public RetimeRequest(ShipState departure, string targetId, double durationSeconds,
-                CaptureStyle arrival, TripPlanner settings)
+                CaptureStyle arrival, TripPlanner settings, PinSeed seed = default)
             {
                 Departure = departure;
                 TargetId = targetId;
                 DurationSeconds = durationSeconds;
                 Arrival = arrival;
+                Seed = seed;
                 BurnLevelG = settings.BurnLevelG;
                 MaxAccelerationMps2 = settings.MaxAccelerationMps2;
                 ThrustMargin = settings.ThrustMargin;
@@ -1634,6 +1723,10 @@ namespace TimeToExplore.Simulation
             public string TargetId { get; }
             public double DurationSeconds { get; }
             public CaptureStyle Arrival { get; }
+
+            /// <summary>The nearest solved trip's pin, captured on the
+            /// requesting thread, or the cold start.</summary>
+            public PinSeed Seed { get; }
             public double BurnLevelG { get; }
             public double MaxAccelerationMps2 { get; }
             public double ThrustMargin { get; }
@@ -1782,30 +1875,41 @@ namespace TimeToExplore.Simulation
         /// slowest trip the slider may offer.</summary>
         private readonly struct PreviewWindow
         {
-            public PreviewWindow(TrajectoryPlan plan, double maximumSeconds)
+            public PreviewWindow(TrajectoryPlan plan, double maximumSeconds,
+                PinSeed floorSeed = default)
             {
                 Plan = plan;
                 MaximumSeconds = maximumSeconds;
+                FloorSeed = floorSeed;
             }
 
             public TrajectoryPlan Plan { get; }
             public double MaximumSeconds { get; }
+
+            /// <summary>The pin the window's floor plan settled on, or the cold
+            /// start when the window plan never ran the pin (the burn-only
+            /// crossing at a high level carries none).</summary>
+            public PinSeed FloorSeed { get; }
         }
 
         /// <summary>A plan the session already built at a requested flight time,
         /// kept so a returned slider handle is instant. The stored seconds are
         /// the request, not the plan's own total, so the next drag asks at the
-        /// same value it used before.</summary>
+        /// same value it used before. The seed is the pin that plan settled on;
+        /// the nearest entry starts the next build.</summary>
         private readonly struct CachedRetime
         {
-            public CachedRetime(double requestedSeconds, TrajectoryPlan plan)
+            public CachedRetime(double requestedSeconds, TrajectoryPlan plan,
+                PinSeed seed = default)
             {
                 RequestedSeconds = requestedSeconds;
                 Plan = plan;
+                Seed = seed;
             }
 
             public double RequestedSeconds { get; }
             public TrajectoryPlan Plan { get; }
+            public PinSeed Seed { get; }
         }
 
         /// <summary>The inputs that make a preview window unique. The departure

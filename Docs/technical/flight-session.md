@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T19:10:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T00:24:01Z }
 ---
 
 # What this adds to the orrery
@@ -180,7 +180,12 @@ difference between a requested step and the plan's own total still hits), so
 returning to a step the player already waited for is a dictionary hit, not
 another multi-second build. A step is about 1.6% of the window, so a
 neighbouring step is a different trip and a new build; the 64 slots hold the 64
-steps.
+steps. Each entry keeps the brake/departure pin its plan settled on, and a new
+build starts from the nearest entry's pin (or the window plan's) instead of the
+kinematic estimate — **6 pin passes against a cold build's 12** for the same
+duration, with the same plan. The two lowest steps are not seeded, because that
+is where the burn-only crossing and the short coast meet the coast profile
+([warm-starting the pin](/technical/planning-performance.md#step-3-warm-starting-the-pin-2026-11-24)).
 A plan costs about **50 KB** — the departure burn's and brake's 512-sample
 interpolation tables dominate, at 24 bytes a sample — so the bound is about
 3 MB per window. The cache is keyed and dropped with the window, so a changed

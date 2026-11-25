@@ -341,19 +341,25 @@ namespace TimeToExplore.EditorTools
             double midSeconds = floorSeconds + 0.5 * (maximum - floorSeconds);
 
             // ---- retime at the window middle and at its maximum ----
+            // Each retime starts from the pin the nearest solved trip settled
+            // on — the window plan for the middle, the middle for the maximum —
+            // exactly as the session's cache hands one over. The cold build it
+            // replaces is the same call with a default seed.
+            PinSeed floorSeed = plotPlan.PinSeed;
             TimeRetime(planner, departure, route.TargetId, midSeconds,
-                out TrajectoryPlan midPlan); // warm-up
+                out TrajectoryPlan midPlan, floorSeed); // warm-up
             var midRuns = new double[MeasuredRuns];
             for (int i = 0; i < MeasuredRuns; i++)
                 midRuns[i] = TimeRetime(planner, departure, route.TargetId,
-                    midSeconds, out midPlan);
+                    midSeconds, out midPlan, floorSeed);
 
+            PinSeed midSeed = midPlan.PinSeed;
             TimeRetime(planner, departure, route.TargetId, maximum,
-                out TrajectoryPlan maxPlan); // warm-up
+                out TrajectoryPlan maxPlan, midSeed); // warm-up
             var maxRuns = new double[MeasuredRuns];
             for (int i = 0; i < MeasuredRuns; i++)
                 maxRuns[i] = TimeRetime(planner, departure, route.TargetId,
-                    maximum, out maxPlan);
+                    maximum, out maxPlan, midSeed);
 
             // ---- Begin: PlanFastest at a moved date, then the chosen retime ----
             double beginDate = epoch + BenchmarkRoutes.BeginAdvanceSeconds
@@ -373,12 +379,13 @@ namespace TimeToExplore.EditorTools
             var beginTotalRuns = new double[MeasuredRuns];
             if (beginsWithRetime)
             {
+                PinSeed beginSeed = beginPlan.PinSeed;
                 TimeRetime(planner, moved, route.TargetId, maximum,
-                    out TrajectoryPlan beginRetimed); // warm-up
+                    out TrajectoryPlan beginRetimed, beginSeed); // warm-up
                 for (int i = 0; i < MeasuredRuns; i++)
                 {
                     beginRetimeRuns[i] = TimeRetime(planner, moved, route.TargetId,
-                        maximum, out beginRetimed);
+                        maximum, out beginRetimed, beginSeed);
                     beginTotalRuns[i] = beginRuns[i] + beginRetimeRuns[i];
                 }
             }
@@ -462,10 +469,12 @@ namespace TimeToExplore.EditorTools
         }
 
         private static double TimeRetime(TripPlanner planner, ShipState departure,
-            string target, double seconds, out TrajectoryPlan plan)
+            string target, double seconds, out TrajectoryPlan plan,
+            PinSeed seed = default)
         {
             long started = Stopwatch.GetTimestamp();
-            plan = planner.PlanAtDuration(departure, target, seconds);
+            plan = planner.PlanAtDuration(departure, target, seconds,
+                seed.Nearby(seconds));
             return Milliseconds(started);
         }
 

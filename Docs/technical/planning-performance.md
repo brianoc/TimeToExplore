@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, and the latest-wins background planner (retimes and route plans).
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T22:05:36Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T00:24:01Z }
 ---
 
 # The problem
@@ -105,9 +105,11 @@ cache. This is what makes a repeat selection free rather than merely fast.
 The retimed plans are cached as well, keyed by the same window inputs plus the
 requested flight time. A finished background build is stored even when a newer
 ask superseded it — the plan is still the right answer for that duration, and it
-is exactly the work a returned handle would otherwise repeat. The trip-time
-handle is **64 integer steps** across the window, so each step is a distinct
-trip and exactly one cache slot. The newest **sixty-four** per window are kept,
+is exactly the work a returned handle would otherwise repeat. Each entry also
+keeps the pin seed its plan settled on, so the next build at a neighbouring
+duration starts warm ([warm-starting the pin](#step-3-warm-starting-the-pin-2026-11-24)).
+The trip-time handle is **64 integer steps** across the window, so each step is
+a distinct trip and exactly one cache slot. The newest **sixty-four** per window are kept,
 and a repeat ask is matched when it lies within **0.2% of the window**: that
 absorbs the small difference between a requested step and the plan's own total,
 while a neighbouring step is about 1.6% away and properly builds. A plan is
@@ -133,11 +135,11 @@ recomputed rather than carried between builds.
 
 The cache is therefore the reuse: a whole retimed plan at a step costs a
 dictionary lookup, and the window's floor plan and maximum are solved once. The
-plausible next lever is not sharing arcs but **warm-starting the outer
-break/brake/departure fixed point** with the previous plan's ray and durations at
-a nearby step, which could cut the passes without changing the converged plan.
-That is a measurement and a risk to the near-floor anchors, not a free swap, so
-it is not implemented.
+next lever is not sharing arcs but **warm-starting the outer
+break/brake/departure fixed point** with a neighbouring plan's durations and
+directions, which cuts the passes without changing the converged plan. Step 3
+took it, and it pays on the retime and not on the plot
+([warm-starting the pin](#step-3-warm-starting-the-pin-2026-11-24)).
 
 # The background planner
 
@@ -1050,6 +1052,131 @@ rise is a regression, and the table shows each phase's milliseconds and delta,
 plus the summed total. It never asserts a time.
 
 
+## Step 3: warm-starting the pin (2026-11-24)
+
+The pin is the brake/departure fixed point: the brake's duration and thrust
+direction, the departure burn's duration and direction. Every build started it
+from a **kinematic estimate** — a brake one second long aimed retrograde, and a
+departure burn the reference coast's own speed change implies — and walked in
+from there. Step 1 measured that walk as **71% of a retime** and **half of a
+first plot**, with **162 of the plot's 174 passes** inside the floor search's
+fast probes. A neighbouring solved trip already knows the answer, so step 3
+starts the pin from it.
+
+`PinSeed` is a value type carrying those four numbers and the duration they
+converged at. It deliberately **does not carry the escape ray**: the climb is
+derived from the time budget on every pass, and the ray is what decides which
+basin the pin settles in. A build that closed its chain returns the pin it
+settled on (`BuildResult.Seed`, and `TrajectoryPlan.PinSeed`), so one build can
+hand it to the next; a refusal or a stretched plan carries none. `Build(...)`,
+both burn–coast–burn builders, and `PlanAtDuration` take an optional seed, and a
+seeded pass 0 also **flies the planetocentric approach** when the seeded brake is
+long enough to reach the ceiling, instead of dropping it as a cold pass 0 must.
+
+### The guards
+
+A seeded attempt is a **solver budget**, not a relaxed answer. It runs a few
+passes — **6** for a certified build (`SeedOuterPasses`) and **2** for a probe
+(`ProbeSeedOuterPasses`) — and if it has not produced the answer by then the
+build is repeated cold at the normal cap, with the certified path's own
+12 → 24-pass retry. The tolerances, the chain gate, and the cold caps do not
+move. A certified attempt is accepted when it **closed its chain**: a cold build
+whose pin plateaus above its own tolerance is accepted on exactly those terms. A
+**probe** is accepted only when its pin **settled**, because a probe's verdict is
+what the floor search decides on.
+
+The guards that were needed, and why:
+
+* **The floor search's fast probes are not seeded.** A seed lets a stalled fast
+  probe close, and that moves the floor's frontier: measured at Uranus, the fast
+  search walked its high from **92.13088 d to 91.07860 d**, the certificate
+  refused there, and the continuation found nothing, so `Plan()` returned a
+  refusal. **The floors are a hard gate**, so only the **full-field
+  continuation** is seeded; it runs above a refused certificate and its probes
+  are the expensive ones (64-sample solve, 512-sample field brake). With that
+  scope the three measured floors are identical before and after, on the same
+  tree either side of the change: Mars **16.84485 d**, Venus **14.31827 d**,
+  Uranus **92.13088 d**.
+* **No seed from a refusal, a stretch, or across the family boundary.** Only a
+  plan that closed its chain carries one. The flight session does not seed the
+  **two lowest slider steps** (`SeedExcludedLowFraction`, 2/63, pinned against
+  the HUD's 64-step control), because the window's minimum is where the
+  burn-only crossing and the short coast meet the coast profile.
+* **A seed only starts a nearby trip.** `PinSeed.MaxRelativeGap` is 20% of the
+  duration it converged at — the floor search's growth step — and a miss is the
+  cold start.
+
+### Where it is used
+
+* `TripPlanner.SearchFloor`'s `Probe(seconds)` closure keeps the last feasible
+  probe's seed and hands it to the next **continuation** probe.
+* `FlightSession` stores the seed with each `CachedRetime` and with the window's
+  floor plan (`PreviewWindow.FloorSeed`). A retime build starts from the
+  **nearest** cached entry's seed, else the floor plan's, else cold. The nearest
+  entry is the cache's own job; the session does not add matching logic.
+
+### The measurements
+
+Beats at JD 2461359.5 from Gateway, conic capture, 0.3 g, in the warm EditMode
+project (editor/Mono). Cold and seeded are the **same duration**, one slider
+step apart — a neighbouring cache entry, which is the player's drag.
+
+| Planet | Duration | Cold passes / wall | Seeded passes / wall | Delta-v cold / seeded | Worst arc end |
+|---|---:|---|---|---|---|
+| Mars | 27.47782 d | 12 / 491 ms | **6 / 330 ms** | 245.7294 / 245.7294 km/s | 1.3 m / 1.9 × 10⁻⁴ m/s |
+| Venus | 23.51515 d | 12 / 471 ms | **6 / 340 ms** | 123.2405 / 123.2405 km/s | 0.13 m / 7.2 × 10⁻⁶ m/s |
+| Uranus | 153.55147 d | 9 / 482 ms | **6 / 376 ms** | 461.8193 / 461.8193 km/s | 1.2 m / 1.5 × 10⁻⁵ m/s |
+| **Total** | | **33 / 1,444 ms** | **18 / 1,046 ms** | | |
+
+That is **45.5% fewer pin passes** for the same three durations, and **28% less
+wall time** (1,444 → 1,046 ms; 33%, 28% and 22% per planet). The plans are the
+same trip: delta-v equal to four decimals, the same arcs, and every arc end
+inside the 1 km / 1 m/s gate. The session's own path measures the same:
+`SetPreviewDuration` at one step past a cached plan takes **6** passes against a
+cold build's **12**.
+
+The equality sweep covers more than one step. Six slider positions — the
+minimum, steps 1, 2, 7, 31 and the maximum — at Mars, Venus and Uranus, cold
+against seeded, give identical delta-v at every one. The worst arc-end
+difference in the sweep is **120.0 m / 1.3 × 10⁻² m/s** (Mars step 7); Uranus
+stays under **5.8 m / 5 × 10⁻⁵ m/s**. A deliberately wrong seed (a brake that
+would start before the departure, a burn from no trip) is abandoned after a few
+passes and returns the cold plan exactly, with the extra cost of those passes.
+
+**The plot does not win.** Below the floor every fast probe refuses, so there is
+nothing to seed from until the first feasible probe — which is the floor itself.
+From there, every probe that could be seeded is one whose verdict decides the
+floor, and accepting a seed-changed verdict moves it. The continuation is seeded
+and settles rarely, so the plot moves only by noise: `RouteBuildMetricsTests`
+reports the same **174 pin passes (162 fast, 12 certified)** as step 1 before
+the change, and the benchmark's three plots are inside the repeat spread. The
+saving this step banks is the retime, where the pin is **71%** of the wall time
+and one slider step is enough.
+
+### Benchmark
+
+`tools/bench.sh`, before (2026-11-24) and after (2026-11-25), median of three,
+same machine and Unity version. Milliseconds; the delta is after against before.
+
+| Route | Plot | Retime mid | Retime max | Begin | Begin total |
+|---|---|---|---|---|---|
+| Earth → Mars | 3,913 → **3,861** (−1.3%) | 448 → **441** (−1.6%) | 356 → **352** (−1.1%) | 8,759 → **8,989** (+2.6%) | 9,097 → **9,317** (+2.4%) |
+| Earth → Venus | 9,465 → **9,669** (+2.2%) | 468 → **457** (−2.4%) | 459 → **449** (−2.2%) | 4,270 → **4,187** (−1.9%) | 4,743 → **4,650** (−2.0%) |
+| Earth → Uranus | 2,028 → **1,989** (−1.9%) | 486 → **477** (−1.9%) | 476 → **466** (−2.1%) | 1,646 → **1,607** (−2.4%) | 2,130 → **2,083** (−2.2%) |
+| Mars → Earth | 393 → **383** (−2.5%) | — | — | — | — |
+| Venus → Earth | 408 → **399** (−2.2%) | — | — | — | — |
+| Uranus → Earth | 491 → **480** (−2.2%) | — | — | — | — |
+
+Every phase is inside the instrument's **2.5%** repeat spread, and the after run
+is also about 2–3% faster than the committed baseline on phases this step does
+not touch (the three reverse plots). **No phase changed beyond noise.** The
+benchmark's retimes sit at the window's middle and maximum — **33.0 d and
+49.5 d** at Mars — which is outside the seed's 20% cover, so they are cold by
+construction; the player's drag is **1.6%** per step and is the path the pass
+counts measure. Reading the benchmark as evidence that the retime did not
+improve would be a mistake; reading it as evidence that the plot did not improve
+is correct.
+
 # Where it lives
 
 | Concern | Code |
@@ -1057,9 +1184,10 @@ plus the summed total. It never asserts a time.
 | Fast peak, screen, fast build mode | `TripPlanner.BreakPeakMps2`, `BreakScreenMargin`, `Build(..., fast: true)`, `MeasureFast` |
 | Full-field probe, certificate, and the continuation | `TripPlanner.Build(..., probe: true)`, `ProbeDepartureSamples`, `MaxFloorCertificates`, `PlanBurnCoastBurnMinimum`'s certificate loop, `BuildProbeAtDuration` (diagnostic) |
 | The certified pin's pass cap and its retry | `TripPlanner.DefaultOuterPasses`, `RetryOuterPasses`, `Build`'s certified burn–coast–burn branch, `BuildResult.PinStalled` |
+| Warm start | `PinSeed` (its `MaxRelativeGap` and `Covers`), `TripPlanner.SeedOuterPasses`, `ProbeSeedOuterPasses`, `BuildWithRetry`'s seeded attempt, `BuildBurnCoastBurn`'s seeded pass 0 and approach, `BuildResult.Seed`/`Built`/`PinSettled`, `TrajectoryPlan.PinSeed` |
 | Floor search, and the builds it must not repeat | `TripPlanner.SearchFloor` (optional `tried` map and `probe` mode), `FastProbeBurnSamples`, `FastProbeOuterPasses` |
 | Full-field burns | `FiniteBurnArc.Create`/`Simulate`/`SimulateBackward`/`SimulateUntilRadius` with the optional `IGravityField`, `TripPlanner.BuildBurnCoastBurn`'s `burnGravity`, `PinnedDepartureSamples`, `BrakeSamples`, `TrySolvePinnedDepartureWithFallback`, `AppendHybridCapture` |
-| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `SetPreviewDuration`'s floor reuse |
+| Cache | `FlightSession.WindowFor`, `TryGetCachedWindow`, `TryGetCachedRetime`, `CacheRetime`, `TryGetNearestRetimeSeed`, `RetimeSeed`, `SeedExcludedLowFraction`, `SetPreviewDuration`'s floor reuse |
 | Retime and route planning | `FlightSession.RequestPreviewDuration`, `PlotAsync`, `SetArrivalStyle`, `SetBurnLevel`, `SetPreviewDuration`, `TryApplyCompletedRetime`, `TryApplyCompletedPreview`, `TakePreviewFailure`, `PendingPreviewSeconds`, `PlannerLoop`, `BuildRetime`, `BuildPlotWindow`, `BuildRebuild`, `StartPlannerWorker` |
 | Handover and teardown | `SolarSystemBootstrap.ApplyRetimeIfReady`, `FlightSession.Dispose` |
 | Build metrics | `TripPlanner.Metrics`, `PlanMetrics`, `RouteBuildMetricsTests` |
@@ -1081,7 +1209,13 @@ synchronous, the previous preview staying published, a synchronous retime
 superseding an outstanding ask, a discard dropping one, a retime to the floor
 reusing the window on both the synchronous and the background paths, and
 `Dispose` stopping the worker. `SolarSystemHudTests` and `BootstrapSmokeTests`
-pump the real handover through the frame loop. `RouteBuildMetricsTests` prints
+pump the real handover through the frame loop. `WarmStartTests` holds the warm
+start's own contract: cold and seeded builds agree to four decimals of delta-v
+and inside the 1 km / 1 m/s gate over six slider positions at Mars, Venus and
+Uranus, the seeded retime costs fewer pin passes at the same duration, the
+session hands the nearest cached plan's seed over, a wrong seed is abandoned and
+returns the cold plan, the three floors are the anchors, and the unseeded slider
+fraction is the HUD's. `RouteBuildMetricsTests` prints
 the retime and first-plot split — pin passes, brake integration, the reported
 512-sample arcs, and allocation — and asserts only the counts, the phases
 belonging to the call, and the Mars floor; it never asserts a time. See

@@ -150,6 +150,22 @@ namespace TimeToExplore.Simulation
         /// point the passes it needs. A converged build never pays for it.</summary>
         private const int RetryOuterPasses = 24;
 
+        /// <summary>Outer passes a **seeded** attempt may run before it is
+        /// abandoned and the build is repeated cold at the normal cap. A seed
+        /// from a neighbouring solved trip usually settles in one or two passes;
+        /// a three-percent step at Uranus needed five to close its chain, so six
+        /// leaves room for the drift and still caps a useless seed at half the
+        /// default. The convergence test and the chain gate are the cold build's
+        /// own — only the start and the cap differ.</summary>
+        private const int SeedOuterPasses = 6;
+
+        /// <summary>Outer passes a **seeded probe** may run. A probe is a search
+        /// input and is accepted only when its pin settled, which from a
+        /// neighbour's values takes one or two updates; two passes cap a seed
+        /// that does not fit at a sixth of the certified build it would have
+        /// cost.</summary>
+        private const int ProbeSeedOuterPasses = 2;
+
         /// <summary>Change in the solved departure ray and burn duration that
         /// ends the pinned fixed point.</summary>
         private const double RayDirectionTolerance = 1e-10;
@@ -608,12 +624,33 @@ namespace TimeToExplore.Simulation
             double lastRequest = double.NaN;
             bool seedRejected = false;
 
+            // Carry the pin a probe built to the next probe. Two probes a step
+            // apart converge to almost the same brake and departure burn, and
+            // the floor search is where a first plot spends its pin passes. Only
+            // a feasible probe seeds the next one, and only a trip within
+            // <see cref="PinSeed.MaxRelativeGap"/> of it: a refusal or a
+            // stretched plan carries no seed, and a seed from a trip of another
+            // length is not a guess for this one.
+            PinSeed carried = default;
+
             FloorProbe Probe(double seconds)
             {
                 bool reused = false;
                 if (tried == null || !tried.TryGetValue(seconds, out BuildResult result))
                 {
-                    result = Build(ship, target, seconds, fast, probe);
+                    // Only the **full-field continuation** is seeded. The cheap
+                    // probe's feasibility is the floor's frontier, and a seed that
+                    // lets a stalled probe close moves that frontier: measured at
+                    // Uranus, seeding the fast search walked its high from
+                    // 92.13 d to 91.08 d, where the certificate refuses, and the
+                    // floor search then found nothing. A continuation probe runs
+                    // above a refused certificate, so its pin may start warm.
+                    PinSeed start = probe ? carried.Nearby(seconds) : default;
+                    Trace?.Invoke($"floor request " +
+                        $"{(fast ? "fast" : probe ? "probe" : "full")} " +
+                        $"{seconds / SecondsPerDay:F5} d" +
+                        (start.IsValid ? " [seeded]" : ""));
+                    result = Build(ship, target, seconds, fast, probe, start);
                     if (tried != null) tried[seconds] = result;
                 }
                 else
@@ -624,6 +661,8 @@ namespace TimeToExplore.Simulation
                 lastPlan = result.Plan;
                 lastRequest = seconds;
                 bool feasible = IsFeasibleAt(result.Plan, seconds);
+                if (feasible && result.Seed.IsValid)
+                    carried = result.Seed;
                 Trace?.Invoke($"floor {(fast ? "fast" : probe ? "probe" : "full")} " +
                               $"{seconds / SecondsPerDay:F5} d: feasible {feasible}, " +
                               $"time {result.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
@@ -849,14 +888,14 @@ namespace TimeToExplore.Simulation
         /// becoming a short coast. See <see cref="BuildShortCoast"/>.
         /// </summary>
         public TrajectoryPlan PlanAtDuration(ShipState ship, string targetId,
-            double durationSeconds)
+            double durationSeconds, PinSeed seed = default)
         {
             BodyRuntime target = RequireTarget(targetId);
             if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
                 throw new ArgumentOutOfRangeException(nameof(durationSeconds),
                     "A pinned flight time must be finite and positive.");
 
-            BuildResult result = Build(ship, target, durationSeconds);
+            BuildResult result = Build(ship, target, durationSeconds, seed: seed);
 
             // The coast path cannot fit a duration between the burn-only
             // minimum and its own floor: the break or the departure burn is
@@ -1721,10 +1760,11 @@ namespace TimeToExplore.Simulation
         }
 
         private BuildResult Build(ShipState ship, BodyRuntime target, double totalSeconds,
-            bool fast = false, bool probe = false)
+            bool fast = false, bool probe = false, PinSeed seed = default)
         {
             if (target.Data.IsStation)
-                return BuildWithRetry(ship, target, totalSeconds, fast, probe, station: true);
+                return BuildWithRetry(ship, target, totalSeconds, fast, probe, station: true,
+                    seed);
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetAtDeparture, out _);
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture)
@@ -1733,7 +1773,8 @@ namespace TimeToExplore.Simulation
                 return BuildInsideTarget(ship, target, totalSeconds);
             }
 
-            return BuildWithRetry(ship, target, totalSeconds, fast, probe, station: false);
+            return BuildWithRetry(ship, target, totalSeconds, fast, probe, station: false,
+                seed);
         }
 
         /// <summary>
@@ -1741,10 +1782,39 @@ namespace TimeToExplore.Simulation
         /// same tolerances and gates with the longer pass cap. A station and a
         /// planet both own their own builder, and a probe never pays for the
         /// retry.
+        ///
+        /// A **seed** starts the pin from a neighbouring build's converged brake
+        /// and departure burn. The attempt runs a few passes; if no plan has been
+        /// built by then the build is repeated cold at the normal cap, so a seed
+        /// that does not fit costs a few cheap passes rather than a full build. A
+        /// seeded attempt that does build has passed the same convergence test
+        /// and the same chain gate as the cold one.
         /// </summary>
         private BuildResult BuildWithRetry(ShipState ship, BodyRuntime target,
-            double totalSeconds, bool fast, bool probe, bool station)
+            double totalSeconds, bool fast, bool probe, bool station, PinSeed seed)
         {
+            if (seed.IsValid)
+            {
+                int seedPasses = fast || probe ? ProbeSeedOuterPasses : SeedOuterPasses;
+                BuildResult seeded = station
+                    ? BuildStationTrip(ship, target, totalSeconds, fast, probe,
+                        seedPasses, seed)
+                    : BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe,
+                        seedPasses, seed);
+                // A reported build that closed its chain is the answer: a cold
+                // build whose pin plateaus above its own tolerance is accepted on
+                // exactly those terms, and the chain gate is the authority. A
+                // **probe** is a search input, so it is only accepted when its pin
+                // settled; otherwise the verdict is the cold one, because the
+                // floor search's frontier is what that verdict decides.
+                bool accept = seeded.Built && (seeded.PinSettled || !(fast || probe));
+                if (accept) return seeded;
+
+                Trace?.Invoke($"seed fallback at {totalSeconds / SecondsPerDay:F5} d: " +
+                              $"{seedPasses} passes did not settle, rebuilding cold");
+                Metrics?.NoteSeedFallback();
+            }
+
             BuildResult result = station
                 ? BuildStationTrip(ship, target, totalSeconds, fast, probe)
                 : BuildBurnCoastBurn(ship, target, totalSeconds, fast, probe);
@@ -2096,7 +2166,7 @@ namespace TimeToExplore.Simulation
         /// </summary>
         private BuildResult BuildBurnCoastBurn(ShipState ship, BodyRuntime target,
             double totalSeconds, bool fast = false, bool probe = false,
-            int outerPassesLimit = DefaultOuterPasses)
+            int outerPassesLimit = DefaultOuterPasses, PinSeed seed = default)
         {
             PlanMetrics metrics = Metrics;
             PlanBuildQuality quality = fast ? PlanBuildQuality.FastProbe
@@ -2259,6 +2329,20 @@ namespace TimeToExplore.Simulation
             Vector3d brakeDirection = -referenceCruise.Path.VelocityAt(1.0).Normalized;
             Vector3d brakeStartPosition = entryPosition;
             Vector3d brakeStartVelocity = entryVelocity;
+
+            // A neighbouring build's converged pin starts this one instead of the
+            // reference coast's estimate. The escape ray is deliberately not part
+            // of the seed: the climb is derived from the time budget on every
+            // pass, and the ray decides which basin the pin settles in.
+            bool seeded = seed.IsValid;
+            if (seeded)
+            {
+                burnSeconds = seed.BurnSeconds;
+                burnDirection = seed.BurnDirection.Normalized;
+                brakeSeconds = seed.BrakeSeconds;
+                brakeDirection = seed.BrakeDirection.Normalized;
+            }
+
             double brakeStartJd = entryJd - brakeSeconds / SecondsPerDay;
 
             // The approach leg. The brake's start state is the approach's end
@@ -2310,7 +2394,9 @@ namespace TimeToExplore.Simulation
             double brakeMismatch = double.PositiveInfinity;
             bool pinSettled = false;
 
-            int outerPasses = fast ? FastProbeOuterPasses : outerPassesLimit;
+            int outerPasses = fast
+                ? Math.Min(FastProbeOuterPasses, outerPassesLimit)
+                : outerPassesLimit;
             for (int pass = 0; pass < outerPasses; pass++)
             {
                 long passStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
@@ -2355,7 +2441,15 @@ namespace TimeToExplore.Simulation
                     out approachSeconds, out approachStartJd, out approachStartPosition,
                     out approachStartVelocity, out approachStartLocalPosition,
                     out approachStartLocalVelocity, out string approachReason);
-                if (!hasApproach && !string.IsNullOrEmpty(approachReason))
+
+                // A cold first pass has a one-second brake, so the approach would
+                // be a months-long fall and is dropped. A seeded first pass has the
+                // neighbour's brake, and may fly the approach from the start —
+                // that is where the seed saves the passes a cold pin spends
+                // growing the brake. A seed whose brake still cannot reach the
+                // ceiling falls back to the cold pass-0 shape.
+                bool seedApproach = pass == 0 && seeded && seed.HasApproach;
+                if (!hasApproach && !string.IsNullOrEmpty(approachReason) && !seedApproach)
                 {
                     if (metrics != null)
                         metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
@@ -2363,13 +2457,14 @@ namespace TimeToExplore.Simulation
                 }
 
                 // A free fall from the ceiling to a brake start this deep can take
-                // longer than the whole trip: on the first pass the brake is a
+                // longer than the whole trip: on a cold first pass the brake is a
                 // second long, so its start is the chain's entry and the conic back
                 // out to the ceiling is a near-parabolic 119 days. Start the fixed
                 // point on the profile's original shape — the coast running to the
                 // brake's start — and let the brake grow before the planetocentric
-                // leg appears.
-                if (pass == 0 || (hasApproach && approachStartJd <= t0))
+                // leg appears. A seeded first pass whose brake already reaches the
+                // ceiling keeps its approach.
+                if ((pass == 0 && !seedApproach) || (hasApproach && approachStartJd <= t0))
                 {
                     hasApproach = false;
                     approachSeconds = 0.0;
@@ -2812,7 +2907,14 @@ namespace TimeToExplore.Simulation
             plan.CaptureEntryRadiusM = chain.EntryRadiusM;
             plan.CaptureInboundSeconds = chain.InboundSeconds;
 
-            return new BuildResult(plan, requiredSeconds);
+            // The pin state this build settled on, so a neighbouring build can
+            // start from it. Only a build that converged and closed its chain
+            // gets here; a refusal or a stretched plan carries no seed.
+            var settledSeed = new PinSeed(totalSeconds, brakeSeconds, brakeDirection,
+                burnSeconds, burnDirection, hasApproach);
+            plan.PinSeed = settledSeed;
+            return new BuildResult(plan, requiredSeconds, pinSettled: pinSettled,
+                seed: settledSeed, built: true);
         }
 
         /// <summary>
@@ -2842,7 +2944,7 @@ namespace TimeToExplore.Simulation
         /// </summary>
         private BuildResult BuildStationTrip(ShipState ship, BodyRuntime station,
             double totalSeconds, bool fast = false, bool probe = false,
-            int outerPassesLimit = DefaultOuterPasses)
+            int outerPassesLimit = DefaultOuterPasses, PinSeed seed = default)
         {
             double acceleration = FixedBurnAccelerationMps2;
             double t0 = ship.JulianDate;
@@ -2900,6 +3002,18 @@ namespace TimeToExplore.Simulation
             Vector3d brakeDirection = seedBrake;
             double burnSeconds = seedSeconds;
             double brakeSeconds = seedSeconds;
+
+            // A neighbouring station build's converged pin replaces the
+            // relative-speed estimate.
+            bool seeded = seed.IsValid;
+            if (seeded)
+            {
+                burnDirection = seed.BurnDirection.Normalized;
+                brakeDirection = seed.BrakeDirection.Normalized;
+                burnSeconds = seed.BurnSeconds;
+                brakeSeconds = seed.BrakeSeconds;
+            }
+
             DepartureClimb climb = default;
             double burnStartJd = t0;
             Vector3d burnStartPosition = ship.PositionM;
@@ -2991,8 +3105,9 @@ namespace TimeToExplore.Simulation
                 // seed is coarse for a long trip: a burn seeded at the whole
                 // relative speed is many times the transfer's own, and the
                 // Newton can sit in the wrong basin. The reference coast is the
-                // seed the planet profile already uses.
-                if (pass == 0)
+                // seed the planet profile already uses. A seeded build already
+                // has a converged burn and keeps it.
+                if (pass == 0 && !seeded)
                 {
                     double seedCoastGuess = burnSeconds;
                     for (int reseed = 0; reseed < 2; reseed++)
@@ -3283,6 +3398,12 @@ namespace TimeToExplore.Simulation
                 arrivalState);
             plan.FiniteBurnAccelerationMps2 = acceleration;
 
+            // The station profile has no planetocentric approach, so the seed
+            // always reports none.
+            var settledSeed = new PinSeed(totalSeconds, brakeSeconds, brakeDirection,
+                burnSeconds, burnDirection, hasApproach: false);
+            plan.PinSeed = settledSeed;
+
             Trace?.Invoke($"station: hold {StationHoldDistanceM:F0} m astern, " +
                           $"seam {Vector3d.Distance(arcs[arcs.Count - 1].Path.PositionAt(1.0), holdPosition):F2} m / " +
                           $"{(arcs[arcs.Count - 1].Path.VelocityAt(1.0) - holdVelocity).Magnitude:E2} m/s; " +
@@ -3295,7 +3416,8 @@ namespace TimeToExplore.Simulation
                           $"{brakeSeconds / SecondsPerDay:F4} d, total " +
                           $"{actualSeconds / SecondsPerDay:F5} d");
 
-            return new BuildResult(plan, requiredSeconds);
+            return new BuildResult(plan, requiredSeconds, pinSettled: pinSettled,
+                seed: settledSeed, built: true);
         }
 
         /// <summary>
@@ -5948,16 +6070,35 @@ namespace TimeToExplore.Simulation
         private readonly struct BuildResult
         {
             public BuildResult(TrajectoryPlan plan, double requiredSeconds,
-                bool pinStalled = false, bool shortCoastWorthy = false)
+                bool pinStalled = false, bool shortCoastWorthy = false,
+                bool pinSettled = false, PinSeed seed = default,
+                bool built = false)
             {
                 Plan = plan;
                 RequiredSeconds = requiredSeconds;
                 PinStalled = pinStalled;
                 ShortCoastWorthy = shortCoastWorthy;
+                PinSettled = pinSettled;
+                Seed = seed;
+                Built = built;
             }
 
             public TrajectoryPlan Plan { get; }
             public double RequiredSeconds { get; }
+
+            /// <summary>True when the brake/departure fixed point met its own
+            /// convergence test. A plan can still be built with this false: the
+            /// chain gate, not the pin's stall, is what decides a plan.</summary>
+            public bool PinSettled { get; }
+
+            /// <summary>True when the build reached its plan — the chain gate
+            /// accepted it — rather than returning a refusal. A seeded attempt
+            /// that did not build is rebuilt cold.</summary>
+            public bool Built { get; }
+
+            /// <summary>The pin state the build settled on, or a
+            /// <c>default(PinSeed)</c> when it refused or stretched.</summary>
+            public PinSeed Seed { get; }
 
             /// <summary>True when a certified burn–coast–burn build refused at
             /// the chain gate after its outer brake/departure fixed point ran its

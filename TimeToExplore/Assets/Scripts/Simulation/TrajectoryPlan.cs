@@ -163,6 +163,12 @@ namespace TimeToExplore.Simulation
 
         /// <summary>The fixed burn acceleration the plan's finite burns use, or
         /// zero when the plan has none. The panel prints it as a g level.</summary>
+        /// <summary>The brake/departure fixed point this plan settled on. A
+        /// neighbouring build can start its pin from it
+        /// (<see cref="PinSeed"/>); a plan that never ran the pin — a burn-only
+        /// crossing or a short coast — carries the cold start.</summary>
+        public PinSeed PinSeed { get; internal set; }
+
         public double FiniteBurnAccelerationMps2 { get; internal set; }
 
         /// <summary>Where the plan's conic or hybrid capture chain is handed
