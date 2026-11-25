@@ -46,6 +46,18 @@ seconds old and unmoved, so the player pays the plot twice. Reusing a fresh
 preview is a semantics question (arrival date, requested duration, staleness
 threshold), not an optimisation.
 
+## Parked, to become its own work item
+
+**The reverse routes do not plot at the epoch.** The floor search's twelve 20%
+growth steps stop short of the floor for Mars→Earth, Venus→Earth and
+Uranus→Earth. Mars→Earth builds at a fixed 90 d, so the cap is the first thing to
+question, not the geometry. Venus→Earth and Uranus→Earth refuse for their own
+reasons (approach cone, no room for the break and the escape climb) and need
+separate diagnosis. Evidence: `tools/bench.sh`, and the step-2 table in
+[Planning performance](/technical/planning-performance.md#the-route-benchmark-2026-11-24).
+Do not fold this into the warm-start work; step 3 showed that seeding the fast
+probe search moves floors.
+
 The split step 1 measured is in
 [Planning performance](/technical/planning-performance.md#where-one-builds-time-goes-2026-11-24):
 a retime's pin loop is 71% of the build, its reported 512-sample arcs 8%; a first
