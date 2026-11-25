@@ -69,10 +69,10 @@ namespace TimeToExplore
         private TripPlanner _planner;
         private bool _wasFlying;
 
-        /// <summary>The body whose finished preview should take the camera, or
-        /// null for a plan that was primed by a selection. Only an explicit
-        /// Plot route click sets it, so reading a body's details never moves
-        /// the view when the background solve lands.</summary>
+        /// <summary>The body whose finished plan should be drawn and framed, or
+        /// null. Only an explicit Plot route click sets it, so reading a body's
+        /// details never draws or moves anything. It covers both the plot a
+        /// click queues and the warmed plan it adopts when that lands.</summary>
         private string _frameOnPreviewTargetId;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -412,53 +412,64 @@ namespace TimeToExplore
         /// the camera to the finished route. The preview never moves the ship;
         /// Begin flight flies it while it is fresh, and replans from the current
         /// state past that.
-        /// The plan is built on the background planner (see
-        /// <see cref="FlightSession.PlotAsync"/>), and the HUD's per-frame
-        /// <see cref="ApplyPreviewIfReady"/> draws it once it is ready. A
+        /// A selection's warmed plan is adopted here, so the route and its
+        /// report appear in the click's own frame; otherwise the plan is built
+        /// on the background planner (see <see cref="FlightSession.PlotAsync"/>)
+        /// and <see cref="ApplyPreviewIfReady"/> draws it once it is ready. A
         /// station is a valid point target; only a genuinely massless
         /// non-station is refused.
         /// </summary>
         public void PlotRoute(BodyRuntime body)
         {
-            StartPlot(body, frameWhenReady: true);
+            StartPlot(body);
         }
 
         /// <summary>
-        /// Start the selected body's route plan in the background, without
-        /// taking the camera. A selection primes the plan, so the first, slow
-        /// solve runs while the player reads the details screen, and an
-        /// explicit <see cref="PlotRoute"/> later frames a route that is
-        /// usually already solved. The route line is drawn when the plan
-        /// publishes; the view is left where the player put it.
+        /// Warm the selected body's plan in the background without showing it.
+        /// Nothing on screen changes — no route, no flight panel, no trip-time
+        /// slider, and Begin stays disabled — because the plan is held as a
+        /// prime rather than published. Pressing Plot route adopts it, so the
+        /// first, slow solve has already been paid for while the player read
+        /// the details screen.
         /// </summary>
         public void PrimeRoute(BodyRuntime body)
         {
-            StartPlot(body, frameWhenReady: false);
+            if (!CanPlot(body)) return;
+
+            // A route already on screen is the plan the selection wants.
+            if (Flight.HasPreview && Flight.Preview.TargetId == body.Id) return;
+
+            Flight.PrimeAsync(body.Id, Clock.JulianDate);
         }
 
         /// <summary>
-        /// The one plot path. A build already under way for this body is
-        /// continued rather than restarted, and a click that wants the camera
-        /// only adds the framing to it. An explicit click frames a preview that
-        /// is still fresh and still at the planner's fastest trip; a retimed or
-        /// stale one is replotted, which is how the panel's Replot resets the
-        /// trip time. A quiet prime never replaces a preview the player has: it
-        /// starts one only when this body has none.
+        /// The one plot path. The selection's prime is adopted when it is ready,
+        /// which shows the route in the same frame as the click; a prime still
+        /// building is continued and revealed when it lands. A fresh preview
+        /// that is still at the planner's fastest trip is framed instead of
+        /// rebuilt, while a retimed or stale one is replotted — that is how the
+        /// panel's Replot resets the trip time.
         /// </summary>
-        private void StartPlot(BodyRuntime body, bool frameWhenReady)
+        private void StartPlot(BodyRuntime body)
         {
-            if (body == null || Flight == null || Model == null) return;
-            if (body.Gm <= 0.0 && !body.Data.IsStation) return;
-            if (Flight.IsFlying) return;
+            if (!CanPlot(body)) return;
 
-            if (Flight.IsPlotPending(body.Id))
+            if (Flight.TryAdoptPrimedPreview(body.Id, out TrajectoryPlan primed))
             {
-                if (frameWhenReady) _frameOnPreviewTargetId = body.Id;
+                _frameOnPreviewTargetId = null;
+                ShowPlan(primed, body);
+                FramePlottedRoute(primed, body);
+                return;
+            }
+
+            // The warmed plan is still being solved: show it when it lands.
+            if (Flight.IsPrimePending(body.Id))
+            {
+                _frameOnPreviewTargetId = body.Id;
                 return;
             }
 
             bool hasPreview = Flight.HasPreview && Flight.Preview.TargetId == body.Id;
-            if (hasPreview && !frameWhenReady) return;
             if (hasPreview && IsPreviewAtFastestTrip()
                            && !Flight.IsPreviewStale(Clock.JulianDate))
             {
@@ -467,11 +478,17 @@ namespace TimeToExplore
                 return;
             }
 
-            // A quiet plan never inherits an earlier click's framing, and an
-            // explicit one frames only the route it asked for.
-            _frameOnPreviewTargetId = frameWhenReady ? body.Id : null;
-            Flight.PlotAsync(body.Id, Clock.JulianDate);
+            if (!Flight.IsPlotPending(body.Id)) Flight.PlotAsync(body.Id, Clock.JulianDate);
+            _frameOnPreviewTargetId = body.Id;
         }
+
+        /// <summary>Whether a body can be planned to at all: a star, planet, or
+        /// station with mass or a station's point target, and a session that is
+        /// not already flying the ship elsewhere.</summary>
+        private bool CanPlot(BodyRuntime body) =>
+            body != null && Flight != null && Model != null
+            && (body.Gm > 0.0 || body.Data.IsStation)
+            && !Flight.IsFlying;
 
         /// <summary>Whether the published preview is still the planner's own
         /// fastest trip, rather than a duration the player chose on the
@@ -532,12 +549,13 @@ namespace TimeToExplore
         }
 
         /// <summary>
-        /// Draw a finished background preview, on the main thread. The
-        /// planner worker hands its plan here once per HUD update; the HUD
-        /// never touches the worker, and nothing it produces is shown before
-        /// now. A failed build is logged and leaves the published preview in
-        /// place. Publishing draws the route, and takes the camera only when an
-        /// explicit <see cref="PlotRoute"/> click asked for it; warp is raised by
+        /// Draw a finished background plan, on the main thread. The planner
+        /// worker hands its work here once per HUD update; the HUD never
+        /// touches the worker, and nothing it produces is shown before now. A
+        /// failed build is logged and leaves the published preview in place.
+        /// A plot publishes a preview and draws it; a selection's prime is
+        /// adopted only when the click that asked for the route is waiting, so
+        /// warming a plan never draws anything by itself. Warp is raised by
         /// <see cref="BeginGoTo"/>, not by a plot.
         /// </summary>
         public void ApplyPreviewIfReady()
@@ -553,17 +571,49 @@ namespace TimeToExplore
                 _frameOnPreviewTargetId = null;
             }
 
-            if (!Flight.TryApplyCompletedPreview(out TrajectoryPlan preview)) return;
+            if (Flight.TryApplyCompletedPreview(out TrajectoryPlan preview))
+            {
+                BodyRuntime target = Model?.Get(preview.TargetId);
+                ShowPlan(preview, target);
 
-            BodyRuntime target = Model?.Get(preview.TargetId);
-            ShowPlan(preview, target);
+                bool frame = _frameOnPreviewTargetId == preview.TargetId;
+                _frameOnPreviewTargetId = null;
+                if (frame) FramePlottedRoute(preview, target);
+                return;
+            }
 
-            // Only a click that asked for the view takes it. A selection primes
-            // the plan quietly, so the route is drawn where it is and the camera
-            // stays under the player's hand.
-            bool frame = _frameOnPreviewTargetId == preview.TargetId;
+            RevealPrimedIfAsked();
+        }
+
+        /// <summary>
+        /// Adopt and draw a selection's warmed plan once the click that asked
+        /// for the route is waiting on it. While no click is waiting the prime
+        /// stays hidden, which is the whole point of warming it: a player who
+        /// only reads the panel sees an idle session. A prime that can no longer
+        /// be adopted — the clock ran past its freshness window, or the drive
+        /// changed — is replaced by the plot the click asked for.
+        /// </summary>
+        private void RevealPrimedIfAsked()
+        {
+            string targetId = _frameOnPreviewTargetId;
+            if (targetId == null) return;
+
+            if (Flight.TryAdoptPrimedPreview(targetId, out TrajectoryPlan primed))
+            {
+                _frameOnPreviewTargetId = null;
+                BodyRuntime target = Model?.Get(primed.TargetId);
+                ShowPlan(primed, target);
+                FramePlottedRoute(primed, target);
+                return;
+            }
+
+            // Still solving the selection's plan, or already building the plan
+            // this click asked for (a plot or a style/burn rebuild).
+            if (Flight.IsPreviewPending(targetId)) return;
+
             _frameOnPreviewTargetId = null;
-            if (frame) FramePlottedRoute(preview, target);
+            Flight.PlotAsync(targetId, Clock.JulianDate);
+            _frameOnPreviewTargetId = targetId;
         }
 
         /// <summary>
@@ -728,11 +778,11 @@ namespace TimeToExplore
 
         /// <summary>
         /// Select a body, which is the player's way of naming a destination.
-        /// The route plan starts here, in the background, so the first — and
-        /// only slow — solve runs while the details screen is being read. The
-        /// plan is drawn when it publishes but does not take the camera; the
-        /// panel's Plot route button adds that. Selecting the same body again
-        /// keeps the plan that is already running or already published.
+        /// The plan for it is warmed in the background here, so the first — and
+        /// only slow — solve is over by the time the player asks to see the
+        /// route. Nothing on screen changes until they do: no route, no flight
+        /// panel, no slider. Selecting the same body again keeps the warmed
+        /// plan or the preview that is already published.
         /// </summary>
         public void Select(BodyRuntime body)
         {

@@ -271,61 +271,65 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// Selecting a destination starts its route plan, so the first — and
-        /// only slow — solve runs while the details screen is read. The
-        /// finished preview draws the route and leaves the camera alone; the
-        /// panel's Plot route button takes the camera, and does so on the plan
-        /// that is already solved instead of rebuilding it.
+        /// Selecting a destination warms its route plan, so the slow first solve
+        /// is over by the time the player asks for the route. Nothing on screen
+        /// changes while it warms: no route line, no flight panel, no slider,
+        /// and Begin stays disabled. The Plot click adopts the warmed plan in
+        /// its own frame, from the departure the warm-up used.
         /// </summary>
         [Test]
-        public void SelectingABodyPlotsItsRouteWithoutFraming()
+        public void SelectingABodyWarmsItsRouteWithoutShowingIt()
         {
             Build();
             BodyRuntime mars = _bootstrap.Model.Get("mars");
 
             _bootstrap.Select(mars);
-            Assert.That(_bootstrap.Flight.IsPlotPending("mars"), Is.True,
-                "the selection starts the plan");
+            Assert.That(_bootstrap.Flight.IsPrimePending("mars"), Is.True,
+                "the selection warms the plan");
             Assert.That(_bootstrap.Flight.HasPreview, Is.False,
-                "nothing publishes on the selection frame");
+                "a warm-up is not a preview");
 
             _hud.OpenDetails();
             Update();
             Update();
             Button route = ButtonNamed("RouteButton");
             Button begin = ButtonNamed("BeginButton");
-            Assert.That(ButtonLabel("RouteButton").text,
-                Is.EqualTo("Planning route to Mars"),
-                "the button reports the solve that is already running");
+            Assert.That(ButtonLabel("RouteButton").text, Is.EqualTo("Plot route to Mars"),
+                "the panel looks exactly as it does with no plan");
             Assert.That(begin.interactable, Is.False, "there is nothing to fly yet");
 
-            WaitForPreview();
+            PumpUntil(() => _bootstrap.Flight.HasPrimedPreview("mars"),
+                "the warmed plan never arrived");
             Update();
 
-            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
-            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True, "the finished route is drawn");
-            Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.False,
-                "a selection never takes the camera");
-            Assert.That(ButtonLabel("RouteButton").text,
-                Is.EqualTo("Replot route to Mars"));
-            Assert.That(begin.interactable, Is.True, "the plan is ready to fly");
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False,
+                "a finished warm-up still publishes nothing");
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.False, "no route is drawn");
+            Assert.That(Child("FlightPanel").activeSelf, Is.False, "no flight panel appears");
+            Assert.That(ButtonLabel("RouteButton").text, Is.EqualTo("Plot route to Mars"));
+            Assert.That(begin.interactable, Is.False);
 
-            TrajectoryPlan preview = _bootstrap.Flight.Preview;
+            double warmed = _bootstrap.Clock.JulianDate;
+            _bootstrap.Clock.JulianDate += 0.5;
             route.onClick.Invoke();
+
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True,
+                "the click adopts the warmed plan at once");
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
+            Assert.That(_bootstrap.Flight.PreviewJulianDate, Is.EqualTo(warmed),
+                "the primed departure is the one that was solved");
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.True,
                 "Plot route takes the camera");
-            Assert.That(_bootstrap.Flight.Preview, Is.SameAs(preview),
-                "a fresh fastest preview is framed, not rebuilt");
         }
 
         /// <summary>
-        /// Pressing Plot route while the selection's plan is still building
-        /// continues that plan: the departure the click names is not used to
-        /// restart the solve, and the camera move it asks for still happens
-        /// when the plan lands.
+        /// Pressing Plot route while the warm-up is still building continues it:
+        /// the click's own date is not used to restart the solve, and the route
+        /// is revealed from the warmed departure as soon as the plan lands.
         /// </summary>
         [Test]
-        public void PressingPlotWhilePlanningContinuesTheSamePlan()
+        public void PressingPlotBeforeTheWarmUpFinishesContinuesIt()
         {
             Build();
             BodyRuntime mars = _bootstrap.Model.Get("mars");
@@ -334,15 +338,19 @@ namespace TimeToExplore.Tests.EditMode
             Update();
             Update();
 
-            double departure = _bootstrap.Clock.JulianDate;
+            double warmed = _bootstrap.Clock.JulianDate;
             _bootstrap.Clock.JulianDate += 0.5;
+            Assert.That(_bootstrap.Flight.IsPrimePending("mars"), Is.True);
             ButtonNamed("RouteButton").onClick.Invoke();
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False,
+                "nothing can be adopted before the plan lands");
 
             WaitForPreview();
             Update();
 
-            Assert.That(_bootstrap.Flight.PreviewJulianDate, Is.EqualTo(departure),
-                "the click continues the plan the selection started");
+            Assert.That(_bootstrap.Flight.PreviewJulianDate, Is.EqualTo(warmed),
+                "the click continues the warm-up the selection started");
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.True,
                 "the click's camera move survives the wait");
         }
@@ -371,8 +379,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(route.interactable, Is.True, "a station is a valid point target");
             Assert.That(begin.interactable, Is.False, "Begin flight needs a plotted route");
             Assert.That(ButtonLabel("RouteButton").text,
-                Is.EqualTo("Planning route to Gateway Station"),
-                "the selection already started the plan");
+                Is.EqualTo("Plot route to Gateway Station"),
+                "the warm-up of the selection's plan changes nothing on screen");
             Assert.That(trade.gameObject.activeSelf, Is.True,
                 "Gateway has a market row, so the details footer offers trade");
             Assert.That(trade.interactable, Is.False,

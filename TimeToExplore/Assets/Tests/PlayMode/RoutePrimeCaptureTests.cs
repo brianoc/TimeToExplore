@@ -38,6 +38,11 @@ namespace TimeToExplore.Tests.PlayMode
         /// motion, and the clip plays the move as it looks on screen.</summary>
         private const float FrameSeconds = 1f / 15f;
 
+        /// <summary>One frame in four of the warm-up is kept: the picture does
+        /// not change while the plan builds, so sampling it keeps the clip from
+        /// spending a minute on a still frame.</summary>
+        private const int RecordSample = 4;
+
         [UnityTest]
         public IEnumerator SelectingMarsPlotsTheRouteBeforeTheClick()
         {
@@ -92,30 +97,41 @@ namespace TimeToExplore.Tests.PlayMode
                     Record(target, image, directory, ref frame);
                 }
 
-                // The selection starts the plan and opens the screen. The panel
-                // reads "Planning route to Mars" while the worker solves, and
-                // the route appears when it publishes without moving the view.
+                // The selection warms the plan and opens the screen. Nothing on
+                // screen changes while it warms: no route, no flight panel, and
+                // the footer still offers to plot.
                 BodyRuntime mars = bootstrap.Model.Get("mars");
                 bootstrap.Select(mars);
                 hud.OpenDetails();
-                while (!bootstrap.Flight.HasPreview && frame < 240)
+                for (int i = 0; i < 10; i++)
                 {
                     yield return null;
                     Record(target, image, directory, ref frame);
                 }
 
-                yield return null;
-                for (int i = 0; i < 16; i++)
+                // Sample the warm-up while it runs; the picture stays the same
+                // because the plan is held back until the click asks for it.
+                int rendered = 0;
+                while (!bootstrap.Flight.HasPrimedPreview("mars") && frame < 200)
                 {
                     yield return null;
+                    if (rendered++ % RecordSample != 0) continue;
                     Record(target, image, directory, ref frame);
                 }
 
-                // The click that asks for the view: the camera eases to the
-                // whole route over the transition's own duration.
+                Assert.That(bootstrap.Flight.HasPreview, Is.False,
+                    "a warmed plan shows nothing");
+                Assert.That(bootstrap.Trajectory.IsShowing, Is.False,
+                    "a warmed plan draws no route");
+
+                // The click that asks for the view: the warmed plan is adopted
+                // in the same frame, so the route appears at once and the
+                // camera eases to it over the transition's own duration.
                 Button route = ButtonNamed(hud, "RouteButton");
                 Assert.That(route.interactable, Is.True);
                 route.onClick.Invoke();
+                Assert.That(bootstrap.Flight.HasPreview, Is.True,
+                    "the click adopts the warmed plan in its own frame");
                 Assert.That(bootstrap.Rig.RouteView.IsActive, Is.True,
                     "the click must take the camera");
 

@@ -107,13 +107,15 @@ accent bar, the divider, and the hover prompt. The footer holds **Plot route …
 button becomes **Replan …**. A button is only interactive once the
 opening-frame guard has cleared.
 
-A plotted route belongs to the body it targets. Selecting a body starts its
+A plotted route belongs to the body it targets. Selecting a body warms its
 route plan at once — the selection is the destination, and the first solve is
-the slow one — but the camera stays put; the footer's **Plot route** takes it.
-Selecting another body, `Esc`, or **Close** discards the plan; selecting the
-same body again keeps the plan that is running or already published. The flight
-panel switches to the PREVIEW rows while one exists, and **Begin flight**
-replans from the current state before flying.
+the slow one — but shows nothing: no route line, no flight panel, no slider, and
+**Begin flight** stays disabled, so the screen reads as idle. The footer's
+**Plot route** adopts the warmed plan and takes the camera, which is why the
+route appears in the click's own frame. Selecting another body, `Esc`, or
+**Close** discards a plotted route; the warmed plan is replaced by the next
+body's. The flight panel switches to the PREVIEW rows while a preview exists,
+and **Begin flight** replans from the current state before flying.
 
 # The camera
 
@@ -148,10 +150,11 @@ slides the camera along the orbit instead of stepping it inward.
 
 **Plotting a route frames the route.** A finished preview hands the view to
 `RouteFraming`, which fits the sampled path (plus the target's arrival ghost)
-into one shot. The plan a selection primed draws without moving the view: only
-the footer's **Plot route** takes the camera, so reading a body never yanks the
-frame. The look-at point becomes the route's bounding-box centre and
-the distance is the smallest that keeps the route's projected outline inside
+into one shot. The plan a selection warmed is not drawn at all: the footer's
+**Plot route** adopts it, draws it, and takes the camera in the same frame, so
+reading a body never changes the picture. The look-at point becomes the route's
+bounding-box centre and the distance is the smallest that keeps the route's
+projected outline inside
 the tighter of the vertical and horizontal fields of view, with a 12% margin.
 Projecting the route rather than its bounding sphere matters for a long, thin
 transfer: the sphere fit left half the frame empty, while the projected fit
@@ -212,9 +215,9 @@ second mapping.
 
 | Input | Action |
 |---|---|
-| Left click a body | Select it, start its route plan in the background, and open the details screen (release inside the 4 px slop) |
+| Left click a body | Select it, warm its route plan in the background, and open the details screen (release inside the 4 px slop); nothing is drawn until Plot route |
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
-| **Plot route …** button | Continue the plan that is running (or frame the fresh one) and ease the camera to the whole route; a retimed or stale preview is replanned at its fastest trip |
+| **Plot route …** button | Adopt the warmed plan and draw it in the same frame, then ease the camera to the whole route; a warm-up still building is continued. A retimed or stale preview is replanned at its fastest trip |
 | **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |

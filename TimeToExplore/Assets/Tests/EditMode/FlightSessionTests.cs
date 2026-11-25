@@ -552,10 +552,64 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// A selection's warm-up is not a preview: it publishes nothing, draws
+        /// nothing, and the Plot click adopts it without solving again. The
+        /// adopted plan is the one the synchronous plot reads back from the
+        /// window cache, which is what "already solved" means.
+        /// </summary>
+        [Test]
+        public void APrimedPlanIsAdoptedByThePlotClickWithoutSolving()
+        {
+            Assert.That(_session.PrimeAsync("mars", _epoch), Is.True);
+            Assert.That(_session.HasPreview, Is.False, "a warm-up is not a preview");
+
+            WaitUntil(() => _session.HasPrimedPreview("mars"),
+                "the warmed plan never arrived");
+            Assert.That(_session.HasPreview, Is.False, "warming publishes nothing");
+
+            Assert.That(_session.TryAdoptPrimedPreview("mars", out TrajectoryPlan adopted),
+                Is.True);
+            Assert.That(_session.Preview, Is.SameAs(adopted));
+            Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.EqualTo(adopted.FlightTimeSeconds));
+
+            Assert.That(_session.TryAdoptPrimedPreview("mars", out _), Is.False,
+                "a warm-up is adopted once");
+
+            TrajectoryPlan reference = _session.Plot("mars", _epoch);
+            Assert.That(reference, Is.SameAs(adopted),
+                "the warmed plan is the plan a plot would have built");
+
+            // The slider builds from the pinned departure, so an adopted plan
+            // must carry it as a plot does.
+            TrajectoryPlan retimed = _session.SetPreviewDuration(2.0 * adopted.FlightTimeSeconds);
+            Assert.That(retimed, Is.Not.Null);
+            Assert.That(retimed.DepartureJulianDate, Is.EqualTo(_epoch),
+                "a retime after adoption uses the adopted departure");
+        }
+
+        /// <summary>A warm-up for another body is not this click's plan, and it
+        /// is kept for the click that names it.</summary>
+        [Test]
+        public void APrimedPlanForAnotherTargetIsNotAdopted()
+        {
+            _session.PrimeAsync("venus", _epoch);
+            WaitUntil(() => _session.HasPrimedPreview("venus"),
+                "the warmed plan never arrived");
+
+            Assert.That(_session.TryAdoptPrimedPreview("mars", out _), Is.False);
+            Assert.That(_session.HasPreview, Is.False, "a refused adopt publishes nothing");
+            Assert.That(_session.HasPrimedPreview("venus"), Is.True,
+                "the other body's plan still waits");
+        }
+
+
+        /// <summary>
         /// A second plot to the same target continues the build that is already
         /// queued or running. The published departure is the first ask's, so a
-        /// selection priming the route and a Plot click behind it pay for one
-        /// solve rather than restarting the several-second one.
+        /// repeat click pays for one solve rather than restarting the
+        /// several-second one.
         /// </summary>
         [Test]
         public void ARepeatPlotToTheSameTargetContinuesTheBuild()
