@@ -232,7 +232,7 @@ echo "Unity: $UNITY_BIN"
 echo "Test project: $PROJECT$([[ -d "$PROJECT/Library" ]] || echo ' (first run: building the asset cache)')"
 
 run_unity_suite() {
-    local platform="$1" label="$2" stall="$3" budget="$4"
+    local platform="$1" label="$2" stall="$3" budget="$4" filter="${5:-$CATEGORIES}"
     local slug
     slug="$(printf '%s' "$platform" | tr '[:upper:]' '[:lower:]')"
     local UNITY_LOG="$CACHE/unity-$slug.log"
@@ -250,7 +250,7 @@ run_unity_suite() {
         -testResults "$RESULTS"
         -logFile "$UNITY_LOG"
     )
-    [[ -n "$CATEGORIES" ]] && UNITY_ARGS+=(-testCategory "$CATEGORIES")
+    [[ -n "$filter" ]] && UNITY_ARGS+=(-testCategory "$filter")
 
     set +e
     "$PYTHON" tools/unity_guard.py \
@@ -303,13 +303,17 @@ PY
 if (( RUN_EDITMODE )); then
     # Unity writes no per-test progress to the log, so the whole EditMode run is
     # one silent stretch. The window covers it; the time budget bounds a hang.
-    run_unity_suite EditMode "Unity EditMode" 1200 1800
+    # The suite grew: the flight category alone is about 1,400 s, so the old
+    # 1,200 s stall window tripped on a run that was still healthy.
+    run_unity_suite EditMode "Unity EditMode" 1800 2400
 fi
 
 if (( RUN_PLAYMODE )); then
     # The PlayMode suite starts the player loop and waits for a real preview
-    # build, so it has its own log and budget.
-    run_unity_suite PlayMode "Unity PlayMode" 900 1200
+    # build, so it has its own log and budget. A bare run still names the
+    # playmode category: the trade capture test carries only "capture" and
+    # needs a graphics device, so it must not start here.
+    run_unity_suite PlayMode "Unity PlayMode" 900 1200 "${CATEGORIES:-playmode}"
 fi
 
 printf '\nAll checks passed in %d s.\n' "$SECONDS"

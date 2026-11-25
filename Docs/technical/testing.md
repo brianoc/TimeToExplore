@@ -53,7 +53,9 @@ first-plot branch). The burn–coast–burn plan is still the expensive part —
 fixed burns integrate the summed field — but a certified build is no longer
 fifteen seconds in the editor. The PlayMode suite is separate and takes about
 **half a minute** on the warm project. A bare `tools/check.sh` runs both
-platforms; `--tests` with only EditMode categories skips the PlayMode launch.
+platforms; the PlayMode invocation still names the `playmode` category, so a
+file in that assembly with another category alone does not join a bare run.
+`--tests` with only EditMode categories skips the PlayMode launch.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -72,11 +74,12 @@ hangs are the known failure: batch Unity can finish the tests, write
 `results-<platform>.xml`, and then retry DNS lookups forever. `check.sh` still
 reads the results that were written, so a hang at the end does not throw away a
 completed run. Logs are `.cache/test-project/unity-editmode.log` and
-`unity-playmode.log`. The EditMode stall window is **twenty minutes** because
-Unity writes no per-test progress to the log; it was set when a full run was one
-silent stretch of about fifteen minutes. The PlayMode window is **fifteen
-minutes**. Their time budgets are thirty and twenty minutes. The windows are
-deliberately generous rather than tight; the budget still stops a real hang.
+`unity-playmode.log`. The EditMode stall window is **thirty minutes** because
+Unity writes no per-test progress to the log: the whole run is one silent
+stretch, and the flight category alone is about 1,400 s. The PlayMode window is
+**fifteen minutes**. Their time budgets are forty and twenty minutes. The
+windows are deliberately generous rather than tight; the budget still stops a
+real hang.
 
 For any other batch run, such as a capture helper or a scene builder, use the
 same wrapper:
@@ -195,6 +198,29 @@ The suite deliberately stops at component state and projected screen positions.
 through the `EventSystem`; the real button `UnityEvent`s are invoked after the
 HUD makes them interactable. The rendered frame, pointer hit areas, and canvas
 scaling away from 1080p remain human checks.
+
+## The trade capture
+
+`TradeCaptureTests` carries only the `capture` category, so neither the default
+`check.sh` run nor `--tests playmode` starts it. It flies the cheap Ares
+Junction → Gateway route through the real session, opens the details screen and
+the market through their real buttons, buys a few units, and writes a 1600×900
+`trade-panel.png`. Run it by hand without `-nographics`, because the capture
+needs a graphics device:
+
+```bash
+python3 tools/unity_guard.py --log /tmp/unity-capture.log --timeout-seconds 900 \
+  -- "$UNITY" -batchmode -projectPath .cache/test-project/TimeToExplore \
+  -runTests -testPlatform PlayMode -testCategory capture \
+  -testResults /tmp/results-capture.xml
+```
+
+`ScreenCapture.CaptureScreenshot` writes nothing under `-batchmode`, so after
+one frame the test falls back to drawing the live canvas through the view
+camera into a `Texture2D`. The path is `Path.GetFullPath("trade-panel.png")`
+relative to Unity's working directory, which is the test project: the image
+lands at `.cache/test-project/TimeToExplore/trade-panel.png` and is copied out
+by hand. It is evidence for the session, not a checked-in asset.
 
 # Numerical references at the epoch
 

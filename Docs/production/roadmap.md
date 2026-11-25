@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:00:00Z }
 ---
 
 # Current state — milestone 0
@@ -398,12 +398,38 @@ stations are [Lagrange stations](/world/lagrange-stations.md).
   `Match T− …`, and the status reads **Arrived, at the hold point**; every
   planet label is unchanged.
 
+# Done: the first-pass trade model (2026-11-25)
+
+The six stations, Earth and Mars trade a fixed set of commodities with a parked
+ship. The decision is [ADR-020](../decisions/adr-020-trade-catalogue.md) and the
+model is [Trade](/world/trade.md).
+
+* **Commodities and markets are data.** `Assets/Resources/trade_catalogue.json`
+  holds two flat arrays — four commodities and eight markets — loaded through
+  `TradeCatalogueLoader` behind a seam. No runtime C# names a commodity or a
+  price, and the file is separate from the generated `solar_system.json`.
+* **Cargo is integer units in one 40 m³ hold.** `CargoHold` (`Simulation`, plain
+  C#) limits a load by volume and derives mass for display; flight ignores it.
+  The station's stock is unlimited and cargo does not persist.
+* **Prices are labels.** `buyPrice` and `sellPrice` exist so the panel and a
+  later currency step have the right shape; a transaction moves units only and
+  nothing is charged.
+* **The trade gate is arrival.** A market needs the flight status **Arrived** at
+  the selected body, with no second distance or speed test: any accepted planet
+  orbit or a station's hold point counts.
+* **The panel is a second centred screen.** The details footer gained a **Trade**
+  button, hidden without a market row and live only on arrival, opening a
+  700×300 panel of offer rows with `+1`, `+max`, `-1` and `sell all`. The rows
+  and the hold line are built by `TradeReport` in `Presentation`.
+
+Deferred: currency and a balance, finite stock and restocking, price movement,
+cargo mass in flight, docking, persistence, and ship selection.
+
 # Immediate next tasks
 
-1. Start the **trade and cargo loop**: make the station services in
-   [Lagrange stations](/world/lagrange-stations.md#station-services) real, give a
-   delivery a cargo mass the fuel readout has to carry, and pay for a trip from
-   the propellant it spends.
+1. Give the trade loop an economy: a balance so prices charge and pay, finite
+   stock, and a cargo mass the fuel readout has to carry, so a delivery can be
+   paid for from the propellant it spends.
 2. Implement **docking** as the phase after the hold point: a short relative
    approach with RCS authority, a closing-rate limit, and the hard mate the
    docking section of [Navigation and arrival](/simulation/navigation-and-arrival.md#docking)
