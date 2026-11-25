@@ -162,13 +162,17 @@ Both run on **one managed worker thread** with latest-wins semantics:
    The simulation's field keeps a prepared active set and stays on the main
    thread; the worker reads only the catalogue (elements and `ComputeState`),
    never `FlightSession`'s `_gravity`, the integrator, or the autopilot.
-   The first plot goes through `FlightSession.PlotAsync`, and the style and
+   The first plot — the one a selection primes — goes through
+   `FlightSession.PlotAsync`, and the style and
    burn-level changes through `SetArrivalStyle` and `SetBurnLevel` — the same
    request queue.
 3. A build that finishes after a newer request arrived is discarded, and the
    newest request is built next. A drag therefore never queues work behind
-   stale plans; a second plot, rebuild or style change also makes the
-   outstanding builds stale, so the newest ask wins across the pipelines.
+   stale plans; a plot of another target, a rebuild or a style change also
+   makes the outstanding builds stale, so the newest ask wins across the
+   pipelines. A repeat plot of the target already queued or building is the
+   same ask: it is dropped rather than queued, so a selection and the Plot
+   click behind it share one solve.
 4. `TryApplyCompletedRetime` publishes under the request lock, checked against
    the generation. `SolarSystemBootstrap.ApplyRetimeIfReady` is pumped once per
    frame by the HUD and hands the plan to the trajectory line and the report on

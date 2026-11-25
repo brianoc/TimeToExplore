@@ -566,6 +566,9 @@ namespace TimeToExplore.UI
                             flight.TargetId == body.Id;
             bool hasPreview = flight != null && flight.HasPreview &&
                               flight.Preview.TargetId == body.Id;
+            // Selecting a body primes its plan, so the button reports the
+            // solve that is already running rather than pretending idle.
+            bool planning = flight != null && flight.IsPlotPending(body.Id);
             // A station has no gravitational parameter of its own, but it is a
             // valid point target: its route and Begin controls must stay live.
             bool plottable = (body.Gm > 0.0 || body.Data.IsStation) && !rejected;
@@ -664,9 +667,11 @@ namespace TimeToExplore.UI
                 ? "Plan infeasible"
                 : flying
                     ? $"Replan to {body.Name}"
-                    : hasPreview
-                        ? $"Replot route to {body.Name}"
-                        : $"Plot route to {body.Name}";
+                    : planning
+                        ? $"Planning route to {body.Name}"
+                        : hasPreview
+                            ? $"Replot route to {body.Name}"
+                            : $"Plot route to {body.Name}";
 
             _routeButton.interactable = interactive && plottable;
             _beginButton.interactable = interactive && plottable && !flying && hasPreview;

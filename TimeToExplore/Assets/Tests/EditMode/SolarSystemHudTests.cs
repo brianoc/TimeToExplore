@@ -271,6 +271,83 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// Selecting a destination starts its route plan, so the first — and
+        /// only slow — solve runs while the details screen is read. The
+        /// finished preview draws the route and leaves the camera alone; the
+        /// panel's Plot route button takes the camera, and does so on the plan
+        /// that is already solved instead of rebuilding it.
+        /// </summary>
+        [Test]
+        public void SelectingABodyPlotsItsRouteWithoutFraming()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+
+            _bootstrap.Select(mars);
+            Assert.That(_bootstrap.Flight.IsPlotPending("mars"), Is.True,
+                "the selection starts the plan");
+            Assert.That(_bootstrap.Flight.HasPreview, Is.False,
+                "nothing publishes on the selection frame");
+
+            _hud.OpenDetails();
+            Update();
+            Update();
+            Button route = ButtonNamed("RouteButton");
+            Button begin = ButtonNamed("BeginButton");
+            Assert.That(ButtonLabel("RouteButton").text,
+                Is.EqualTo("Planning route to Mars"),
+                "the button reports the solve that is already running");
+            Assert.That(begin.interactable, Is.False, "there is nothing to fly yet");
+
+            WaitForPreview();
+            Update();
+
+            Assert.That(_bootstrap.Flight.Preview.TargetId, Is.EqualTo("mars"));
+            Assert.That(_bootstrap.Trajectory.IsShowing, Is.True, "the finished route is drawn");
+            Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.False,
+                "a selection never takes the camera");
+            Assert.That(ButtonLabel("RouteButton").text,
+                Is.EqualTo("Replot route to Mars"));
+            Assert.That(begin.interactable, Is.True, "the plan is ready to fly");
+
+            TrajectoryPlan preview = _bootstrap.Flight.Preview;
+            route.onClick.Invoke();
+            Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.True,
+                "Plot route takes the camera");
+            Assert.That(_bootstrap.Flight.Preview, Is.SameAs(preview),
+                "a fresh fastest preview is framed, not rebuilt");
+        }
+
+        /// <summary>
+        /// Pressing Plot route while the selection's plan is still building
+        /// continues that plan: the departure the click names is not used to
+        /// restart the solve, and the camera move it asks for still happens
+        /// when the plan lands.
+        /// </summary>
+        [Test]
+        public void PressingPlotWhilePlanningContinuesTheSamePlan()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            _bootstrap.Select(mars);
+            _hud.OpenDetails();
+            Update();
+            Update();
+
+            double departure = _bootstrap.Clock.JulianDate;
+            _bootstrap.Clock.JulianDate += 0.5;
+            ButtonNamed("RouteButton").onClick.Invoke();
+
+            WaitForPreview();
+            Update();
+
+            Assert.That(_bootstrap.Flight.PreviewJulianDate, Is.EqualTo(departure),
+                "the click continues the plan the selection started");
+            Assert.That(_bootstrap.Rig.RouteView.IsActive, Is.True,
+                "the click's camera move survives the wait");
+        }
+
+        /// <summary>
         /// A station has no gravitational parameter, so the details screen's
         /// <c>Gm &gt; 0</c> gate must not disable its Go To controls. With the
         /// ship at Ares Junction, Gateway plots and begins through the real
@@ -294,7 +371,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(route.interactable, Is.True, "a station is a valid point target");
             Assert.That(begin.interactable, Is.False, "Begin flight needs a plotted route");
             Assert.That(ButtonLabel("RouteButton").text,
-                Is.EqualTo("Plot route to Gateway Station"));
+                Is.EqualTo("Planning route to Gateway Station"),
+                "the selection already started the plan");
             Assert.That(trade.gameObject.activeSelf, Is.True,
                 "Gateway has a market row, so the details footer offers trade");
             Assert.That(trade.interactable, Is.False,

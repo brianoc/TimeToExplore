@@ -107,8 +107,11 @@ accent bar, the divider, and the hover prompt. The footer holds **Plot route …
 button becomes **Replan …**. A button is only interactive once the
 opening-frame guard has cleared.
 
-A plotted route belongs to the body it targets. Selecting another body, `Esc`,
-or **Close** discards it; plotting the same body again refreshes it. The flight
+A plotted route belongs to the body it targets. Selecting a body starts its
+route plan at once — the selection is the destination, and the first solve is
+the slow one — but the camera stays put; the footer's **Plot route** takes it.
+Selecting another body, `Esc`, or **Close** discards the plan; selecting the
+same body again keeps the plan that is running or already published. The flight
 panel switches to the PREVIEW rows while one exists, and **Begin flight**
 replans from the current state before flying.
 
@@ -145,7 +148,9 @@ slides the camera along the orbit instead of stepping it inward.
 
 **Plotting a route frames the route.** A finished preview hands the view to
 `RouteFraming`, which fits the sampled path (plus the target's arrival ghost)
-into one shot. The look-at point becomes the route's bounding-box centre and
+into one shot. The plan a selection primed draws without moving the view: only
+the footer's **Plot route** takes the camera, so reading a body never yanks the
+frame. The look-at point becomes the route's bounding-box centre and
 the distance is the smallest that keeps the route's projected outline inside
 the tighter of the vertical and horizontal fields of view, with a 12% margin.
 Projecting the route rather than its bounding sphere matters for a long, thin
@@ -207,9 +212,9 @@ second mapping.
 
 | Input | Action |
 |---|---|
-| Left click a body | Select it and open the details screen (release inside the 4 px slop) |
+| Left click a body | Select it, start its route plan in the background, and open the details screen (release inside the 4 px slop) |
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
-| **Plot route …** button | Plan the route, draw the preview, and ease the camera to the whole route |
+| **Plot route …** button | Continue the plan that is running (or frame the fresh one) and ease the camera to the whole route; a retimed or stale preview is replanned at its fastest trip |
 | **Begin flight** button | Replan from the current state and fly it |
 | **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
