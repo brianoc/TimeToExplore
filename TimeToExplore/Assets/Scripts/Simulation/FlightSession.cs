@@ -126,6 +126,15 @@ namespace TimeToExplore.Simulation
         /// any physical difference in the route.</summary>
         private const double RetimeCacheFraction = 0.002;
 
+        /// <summary>How many neighbouring slider steps a published plot
+        /// prefetches on each side of its duration. A fresh plot starts at the
+        /// window minimum, so the lower side clamps away.</summary>
+        private const int PlotPrefetchSteps = 2;
+
+        /// <summary>How many steps a drag prefetches in the direction the
+        /// handle is travelling.</summary>
+        private const int DragPrefetchSteps = 3;
+
         /// <summary>Departure state the preview was solved from. Retiming
         /// rebuilds from this rather than the current (possibly coasted) state,
         /// so the preview stays one coherent draft.</summary>
@@ -170,6 +179,45 @@ namespace TimeToExplore.Simulation
         private CompletedPreview _completedPreview;
         private long _completedPreviewGeneration;
         private string _previewFailure;
+
+        /// <summary>Neighbouring durations queued for the background planner,
+        /// the **lowest** priority on the worker: a retime, a rebuild, or a plot
+        /// takes the worker first, and any real request drops this queue. A
+        /// prefetch fills a cache slot and never publishes, so it must never
+        /// delay the plan the player is waiting for.</summary>
+        private readonly List<PrefetchRequest> _pendingPrefetch =
+            new List<PrefetchRequest>();
+
+        /// <summary>True while a prefetch item is building. Tracked apart from
+        /// <see cref="_retimeBusy"/> so a prefetch never reads as an
+        /// outstanding retime to the HUD's handle.</summary>
+        private bool _prefetchBuilding;
+
+        /// <summary>The published preview's inputs, captured when it was plotted:
+        /// the frozen departure state, the target, the burn level, the arrival
+        /// style, and the window the slot indices live in. A prefetch built from
+        /// anything else fills a slot the retime path cannot read. The worker
+        /// never reads these; every item carries its own copy.</summary>
+        private bool _prefetchArmed;
+        private string _prefetchTargetId;
+        private ShipState _prefetchDeparture;
+        private double _prefetchBurnLevelG;
+        private CaptureStyle _prefetchArrival;
+        private double _prefetchMinimum = double.NaN;
+        private double _prefetchMaximum = double.NaN;
+
+        /// <summary>The duration of the last accepted preview ask: the plot's
+        /// own total, then each slider request as it lands. A new request's
+        /// travel direction is the sign of the difference against this, which is
+        /// how a drag is inferred without the HUD saying so.</summary>
+        private double _lastPreviewRequestSeconds = double.NaN;
+
+        /// <summary>Counters for the benchmark and the tests: retimes the
+        /// worker built, asks the retime cache answered, and prefetched
+        /// neighbours it filled. They decide nothing.</summary>
+        private int _retimeBuilds;
+        private int _retimeCacheHits;
+        private int _prefetchBuilds;
 
         /// <summary>The worker's own planner and gravity field. The field is
         /// mutable (it prepares an active set), so sharing the flight
@@ -365,7 +413,8 @@ namespace TimeToExplore.Simulation
         /// replaces the first: there is only ever one preview. This is the
         /// synchronous, deterministic reference path; the scene plots through
         /// <see cref="PlotAsync"/> so the calculation runs off the main
-        /// thread.
+        /// thread. Prefetch belongs to the background path: this call queues no
+        /// neighbours and disarms any the previous preview left.
         /// </summary>
         public TrajectoryPlan Plot(string targetId, double julianDate)
         {
@@ -373,6 +422,7 @@ namespace TimeToExplore.Simulation
 
             CancelRetime();
             BeginPreviewReplacement();
+            DisarmPrefetch();
             _previewDeparture = _state.WithJulianDate(julianDate);
             PreviewWindow window = WindowFor(targetId, _previewDeparture, _planner,
                 _planner.BurnLevelG, _planner.ArrivalStyle);
@@ -380,6 +430,7 @@ namespace TimeToExplore.Simulation
             PreviewJulianDate = julianDate;
             PreviewMinimumSeconds = Preview.FlightTimeSeconds;
             PreviewMaximumSeconds = window.MaximumSeconds;
+            _lastPreviewRequestSeconds = Preview.FlightTimeSeconds;
             return Preview;
         }
 
@@ -403,6 +454,7 @@ namespace TimeToExplore.Simulation
             if (targetId == null) throw new ArgumentNullException(nameof(targetId));
 
             _previewDeparture = _state.WithJulianDate(julianDate);
+            _lastPreviewRequestSeconds = double.NaN;
             var request = new PreviewRequest(PreviewKind.Plot, targetId, _previewDeparture,
                 double.NaN, ArrivalStyle, BurnLevelG, _planner);
             return EnqueuePreview(request);
@@ -432,6 +484,7 @@ namespace TimeToExplore.Simulation
             BeginPreviewReplacement();
             double minimum = PreviewMinimumSeconds;
             double duration = Math.Clamp(seconds, minimum, PreviewMaximumSeconds);
+            _lastPreviewRequestSeconds = duration;
 
             if (TryGetCachedWindow(Preview.TargetId, _previewDeparture.JulianDate,
                     out PreviewWindow window)
@@ -456,7 +509,9 @@ namespace TimeToExplore.Simulation
                 return Preview;
             }
 
-            Preview = _planner.PlanAtDuration(_previewDeparture, targetId, duration);
+            Preview = _planner.PlanAtDuration(_previewDeparture, targetId, duration,
+                RetimeSeed(targetId, julianDate, burnLevelG, arrival, duration,
+                    minimum, PreviewMaximumSeconds));
             CacheRetime(targetId, julianDate, burnLevelG, arrival, duration, Preview);
             return Preview;
         }
@@ -476,8 +531,10 @@ namespace TimeToExplore.Simulation
         /// the same plan the synchronous path would build for that duration. A
         /// duration this window has already built — within a fraction of the
         /// slider's track — is published from the retime cache without queueing
-        /// work. Returns false when there is no preview or the session has been
-        /// disposed.
+        /// work. The accepted ask also queues three steps of prefetch in the
+        /// direction it travelled: the drag is read from this ask against the
+        /// previous one, so the HUD passes nothing extra. Returns false when
+        /// there is no preview or the session has been disposed.
         /// </summary>
         public bool RequestPreviewDuration(double seconds)
         {
@@ -485,6 +542,7 @@ namespace TimeToExplore.Simulation
 
             double duration = Math.Clamp(seconds, PreviewMinimumSeconds,
                 PreviewMaximumSeconds);
+            double previous = _lastPreviewRequestSeconds;
 
             // A request that lands on the floor is the plan the window already
             // solved. Hand it to the publisher directly instead of queueing a
@@ -506,9 +564,11 @@ namespace TimeToExplore.Simulation
                     _completedRetime = floorWindow.Plan;
                     _completedRetimeGeneration = _retimeGeneration;
                     _requestedPreviewSeconds = duration;
+                    _lastPreviewRequestSeconds = duration;
                     BeginPreviewReplacement();
                 }
 
+                ScheduleDragPrefetch(duration, previous);
                 return true;
             }
 
@@ -528,18 +588,24 @@ namespace TimeToExplore.Simulation
                     if (_retimeStop) return false;
 
                     _retimeGeneration++;
+                    _retimeCacheHits++;
                     _pendingRetime = null;
                     _completedRetime = cached;
                     _completedRetimeGeneration = _retimeGeneration;
                     _requestedPreviewSeconds = duration;
+                    _lastPreviewRequestSeconds = duration;
                     BeginPreviewReplacement();
                 }
 
+                ScheduleDragPrefetch(duration, previous);
                 return true;
             }
 
             var request = new RetimeRequest(_previewDeparture, targetId, duration,
-                arrival, _planner);
+                arrival, burnLevelG, _planner,
+                PreviewMinimumSeconds, PreviewMaximumSeconds,
+                RetimeSeed(targetId, julianDate, burnLevelG, arrival, duration,
+                    PreviewMinimumSeconds, PreviewMaximumSeconds));
 
             lock (_retimeLock)
             {
@@ -550,10 +616,12 @@ namespace TimeToExplore.Simulation
                 _pendingRetime = request;
                 _completedRetime = null; // a newer ask supersedes a finished one
                 _requestedPreviewSeconds = duration;
+                _lastPreviewRequestSeconds = duration;
                 Monitor.Pulse(_retimeLock);
                 BeginPreviewReplacement();
             }
 
+            ScheduleDragPrefetch(duration, previous);
             StartPlannerWorker();
             return true;
         }
@@ -627,13 +695,125 @@ namespace TimeToExplore.Simulation
 
         /// <summary>True while the background planner is building any request
         /// (a retime or a preview). A finished but still-unpublished plan is
-        /// not building; see <see cref="IsRetimePending"/>.</summary>
+        /// not building; see <see cref="IsRetimePending"/>. A prefetch is not a
+        /// request: it is reported by <see cref="IsPrefetchBuilding"/>.</summary>
         public bool IsRetimeBuilding
         {
             get
             {
                 lock (_retimeLock) return _retimeBusy;
             }
+        }
+
+        /// <summary>True while a prefetched neighbour is building on the
+        /// worker.</summary>
+        internal bool IsPrefetchBuilding
+        {
+            get
+            {
+                lock (_retimeLock) return _prefetchBuilding;
+            }
+        }
+
+        /// <summary>True while prefetched neighbours are queued or building. The
+        /// benchmark waits for this to clear so a drag starts from a quiet
+        /// planner.</summary>
+        internal bool IsPrefetchPending
+        {
+            get
+            {
+                lock (_retimeLock) return _prefetchBuilding || _pendingPrefetch.Count > 0;
+            }
+        }
+
+        /// <summary>How many neighbours are waiting on the prefetch queue.</summary>
+        internal int QueuedPrefetchCount
+        {
+            get
+            {
+                lock (_retimeLock) return _pendingPrefetch.Count;
+            }
+        }
+
+        /// <summary>The durations waiting on the prefetch queue. A diagnostic
+        /// for the tests, which prove a real request replaces a stale queue with
+        /// its own direction's steps.</summary>
+        internal double[] QueuedPrefetchSeconds()
+        {
+            lock (_retimeLock)
+            {
+                var seconds = new double[_pendingPrefetch.Count];
+                for (int i = 0; i < seconds.Length; i++)
+                    seconds[i] = _pendingPrefetch[i].Parameters.DurationSeconds;
+                return seconds;
+            }
+        }
+
+        /// <summary>Retimes the worker built. A request answered from the cache
+        /// is counted by <see cref="RetimeCacheHits"/> instead, so the two sum to
+        /// the asks that reached the worker's publisher.</summary>
+        internal int RetimeBuilds
+        {
+            get
+            {
+                lock (_retimeLock) return _retimeBuilds;
+            }
+        }
+
+        /// <summary>Asks answered from the retime cache, either at request time
+        /// or when the worker picked a queued ask a prefetch had already
+        /// filled.</summary>
+        internal int RetimeCacheHits
+        {
+            get
+            {
+                lock (_retimeLock) return _retimeCacheHits;
+            }
+        }
+
+        /// <summary>Neighbouring plans the prefetch filled.</summary>
+        internal int PrefetchBuilds
+        {
+            get
+            {
+                lock (_retimeLock) return _prefetchBuilds;
+            }
+        }
+
+        /// <summary>True when the published preview's window has a plan at (or
+        /// within the cache's tolerance of) a duration. A diagnostic for the
+        /// tests and the benchmark; it decides nothing.</summary>
+        internal bool HasCachedPlanAt(double seconds)
+        {
+            string targetId;
+            double julianDate;
+            double burnLevelG;
+            CaptureStyle arrival;
+            double tolerance;
+
+            if (_prefetchArmed)
+            {
+                targetId = _prefetchTargetId;
+                julianDate = _prefetchDeparture.JulianDate;
+                burnLevelG = _prefetchBurnLevelG;
+                arrival = _prefetchArrival;
+                tolerance = CacheTolerance(_prefetchMinimum, _prefetchMaximum);
+            }
+            else if (Preview != null)
+            {
+                targetId = Preview.TargetId;
+                julianDate = _previewDeparture.JulianDate;
+                burnLevelG = BurnLevelG;
+                arrival = ArrivalStyle;
+                tolerance = RetimeCacheTolerance;
+            }
+            else
+            {
+                return false;
+            }
+
+            return TryGetCachedRetime(targetId, julianDate, burnLevelG, arrival,
+                seconds, tolerance, out _);
         }
 
         /// <summary>True while the background planner thread is alive. A
@@ -696,6 +876,8 @@ namespace TimeToExplore.Simulation
             PreviewMinimumSeconds = completed.WindowPlan.FlightTimeSeconds;
             PreviewMaximumSeconds = completed.MaximumSeconds;
             plan = completed.FinalPlan;
+
+            ArmPrefetch(completed);
             return true;
         }
 
@@ -724,12 +906,14 @@ namespace TimeToExplore.Simulation
                 _pendingRetime = null;
                 _completedRetime = null;
                 _requestedPreviewSeconds = double.NaN;
+                _pendingPrefetch.Clear();
             }
         }
 
         /// <summary>Invalidate every background preview result: a new preview
         /// replaces what a caller asked for, so a plan that lands later must
-        /// never publish over it.</summary>
+        /// never publish over it. Queued prefetch work belongs to the preview
+        /// being replaced and is dropped with it.</summary>
         private void BeginPreviewReplacement()
         {
             lock (_retimeLock)
@@ -737,7 +921,178 @@ namespace TimeToExplore.Simulation
                 _previewGeneration++;
                 _pendingPreview = null;
                 _completedPreview = null;
+                _pendingPrefetch.Clear();
             }
+        }
+
+        /// <summary>A synchronous plot or a discard ends the preview the
+        /// prefetch context describes.</summary>
+        private void DisarmPrefetch()
+        {
+            _prefetchArmed = false;
+            _prefetchTargetId = null;
+            _prefetchDeparture = default;
+            _prefetchBurnLevelG = 0.0;
+            _prefetchArrival = default;
+            _prefetchMinimum = double.NaN;
+            _prefetchMaximum = double.NaN;
+            _lastPreviewRequestSeconds = double.NaN;
+            lock (_retimeLock) _pendingPrefetch.Clear();
+        }
+
+        /// <summary>False when a caller is timing a drag with no prefetch at all.
+        /// A diagnostic switch for the route benchmark's without-prefetch
+        /// comparison, not a player setting: the scene never clears it.</summary>
+        internal bool PrefetchEnabled { get; set; } = true;
+
+        /// <summary>Capture the published preview's own inputs and queue two
+        /// steps each side of its duration. The preview starts at the window
+        /// minimum, so a fresh plot's lower two clamp away by design. The
+        /// queued work is speculative and is dropped by the next real
+        /// request.</summary>
+        private void ArmPrefetch(CompletedPreview completed)
+        {
+            if (!PrefetchEnabled) return;
+
+            TrajectoryPlan plan = completed.FinalPlan;
+            _prefetchArmed = plan != null && plan.IsFeasible;
+            _prefetchTargetId = plan?.TargetId;
+            _prefetchDeparture = completed.Departure;
+            _prefetchBurnLevelG = completed.BurnLevelG;
+            _prefetchArrival = completed.Arrival;
+            _prefetchMinimum = completed.WindowPlan.FlightTimeSeconds;
+            _prefetchMaximum = completed.MaximumSeconds;
+            _lastPreviewRequestSeconds = plan?.FlightTimeSeconds ?? double.NaN;
+
+            if (!_prefetchArmed) return;
+            SchedulePrefetch(_lastPreviewRequestSeconds, PlotPrefetchSteps,
+                PlotPrefetchSteps);
+        }
+
+        /// <summary>Queue three steps in the direction the handle travelled.
+        /// The direction is the sign of this request's step index against the
+        /// last accepted ask's; a repeated ask has no direction and queues
+        /// nothing.</summary>
+        private void ScheduleDragPrefetch(double seconds, double previousSeconds)
+        {
+            if (!_prefetchArmed || double.IsNaN(previousSeconds)) return;
+
+            double step = PrefetchStepSeconds();
+            if (!double.IsFinite(step)) return;
+
+            int index = PrefetchIndex(seconds);
+            int previous = PrefetchIndex(previousSeconds);
+            int direction = Math.Sign(index - previous);
+            if (direction == 0) return;
+
+            if (direction > 0) SchedulePrefetch(seconds, 0, DragPrefetchSteps);
+            else SchedulePrefetch(seconds, DragPrefetchSteps, 0);
+        }
+
+        /// <summary>Queue the slider steps within <paramref name="below"/> and
+        /// <paramref name="above"/> of a duration's own step. A step outside the
+        /// window is clamped away rather than faked: the minimum and the maximum
+        /// are edges the planner does not promise past.</summary>
+        private void SchedulePrefetch(double centreSeconds, int below, int above)
+        {
+            if (!_prefetchArmed) return;
+
+            double step = PrefetchStepSeconds();
+            int index = PrefetchIndex(centreSeconds);
+            if (!double.IsFinite(step) || index < 0) return;
+
+            var durations = new List<double>(below + above);
+            for (int i = 1; i <= below; i++)
+            {
+                if (index - i >= 0)
+                    durations.Add(_prefetchMinimum + (index - i) * step);
+            }
+
+            for (int i = 1; i <= above; i++)
+            {
+                if (index + i <= SliderStepCount - 1)
+                    durations.Add(_prefetchMinimum + (index + i) * step);
+            }
+
+            EnqueuePrefetch(durations);
+        }
+
+        /// <summary>Add the durations this window has not cached or queued to
+        /// the prefetch queue and wake the worker. A slot already filled is
+        /// skipped: the point is to keep the planner idle, not to rebuild what
+        /// it built.</summary>
+        private void EnqueuePrefetch(List<double> durations)
+        {
+            if (!_prefetchArmed || durations == null || durations.Count == 0) return;
+
+            double tolerance = CacheTolerance(_prefetchMinimum, _prefetchMaximum);
+            var wanted = new List<double>(durations.Count);
+            for (int i = 0; i < durations.Count; i++)
+            {
+                if (TryGetCachedRetime(_prefetchTargetId, _prefetchDeparture.JulianDate,
+                        _prefetchBurnLevelG, _prefetchArrival, durations[i],
+                        tolerance, out _))
+                    continue;
+                wanted.Add(durations[i]);
+            }
+
+            if (wanted.Count == 0) return;
+
+            bool added = false;
+            lock (_retimeLock)
+            {
+                if (_retimeStop) return;
+
+                for (int i = 0; i < wanted.Count; i++)
+                {
+                    if (IsQueuedPrefetchLocked(wanted[i])) continue;
+
+                    _pendingPrefetch.Add(new PrefetchRequest(
+                        new RetimeRequest(_prefetchDeparture, _prefetchTargetId,
+                            wanted[i], _prefetchArrival, _prefetchBurnLevelG, _planner,
+                            _prefetchMinimum, _prefetchMaximum),
+                        _prefetchMinimum, _prefetchMaximum));
+                    added = true;
+                }
+
+                if (added) Monitor.Pulse(_retimeLock);
+            }
+
+            if (added) StartPlannerWorker();
+        }
+
+        private bool IsQueuedPrefetchLocked(double seconds)
+        {
+            for (int i = 0; i < _pendingPrefetch.Count; i++)
+            {
+                if (Math.Abs(_pendingPrefetch[i].Parameters.DurationSeconds - seconds)
+                    <= 1e-6)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>A slider step in the captured window's seconds, or NaN.</summary>
+        private double PrefetchStepSeconds()
+        {
+            double span = _prefetchMaximum - _prefetchMinimum;
+            if (!double.IsFinite(span) || !(span > 0.0)) return double.NaN;
+            return span / (SliderStepCount - 1);
+        }
+
+        /// <summary>The slider step a duration is nearest, clamped to the
+        /// control's ends, or -1 when the captured window is unusable.</summary>
+        private int PrefetchIndex(double seconds)
+        {
+            double step = PrefetchStepSeconds();
+            if (!double.IsFinite(step) || !(step > 0.0)) return -1;
+            if (!double.IsFinite(seconds)) return -1;
+
+            double index = Math.Round((seconds - _prefetchMinimum) / step);
+            return (int)Math.Clamp(index, 0.0, SliderStepCount - 1);
         }
 
         /// <summary>Queue a background preview build, superseding outstanding
@@ -748,6 +1103,10 @@ namespace TimeToExplore.Simulation
         /// before a publish owns the preview.</summary>
         private bool EnqueuePreview(PreviewRequest request)
         {
+            // A new preview has its own departure state, burn level, and arrival
+            // style; the old context's neighbours are not slots it can read.
+            DisarmPrefetch();
+
             lock (_retimeLock)
             {
                 if (_retimeStop) return false;
@@ -792,7 +1151,9 @@ namespace TimeToExplore.Simulation
         /// request has arrived. A superseded build is dropped and the newest
         /// request is taken next, so a drag never queues work behind stale plans.
         /// A retime is the newest ask when both pipelines are queued, so it
-        /// builds first; a preview still waits behind it.
+        /// builds first; a preview still waits behind it. **Prefetch is last**:
+        /// one item is taken only when no retime or preview is queued, so a real
+        /// request arriving between items abandons the rest of the queue.
         /// </summary>
         private void PlannerLoop()
         {
@@ -800,9 +1161,11 @@ namespace TimeToExplore.Simulation
             {
                 RetimeRequest retime = null;
                 PreviewRequest preview = null;
+                PrefetchRequest prefetch = null;
                 lock (_retimeLock)
                 {
-                    while (!_retimeStop && _pendingRetime == null && _pendingPreview == null)
+                    while (!_retimeStop && _pendingRetime == null && _pendingPreview == null
+                           && _pendingPrefetch.Count == 0)
                         Monitor.Wait(_retimeLock);
 
                     if (_retimeStop) return;
@@ -812,12 +1175,19 @@ namespace TimeToExplore.Simulation
                         retime = _pendingRetime;
                         _pendingRetime = null;
                     }
-                    else
+                    else if (_pendingPreview != null)
                     {
                         preview = _pendingPreview;
                         _pendingPreview = null;
                     }
-                    _retimeBusy = true;
+                    else
+                    {
+                        prefetch = _pendingPrefetch[0];
+                        _pendingPrefetch.RemoveAt(0);
+                        _prefetchBuilding = true;
+                    }
+
+                    _retimeBusy = retime != null || preview != null;
                 }
 
                 TrajectoryPlan retimePlan = null;
@@ -831,17 +1201,22 @@ namespace TimeToExplore.Simulation
                         previewResult = preview.Kind == PreviewKind.Plot
                             ? BuildPlotWindow(preview)
                             : BuildRebuild(preview);
+                    else if (prefetch != null)
+                        BuildPrefetch(prefetch);
                 }
                 catch (Exception error)
                 {
                     // Never let an exception kill the worker: a dead thread
-                    // would leave every later request waiting for ever.
-                    failure = error.Message;
+                    // would leave every later request waiting for ever. A
+                    // prefetch is speculative, so its failure is dropped
+                    // silently rather than reported as the player's plan.
+                    if (prefetch == null) failure = error.Message;
                 }
 
                 lock (_retimeLock)
                 {
                     _retimeBusy = false;
+                    _prefetchBuilding = false;
                     if (_retimeStop) return;
 
                     if (failure != null)
@@ -863,18 +1238,32 @@ namespace TimeToExplore.Simulation
                         _completedPreview = previewResult;
                         _completedPreviewGeneration = preview.Generation;
                     }
+
+                    // A prefetch publishes nothing: its plan is already in the
+                    // cache for whichever ask arrives next.
                 }
             }
         }
 
         /// <summary>One background retime build. Runs on the worker thread
         /// only: the planner and its gravity field belong to that thread for
-        /// the session's life.</summary>
+        /// the session's life. A duration a prefetch filled while the ask was
+        /// queued is answered from the cache rather than built again.</summary>
         private TrajectoryPlan BuildRetime(RetimeRequest request)
         {
+            if (TryGetCachedRetime(request.TargetId, request.Departure.JulianDate,
+                    request.BurnLevelG, request.Arrival, request.DurationSeconds,
+                    CacheTolerance(request.MinimumSeconds, request.MaximumSeconds),
+                    out TrajectoryPlan cached))
+            {
+                lock (_retimeLock) _retimeCacheHits++;
+                return cached;
+            }
+
             request.ApplyTo(_workerPlanner);
+            lock (_retimeLock) _retimeBuilds++;
             TrajectoryPlan plan = _workerPlanner.PlanAtDuration(request.Departure,
-                request.TargetId, request.DurationSeconds);
+                request.TargetId, request.DurationSeconds, request.Seed);
 
             // Cache even a superseded build: the plan is still the right answer
             // for this window and duration, and it is exactly the work a
@@ -882,6 +1271,38 @@ namespace TimeToExplore.Simulation
             CacheRetime(request.TargetId, request.Departure.JulianDate,
                 request.BurnLevelG, request.Arrival, request.DurationSeconds, plan);
             return plan;
+        }
+
+        /// <summary>One prefetched neighbour. It fills the retime cache and
+        /// nothing else: it never publishes, never bumps a generation, and is
+        /// seeded from the nearest plan the cache already holds so it costs the
+        /// warm build rather than the cold one. A duration in the short-coast
+        /// gap that the planner refuses is not cached, so a later ask for it
+        /// builds and reports the refusal exactly as it does today.</summary>
+        private void BuildPrefetch(PrefetchRequest request)
+        {
+            RetimeRequest parameters = request.Parameters;
+            double tolerance = CacheTolerance(request.MinimumSeconds,
+                request.MaximumSeconds);
+
+            if (TryGetCachedRetime(parameters.TargetId, parameters.Departure.JulianDate,
+                    parameters.BurnLevelG, parameters.Arrival, parameters.DurationSeconds,
+                    tolerance, out _))
+                return;
+
+            parameters.ApplyTo(_workerPlanner);
+            PinSeed seed = RetimeSeed(parameters.TargetId,
+                parameters.Departure.JulianDate, parameters.BurnLevelG,
+                parameters.Arrival, parameters.DurationSeconds,
+                request.MinimumSeconds, request.MaximumSeconds);
+            TrajectoryPlan plan = _workerPlanner.PlanAtDuration(parameters.Departure,
+                parameters.TargetId, parameters.DurationSeconds, seed);
+            if (plan == null || !plan.IsFeasible) return;
+
+            CacheRetime(parameters.TargetId, parameters.Departure.JulianDate,
+                parameters.BurnLevelG, parameters.Arrival, parameters.DurationSeconds,
+                plan);
+            lock (_retimeLock) _prefetchBuilds++;
         }
 
         /// <summary>One background Plot build: the window for the request's
@@ -894,7 +1315,8 @@ namespace TimeToExplore.Simulation
             PreviewWindow window = WindowFor(request.TargetId, request.Departure,
                 _workerPlanner, request.BurnLevelG, request.Arrival);
             return new CompletedPreview(window.Plan, window.Plan,
-                window.MaximumSeconds, request.Departure.JulianDate);
+                window.MaximumSeconds, request.Departure, request.BurnLevelG,
+                request.Arrival);
         }
 
         /// <summary>One background Rebuild build: the window, then the
@@ -916,12 +1338,16 @@ namespace TimeToExplore.Simulation
             {
                 double duration = Math.Min(request.DurationSeconds, window.MaximumSeconds);
                 plan = _workerPlanner.PlanAtDuration(request.Departure,
-                    request.TargetId, duration);
+                    request.TargetId, duration,
+                    RetimeSeed(request.TargetId, request.Departure.JulianDate,
+                        request.BurnLevelG, request.Arrival, duration,
+                        window.Plan.FlightTimeSeconds, window.MaximumSeconds));
                 CacheRetime(request.TargetId, request.Departure.JulianDate,
                     request.BurnLevelG, request.Arrival, duration, plan);
             }
             return new CompletedPreview(plan, window.Plan,
-                window.MaximumSeconds, request.Departure.JulianDate);
+                window.MaximumSeconds, request.Departure, request.BurnLevelG,
+                request.Arrival);
         }
 
         /// <summary>Stop and join the retime worker. Safe to call more than once
@@ -939,6 +1365,8 @@ namespace TimeToExplore.Simulation
                 _requestedPreviewSeconds = double.NaN;
                 _pendingPreview = null;
                 _completedPreview = null;
+                _pendingPrefetch.Clear();
+                _prefetchBuilding = false;
                 _windows.Clear();
                 _retimedPlans.Clear();
                 Monitor.PulseAll(_retimeLock);
@@ -1055,7 +1483,8 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan = planner.PlanFastest(departure, targetId);
             var window = new PreviewWindow(plan,
                 MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds, planner,
-                    departure));
+                    departure),
+                plan?.PinSeed ?? default);
 
             lock (_retimeLock)
             {
@@ -1092,13 +1521,18 @@ namespace TimeToExplore.Simulation
         /// second.</summary>
         private double RetimeCacheTolerance
         {
-            get
-            {
-                double span = PreviewMaximumSeconds - PreviewMinimumSeconds;
-                return double.IsFinite(span) && span > 0.0
-                    ? Math.Max(1.0, RetimeCacheFraction * span)
-                    : 1.0;
-            }
+            get => CacheTolerance(PreviewMinimumSeconds, PreviewMaximumSeconds);
+        }
+
+        /// <summary>The cache's match tolerance for any window, so the worker
+        /// can use a request's captured window instead of the published one
+        /// without reading the main thread's fields.</summary>
+        private static double CacheTolerance(double minimum, double maximum)
+        {
+            double span = maximum - minimum;
+            return double.IsFinite(span) && span > 0.0
+                ? Math.Max(1.0, RetimeCacheFraction * span)
+                : 1.0;
         }
 
         /// <summary>
@@ -1135,6 +1569,85 @@ namespace TimeToExplore.Simulation
             return false;
         }
 
+        /// <summary>How many slider steps at the bottom of the window are never
+        /// seeded, and the control's step count. The two are the same numbers the
+        /// HUD's <c>TimeSliderSteps</c> uses; a test pins them together. The
+        /// window's minimum is where the burn-only crossing and the short coast
+        /// meet the coast profile, and a seed from another family would start the
+        /// build in the wrong geometry.</summary>
+        internal const int SeedExcludedSliderSteps = 2;
+        internal const int SliderStepCount = 64;
+
+        /// <summary>The fraction of the window covered by the two lowest
+        /// slider steps, which are never seeded. Public so the test that pins it
+        /// to the HUD's own step count can read it.</summary>
+        public const double SeedExcludedLowFraction =
+            SeedExcludedSliderSteps / (double)(SliderStepCount - 1);
+
+        /// <summary>
+        /// The pin a retime build at <paramref name="seconds"/> should start
+        /// from: the nearest cached retime's, else the window's floor plan's,
+        /// else the cold start. The two lowest slider steps are not seeded,
+        /// because that is where the build's geometry changes family.
+        /// </summary>
+        private PinSeed RetimeSeed(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double seconds,
+            double minimum, double maximum)
+        {
+            if (!(minimum > 0.0) || !double.IsFinite(minimum)) return default;
+            double span = maximum - minimum;
+            if (double.IsFinite(span) && span > 0.0
+                && seconds - minimum < SeedExcludedLowFraction * span)
+            {
+                return default;
+            }
+
+            if (TryGetNearestRetimeSeed(targetId, julianDate, burnLevelG, arrival,
+                    seconds, out PinSeed nearest))
+            {
+                return nearest.Nearby(seconds);
+            }
+
+            if (TryGetCachedWindow(targetId, julianDate, out PreviewWindow window))
+                return window.FloorSeed.Nearby(seconds);
+
+            return default;
+        }
+
+        /// <summary>The cached retime closest to a requested duration, if any of
+        /// them can start it. The cache already holds the window's solved trips,
+        /// so picking the nearest is its job; a miss means the caller starts
+        /// cold.</summary>
+        private bool TryGetNearestRetimeSeed(string targetId, double julianDate,
+            double burnLevelG, CaptureStyle arrival, double seconds, out PinSeed seed)
+        {
+            seed = default;
+            var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
+
+            lock (_retimeLock)
+            {
+                if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
+                    return false;
+                if (!_retimedPlans.TryGetValue(key, out List<CachedRetime> entries))
+                    return false;
+
+                double best = double.PositiveInfinity;
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    PinSeed candidate = entries[i].Seed;
+                    if (!candidate.Covers(seconds)) continue;
+
+                    double gap = Math.Abs(entries[i].RequestedSeconds - seconds);
+                    if (gap >= best) continue;
+
+                    best = gap;
+                    seed = candidate;
+                }
+            }
+
+            return seed.IsValid;
+        }
+
         /// <summary>
         /// Keep a finished plan for the window and duration that produced it, on
         /// whichever thread built it. The oldest entry of a full window is
@@ -1146,10 +1659,12 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan plan)
         {
             if (plan == null) return;
+            PinSeed seed = plan.PinSeed;
 
             var key = new WindowKey(julianDate, targetId, burnLevelG, arrival);
             lock (_retimeLock)
             {
+                if (_retimeStop) return;
                 if (double.IsNaN(_windowEpoch) || _windowEpoch != julianDate)
                     return;
 
@@ -1163,13 +1678,13 @@ namespace TimeToExplore.Simulation
                 {
                     if (Math.Abs(entries[i].RequestedSeconds - requestedSeconds) <= 1e-6)
                     {
-                        entries[i] = new CachedRetime(requestedSeconds, plan);
+                        entries[i] = new CachedRetime(requestedSeconds, plan, seed);
                         return;
                     }
                 }
 
                 if (entries.Count >= MaxCachedRetimesPerWindow) entries.RemoveAt(0);
-                entries.Add(new CachedRetime(requestedSeconds, plan));
+                entries.Add(new CachedRetime(requestedSeconds, plan, seed));
             }
         }
 
@@ -1178,6 +1693,7 @@ namespace TimeToExplore.Simulation
         /// cannot reuse a plan that belonged to another state.</summary>
         private void ClearWindows()
         {
+            DisarmPrefetch();
             lock (_retimeLock)
             {
                 _windows.Clear();
@@ -1193,6 +1709,7 @@ namespace TimeToExplore.Simulation
         {
             CancelRetime();
             BeginPreviewReplacement();
+            DisarmPrefetch();
             Preview = null;
             PreviewJulianDate = double.NaN;
             PreviewMinimumSeconds = double.NaN;
@@ -1212,8 +1729,12 @@ namespace TimeToExplore.Simulation
         /// inside <see cref="TripPlanner.MaxDurationScale"/> times the minimum,
         /// found by probing; the slider can never ask for a plan the planner
         /// refuses.
+        ///
+        /// Internal so the route benchmark can time the exact pair
+        /// <see cref="WindowFor"/> runs, instead of timing a copy that can drift
+        /// from the real probe count. It reads no session state.
         /// </summary>
-        private double MaximumPreviewSeconds(string targetId, double minimum,
+        internal double MaximumPreviewSeconds(string targetId, double minimum,
             TripPlanner planner, ShipState departure)
         {
             if (!(minimum > 0.0) || !double.IsFinite(minimum))
@@ -1610,13 +2131,17 @@ namespace TimeToExplore.Simulation
         private sealed class RetimeRequest
         {
             public RetimeRequest(ShipState departure, string targetId, double durationSeconds,
-                CaptureStyle arrival, TripPlanner settings)
+                CaptureStyle arrival, double burnLevelG, TripPlanner settings,
+                double minimumSeconds, double maximumSeconds, PinSeed seed = default)
             {
                 Departure = departure;
                 TargetId = targetId;
                 DurationSeconds = durationSeconds;
                 Arrival = arrival;
-                BurnLevelG = settings.BurnLevelG;
+                Seed = seed;
+                BurnLevelG = burnLevelG;
+                MinimumSeconds = minimumSeconds;
+                MaximumSeconds = maximumSeconds;
                 MaxAccelerationMps2 = settings.MaxAccelerationMps2;
                 ThrustMargin = settings.ThrustMargin;
                 EntrySpeedMps = settings.EntrySpeedMps;
@@ -1630,7 +2155,19 @@ namespace TimeToExplore.Simulation
             public string TargetId { get; }
             public double DurationSeconds { get; }
             public CaptureStyle Arrival { get; }
+
+            /// <summary>The pin the build should start from: the nearest
+            /// solved trip's, captured on the requesting thread, or the cold
+            /// start.</summary>
+            public PinSeed Seed { get; }
+
             public double BurnLevelG { get; }
+
+            /// <summary>The preview window the request belongs to, which bounds
+            /// the duration and sets the cache's match tolerance.</summary>
+            public double MinimumSeconds { get; }
+            public double MaximumSeconds { get; }
+
             public double MaxAccelerationMps2 { get; }
             public double ThrustMargin { get; }
             public double EntrySpeedMps { get; }
@@ -1657,6 +2194,25 @@ namespace TimeToExplore.Simulation
                 planner.ConvergenceTolerance = ConvergenceTolerance;
                 planner.ParkingPhaseOffsetRad = ParkingPhaseOffsetRad;
             }
+        }
+
+        /// <summary>One queued prefetch: the retime parameters it builds, and
+        /// the window its seed and cache tolerance come from. It has no
+        /// generation and no publisher — a prefetch can only fill a cache
+        /// slot.</summary>
+        private sealed class PrefetchRequest
+        {
+            public PrefetchRequest(RetimeRequest parameters, double minimumSeconds,
+                double maximumSeconds)
+            {
+                Parameters = parameters;
+                MinimumSeconds = minimumSeconds;
+                MaximumSeconds = maximumSeconds;
+            }
+
+            public RetimeRequest Parameters { get; }
+            public double MinimumSeconds { get; }
+            public double MaximumSeconds { get; }
         }
 
         /// <summary>Which background route-planning build a <see cref="PreviewRequest"/>
@@ -1760,48 +2316,73 @@ namespace TimeToExplore.Simulation
         {
             public CompletedPreview(TrajectoryPlan finalPlan,
                 TrajectoryPlan windowPlan, double maximumSeconds,
-                double departureJulianDate)
+                ShipState departure, double burnLevelG, CaptureStyle arrival)
             {
                 FinalPlan = finalPlan;
                 WindowPlan = windowPlan;
                 MaximumSeconds = maximumSeconds;
-                DepartureJulianDate = departureJulianDate;
+                Departure = departure;
+                BurnLevelG = burnLevelG;
+                Arrival = arrival;
             }
 
             public TrajectoryPlan FinalPlan { get; }
             public TrajectoryPlan WindowPlan { get; }
             public double MaximumSeconds { get; }
-            public double DepartureJulianDate { get; }
+
+            /// <summary>The frozen departure state the build used. A prefetch
+            /// must build from this, not from the ship's later state.</summary>
+            public ShipState Departure { get; }
+
+            /// <summary>The burn level the build used, captured before the
+            /// build so a later change cannot retarget a queued prefetch.</summary>
+            public double BurnLevelG { get; }
+
+            /// <summary>The arrival style the build used.</summary>
+            public CaptureStyle Arrival { get; }
+
+            public double DepartureJulianDate => Departure.JulianDate;
         }
 
         /// <summary>One cached preview window: the fastest feasible plan and the
         /// slowest trip the slider may offer.</summary>
         private readonly struct PreviewWindow
         {
-            public PreviewWindow(TrajectoryPlan plan, double maximumSeconds)
+            public PreviewWindow(TrajectoryPlan plan, double maximumSeconds,
+                PinSeed floorSeed = default)
             {
                 Plan = plan;
                 MaximumSeconds = maximumSeconds;
+                FloorSeed = floorSeed;
             }
 
             public TrajectoryPlan Plan { get; }
             public double MaximumSeconds { get; }
+
+            /// <summary>The pin the window's floor plan settled on, or the cold
+            /// start when the window plan never ran the pin (the burn-only
+            /// crossing at a high level carries none).</summary>
+            public PinSeed FloorSeed { get; }
         }
 
         /// <summary>A plan the session already built at a requested flight time,
         /// kept so a returned slider handle is instant. The stored seconds are
         /// the request, not the plan's own total, so the next drag asks at the
-        /// same value it used before.</summary>
+        /// same value it used before. The seed is the pin that plan settled on;
+        /// the nearest entry starts the next build.</summary>
         private readonly struct CachedRetime
         {
-            public CachedRetime(double requestedSeconds, TrajectoryPlan plan)
+            public CachedRetime(double requestedSeconds, TrajectoryPlan plan,
+                PinSeed seed = default)
             {
                 RequestedSeconds = requestedSeconds;
                 Plan = plan;
+                Seed = seed;
             }
 
             public double RequestedSeconds { get; }
             public TrajectoryPlan Plan { get; }
+            public PinSeed Seed { get; }
         }
 
         /// <summary>The inputs that make a preview window unique. The departure

@@ -1,0 +1,179 @@
+{
+    "schema": 1,
+    "machine": "brian",
+    "unityVersion": "6000.3.28f1",
+    "cpu": "Apple M4 Max, 16 cores, 65536 MB",
+    "operatingSystem": "Mac OS X 27.2.1",
+    "recordedAt": "2026-11-25",
+    "note": "JD 2461359.5, conic capture. Plot is PlanFastest plus the cold window build. Retimes are PlanAtDuration at the window middle and maximum. Drag requests eight consecutive slider steps from the window minimum on the session's own worker, prefetch on, and reports each request's time to publish. Begin advances the clock three hours, solves the fresh minimum, then retimes to the window maximum when it is above that minimum.",
+    "routes": [
+        {
+            "route": "earth-mars",
+            "displayName": "Earth → Mars",
+            "burnLevelG": 0.3,
+            "floorDays": 16.48669373895973,
+            "windowMaxDays": 49.46008121687919,
+            "note": "Gateway station, Earth's anchor departure point; 0.3 g is the default level; plot 16.48669 d, retime mid 32.97339 d, retime max 49.46008 d, begin 16.59252 d; begin retimes to the window maximum; drag of 8 steps: 362 ms median, 376 ms worst, 0 built, 8 from cache, 6 prefetched",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 3986.5784
+                },
+                {
+                    "phase": "drag-median",
+                    "milliseconds": 361.5932
+                },
+                {
+                    "phase": "drag-worst",
+                    "milliseconds": 375.8969
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 458.5297
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 367.0575
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 9301.6149
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 341.2418
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 9642.8567
+                }
+            ]
+        },
+        {
+            "route": "earth-venus",
+            "displayName": "Earth → Venus",
+            "burnLevelG": 0.3,
+            "floorDays": 14.109088856261224,
+            "windowMaxDays": 42.32726656878367,
+            "note": "Gateway station; 0.3 g is the default level; plot 14.10909 d, retime mid 28.21818 d, retime max 42.32727 d, begin 14.23401 d; begin retimes to the window maximum; drag of 8 steps: 359 ms median, 405 ms worst, 1 built, 7 from cache, 5 prefetched",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 9937.0816
+                },
+                {
+                    "phase": "drag-median",
+                    "milliseconds": 359.1599
+                },
+                {
+                    "phase": "drag-worst",
+                    "milliseconds": 405.1258
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 468.9098
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 463.0396
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 4297.79
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 476.2945
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 4773.7218
+                }
+            ]
+        },
+        {
+            "route": "earth-uranus",
+            "displayName": "Earth → Uranus",
+            "burnLevelG": 0.3,
+            "floorDays": 92.13088452070952,
+            "windowMaxDays": 276.39265356212857,
+            "note": "Gateway station; 0.3 g is the default level; plot 92.13088 d, retime mid 184.26177 d, retime max 276.39265 d, begin 87.21140 d; begin retimes to the window maximum; drag of 8 steps: 363 ms median, 366 ms worst, 1 built, 7 from cache, 5 prefetched",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 2034.2768
+                },
+                {
+                    "phase": "drag-median",
+                    "milliseconds": 363.4148
+                },
+                {
+                    "phase": "drag-worst",
+                    "milliseconds": 366.0093
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 488.6914
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 479.5541
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 1649.1269
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 489.1861
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 2138.313
+                }
+            ]
+        },
+        {
+            "route": "mars-earth",
+            "displayName": "Mars → Earth",
+            "burnLevelG": 0.3,
+            "floorDays": 0.0,
+            "windowMaxDays": 0.0,
+            "note": "Mars conic parking orbit; 0.3 g departs a 300 km Mars orbit; plot refused (burn-coast-burn: coast: no prograde short-way Lambert transfer at this trip time (transfer angle 21.0 deg); the coast needs a prograde transfer short of 180 deg); retime and begin are not measured; a fixed 90 d build is feasible at 90.00000 d",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 393.8807
+                }
+            ]
+        },
+        {
+            "route": "venus-earth",
+            "displayName": "Venus → Earth",
+            "burnLevelG": 1.0,
+            "floorDays": 0.0,
+            "windowMaxDays": 0.0,
+            "note": "Venus conic parking orbit; 0.3 g cannot lift out of Venus's well, so 1 g; plot refused (burn-coast-burn: coast: no prograde short-way Lambert transfer at this trip time (transfer angle 1.0 deg); the coast needs a prograde transfer short of 180 deg); retime and begin are not measured; a fixed 90 d build is refused too (burn-coast-burn: the approach conic cannot reach the handover ceiling from the brake's start)",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 411.2507
+                }
+            ]
+        },
+        {
+            "route": "uranus-earth",
+            "displayName": "Uranus → Earth",
+            "burnLevelG": 1.0,
+            "floorDays": 0.0,
+            "windowMaxDays": 0.0,
+            "note": "Uranus conic parking orbit; 0.3 g cannot lift out of Uranus's well, so 1 g; plot refused (burn-coast-burn: the trip time leaves no room for the break and the escape climb at the 9.700 m/s² level); retime and begin are not measured; a fixed 90 d build is refused too (burn-coast-burn: the trip time leaves no room for the break and the escape climb at the 9.700 m/s² level)",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 494.5609
+                }
+            ]
+        }
+    ]
+}
