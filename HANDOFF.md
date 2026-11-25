@@ -21,23 +21,41 @@ heliocentric coast**. At a fixed total trip time, a little hyperbolic excess at
 periapsis buys a much longer coast, and the longer coast shrinks both fixed
 burns by more than the break grows.
 
-Measured at JD 2461359.5, Gateway → Mars, 0.3 g, conic capture, with the real
-planner and a forced v∞ (throwaway harness; every plan exact):
+## Step 1 measured (done)
 
-| Total | Climb | v∞ | Break Δv | Total Δv | Propellant |
-|---:|---:|---:|---:|---:|---:|
-| 18 d | 10.74 d | 0 | 1.4 km/s | 706.1 km/s | 73.2 t |
-| 18 d | 3.27 d | 3 km/s | 5.0 | 304.5 | 30.9 |
-| 18 d | 1.03 d | 10 km/s | 18.6 | **276.1** | **28.0** |
-| 90 d | 10.74 d | 0 | 1.4 | 38.97 | 3.9 |
-| 90 d | 7.40 d | 1 km/s | 2.0 | **38.54** | 3.9 |
+The test-only `TripPlanner.DepartureVInfinityOverrideMps` seam forces one v∞;
+default `-1` keeps every plan exactly as it was. `DepartureClimbSplitTests`
+(`flight`) builds Gateway → Mars at 0.3 g with conic capture, JD 2461359.5.
+Totals are the real planner's, every plan exact and on the Mars parking orbit.
 
-At 18 days the current plan spends 2.5× the fuel it needs. At 90 days the
-optimum is about 1 km/s and the gain is 1%. The fast end is where it matters.
-The same split also moves the floor: with a good v∞ a Gateway→Mars trip builds
-in about 7–8 days, against the current 16.84-day coast floor and 16.49-day
-burn-only minimum. The burn-only branch exists only because the coast path was
-crippled by the 10.7-day climb, so expect it to lose its reason to exist.
+| Total | v∞ | Climb | Break Δv | Depart Δv | Brake Δv | Total Δv | Propellant |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 d | 10 km/s | 1.03 d | 18.638 | 418.566 | 434.766 | 875.520 | 91.5 t |
+| 18 d | 0 | 10.74 d | 1.404 | 344.516 | 356.384 | **706.091** | 73.2 |
+| 18 d | 1 | 7.40 d | 1.982 | 206.570 | 218.244 | 430.494 | 44.0 |
+| 18 d | 3 | 3.27 d | 5.038 | 142.074 | 153.798 | 304.503 | 30.9 |
+| 18 d | 10 | 1.03 d | 18.638 | 119.782 | 134.128 | **276.099** | **28.0** |
+| 30 d | 0 | 10.74 d | 1.404 | 97.038 | 107.755 | 209.985 | 21.2 |
+| 30 d | 3 | 3.27 d | 5.038 | 69.391 | 79.743 | **157.771** | 15.9 |
+| 30 d | 10 | 1.03 d | 18.638 | 62.198 | 74.352 | 158.745 | 16.0 |
+| 90 d | 0 | 10.74 d | 1.404 | 14.040 | 19.699 | 38.968 | 3.9 |
+| 90 d | 1 | 7.40 d | 1.982 | 13.709 | 19.108 | **38.541** | 3.9 |
+| 90 d | 3 | 3.27 d | 5.038 | 13.587 | 18.407 | 40.677 | 4.1 |
+| 90 d | 10 | 1.03 d | 18.638 | 15.177 | 18.043 | 55.462 | 5.6 |
+
+Δv columns are km/s. Worst seam across all twelve: **3.2 m / 0.010 m/s**.
+At 18 days the current plan spends 2.5× the fuel of the best forced climb; at
+90 days the optimum is about 1 km/s and the gain is 1%. The fast end is where it
+matters.
+
+**Floor sweep**, 10 km/s excess, 5–10 days: 8 d **875.520** is feasible, 9 d
+692.4, 10 d 583.4; 5, 6 and 7 days are refused — 5 d for the departure burn's
+coast geometry, 6 and 7 d for want of room for the break and the escape climb.
+So the shortest certified duration found is **8.00 d**, and the fixed burns and
+coast, not the climb, now set the fast end. Re-sweep at finer steps in step 3.
+
+The exact output is in the `DepartureClimbSplitTests` run log; the summary is in
+[Docs/log.md](Docs/log.md).
 
 ## Design settled
 
@@ -52,25 +70,25 @@ crippled by the 10.7-day climb, so expect it to lose its reason to exist.
   entry impulse, arrival trim and capture. A coarse grid (0, 1, 2, 4, 8, 16
   km/s) plus a golden-section refinement is the proposed search.
 * **Bounds:** the existing climb solver already rejects a v∞ that does not fit
-  the time; cap the search at a finite value (16 km/s found the best measured
-  18-day plan; 24 km/s is worse). If the search is too slow in the fast probes,
-  keep the full search for the certified build and use a fixed rule above it;
-  decide from step 1's timings.
+  the time; cap the search at a finite value. The measured table above shows
+  the best 18-day plan near 10 km/s and the best 30-day plan near 3; 24 km/s is
+  worse. If the search is too slow in the fast probes, keep the full search for
+  the certified build and use a fixed rule above it; decide from step 1's
+  timings.
 * **No player control.** The player still chooses the trip time; the planner
   picks the split.
 
 ## Steps
 
-1. **Measure the split.** Add an internal `DepartureVInfinityOverrideMps` test
-   seam (default `-1`, no returned plan changes) and a `DepartureClimbSplitTests`
-   (flight) that sweeps the durations and v∞, prints the table, asserts every
-   plan is feasible and exact, and pins the 18-day and 90-day anchors. Sweep
-   the floor down to about 5 days to establish the new minimum. Log the
-   measurement. Verify `tools/check.sh --tests flight` and `--fast`.
-2. **Implement the search behind a flag.** Add the skeleton-cost search and an
-   internal `UseDepartureSplit` flag, default **off**, so the tree stays green.
-   Tests prove the chosen v∞ matches the measured optimum, the selected plan is
-   exact, and the flag off still returns today's plans. Verify flight tests.
+1. **Done — Measure the split.** Added the
+   `DepartureVInfinityOverrideMps` seam and `DepartureClimbSplitTests`
+   (`flight`); measured the table and the 8.00-day floor above. No returned
+   plan changed.
+2. **Next — Implement the search behind a flag.** Add the skeleton-cost search
+   and an internal `UseDepartureSplit` flag, default **off**, so the tree stays
+   green. Tests prove the chosen v∞ matches the measured optimum, the selected
+   plan is exact, and the flag off still returns today's plans. Verify with
+   `tools/check.sh --tests flight`. Keep the seam for step 3.
 3. **Turn it on and re-baseline.** Flip the flag, re-sweep the floors, windows
    and fixed-duration anchors, update every affected test, and update
    [burn–coast–burn](Docs/simulation/burn-coast-burn.md),
@@ -95,6 +113,13 @@ crippled by the 10.7-day climb, so expect it to lose its reason to exist.
   `BuildShortCoast`. They must all use one chosen v∞ or the seams stop closing.
 * The planner runs on a latest-wins background worker. Keep the choice
   per-instance; no mutable static state.
+* `DepartureVInfinityOverrideMps` is a test-only seam, not a plan input. With it
+  at `-1` the branch condition and the solver run exactly as before; the seam
+  forces the hyperbolic branch even when the parabolic climb would fit, which is
+  what makes the measurement possible. Remove it when the split lands.
+* At 18 days the optimum may sit near 10 km/s, but do not assume the grid corner
+  is the answer: at 30 days 10 km/s is already worse than 3, and at 90 days it
+  is far worse. The search must not be monotone in v∞.
 * Do not touch `work/instant-route-plan`: that worktree has uncommitted work
   from a different task. It is not part of this branch.
 * `main` is two merges ahead of `origin/main`. Branch from local `main`, do not
@@ -111,7 +136,7 @@ crippled by the 10.7-day climb, so expect it to lose its reason to exist.
 
 | Command | Last result |
 |---|---|
-| `tools/check.sh --tests flight` | not run on this branch yet |
-| `tools/check.sh --fast` | not run on this branch yet |
+| `tools/check.sh --tests flight` | Passed in 1,410 s; EditMode 322 tests, 0 failed, 0 skipped |
+| `tools/check.sh --fast` | Passed in 6 s |
 | `tools/check.sh` | not run on this branch yet |
 | `tools/bench.sh` | not run on this branch yet |

@@ -313,6 +313,16 @@ namespace TimeToExplore.Simulation
         /// default; the hybrid finite-burn capture is the alternative.</summary>
         public CaptureStyle ArrivalStyle { get; set; } = CaptureStyle.Conic;
 
+        /// <summary>
+        /// Test-only seam: when non-negative, force the departure escape conic's
+        /// hyperbolic excess speed to this value instead of solving the one that
+        /// fits the time left after the break. It is not a plan input and no
+        /// product code sets it. The default `-1` leaves every plan exactly as it
+        /// was. Used to measure the split between the climb and the coast; remove
+        /// it when the split search lands.
+        /// </summary>
+        internal double DepartureVInfinityOverrideMps { get; set; } = -1.0;
+
         /// <summary>Design acceleration of a fixed-thrust burn. 0.3 g is the
         /// working level: low enough to be a real burn rather than an impulse,
         /// high enough that the capture still fits inside a low orbit. The
@@ -3823,6 +3833,18 @@ namespace TimeToExplore.Simulation
                     : double.PositiveInfinity;
             }
 
+            if (DepartureVInfinityOverrideMps >= 0.0)
+            {
+                // Test-only seam: one forced v∞, no solve. Its climb time is
+                // whatever the conic takes; the caller reports a trip that cannot
+                // fit it rather than bending the excess to the requested time.
+                vInfinityMps = DepartureVInfinityOverrideMps;
+                periapsisSpeedMps = Math.Sqrt(escapeSpeed * escapeSpeed
+                                              + vInfinityMps * vInfinityMps);
+                escapeSeconds = Time(vInfinityMps);
+                return escapeSeconds > 0.0 && double.IsFinite(escapeSeconds);
+            }
+
             double low = 0.0;
             double lowSeconds = Time(0.0);
             if (!(lowSeconds > targetSeconds)) return false;
@@ -3916,14 +3938,16 @@ namespace TimeToExplore.Simulation
             ConicElements elements = parabolicElements;
             bool parabolic = true;
 
-            if (breakSeconds + escapeSeconds > availableSeconds + 1e-6)
+            if (DepartureVInfinityOverrideMps >= 0.0
+                || breakSeconds + escapeSeconds > availableSeconds + 1e-6)
             {
-                // The trip does not leave the minimum-energy climb its own time:
-                // solve a hyperbolic excess speed that fits the escape into what
-                // is left after the break, then correct the break for the speed it
-                // now has to supply. The map is strongly contractive (the break is
-                // minutes against a climb of days), so a handful of passes settles
-                // it without a nested bisection for every evaluation.
+                // The trip does not leave the minimum-energy climb its own time,
+                // or a test has forced a hyperbolic excess: solve (or take) the
+                // hyperbolic climb that fits the escape into what is left after
+                // the break, then correct the break for the speed it now has to
+                // supply. The map is strongly contractive (the break is minutes
+                // against a climb of days), so a handful of passes settles it
+                // without a nested bisection for every evaluation.
                 parabolic = false;
                 for (int pass = 0; pass < 6; pass++)
                 {
