@@ -2,7 +2,7 @@
 
 **Branch:** `work/trade` in the worktree at
 `/Users/brian.oconnor/.local/share/opencode/worktree/6479b2/trade`.
-**Status:** step 1 done, step 2 next. Design merged to `main` at `c016ec5`.
+**Status:** step 2 done, step 3 next. Design merged to `main` at `c016ec5`.
 **Design:** [ADR-020](/decisions/adr-020-trade-catalogue.md) and
 [Trade](/world/trade.md). The plan runs one sub-agent per step; each step is one
 commit carrying code, tests, concept updates, a `Docs/log.md` entry, and this
@@ -14,8 +14,9 @@ file.
    `TradeCatalogue`, `TradeCatalogueLoader`, `TradeCatalogueTests` (core),
    `tools/validate_trade.py` and its unit test, wired into `tools/check.sh` as
    gate 3.
-2. **Cargo and transactions (`Simulation`)** — `CargoHold`, `TradeSession`, the
-   arrival gate, `CargoHoldTests` and `TradeSessionTests` (flight).
+2. **Cargo and transactions (`Simulation`)** — **done.** `CargoHold`,
+   `TradeSession`, the arrival gate, `TradeFixture`, `CargoHoldTests` and
+   `TradeSessionTests` (flight).
 3. **HUD (`Presentation`)** — a Trade button in the details panel, a Trade panel,
    `TradeSession`/`CargoHold` owned by `SolarSystemBootstrap`, presentation tests.
 4. **Close-out** — full `tools/check.sh`, evidence, roadmap, clear this file,
@@ -84,5 +85,20 @@ tools/check.sh                    # close-out
 - Add `trade_catalogue.json.meta` if Unity generates one; the JSON is an asset.
   The metas for this step are committed.
 - Keep the log entry under `## 2026-11-25` unless the date has moved.
+- `CargoHold.UsedM3` takes no catalogue parameter, so the hold stores volume per
+  unit on the line when the line is created. Mass is the derived figure; do not
+  add a stored mass field.
+- `CargoHold.MaxUnits` needs the 10⁻⁹ m³ epsilon, or 40 / 0.4 floors to 99.
+- `TradeSession` has no balance and never charges: `TryBuy` and `TrySell` move
+  units, and the offer's prices are read-only labels.
+- The flight suite is near its guard budget. `tools/check.sh --tests flight`
+  took 23 minutes on this tree; one extra Ares Junction → Gateway arrival in
+  `TradeSessionTests` pushed it into the 1200 s stall and the guard killed the
+  run. Do not add a station-arrival flight there: the pure gate covers the
+  status and target, and `FlightSessionTests` already flies the hold point.
+- `earth` as the departure for a Gateway station trip is rejected ("no prograde
+  direction about the departure body to break out along"), and `moon` → `gateway`
+  stalls the planner. The arrival integration flies `gateway` → `earth` and
+  `gateway` → `moon` instead.
 
 No active blocker.

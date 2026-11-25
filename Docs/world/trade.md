@@ -69,19 +69,30 @@ of the same spreads.
 
 # Cargo
 
-`CargoHold` holds a capacity in m³ and a unit count per commodity. Loading
-checks volume only:
+`CargoHold` (`Simulation`, plain C# with no Unity reference) holds a capacity in
+m³ and a whole-unit count per commodity id. Loading checks volume only:
 
 ```
 usedM3 = Σ units × volumePerUnitM3  ≤  capacityM3
 ```
 
-Mass is derived for the panel (`Σ units × massPerUnitKg`) and is **not** read by
-flight, thrust or the fuel model. One ship, one constant capacity of 40 m³,
-until ship selection exists.
+The hold clamps rather than throws at a bad request. `Add` takes at most what the
+free volume allows and returns the units actually added; `Remove` takes at most
+what the line holds and returns the units actually removed; a zero or negative
+request moves nothing. `CanAdd` agrees with `Add`, and `MaxUnits` is the whole
+units that fit, with a small epsilon so a 40 m³ hold really takes 100 units of
+0.4 m³ and 33 of 1.2 m³. A line that reaches zero is dropped from the view.
+`Units` is a read-only map for the HUD, and `UnitsOf` and `VolumeOf` answer a
+single commodity.
 
-Purchases add units; sales subtract them. Whole units only. The station stock is
-unlimited, and nothing is persisted: cargo resets with the session.
+Mass is derived on demand from units × mass per unit (`MassKg(catalogue)`) and is
+**not** stored or read by flight, thrust or the fuel model. One ship, one
+constant capacity of 40 m³, until ship selection exists.
+
+`TradeSession.TryBuy` and `TrySell` wrap those two calls: they check the offer
+and move units only, so a transaction never changes a price. Whole units only.
+The station stock is unlimited, and nothing is persisted: cargo resets with the
+session.
 
 # When you can trade
 
@@ -95,7 +106,12 @@ and both mean the ship is parked. So the gate is:
 
 Any accepted orbit counts at a planet; the hold point counts at a station. A
 ship that is merely near a body, or still flying its brake, cannot trade.
-Docking, when it arrives, narrows that gate rather than replacing it.
+`TradeSession.IsOpen(status, targetId, bodyId)` is the pure gate and has no
+position or speed test. `IsOpenAt(flight, body)` adds the market check through
+`HasMarket`, which is the row in the trade file. `OffersFor(bodyId)` returns the
+body's rows, or an empty list when it has no market. Docking, when it arrives,
+narrows that gate rather than replacing it. `MaxBuyable` gives the panel's
+`+max` in whole units and is zero when the offer is missing.
 
 # The panel
 
