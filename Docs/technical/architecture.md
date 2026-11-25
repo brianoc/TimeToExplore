@@ -111,7 +111,8 @@ graph and reads the `.asmdef` files as the source of truth. See
      markers and picks a body; the details screen updates from the same model
      state. uGUI owns the pointer over a panel, so a button press never also
      selects the body behind it.
-6. **Selecting a body** starts its plan in the background, and **Plot route**
+6. **Selecting a body** warms its plan in the background and shows nothing, and
+   **Plot route** adopts that plan — or
    calls `FlightSession.PlotAsync`, which solves the floor plan and the
    trip-time window with `TripPlanner.Plan` on a background
    worker and draws the preview when it is ready — a click that arrives while
@@ -443,8 +444,8 @@ The controller is an inspection tool now, not a flight model:
 
 | Input | Action |
 |---|---|
-| Left click a body | Select it and start its route plan in the background; the selection never moves the camera |
-| **Plot route** / **Replot route** on the details screen | Continue the running plan (or frame the fresh fastest one) and draw the preview without flying; frames the route |
+| Left click a body | Select it and warm its route plan in the background; nothing is drawn until Plot route |
+| **Plot route** / **Replot route** on the details screen | Adopt the warmed plan and draw it in the click's frame (or frame the fresh fastest preview), without flying; frames the route. A warm-up still building is continued |
 | **Begin flight** | Replan and fly from the current state and date |
 | **Jump (debug)**, `F` | Three-second eased debug teleport to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |

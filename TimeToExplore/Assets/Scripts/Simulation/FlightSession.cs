@@ -186,6 +186,14 @@ namespace TimeToExplore.Simulation
         private long _completedPreviewGeneration;
         private string _previewFailure;
 
+        /// <summary>A finished plan that a selection warmed and nothing has
+        /// shown: the route a Plot click can adopt as its preview without
+        /// solving again. It is not <see cref="Preview"/>, so every panel, the
+        /// trajectory line, and Begin still read the session as idle. Cleared
+        /// by any newer preview request, an adoption, or a discard.</summary>
+        private CompletedPreview _primedPreview;
+        private long _primedPreviewGeneration;
+
         /// <summary>Neighbouring durations queued for the background planner,
         /// the **lowest** priority on the worker: a retime, a rebuild, or a plot
         /// takes the worker first, and any real request drops this queue. A
@@ -475,28 +483,187 @@ namespace TimeToExplore.Simulation
 
         /// <summary>True while a plot for this target is queued or building. A
         /// superseded build does not count: its generation no longer matches,
-        /// so it can never publish. The HUD reads this to say the route is
-        /// being planned, and <see cref="PlotAsync"/> reads it to continue work
-        /// that is already under way instead of restarting it.</summary>
-        public bool IsPlotPending(string targetId)
+        /// so it can never publish. <see cref="PlotAsync"/> reads it to continue
+        /// work that is already under way instead of restarting it.</summary>
+        public bool IsPlotPending(string targetId) => IsKindPending(PreviewKind.Plot, targetId);
+
+        /// <summary>
+        /// Warm the plan for a target in the background without publishing it.
+        /// The selection calls this so the first, slow solve is over by the
+        /// time the player asks to see the route, and nothing changes if they
+        /// never do: no preview, no drawn route, no panel rows. The finished
+        /// plan waits in <see cref="_primedPreview"/> for
+        /// <see cref="TryAdoptPrimedPreview"/>, which turns it into the preview
+        /// the Plot click asked for without solving again.
+        ///
+        /// A prime is the same build a plot is, so it shares the queue and the
+        /// newest request wins. A failure is dropped silently: the player asked
+        /// for nothing yet, and the Plot click will report its own failure if
+        /// it has to build the plan itself.
+        /// </summary>
+        public bool PrimeAsync(string targetId, double julianDate)
+        {
+            if (targetId == null) throw new ArgumentNullException(nameof(targetId));
+
+            // Work for this target is already under way, or its plan is already
+            // waiting: either is the head start this ask wants.
+            if (IsPrimePending(targetId)) return true;
+
+            lock (_retimeLock)
+            {
+                if (IsPrimedFor(targetId) && IsWithinFreshnessWindow(_primedPreview))
+                    return true;
+            }
+
+            var request = new PreviewRequest(PreviewKind.Prime, targetId,
+                _state.WithJulianDate(julianDate), double.NaN, ArrivalStyle,
+                BurnLevelG, _planner);
+            return EnqueuePreview(request);
+        }
+
+        /// <summary>True while any preview build for this target is queued or
+        /// building, whatever kind it is. The reveal path uses this to wait for
+        /// the plan it asked for instead of queueing a plot over a rebuild.</summary>
+        public bool IsPreviewPending(string targetId)
         {
             if (targetId == null) return false;
 
             lock (_retimeLock)
             {
-                return IsPendingPlot(_pendingPreview, targetId)
-                       || IsPendingPlot(_buildingPreview, targetId);
+                return IsPendingRequest(_pendingPreview, targetId)
+                       || IsPendingRequest(_buildingPreview, targetId);
             }
         }
 
-        /// <summary>A request that is still wanted: it is a plot, it names the
-        /// target, and its generation is the current one. The caller holds
+        /// <summary>True while a primer for this target is queued or building,
+        /// so <see cref="PrimeAsync"/> does not solve the same route twice and
+        /// a Plot click knows to wait for the plan it asked for.</summary>
+        public bool IsPrimePending(string targetId) =>
+            IsKindPending(PreviewKind.Prime, targetId);
+
+        /// <summary>True when a primed plan for the target is waiting to be
+        /// adopted. The prime is not exposed as data: this only lets a caller
+        /// ask whether the head start is ready.</summary>
+        public bool HasPrimedPreview(string targetId)
+        {
+            if (targetId == null) return false;
+
+            lock (_retimeLock)
+            {
+                return _primedPreview != null
+                       && _primedPreviewGeneration == _previewGeneration
+                       && _primedPreview.FinalPlan != null
+                       && _primedPreview.FinalPlan.TargetId == targetId;
+            }
+        }
+
+        /// <summary>
+        /// Turn a finished prime into the published preview, on the main thread.
+        /// This is the Plot click's fast path: the plan was solved while the
+        /// player read the screen, so the route and its window appear in the
+        /// same frame. The primed plan is refused when it no longer describes
+        /// what the controls ask for — another target, an infeasible plan, a
+        /// changed arrival style or drive, or a departure the clock has moved
+        /// past the preview's own freshness window — and the caller then asks
+        /// for a fresh plot as it always did.
+        /// </summary>
+        public bool TryAdoptPrimedPreview(string targetId, out TrajectoryPlan plan)
+        {
+            plan = null;
+            if (targetId == null) return false;
+
+            CompletedPreview primed;
+            lock (_retimeLock)
+            {
+                if (_primedPreview == null
+                    || _primedPreviewGeneration != _previewGeneration) return false;
+
+                // Another body's warmed plan is not this ask's; keeping it lets
+                // the click that names its own body still use it.
+                if (_primedPreview.FinalPlan == null
+                    || _primedPreview.FinalPlan.TargetId != targetId) return false;
+
+                primed = _primedPreview;
+                _primedPreview = null;
+            }
+
+            TrajectoryPlan fastest = primed.FinalPlan;
+            if (!fastest.IsFeasible) return false;
+            if (primed.Arrival != ArrivalStyle) return false;
+
+            double drive = _planner.MaxAccelerationMps2;
+            if (Math.Abs(fastest.MaxAccelerationMps2 - drive) > 1e-9 * Math.Max(1.0, drive))
+                return false;
+
+            if (!IsWithinFreshnessWindow(primed)) return false;
+
+            Preview = fastest;
+            PreviewJulianDate = primed.DepartureJulianDate;
+            PreviewMinimumSeconds = primed.WindowPlan.FlightTimeSeconds;
+            PreviewMaximumSeconds = primed.MaximumSeconds;
+
+            // The retime path builds from the pinned departure, exactly as it
+            // does after a plot: adopting a plan without it would re-time a
+            // zeroed ship state.
+            _previewDeparture = primed.Departure;
+            _lastPreviewRequestSeconds = fastest.FlightTimeSeconds;
+            ArmPrefetch(primed);
+            plan = fastest;
+            return true;
+        }
+
+        /// <summary>Whether a finished background plan is still inside the
+        /// preview's own freshness window: a plan older than that is a shape
+        /// rather than a contract, so it must not become the preview a click
+        /// asked for. The caller holds <see cref="_retimeLock"/>.</summary>
+        private bool IsWithinFreshnessWindow(CompletedPreview completed)
+        {
+            if (completed?.FinalPlan == null) return false;
+
+            double age = _state.JulianDate - completed.DepartureJulianDate;
+            return age >= 0.0
+                   && age <= PreviewStaleFraction * completed.FinalPlan.FlightTimeDays;
+        }
+
+        /// <summary>A request that is still wanted: it is the asked-for kind of
+        /// build, it names the target, and its generation is the current one.
+        /// The caller holds <see cref="_retimeLock"/>.</summary>
+        /// <summary>A request for this target that is still wanted: it names the
+        /// target and its generation is the current one. The caller holds
         /// <see cref="_retimeLock"/>.</summary>
-        private bool IsPendingPlot(PreviewRequest request, string targetId) =>
+        private bool IsPendingRequest(PreviewRequest request, string targetId) =>
             request != null
-            && request.Kind == PreviewKind.Plot
             && request.TargetId == targetId
             && request.Generation == _previewGeneration;
+
+        /// <summary>A request of one kind for this target is queued or building.
+        /// The caller must not hold <see cref="_retimeLock"/>.</summary>
+        private bool IsKindPending(PreviewKind kind, string targetId)
+        {
+            if (targetId == null) return false;
+
+            lock (_retimeLock)
+            {
+                return IsPendingRequest(_pendingPreview, kind, targetId)
+                       || IsPendingRequest(_buildingPreview, kind, targetId);
+            }
+        }
+
+        /// <summary>A request of one kind for this target that is still wanted.
+        /// The caller holds <see cref="_retimeLock"/>.</summary>
+        private bool IsPendingRequest(PreviewRequest request, PreviewKind kind, string targetId) =>
+            request != null
+            && request.Kind == kind
+            && request.TargetId == targetId
+            && request.Generation == _previewGeneration;
+
+        /// <summary>A primed plan for the target is waiting. The caller holds
+        /// <see cref="_retimeLock"/>.</summary>
+        private bool IsPrimedFor(string targetId) =>
+            _primedPreview != null
+            && _primedPreviewGeneration == _previewGeneration
+            && _primedPreview.FinalPlan != null
+            && _primedPreview.FinalPlan.TargetId == targetId;
 
         /// <summary>
         /// Re-time the current preview without re-solving the minimum or moving
@@ -959,6 +1126,7 @@ namespace TimeToExplore.Simulation
                 _previewGeneration++;
                 _pendingPreview = null;
                 _completedPreview = null;
+                _primedPreview = null;
                 _pendingPrefetch.Clear();
             }
         }
@@ -1157,6 +1325,10 @@ namespace TimeToExplore.Simulation
                 request.Generation = _previewGeneration;
                 _pendingPreview = request;
                 _completedPreview = null;
+
+                // A primed plan belongs to the preview that is being replaced:
+                // it was solved against the old date, target, or style.
+                _primedPreview = null;
                 Monitor.Pulse(_retimeLock);
             }
             StartPlannerWorker();
@@ -1237,9 +1409,9 @@ namespace TimeToExplore.Simulation
                     if (retime != null)
                         retimePlan = BuildRetime(retime);
                     else if (preview != null)
-                        previewResult = preview.Kind == PreviewKind.Plot
-                            ? BuildPlotWindow(preview)
-                            : BuildRebuild(preview);
+                        previewResult = preview.Kind == PreviewKind.Rebuild
+                            ? BuildRebuild(preview)
+                            : BuildPlotWindow(preview);
                     else if (prefetch != null)
                         BuildPrefetch(prefetch);
                 }
@@ -1261,7 +1433,11 @@ namespace TimeToExplore.Simulation
 
                     if (failure != null)
                     {
-                        if (preview != null && preview.Generation == _previewGeneration)
+                        // A prime is a head start, not the player's ask: a
+                        // failure is dropped, and the Plot click reports its own
+                        // if it has to build the plan itself.
+                        if (preview != null && preview.Generation == _previewGeneration
+                            && preview.Kind != PreviewKind.Prime)
                             _previewFailure = failure;
                         else if (retime != null && retime.Generation == _retimeGeneration)
                             _retimeFailure = failure;
@@ -1272,6 +1448,12 @@ namespace TimeToExplore.Simulation
                     {
                         _completedRetime = retimePlan;
                         _completedRetimeGeneration = retime.Generation;
+                    }
+                    else if (preview != null && preview.Generation == _previewGeneration
+                             && preview.Kind == PreviewKind.Prime)
+                    {
+                        _primedPreview = previewResult;
+                        _primedPreviewGeneration = preview.Generation;
                     }
                     else if (preview != null && preview.Generation == _previewGeneration)
                     {
@@ -1405,6 +1587,7 @@ namespace TimeToExplore.Simulation
                 _requestedPreviewSeconds = double.NaN;
                 _pendingPreview = null;
                 _buildingPreview = null;
+                _primedPreview = null;
                 _completedPreview = null;
                 _pendingPrefetch.Clear();
                 _prefetchBuilding = false;
@@ -2332,7 +2515,13 @@ namespace TimeToExplore.Simulation
             /// changed arrival style or burn level. The build
             /// keeps the player's flight time when the new window contains
             /// it.</summary>
-            Rebuild
+            Rebuild,
+
+            /// <summary>A plan is being warmed for a selection. The build is a
+            /// plot's, but the result is held as
+            /// <see cref="_primedPreview"/> instead of published: nothing draws
+            /// it and no panel reads it until a Plot click adopts it.</summary>
+            Prime
         }
 
         /// <summary>One background preview build, queued for the worker. The
