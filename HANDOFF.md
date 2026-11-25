@@ -103,14 +103,16 @@ same plan.
   18, 30 and 90 days; if it does not, implement a Lambert-based estimate that
   keeps the fixed burns separate. Do not flip the flag until the cheap chooser
   gives the same answers.
-* **Preserve the slow end of the slider.** `FlightSession.MaximumPreviewSeconds`
-  caps the window at `minimum * TripPlanner.MaxDurationScale` (3×). With the
-  minimum falling from ~16.5 to ~8 days, 3× would cut the Mars window from
-  ~49 d to ~24 d and take the cheap slow trips away. Change the right-hand end
-  to the **largest duration the planner accepts**, found by growing from the
-  minimum until refused and then bisecting (the geometry limit, about 50.53 d
-  at Mars today). The left end is the new minimum; the fix should only add fast
-  options, not remove slow ones. Record this as part of ADR-021.
+* **Use 3× the new floor (decision, 2026-11-25).** Keep
+  `FlightSession.MaximumPreviewSeconds` as it is: the right-hand end is
+  `minimum * TripPlanner.MaxDurationScale` (3.0), applied to the new split-aware
+  minimum. At the epoch that is about 7.17–21.52 d to Mars, 4.21–12.63 to Venus
+  and 38.38–115.13 to Uranus. The old ~49.5 d Mars end was 3× the *old* floor,
+  not a physical limit; the planner genuinely accepts up to ~295 d. The cheap
+  slow trips therefore leave the slider but remain buildable by direct
+  `PlanAtDuration`. This is the smallest change and keeps the benchmark near
+  baseline. Record it in ADR-021 and the navigation concept. Do **not** grow the
+  window to the planner's true limit in this branch.
 * **Stations are a follow-up.** A station plan has a velocity match instead of
   a capture chain, and step 2 left it unforced. Do not expand step 3 to cover
   it; note it in the ADR and the roadmap as the next departure-split change.
@@ -155,11 +157,12 @@ same plan.
    154.753 / 38.541 km/s. One search ≈ **0.6 s**. Flag-off anchors unchanged.
    Verified with `tools/check.sh --tests flight` (326 tests, 0 failed) and
    `tools/check.sh --fast`.
-3. **Next — Turn it on and re-baseline.** First make the chooser cheap (see
-   "Step 3 design"): a rank-only single-pass grid, ≤ 50 ms, same answers at 8,
-   18, 30 and 90 days. Then flip `UseDepartureSplit` on. Re-sweep the floors,
-   the windows (including the new right-hand end) and the fixed-duration
-   anchors, and update every affected test. Update
+3. **Next — Turn it on and re-baseline.** The cheap chooser is working
+   (4–7 ms, matches the full search on the 16 measured route/duration cases);
+   the flag, the re-baseline and the docs remain. Keep the window at 3× the new
+   floor (the decision above), not the planner's true limit. Re-sweep the
+   floors, the windows and the fixed-duration anchors, and update every
+   affected test. Update
    [burn–coast–burn](Docs/simulation/burn-coast-burn.md),
    [navigation and arrival](Docs/simulation/navigation-and-arrival.md),
    [the flight model](Docs/simulation/flight-model.md),
@@ -168,9 +171,28 @@ same plan.
    window change. Fix the two wrong propellant rows in the burn–coast–burn
    table while there (the code gives 50.8 t at 20 d and 3.9 t at 90 d). Measure
    the plot and retime with `tools/bench.sh`; the 25% threshold is the
-   regression gate. Keep or remove the `DepartureVInfinityOverrideMps` seam
-   deliberately; the step-1 measurement tests may still use it. Verify the full
-   `tools/check.sh` and `tools/validate_okf.py`.
+   regression gate, except that the newly feasible reverse routes are a new
+   capability and are re-recorded rather than called regressions. Keep or
+   remove the `DepartureVInfinityOverrideMps` seam deliberately; the step-1
+   measurement tests may still use it. Verify the full `tools/check.sh` and
+   `tools/validate_okf.py`.
+
+## Step 3 stopped and resumed (2026-11-25)
+
+The first attempt made the chooser cheap and flipped the flag, then stopped on
+the window. The literal "largest accepted duration" end gave Mars 7.17–294.92 d,
+Venus 4.21–109.56 and Uranus 38.38–2,086.28 (whose certified max is refused),
+and the bench regressed 12 phases: Uranus plot **+120.8%**, Uranus retime-max
+**+333.7%**, Venus→Earth plot **+1,611.8%** and Uranus→Earth **+484.0%** as the
+split made previously refused reverses feasible. The `Begin` replan also fired
+because 3 h is now more than 1% of a 7.17-day trip.
+
+Decision: keep 3× the new floor. The wide-window experiment is discarded. The
+newly feasible reverses stay (a real improvement) and their bench rows are
+re-recorded as new plots, not regressions. The 3-hour `Begin` staleness on a
+7-day minimum is left as is for this branch; the player's real preview is
+minutes old, and the benchmark's 3-hour gap is a stress case.
+
 4. **Close out.** Add a PlayMode `capture` test that plots Gateway → Mars at 18
    days and writes the HUD screenshot, run it without `-nographics`, and show
    the result in the chat. Clear this handoff to the no-active stub in the same
@@ -195,10 +217,11 @@ same plan.
   pays ~0.6 s per probe, so step 3 must make the chooser cheap before the plot
   is benchmarked. If the cheap ranking moves the chosen `v∞`, stop and report
   rather than shipping a worse split.
-* **The window's right end is a 3× cap tied to the minimum**
-  (`FlightSession.MaximumPreviewSeconds`, `TripPlanner.MaxDurationScale`). A
-  lower minimum would shrink the slow end; step 3 replaces the cap with the
-  planner's true slow limit. Do not leave the window at `3 × 8 d`.
+* **The window keeps its 3× rule, applied to the new minimum**
+  (`FlightSession.MaximumPreviewSeconds`, `TripPlanner.MaxDurationScale`). Do
+  not grow it to the planner's true limit. The old ~49.5 d Mars end was 3× the
+  old floor; the new end is 3× the new floor, and the cheap slow trips remain
+  direct builds.
 * **Stations keep the unforced climb.** The split cost is a planet capture
   chain. Gateway → station still starts with the long climb; that is a recorded
   follow-up, not a step-3 failure.
