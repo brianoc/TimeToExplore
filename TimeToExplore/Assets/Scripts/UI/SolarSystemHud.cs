@@ -47,9 +47,29 @@ namespace TimeToExplore.UI
         private const float LegendSwatchWidth = 26f;
         private const float LegendSwatchHeight = 3f;
 
+        private const float TradeWidth = 700f;
+        private const float TradeHeight = 300f;
+        private const float TradeRowHeight = 26f;
+        private const float TradeRowsTop = 76f;
+        private const float TradeNameWidth = 118f;
+        private const float TradeVolumeOffset = 118f;
+        private const float TradeVolumeWidth = 78f;
+        private const float TradeMassOffset = 196f;
+        private const float TradeMassWidth = 92f;
+        private const float TradeBuyOffset = 288f;
+        private const float TradeSellOffset = 328f;
+        private const float TradeHeldOffset = 368f;
+        private const float TradeNumberWidth = 40f;
+        private const float TradeActionsOffset = 408f;
+        private const float TradeButtonGap = 6f;
+        private const float TradeSmallButtonWidth = 40f;
+        private const float TradeMaxButtonWidth = 54f;
+        private const float TradeSellAllButtonWidth = 72f;
+
         private const int MaxDetailsRows = 20;
         private const int MaxFlightRows = 30;
         private const int MaxLegendRows = 6;
+        private const int MaxTradeRows = 6;
         private const int InitialLabelPool = 24;
 
         /// <summary>Distinct trips the time slider offers. The handle is an
@@ -119,7 +139,24 @@ namespace TimeToExplore.UI
         private Button _beginButton;
         private Button _closeButton;
         private Button _jumpButton;
+        private Button _tradeButton;
         private BodyRuntime _detailsBody;
+
+        // The separate market screen: one panel, a fixed row pool, and one
+        // commodity id per row captured at refresh, so a button press knows
+        // which offer it acts on without rebuilding anything.
+        private GameObject _tradePanel;
+        private RectTransform _tradeRect;
+        private Image _tradeAccent;
+        private Text _tradeTitle;
+        private Text _tradeCargo;
+        private Button _tradeCloseButton;
+        private readonly List<TradeRowView> _tradeRows = new List<TradeRowView>();
+        private readonly string[] _tradeRowCommodityId = new string[MaxTradeRows];
+        private BodyRuntime _tradeBody;
+        private int _tradeRowCount;
+        private bool _tradeOpen;
+        private bool _tradeOpenedThisFrame;
 
         // Trip-time and arrival-style controls, shown only while a preview for
         // the selected body exists. The slider's value is flight time in
@@ -190,6 +227,12 @@ namespace TimeToExplore.UI
         /// <summary>The details screen is open. Clicking a body opens it.</summary>
         public bool DetailsOpen => _detailsOpen;
 
+        /// <summary>The market panel is open for the selected body.</summary>
+        public bool TradeOpen => _tradeOpen;
+
+        /// <summary>Offer rows the open market panel is showing.</summary>
+        public int TradeRowCount => _tradeRowCount;
+
         /// <summary>True while the route colour legend is on screen.</summary>
         public bool RouteLegendVisible => _legendPanel != null && _legendPanel.activeSelf;
 
@@ -210,6 +253,7 @@ namespace TimeToExplore.UI
         {
             if (_owner == null || _owner.Selected == null) return;
 
+            CloseTrade();
             _detailsOpen = true;
             _detailsBody = _owner.Selected;
             _detailsOpenedThisFrame = true;
@@ -218,6 +262,7 @@ namespace TimeToExplore.UI
         public void CloseDetails()
         {
             _detailsOpen = false;
+            CloseTrade();
             _owner?.DiscardPreview();
         }
 
@@ -244,6 +289,7 @@ namespace TimeToExplore.UI
             // screen cannot also press a button inside it, whichever order the
             // EventSystem and this Update run in.
             _detailsOpenedThisFrame = false;
+            _tradeOpenedThisFrame = false;
         }
 
         private void OnDestroy()
@@ -340,10 +386,11 @@ namespace TimeToExplore.UI
             OpenDetails();
         }
 
-        /// <summary>Immediate screen-space guard for the three HUD panels.</summary>
+        /// <summary>Immediate screen-space guard for the HUD panels.</summary>
         private bool PointerOverPanel(Vector2 screenPoint) =>
             ContainsScreenPoint(_statusRect, screenPoint) ||
             (_detailsOpen && ContainsScreenPoint(_detailsRect, screenPoint)) ||
+            (_tradeOpen && ContainsScreenPoint(_tradeRect, screenPoint)) ||
             (HasFlightPanel && ContainsScreenPoint(_flightRect, screenPoint));
 
         /// <summary>
@@ -400,6 +447,7 @@ namespace TimeToExplore.UI
         {
             RefreshStatus();
             RefreshDetails();
+            RefreshTrade();
             RefreshFlight();
             RefreshLegend();
             RefreshOverlay();
@@ -496,10 +544,15 @@ namespace TimeToExplore.UI
             {
                 if (body == null) _detailsOpen = false;
                 if (_detailsPanel.activeSelf) _detailsPanel.SetActive(false);
+                CloseTrade();
                 return;
             }
 
             if (!_detailsPanel.activeSelf) _detailsPanel.SetActive(true);
+
+            // The market belongs to one body: a new selection cannot inherit the
+            // previous body's panel.
+            if (_detailsBody != body) CloseTrade();
             _detailsBody = body;
 
             List<DetailRow> rows = BodyDetails.Build(body, _owner.Model, _owner.ShipPositionM);
@@ -585,7 +638,25 @@ namespace TimeToExplore.UI
             PlaceTopLeft(_routeButton.image, 18f, buttonY, contentWidth, 30f);
             PlaceTopLeft(_beginButton.image, 18f, buttonY + 36f, contentWidth - 106f, 28f);
             PlaceTopLeft(_closeButton.image, 18f + contentWidth - 98f, buttonY + 36f, 98f, 28f);
-            PlaceTopLeft(_jumpButton.image, 18f, buttonY + 70f, contentWidth - 106f, 28f);
+
+            // Trade shares the Jump row for a body that trades, and the row keeps
+            // its old full width when the body has no market, so the details
+            // screen does not gain an empty half.
+            TradeSession trade = _owner.Trade;
+            bool hasMarket = trade != null && trade.HasMarket(body.Id);
+            if (_tradeButton.gameObject.activeSelf != hasMarket)
+                _tradeButton.gameObject.SetActive(hasMarket);
+
+            if (hasMarket)
+            {
+                float half = (contentWidth - 8f) * 0.5f;
+                PlaceTopLeft(_jumpButton.image, 18f, buttonY + 70f, half, 28f);
+                PlaceTopLeft(_tradeButton.image, 18f + half + 8f, buttonY + 70f, half, 28f);
+            }
+            else
+            {
+                PlaceTopLeft(_jumpButton.image, 18f, buttonY + 70f, contentWidth - 106f, 28f);
+            }
 
             PlaceTimeSlider(showSlider, flight, height, contentWidth);
 
@@ -601,6 +672,8 @@ namespace TimeToExplore.UI
             _beginButton.interactable = interactive && plottable && !flying && hasPreview;
             _closeButton.interactable = interactive;
             _jumpButton.interactable = interactive && !flying;
+            _tradeButton.interactable = interactive && hasMarket &&
+                                        trade.IsOpenAt(flight, body);
         }
 
         private void OnRouteClicked()
@@ -627,6 +700,144 @@ namespace TimeToExplore.UI
         {
             _owner?.FocusSelected();
         }
+
+        // --- Trade panel --------------------------------------------------------
+
+        /// <summary>
+        /// Fill the market panel while it is open: the body name, the hold's
+        /// cargo line, one row per offer, and the held count. The panel is built
+        /// once and only its text, visibility, and the row count change, so a
+        /// transaction costs no object allocation beyond the row list. It closes
+        /// when the details screen closes, the selection changes, or the body
+        /// loses its market.
+        /// </summary>
+        private void RefreshTrade()
+        {
+            if (!_tradeOpen)
+            {
+                if (_tradePanel.activeSelf) _tradePanel.SetActive(false);
+                _tradeRowCount = 0;
+                return;
+            }
+
+            TradeSession trade = _owner.Trade;
+            BodyRuntime body = _detailsBody ?? _owner.Selected;
+            if (trade == null || body == null || !_detailsOpen || !trade.HasMarket(body.Id))
+            {
+                CloseTrade();
+                return;
+            }
+
+            if (!_tradePanel.activeSelf) _tradePanel.SetActive(true);
+
+            _tradeBody = body;
+            _tradeTitle.text = "Trade · " + body.Name;
+            _tradeCargo.text = TradeReport.CargoText(trade.Hold, trade.Catalogue);
+
+            List<TradeOfferRow> offers = TradeReport.Rows(trade.Catalogue, body.Id);
+            int shown = Math.Min(offers.Count, _tradeRows.Count);
+            _tradeRowCount = shown;
+
+            // The click that opened the market cannot also press a row.
+            bool interactive = !_detailsOpenedThisFrame && !_tradeOpenedThisFrame;
+            _tradeCloseButton.interactable = interactive;
+
+            for (int i = 0; i < _tradeRows.Count; i++)
+            {
+                TradeRowView row = _tradeRows[i];
+                bool used = i < shown;
+                if (row.Root.activeSelf != used) row.Root.SetActive(used);
+                if (!used)
+                {
+                    _tradeRowCommodityId[i] = null;
+                    continue;
+                }
+
+                TradeOfferRow offer = offers[i];
+                string commodityId = offer.Commodity.id;
+                int held = trade.Hold.UnitsOf(commodityId);
+                _tradeRowCommodityId[i] = commodityId;
+
+                row.Name.text = offer.Commodity.name;
+                row.Volume.text = TradeReport.VolumeText(offer.Commodity.volumePerUnitM3);
+                row.Mass.text = TradeReport.MassText(offer.Commodity.massPerUnitKg);
+                row.Buy.text = offer.BuyPrice.ToString();
+                row.Sell.text = offer.SellPrice.ToString();
+                row.Held.text = held.ToString();
+
+                row.BuyOne.interactable = interactive;
+                row.BuyMax.interactable = interactive;
+                row.SellOne.interactable = interactive && held > 0;
+                row.SellAll.interactable = interactive && held > 0;
+            }
+        }
+
+        private void OnTradeClicked()
+        {
+            if (_detailsOpenedThisFrame || _owner == null) return;
+
+            BodyRuntime body = _detailsBody ?? _owner.Selected;
+            TradeSession trade = _owner.Trade;
+            if (body == null || trade == null) return;
+
+            // The button is hidden without a market and disabled until arrival;
+            // the handler repeats both checks because a click can arrive from a
+            // stale layout.
+            if (!trade.HasMarket(body.Id) || !trade.IsOpenAt(_owner.Flight, body)) return;
+
+            _tradeOpen = true;
+            _tradeOpenedThisFrame = true;
+            RefreshTrade();
+        }
+
+        private void OnTradeCloseClicked()
+        {
+            if (_tradeOpenedThisFrame) return;
+            CloseTrade();
+        }
+
+        private void CloseTrade()
+        {
+            _tradeOpen = false;
+            _tradeRowCount = 0;
+            _tradeBody = null;
+            if (_tradePanel != null && _tradePanel.activeSelf) _tradePanel.SetActive(false);
+        }
+
+        /// <summary>Buy one unit, or as many as the free volume takes for
+        /// <c>+max</c>, and refresh in the same frame, so the held count and the
+        /// cargo line never lag the hold.</summary>
+        private void BuyAt(int rowIndex, bool maximum)
+        {
+            if (_tradeOpenedThisFrame || _detailsOpenedThisFrame) return;
+
+            TradeSession trade = _owner?.Trade;
+            string commodityId = RowCommodity(rowIndex);
+            if (trade == null || _tradeBody == null || commodityId == null) return;
+
+            int units = maximum ? trade.MaxBuyable(_tradeBody.Id, commodityId) : 1;
+            if (units <= 0) return;
+
+            trade.TryBuy(_tradeBody.Id, commodityId, units, out _);
+            RefreshTrade();
+        }
+
+        private void SellAt(int rowIndex, int units)
+        {
+            if (_tradeOpenedThisFrame || _detailsOpenedThisFrame) return;
+
+            TradeSession trade = _owner?.Trade;
+            string commodityId = RowCommodity(rowIndex);
+            if (trade == null || _tradeBody == null || commodityId == null) return;
+
+            trade.TrySell(_tradeBody.Id, commodityId, units, out _);
+            RefreshTrade();
+        }
+
+        private string RowCommodity(int rowIndex) =>
+            rowIndex >= 0 && rowIndex < _tradeRowCommodityId.Length
+                ? _tradeRowCommodityId[rowIndex]
+                : null;
 
         /// <summary>
         /// Position and fill the trip-time control. It appears only while the
@@ -1157,6 +1368,7 @@ namespace TimeToExplore.UI
             BuildDetailsPanel();
             BuildFlightPanel();
             BuildLegendPanel();
+            BuildTradePanel();
 
             for (int i = 0; i < InitialLabelPool; i++)
                 _labels.Add(CreateLabel(_overlay, "Label" + i));
@@ -1272,6 +1484,10 @@ namespace TimeToExplore.UI
             _jumpButton = CreateButton(parent, "JumpButton", "Jump (debug)");
             _jumpButton.onClick.AddListener(OnJumpClicked);
 
+            _tradeButton = CreateButton(parent, "TradeButton", "Trade");
+            _tradeButton.onClick.AddListener(OnTradeClicked);
+            _tradeButton.gameObject.SetActive(false);
+
             BuildTimeSlider(parent);
 
             _detailsPanel.SetActive(false);
@@ -1357,6 +1573,147 @@ namespace TimeToExplore.UI
             }
 
             _legendPanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// The market screen: a centred panel with the body name, the hold's
+        /// cargo line, one row per offer, and a Close button. It is created once
+        /// with a fixed row pool, like the details and flight panels, and the
+        /// rows the current market does not need are hidden. It sits above the
+        /// details panel in the canvas order and swallows its own clicks.
+        /// </summary>
+        private void BuildTradePanel()
+        {
+            _tradePanel = CreatePanel("TradePanel", new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), Vector2.zero,
+                new Vector2(TradeWidth, TradeHeight), DetailsBackground);
+            _tradeRect = (RectTransform)_tradePanel.transform;
+
+            Transform parent = _tradePanel.transform;
+            _tradeAccent = CreateAccentBar(parent, "TradeAccent");
+
+            _tradeTitle = CreateText(parent, "TradeTitle", "", 18, PanelTitleColour,
+                FontStyle.Bold);
+            PlaceTopLeft(_tradeTitle, 18f, 8f, TradeWidth - 36f - 110f, 24f);
+
+            _tradeCargo = CreateText(parent, "TradeCargo", "", 11, TextColour);
+            PlaceTopLeft(_tradeCargo, 18f, 38f, TradeWidth - 36f, 16f);
+
+            Text nameHeading = CreateText(parent, "TradeHeadingName", "COMMODITY", 10,
+                SectionColour, FontStyle.Bold);
+            PlaceTopLeft(nameHeading, 18f, 58f, TradeNameWidth, 14f);
+
+            Text volumeHeading = CreateText(parent, "TradeHeadingVolume", "VOLUME", 10,
+                SectionColour, FontStyle.Bold);
+            PlaceTopLeft(volumeHeading, 18f + TradeVolumeOffset, 58f, TradeVolumeWidth, 14f);
+
+            Text massHeading = CreateText(parent, "TradeHeadingMass", "MASS", 10,
+                SectionColour, FontStyle.Bold);
+            PlaceTopLeft(massHeading, 18f + TradeMassOffset, 58f, TradeMassWidth, 14f);
+
+            Text buyHeading = CreateText(parent, "TradeHeadingBuy", "BUY", 10,
+                SectionColour, FontStyle.Bold, TextAnchor.MiddleRight);
+            PlaceTopLeft(buyHeading, 18f + TradeBuyOffset, 58f, TradeNumberWidth, 14f);
+
+            Text sellHeading = CreateText(parent, "TradeHeadingSell", "SELL", 10,
+                SectionColour, FontStyle.Bold, TextAnchor.MiddleRight);
+            PlaceTopLeft(sellHeading, 18f + TradeSellOffset, 58f, TradeNumberWidth, 14f);
+
+            Text heldHeading = CreateText(parent, "TradeHeadingHeld", "HELD", 10,
+                SectionColour, FontStyle.Bold, TextAnchor.MiddleRight);
+            PlaceTopLeft(heldHeading, 18f + TradeHeldOffset, 58f, TradeNumberWidth, 14f);
+
+            for (int i = 0; i < MaxTradeRows; i++)
+                _tradeRows.Add(CreateTradeRow(parent, i));
+
+            Text hint = CreateText(parent, "TradeHint",
+                "Prices are labels · buying and selling move units only", 10, DimColour);
+            PlaceTopLeft(hint, 18f, TradeRowsTop + MaxTradeRows * TradeRowHeight + 6f,
+                TradeWidth - 36f - 110f, 14f);
+
+            _tradeCloseButton = CreateButton(parent, "TradeCloseButton", "Close");
+            PlaceTopLeft(_tradeCloseButton.image, TradeWidth - 18f - 98f,
+                TradeHeight - 38f, 98f, 28f);
+            _tradeCloseButton.onClick.AddListener(OnTradeCloseClicked);
+
+            _tradePanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// One offer row: the commodity, its per-unit figures, the two price
+        /// labels, the units held, and the four actions. The row root is what
+        /// <see cref="RefreshTrade"/> hides when the market is shorter than the
+        /// pool.
+        /// </summary>
+        private TradeRowView CreateTradeRow(Transform parent, int index)
+        {
+            string prefix = "TradeRow" + index;
+            float top = TradeRowsTop + index * TradeRowHeight;
+            RectTransform root = CreateRect(prefix, parent, new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(18f, -top), new Vector2(TradeWidth - 36f, TradeRowHeight));
+
+            Text name = CreateText(root, prefix + "Name", "", 11, RowValueColour,
+                FontStyle.Normal, TextAnchor.MiddleLeft);
+            PlaceTopLeft(name, 0f, 0f, TradeNameWidth, TradeRowHeight);
+
+            Text volume = CreateText(root, prefix + "Volume", "", 11, RowLabelColour,
+                FontStyle.Normal, TextAnchor.MiddleLeft);
+            PlaceTopLeft(volume, TradeVolumeOffset, 0f, TradeVolumeWidth, TradeRowHeight);
+
+            Text mass = CreateText(root, prefix + "Mass", "", 11, RowLabelColour,
+                FontStyle.Normal, TextAnchor.MiddleLeft);
+            PlaceTopLeft(mass, TradeMassOffset, 0f, TradeMassWidth, TradeRowHeight);
+
+            Text buy = CreateText(root, prefix + "Buy", "", 11, RowValueColour,
+                FontStyle.Normal, TextAnchor.MiddleRight);
+            PlaceTopLeft(buy, TradeBuyOffset, 0f, TradeNumberWidth, TradeRowHeight);
+
+            Text sell = CreateText(root, prefix + "Sell", "", 11, RowValueColour,
+                FontStyle.Normal, TextAnchor.MiddleRight);
+            PlaceTopLeft(sell, TradeSellOffset, 0f, TradeNumberWidth, TradeRowHeight);
+
+            Text held = CreateText(root, prefix + "Held", "", 11, RowValueColour,
+                FontStyle.Normal, TextAnchor.MiddleRight);
+            PlaceTopLeft(held, TradeHeldOffset, 0f, TradeNumberWidth, TradeRowHeight);
+
+            float sellOneX = TradeActionsOffset + TradeSmallButtonWidth
+                             + TradeButtonGap + TradeMaxButtonWidth + TradeButtonGap;
+            float sellAllX = sellOneX + TradeSmallButtonWidth + TradeButtonGap;
+
+            Button buyOne = CreateButton(root, prefix + "BuyOne", "+1");
+            PlaceTopLeft(buyOne.image, TradeActionsOffset, 2f,
+                TradeSmallButtonWidth, 22f);
+            buyOne.onClick.AddListener(() => BuyAt(index, false));
+
+            Button buyMax = CreateButton(root, prefix + "BuyMax", "+max");
+            PlaceTopLeft(buyMax.image, TradeActionsOffset + TradeSmallButtonWidth
+                                       + TradeButtonGap, 2f, TradeMaxButtonWidth, 22f);
+            buyMax.onClick.AddListener(() => BuyAt(index, true));
+
+            Button sellOne = CreateButton(root, prefix + "SellOne", "-1");
+            PlaceTopLeft(sellOne.image, sellOneX, 2f, TradeSmallButtonWidth, 22f);
+            sellOne.onClick.AddListener(() => SellAt(index, 1));
+
+            Button sellAll = CreateButton(root, prefix + "SellAll", "sell all");
+            PlaceTopLeft(sellAll.image, sellAllX, 2f, TradeSellAllButtonWidth, 22f);
+            sellAll.onClick.AddListener(() => SellAt(index, int.MaxValue));
+
+            root.gameObject.SetActive(false);
+            return new TradeRowView
+            {
+                Root = root.gameObject,
+                Name = name,
+                Volume = volume,
+                Mass = mass,
+                Buy = buy,
+                Sell = sell,
+                Held = held,
+                BuyOne = buyOne,
+                BuyMax = buyMax,
+                SellOne = sellOne,
+                SellAll = sellAll
+            };
         }
 
         /// <summary>
@@ -1725,6 +2082,21 @@ namespace TimeToExplore.UI
             public Image Solid;
             public Image[] Dashes;
             public Text Label;
+        }
+
+        private sealed class TradeRowView
+        {
+            public GameObject Root;
+            public Text Name;
+            public Text Volume;
+            public Text Mass;
+            public Text Buy;
+            public Text Sell;
+            public Text Held;
+            public Button BuyOne;
+            public Button BuyMax;
+            public Button SellOne;
+            public Button SellAll;
         }
     }
 }

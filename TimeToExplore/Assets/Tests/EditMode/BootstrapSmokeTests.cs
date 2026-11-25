@@ -79,6 +79,22 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheBootstrapOwnsTheTradeCatalogueAndAnEmptyHold()
+        {
+            Build();
+
+            Assert.That(_bootstrap.Trade, Is.Not.Null,
+                "the composition root owns the trade session, not the HUD");
+            Assert.That(_bootstrap.Trade.Catalogue.Commodities.Count, Is.EqualTo(4));
+            Assert.That(_bootstrap.Trade.Catalogue.Markets.Count, Is.EqualTo(8));
+            Assert.That(_bootstrap.Trade.HasMarket("gateway"), Is.True);
+            Assert.That(_bootstrap.Trade.Hold.CapacityM3,
+                Is.EqualTo(CargoHold.DefaultCapacityM3).Within(1e-9));
+            Assert.That(_bootstrap.Trade.Hold.UsedM3, Is.Zero,
+                "the ship starts empty");
+        }
+
+        [Test]
         public void TheFrameLoopDropsAFrameUntilTheWorldIsBuilt()
         {
             _root = new GameObject("Half-built Bootstrap");

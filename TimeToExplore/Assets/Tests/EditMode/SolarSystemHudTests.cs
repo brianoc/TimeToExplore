@@ -289,11 +289,17 @@ namespace TimeToExplore.Tests.EditMode
             Update();
             Button route = ButtonNamed("RouteButton");
             Button begin = ButtonNamed("BeginButton");
+            Button trade = ButtonNamed("TradeButton");
 
             Assert.That(route.interactable, Is.True, "a station is a valid point target");
             Assert.That(begin.interactable, Is.False, "Begin flight needs a plotted route");
             Assert.That(ButtonLabel("RouteButton").text,
                 Is.EqualTo("Plot route to Gateway Station"));
+            Assert.That(trade.gameObject.activeSelf, Is.True,
+                "Gateway has a market row, so the details footer offers trade");
+            Assert.That(trade.interactable, Is.False,
+                "the market waits for the ship to reach the hold point");
+            Assert.That(_hud.TradeOpen, Is.False);
 
             route.onClick.Invoke();
             WaitForPreview();
@@ -325,6 +331,66 @@ namespace TimeToExplore.Tests.EditMode
             Update();
             Assert.That(TextNamed("StatusDistance").text, Does.Contain("at the hold point"));
             Assert.That(TextNamed("StatusDistance").text, Does.Not.Contain("in orbit"));
+
+            // The hold point opens the market: the same Trade button becomes
+            // live, and the separate panel lists Gateway's four offers.
+            Assert.That(trade.interactable, Is.True, "the arrived ship may trade");
+            trade.onClick.Invoke();
+            Assert.That(_hud.TradeOpen, Is.True);
+            Assert.That(Child("TradePanel").activeSelf, Is.True);
+            Assert.That(TextNamed("TradeTitle").text, Is.EqualTo("Trade · Gateway Station"));
+            Assert.That(_hud.TradeRowCount, Is.EqualTo(4));
+
+            // The click that opened the market cannot also press a row.
+            Update();
+            Update();
+            Assert.That(ButtonNamed("TradeRow0BuyOne").interactable, Is.True);
+            Assert.That(ButtonNamed("TradeRow0SellAll").interactable, Is.False,
+                "nothing is held yet, so there is nothing to sell");
+
+            string cargoBefore = TextNamed("TradeCargo").text;
+            Assert.That(cargoBefore,
+                Is.EqualTo("Cargo 0.0 / 40.0 m³ · free 40.0 m³ · 0 kg"));
+            Assert.That(TextNamed("TradeRow0Name").text, Is.EqualTo("Water"));
+
+            ButtonNamed("TradeRow0BuyOne").onClick.Invoke();
+            Assert.That(_bootstrap.Trade.Hold.UnitsOf("water"), Is.EqualTo(1));
+            Assert.That(TextNamed("TradeCargo").text, Is.Not.EqualTo(cargoBefore),
+                "the cargo line follows the hold in the same frame");
+            Assert.That(TextNamed("TradeRow0Held").text, Is.EqualTo("1"));
+
+            ButtonNamed("TradeRow0BuyMax").onClick.Invoke();
+            Assert.That(_bootstrap.Trade.Hold.UnitsOf("water"), Is.EqualTo(40),
+                "+max takes every unit the free volume holds");
+            Assert.That(_bootstrap.Trade.Hold.FreeM3, Is.EqualTo(0.0).Within(1e-9));
+
+            ButtonNamed("TradeRow0SellAll").onClick.Invoke();
+            Assert.That(_bootstrap.Trade.Hold.UnitsOf("water"), Is.Zero);
+            Assert.That(TextNamed("TradeCargo").text, Is.EqualTo(cargoBefore));
+            Assert.That(TextNamed("TradeRow0Held").text, Is.EqualTo("0"));
+        }
+
+        /// <summary>
+        /// The market is a row in the trade file, not a flag on every body: a
+        /// body without one must not advertise a Trade button at all.
+        /// </summary>
+        [Test]
+        public void ABodyWithoutAMarketHidesTheTradeButton()
+        {
+            Build();
+            BodyRuntime moon = _bootstrap.Model.Get("moon");
+            _bootstrap.Select(moon);
+            _hud.OpenDetails();
+
+            Update();
+            Update();
+
+            Assert.That(_hud.DetailsOpen, Is.True);
+            Assert.That(Child("TradeButton").activeSelf, Is.False,
+                "the Moon has no market row");
+            Assert.That(Child("TradePanel").activeSelf, Is.False);
+            Assert.That(_hud.TradeOpen, Is.False);
+            Assert.That(_hud.TradeRowCount, Is.Zero);
         }
 
         [Test]

@@ -32,6 +32,7 @@ namespace TimeToExplore
         public ShipController Ship { get; private set; }
         public CameraFocusDirector Focus { get; private set; }
         public FlightSession Flight { get; private set; }
+        public TradeSession Trade { get; private set; }
         public TrajectoryLine Trajectory { get; private set; }
         public ShipCameraRig Rig { get; private set; }
         public ShipView ShipMarker { get; private set; }
@@ -88,6 +89,24 @@ namespace TimeToExplore
 
             Model = new SolarSystemModel();
             Model.Load(catalogue.text);
+
+            // The market is its own hand-edited file, loaded behind the same
+            // kind of seam as the orbital catalogue. A missing or invalid file
+            // is fatal for the prototype, so say which file and stop rather than
+            // leaving the HUD with no session to read.
+            try
+            {
+                TradeCatalogue tradeCatalogue = TradeCatalogueLoader.LoadFromResources();
+                Trade = new TradeSession(tradeCatalogue,
+                    new CargoHold(CargoHold.DefaultCapacityM3));
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError("Could not load Resources/trade_catalogue.json. "
+                               + exception.Message);
+                enabled = false;
+                return;
+            }
 
             Clock = new SimulationClock { JulianDate = Model.Data.startJulianDate };
 

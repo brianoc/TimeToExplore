@@ -2,7 +2,7 @@
 
 **Branch:** `work/trade` in the worktree at
 `/Users/brian.oconnor/.local/share/opencode/worktree/6479b2/trade`.
-**Status:** step 2 done, step 3 next. Design merged to `main` at `c016ec5`.
+**Status:** step 3 done, step 4 next. Design merged to `main` at `c016ec5`.
 **Design:** [ADR-020](/decisions/adr-020-trade-catalogue.md) and
 [Trade](/world/trade.md). The plan runs one sub-agent per step; each step is one
 commit carrying code, tests, concept updates, a `Docs/log.md` entry, and this
@@ -17,8 +17,11 @@ file.
 2. **Cargo and transactions (`Simulation`)** — **done.** `CargoHold`,
    `TradeSession`, the arrival gate, `TradeFixture`, `CargoHoldTests` and
    `TradeSessionTests` (flight).
-3. **HUD (`Presentation`)** — a Trade button in the details panel, a Trade panel,
-   `TradeSession`/`CargoHold` owned by `SolarSystemBootstrap`, presentation tests.
+3. **HUD (`Presentation`)** — **done.** `TradeReport` (pure rows and text),
+   `SolarSystemBootstrap.Trade` with the loaded catalogue and the 40 m³ hold, the
+   details **Trade** button, the separate 700×300 **Trade panel** with its four
+   actions per row, `TradeReportTests` (`presentation`), and the trade cases in
+   `SolarSystemHudTests` and `BootstrapSmokeTests`.
 4. **Close-out** — full `tools/check.sh`, evidence, roadmap, clear this file,
    merge to `main`.
 
@@ -100,5 +103,21 @@ tools/check.sh                    # close-out
   direction about the departure body to break out along"), and `moon` → `gateway`
   stalls the planner. The arrival integration flies `gateway` → `earth` and
   `gateway` → `moon` instead.
+- The HUD's one-frame guards clear at the **end** of `Update`, after `Refresh`,
+  so a control activated by a click is still `interactable == false` during the
+  next `Refresh`. A test that clicks a panel's opener must call `Update()` twice
+  before asserting the panel's buttons are live. `_tradeOpenedThisFrame` follows
+  the same rule as `_detailsOpenedThisFrame`.
+- The trade panel's row buttons are found by exact name, `TradeRow0BuyOne`,
+  `TradeRow0BuyMax`, `TradeRow0SellOne`, `TradeRow0SellAll`; the row root is
+  `TradeRow0`. `Button.onClick.Invoke()` bypasses `interactable`, so a test that
+  cares about the disabled state must assert it, not rely on the click failing.
+- `TradeReport.CargoText` writes kilograms with a grouped, trailing-zero-free
+  figure (`5,000 kg`), not `BodyDetails.FormatMass`, whose Earth comparison reads
+  `0.00 Earths` at cargo scale and `—` at zero. `FormatMass` stays the body-mass
+  formatter.
+- The trade panel's `+max` asks `TradeSession.MaxBuyable`, and `sell all` passes
+  `int.MaxValue` and lets `CargoHold.Remove` clamp; do not compute a count the
+  hold already computes.
 
 No active blocker.

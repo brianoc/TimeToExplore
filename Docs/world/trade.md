@@ -115,17 +115,38 @@ narrows that gate rather than replacing it. `MaxBuyable` gives the panel's
 
 # The panel
 
-The details panel gains a **Trade** row for any entity with a market. The button
-is disabled unless the ship has arrived. Opening it lists one row per offer:
+The details screen keeps a **Trade** button in its footer, beside Jump: the two
+share the row, half the content width each, and the button is hidden entirely for
+a body without a market row. It is visible but non-interactable until the ship
+has arrived, so an unvisited market reads as something to come back to rather
+than as missing. It never opens a transaction itself.
+
+The **Trade panel** is a second, centred panel (700×300 reference pixels) rather
+than a taller details screen. Its title is `Trade · <body name>`, then the hold's
+cargo line, then one row per offer:
 
 ```
-Water        1.0 m³/u   1,000 kg/u    buy 8   sell 6
-[+1]  [+max]  [-1]  [sell all]
+COMMODITY   VOLUME   MASS         BUY  SELL  HELD
+Water       1 m³/u   1,000 kg/u     8     6     0   [+1] [+max] [-1] [sell all]
 ```
 
-plus the hold's used and free volume. Prices are shown but never charged: a
-transaction moves units only ([ADR-020](/decisions/adr-020-trade-catalogue.md)).
-The panel is deliberately plain.
+and a Close button. The four actions call `TradeSession.TryBuy` and `TrySell`
+directly — `+1` and `+max` buy, `-1` and `sell all` sell — and the row's held
+count and the cargo line refresh on the same frame. `sell all` sells what the
+hold has, not a number the panel guesses. Prices are labels: nothing is charged
+([ADR-020](/decisions/adr-020-trade-catalogue.md)). The panel closes with the
+details screen, with a new selection, or with its own Close button, and it never
+opens for a body without a market.
+
+Rows are pooled and hidden when a market offers fewer commodities, so a fifth
+commodity needs no rebuild, only a longer panel. The text is built by
+`TradeReport` in `Presentation`: `Rows` (offers in market order), `CargoText`,
+`VolumeText` and `MassText`, all pure functions, so the content is tested without
+a scene. `SolarSystemBootstrap` owns the state: it loads
+`trade_catalogue.json` through `TradeCatalogueLoader` at startup, creates the
+40 m³ `CargoHold` and the `TradeSession`, and exposes them as `Trade`. The HUD
+only reads and calls them. A missing or invalid trade file logs an error and
+disables the bootstrap, the same way a missing `solar_system.json` does.
 
 # Deferred
 

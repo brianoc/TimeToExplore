@@ -238,7 +238,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `BodyLabels` | `Scripts/UI/BodyLabels.cs` | Pure label-density rule by body kind and distance |
 | `BodyDetails` | `Scripts/UI/BodyDetails.cs` | Details-screen rows and body formatting |
 | `FlightReport` | `Scripts/UI/FlightReport.cs` | Flight-panel phase table, preview rows, staleness, countdown, and formatting |
-| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, details screen, and the route colour legend |
+| `TradeReport` | `Scripts/UI/TradeReport.cs` | Trade-panel offer rows in market order, the cargo line, and the per-unit volume and mass text |
+| `SolarSystemHud` | `Scripts/UI/SolarSystemHud.cs` | Runtime uGUI panels, labels, hover, crosshair, details screen, trade screen, and the route colour legend |
 | `UiInput` | `Scripts/UI/UiInput.cs` | The one EventSystem and the Input System UI module; the pointer-over-panel query |
 | `SolarSystemBootstrap` | `Scripts/SolarSystemBootstrap.cs` | Composition root, frame order, and hotkeys |
 | `SolarSystemSceneBuilder` | `Editor/SolarSystemSceneBuilder.cs` | Optional scene creation menu for the shipped scene |
@@ -246,8 +247,8 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 # Composition and self-installation
 
 `SolarSystemBootstrap` is the composition root. It is deliberately small: it
-loads data, creates the model, clock, camera, renderer, flight session,
-trajectory line, ship, and HUD, and then forwards the frame.
+loads data, creates the model, clock, camera, renderer, flight session, trade
+session, trajectory line, ship, and HUD, and then forwards the frame.
 
 The bootstrap self-installs with:
 
@@ -274,8 +275,8 @@ The HUD is **uGUI**, built from code by `SolarSystemHud.Initialise`; only the
 camera and the bootstrap are serialized, so there are no prefabs or scene UI
 objects to keep in sync. The object graph is created once and then only text,
 visibility, colours, and anchored positions change. The panel text still comes
-from the pure builders (`BodyDetails`, `FlightReport`, `BodyLabels`), which is
-why the content is tested without a rendered frame.
+from the pure builders (`BodyDetails`, `FlightReport`, `TradeReport`,
+`BodyLabels`), which is why the content is tested without a rendered frame.
 
 | Object | Responsibility |
 |---|---|
@@ -283,7 +284,7 @@ why the content is tested without a rendered frame.
 | `CanvasScaler` | Scale With Screen Size, 1920×1080 reference, match 0.5; the IMGUI pixel sizes hold at 1080p and scale with the window |
 | `GraphicRaycaster` | turns the pointer into uGUI hits, so panels swallow clicks |
 | `EventSystem` + `InputSystemUIInputModule` | created by `UiInput` only when the scene has none; carries the Input System's default UI actions |
-| Panel `Image`s | status, details, flight, and route-legend backgrounds; `raycastTarget = true` except the informational legend, which is `false` |
+| Panel `Image`s | status, details, flight, route-legend, and trade backgrounds; `raycastTarget = true` except the informational legend, which is `false` |
 | `Text` widgets | legacy `Text` with `LegacyRuntime.ttf` (no TextMeshPro assets); role-separated colours and sizes match the IMGUI styles |
 | Button widgets | `Button.onClick`, with the same labels and the same `interactive` rules as before |
 | Label pool | one `Text` + `Shadow` per world label, `raycastTarget = false`, placed from projected screen points |
@@ -298,6 +299,16 @@ type, so the three conic arcs of a coasted arrival share a row while their
 shades differ on the route. It is rebuilt from `TrajectoryLine`, not from a
 hard-coded list, so the key always matches the drawn colours, and it stacks
 above the flight panel in the bottom-left corner.
+
+The trade panel is a centred second screen, not a taller details panel, because
+the details footer is already full. It is pooled the same way: a fixed set of six
+offer rows, each with its commodity text, three price and held figures, and four
+buttons, filled from `TradeReport.Rows` and hidden when the market is shorter.
+Its buttons call `TradeSession` and refresh the panel in the same frame; the HUD
+never charges anything, because prices are labels. The details Trade button is
+disabled until `TradeSession.IsOpenAt` agrees that the ship has arrived at a body
+with a market, and the panel closes when the details screen or the selection
+changes.
 
 Panel input is a uGUI question (`EventSystem.current.IsPointerOverGameObject()`)
 rather than a rectangle test. That covers the whole panel including its buttons,
