@@ -53,6 +53,7 @@ the chosen excess is in parentheses.
 | Case | Before | After |
 |---|---:|---:|
 | Mars 300 km → Gateway, coast floor (`Plan`) | 59.57357 d / 76.4939 | **54.36495 d / 98.4091** (16) |
+| Gateway → Ares Junction, coast floor (`PlanFastest`) | 16.75780 d / 1,033.4 | **7.10572 d / 1,073.7** (16) |
 | Gateway → Ares Junction, 60 d | 71.9303 | **67.8154** (2.0) |
 | Gateway → Ares Junction, 90 d | 39.3398 | **38.9403** (1.0) |
 | Gateway → Ares Junction, 120 d | 24.7331 | 24.7331 (0.0) |
@@ -65,6 +66,11 @@ the chosen excess is in parentheses.
 * **Every fixed duration is cheaper.** The 120-day Gateway → Ares Junction plan is
   unmoved because the chooser chooses 0 km/s there.
 * **The station window is 54.36–163.09 d**, against 59.57–178.72 before.
+* **The Gateway → Ares Junction window moved to 7.11–21.32 d**, against
+  16.76–50.27 d: the split-aware floor is 7.10572 d at the 16 km/s cap. Fixed
+  durations above the 3× cap — 60 days and up — are direct `PlanAtDuration`
+  builds, not slider positions. That was already true before the split, but the
+  cap is lower now.
 * **The plan is exact.** The floor is five arcs; every seam closes inside 1 km and
   1 m/s and the hold state is reached at **9.4 × 10⁻³ m and 8.0 × 10⁻⁷ m/s**.
 * **The search stays cheap.** A station chooser takes **4.1–4.5 ms**,

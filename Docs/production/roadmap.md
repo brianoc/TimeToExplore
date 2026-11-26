@@ -408,7 +408,11 @@ the arrival date, so there is no chain to price and no chain duration to subtrac
 and the same grid and refinement choose the excess once per build. From a Mars
 300 km orbit to Gateway the coast floor is **54.36495 d / 98.4091 km/s** at a
 16 km/s excess, five arcs, against 59.57357 d / 76.494 with the unforced climb,
-and the trip window is **54.36–163.09 d**. The floor is **faster but costlier** —
+and the trip window is **54.36–163.09 d**. The Gateway → Ares Junction window
+moved from 16.76–50.27 d to **7.11–21.32 d** (its split-aware floor is 7.10572 d
+at the 16 km/s cap). Fixed durations above the 3× cap are direct
+`PlanAtDuration` builds, not slider positions — that was already true before the
+split, but the cap is lower now. The floor is **faster but costlier** —
 the shortest trip takes the grid's cap, as every planet floor does — while every
 fixed duration gets cheaper: Gateway → Ares Junction at 60 / 90 / 120 / 160 days
 is **67.8154 / 38.9403 / 24.7331 / 15.0673 km/s** against 71.9303 / 39.3398 /

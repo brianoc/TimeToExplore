@@ -246,8 +246,17 @@ with `-testFilter`, for example
 unchanged, the route appearing in the Plot click's own frame, and the camera
 move that click asks for.
 Its frames land in `route-prime-frames/` beside `trade-panel.png` and are
-assembled into a clip by hand. Run either by hand without `-nographics`,
-because the capture needs a graphics device:
+assembled into a clip by hand.
+
+`DepartureSplitCaptureTests` and `StationDepartureSplitCaptureTests` are the
+split's evidence: both dock at Gateway at the epoch, plot through the real
+details panel, retime through the HUD's own entry point, and write a 1600×900
+`departure-split.png` / `station-departure-split.png`. The planet capture uses
+18 days, inside the Mars window. The station capture uses the top of the
+Gateway → Ares Junction window, **21.31717 d** (7.11–21.32 d), because the
+60/90/120/160-day station anchors are direct `PlanAtDuration` builds beyond the
+3× cap. Both assert their plan numbers, not pixels. Run any of them by hand
+without `-nographics`, because the capture needs a graphics device:
 
 ```bash
 python3 tools/unity_guard.py --log /tmp/unity-capture.log --timeout-seconds 900 \
@@ -396,6 +405,8 @@ measured values are in the 2026-11-24 and 2026-11-26 update logs):
 | Mars 300 km → Gateway, 120 d | 24.3137 km/s, five arcs: break, escape, departure burn, coast, match (chosen v∞ 1.0) |
 | Mars 300 km → Gateway, coast floor | 54.36495 d, 98.4091 km/s, five arcs (chosen v∞ 16) |
 | Mars 300 km → Gateway, trip-time window | 54.36–163.09 d (3 × the split-aware floor) |
+| Gateway → Ares Junction, coast floor | 7.10572 d, 1,073.66 km/s, five arcs (chosen v∞ 16); 16.75780 d / 1,033.44 km/s with the split off |
+| Gateway → Ares Junction, trip-time window | 7.11–21.32 d (3 × the split-aware floor; 16.76–50.27 d with the split off) |
 | Gateway → Ares Junction, 120 d | 24.733 km/s, five arcs: break 1.404, escape 0.252, burn 7.577, coast 0.063, match 15.437 (v∞ 0, unmoved) |
 | Ares Junction → Earth, 230 d | 24.091 km/s, seven arcs, a heliocentric start |
 | Helios Watch → Mars, 200 d | 10.747 km/s, seven arcs, a heliocentric start |

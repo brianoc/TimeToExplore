@@ -287,7 +287,11 @@ A **station** with a departure body follows the same rule at the epoch: from a
 Mars 300 km orbit to Gateway the split-aware floor is **54.36495 d** (98.4091
 km/s at a 16 km/s excess, five arcs) and the window **54.36–163.09 d**, against
 59.57357 d / 76.494 km/s with the unforced climb
-([ADR-023](/decisions/adr-023-station-departure-split.md)). The floor is faster
+([ADR-023](/decisions/adr-023-station-departure-split.md)). Gateway → Ares
+Junction's own window moved from **16.76–50.27 d** to **7.11–21.32 d**: its
+split-aware floor is **7.10572 d** at the 16 km/s cap, and fixed durations above
+the 3× cap are direct `PlanAtDuration` builds, not slider positions — that was
+already true before the split, but the cap is lower now. The floor is faster
 and costlier; every fixed station duration is cheaper — Gateway → Ares Junction
 at 60 / 90 / 120 / 160 days is **67.8154 / 38.9403 / 24.7331 / 15.0673 km/s**
 against 71.9303 / 39.3398 / 24.7331 / 15.1026, and Mars 300 km → Gateway at
