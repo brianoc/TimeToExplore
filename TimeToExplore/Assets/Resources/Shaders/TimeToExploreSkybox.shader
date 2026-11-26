@@ -42,6 +42,7 @@ Shader "TimeToExplore/Skybox"
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
@@ -119,8 +120,8 @@ Shader "TimeToExplore/Skybox"
                 core *= core * core;
                 half halo = saturate(1.0h - sinAngle / (localRadius * 3.0h));
 
-                half3 tint = lerp(half3(0.70, 0.80, 1.00),
-                                  half3(1.00, 0.80, 0.55), h.z * h.z);
+                half3 tint = lerp(SRGBToLinear(half3(0.70, 0.80, 1.00)),
+                                  SRGBToLinear(half3(1.00, 0.80, 0.55)), h.z * h.z);
                 return tint * (gain * (0.04h + 2.4h * magnitude) * (core + 0.06h * halo));
             }
 
@@ -139,12 +140,14 @@ Shader "TimeToExplore/Skybox"
 
             // B-V through the eye's reading of colour temperature at low light:
             // blue-white, white, amber. The channel arrives normalised to 0..1
-            // over the catalogue's -0.4 to 2.0 range.
+            // over the catalogue's -0.4 to 2.0 range. The tints are authored in
+            // sRGB, so they convert once here rather than being re-picked for
+            // linear light.
             half3 StarTint(half bv)
             {
-                half3 cool = half3(0.72, 0.80, 1.00);
+                half3 cool = SRGBToLinear(half3(0.72, 0.80, 1.00));
                 half3 white = half3(1.00, 1.00, 1.00);
-                half3 warm = half3(1.00, 0.72, 0.48);
+                half3 warm = SRGBToLinear(half3(1.00, 0.72, 0.48));
                 return bv < 0.42h
                     ? lerp(cool, white, saturate(bv / 0.42h))
                     : lerp(white, warm, saturate((bv - 0.42h) / 0.58h));

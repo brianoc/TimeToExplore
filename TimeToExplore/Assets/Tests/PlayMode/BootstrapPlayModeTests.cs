@@ -495,10 +495,12 @@ namespace TimeToExplore.Tests.PlayMode
                 Assert.That(line.positionCount, Is.GreaterThanOrEqualTo(2));
                 Assert.That(line.widthCurve.length, Is.EqualTo(line.positionCount),
                     "every vertex carries its own apparent width");
-                AssertColour(line.startColor, _bootstrap.Trajectory.ArcColour(i),
-                    $"arc {i} start colour");
-                AssertColour(line.endColor, _bootstrap.Trajectory.ArcColour(i),
-                    $"arc {i} end colour");
+                // The palette is authored in sRGB; the LineRenderer's vertex
+                // colours are not converted for us, so the drawn value is the
+                // authored colour in linear light.
+                Color drawn = _bootstrap.Trajectory.ArcColour(i).linear;
+                AssertColour(line.startColor, drawn, $"arc {i} start colour");
+                AssertColour(line.endColor, drawn, $"arc {i} end colour");
 
                 for (int v = 0; v < line.positionCount; v++)
                 {
