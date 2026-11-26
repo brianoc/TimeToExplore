@@ -302,10 +302,12 @@ than the heliocentric coast it replaced.
 **These are the powered-quintic profile's measurements.** The old/new columns
 below and in the next section record the approach leg's own change on the
 pre-physical-departure profile (2026-11-18/20). The physical departure
-(2026-11-23) re-baselined every total, floor and window: the shipping anchors are
-now **Mercury 1 g 14.06070 d, Mars 0.3 g 16.84485 d, Jupiter 0.3 g 23.73299 d,
-Uranus 1 g 57.02223 d and Uranus 0.3 g 92.13088 d**
-([ADR-019](/decisions/adr-019-station-calls-and-departure.md),
+(2026-11-23) re-baselined every total, floor and window, and the departure climb
+split (2026-11-26) re-baselined the floors and windows again: the shipping
+coast floors are now the **split-aware** ones, **Mercury 1 g 3.67616 d, Mars
+0.3 g 7.16751 d, Jupiter 0.3 g 13.58298 d, Uranus 1 g 28.18209 d and Uranus
+0.3 g 37.00540 d**
+([ADR-022](/decisions/adr-022-departure-split.md),
 [Testing and verification](/technical/testing.md#numerical-references-at-the-epoch)).
 Read the sections below as the measurement history of the approach leg and the
 floor search, not as current trip numbers.
@@ -595,13 +597,15 @@ anchors the docs carried at that time: **Uranus 0.3 g 33.60438 d** (coast window
 33.60–100.81
 d), **Uranus 1 g 33.65372 d** (33.65–100.96 d), **Mars 0.3 g 6.73042 d**
 (6.73–20.19 d), **Mercury 1 g 3.21610 d** (3.22–9.65 d), and **Jupiter 0.3 g
-13.07211 d** (13.07–39.22 d). The physical departure re-baselined them; the
-current floors are **Mercury 1 g 14.06070, Mars 0.3 g 16.84485, Jupiter 0.3 g
-23.73299, Uranus 1 g 57.02223 and 0.3 g 92.13088 d**. Since step 3 of the
-burn-only plan the nav
-computer's minimum is the burn-only total where it wins — Mercury 3.04470, Mars
-6.49501, Jupiter 12.54280 d at that time — so the slider's left end and its
-three-times upper end were shorter than those coast windows. Every one is a
+13.07211 d** (13.07–39.22 d). The physical departure re-baselined them, and the
+departure climb split re-baselined the floors again
+([ADR-022](/decisions/adr-022-departure-split.md)): the split-aware floors are
+**Mercury 1 g 3.67616, Mars 0.3 g 7.16751, Jupiter 0.3 g 13.58298, Uranus 1 g
+28.18209 and 0.3 g 37.00540 d**. Until the split the nav computer's minimum was
+the burn-only total where it won — Mercury 3.04470, Mars 6.49501, Jupiter
+12.54280 d at that time — so the slider's left end and its three-times upper end
+were shorter than those coast windows; the split inverts that, and `PlanFastest`
+now returns the coast floor. Every one of those floors is a
 certified full-field plan: the
 returned duration is rebuilt with the summed field, every arc has its measured
 clearance and delta-v, and every seam is inside the 1 km / 1 m/s gate. Each of

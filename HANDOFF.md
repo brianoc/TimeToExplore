@@ -9,7 +9,8 @@ against. The planet split is [ADR-022](Docs/decisions/adr-022-departure-split.md
 the station profile is [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md)
 and [Navigation and arrival](Docs/simulation/navigation-and-arrival.md).
 
-**Step 3 is committed. Step 4 is next.**
+**Step 3 and the docs fix are committed. Step 4 (capture and close-out) is
+next.**
 
 ## What is done
 
@@ -115,6 +116,16 @@ The test and the docs are in. The rebuilt anchors that step 4 must capture:
 [ADR-023](Docs/decisions/adr-023-station-departure-split.md) records the station
 rule, ADR-022 carries a "superseded in part: decision 5" note, and the station
 follow-up is gone from [the roadmap](Docs/production/roadmap.md) (two remain).
+- **Docs fix (step 3 follow-up)** is in: the flight-core anchor table in
+  [Testing and verification](Docs/technical/testing.md) now carries the ADR-022
+  split-aware floors (Mars 0.3 g 7.16751 d / 1,070.1 km/s, Mercury 1 g
+  3.67616 d / 1,649.4 km/s, Jupiter 0.3 g 13.58298 d / 2,133.8 km/s), and
+  [The powered-leg floor](Docs/simulation/powered-leg-floor.md) names the
+  split-aware floors and links ADR-022 in both summary sentences. Left as found:
+  the current-tense burn–coast–burn anchor table at the top of the same testing
+  page and the `flight-session.md` Begin anchors still quote pre-split numbers;
+  they need measurements ADR-022 does not carry, so they are separate work. See
+  the 2026-11-26 `**Fix**` entry in [Docs/log.md](Docs/log.md).
 A station whose parent is the departure body — Helios Watch, Nyx Anchor from
 Earth — still never climbs; that is a recorded limitation, not work for step 4.
 

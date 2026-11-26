@@ -281,13 +281,14 @@ against its eccentricity bounds, and L4/L5 against the equilateral-triangle
 property.
 
 The flight core has its own anchors, measured from Gateway Station at the epoch
-with a 10 m/s² drive:
+with a 10 m/s² drive. The coast floors are the split-aware ones
+([ADR-022](/decisions/adr-022-departure-split.md)):
 
 | Quantity | Value |
 |---|---|
-| Gateway to Mars plan (coast floor, 0.3 g) | 16.84485 days, 1,017.1 km/s, 2.95 m/s² peak |
-| Gateway to Mercury plan (coast floor, 1 g) | 14.06070 days, 1,821.1 km/s, 9.70 m/s² peak |
-| Gateway to Jupiter plan (coast floor, 0.3 g) | 23.73299 days, 1,899.5 km/s, 2.95 m/s² peak |
+| Gateway to Mars plan (coast floor, 0.3 g) | 7.16751 days, 1,070.1 km/s, 2.95 m/s² peak |
+| Gateway to Mercury plan (coast floor, 1 g) | 3.67616 days, 1,649.4 km/s, 9.70 m/s² peak |
+| Gateway to Jupiter plan (coast floor, 0.3 g) | 13.58298 days, 2,133.8 km/s, 2.95 m/s² peak |
 | Mars parking orbit (conic) | 3,898 km radius, 3.315 km/s |
 | Jupiter parking orbit (gravity ceiling, quintic inside-sphere capture) | 177,965 km radius, 4.0 m/s², 26.7 km/s |
 | Mars eccentricity after three orbits | 3.1 × 10⁻⁶ |
