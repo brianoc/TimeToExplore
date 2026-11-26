@@ -289,15 +289,14 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.ArcLabel(2), Is.EqualTo("Fixed burn"));
             Assert.That(_bootstrap.Trajectory.ArcIsDashed(2), Is.False,
                 "the departure burn is solid");
-            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Fixed burn"));
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.False);
-            Assert.That(_bootstrap.Trajectory.ArcColour(3),
-                Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(2)),
-                "two fixed burns back to back take two shades");
-            Assert.That(_bootstrap.Trajectory.ArcColour(4),
+            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Conic arc"));
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.True,
+                "the cruise coast is the conic phase");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(4), Is.EqualTo("Fixed burn"),
+                "the brake follows the coast");
+            Assert.That(_bootstrap.Trajectory.ArcColour(5),
                 Is.EqualTo(RouteColours.Conic),
-                "the brake ends the fixed run and the capture chain starts");
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(4), Is.True);
+                "the capture chain follows the brake");
             Assert.That(_bootstrap.Trajectory.ArcColour(5),
                 Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(4)),
                 "the transfer is the second conic in the run");
@@ -307,11 +306,11 @@ namespace TimeToExplore.Tests.EditMode
             WaitForRebuild(conic);
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "the zero-coast minimum keeps its conic capture chain");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(9),
+                "the coast floor keeps its conic capture chain and adds the hybrid's burn");
             Assert.That(_bootstrap.Flight.Preview.Arcs.Count(arc => arc.IsFiniteBurn),
-                Is.EqualTo(2),
-                "departure burn and brake");
+                Is.EqualTo(3),
+                "departure burn, brake and the hybrid capture");
 
             // Above the floor the arrival style is visible: the hybrid capture
             // adds its finite capture burn.
@@ -564,10 +563,13 @@ namespace TimeToExplore.Tests.EditMode
                 "the preview carries the departure burn and the brake");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(17.5),
-                "the window starts at the nav computer's burn-only minimum");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(16.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(8.0),
+                "the window starts at the split-aware coast floor");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.5),
                 "the minimum is a real plan, not the profile being flown faster than it can");
+            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
+                                                && arc.IsCoast),
+                Is.True, "the split-aware minimum cruises");
             Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
                 Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);

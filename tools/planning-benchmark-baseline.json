@@ -4,40 +4,40 @@
     "unityVersion": "6000.3.28f1",
     "cpu": "Apple M4 Max, 16 cores, 65536 MB",
     "operatingSystem": "Mac OS X 27.2.1",
-    "recordedAt": "2026-11-25",
+    "recordedAt": "2026-11-26",
     "note": "JD 2461359.5, conic capture. Plot is PlanFastest plus the cold window build. Retimes are PlanAtDuration at the window middle and maximum. Drag requests eight consecutive slider steps from the window minimum on the session's own worker, prefetch on, and reports each request's time to publish. Begin plots at the epoch, advances the clock three hours, then calls the session's Begin: inside the preview's freshness window it flies the drawn plan, outside it replans; the '@max' phase retimes the preview to the window maximum first.",
     "routes": [
         {
             "route": "earth-mars",
             "displayName": "Earth → Mars",
             "burnLevelG": 0.3,
-            "floorDays": 16.48669373895973,
-            "windowMaxDays": 49.46008121687919,
-            "note": "Gateway station, Earth's anchor departure point; 0.3 g is the default level; plot 16.48669 d, retime mid 32.97339 d, retime max 49.46008 d, begin 16.48669 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 377 ms median, 392 ms worst, 0 built, 8 from cache, 6 prefetched",
+            "floorDays": 7.167509087827057,
+            "windowMaxDays": 21.50252726348117,
+            "note": "Gateway station, Earth's anchor departure point; 0.3 g is the default level; plot 7.16751 d, retime mid 14.33502 d, retime max 21.50253 d, begin 7.07717 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 438 ms median, 1204 ms worst, 0 built, 8 from cache, 6 prefetched",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 4135.8704
+                    "milliseconds": 3513.4705
                 },
                 {
                     "phase": "drag-median",
-                    "milliseconds": 377.2118
+                    "milliseconds": 438.14
                 },
                 {
                     "phase": "drag-worst",
-                    "milliseconds": 392.0619
+                    "milliseconds": 1203.9218
                 },
                 {
                     "phase": "retime-mid",
-                    "milliseconds": 472.6904
+                    "milliseconds": 571.8246
                 },
                 {
                     "phase": "retime-max",
-                    "milliseconds": 379.4413
+                    "milliseconds": 486.9146
                 },
                 {
                     "phase": "begin-min",
-                    "milliseconds": 0.0703
+                    "milliseconds": 2648.4192
                 },
                 {
                     "phase": "begin-retime",
@@ -45,7 +45,7 @@
                 },
                 {
                     "phase": "begin-total",
-                    "milliseconds": 0.0653
+                    "milliseconds": 0.0683
                 }
             ]
         },
@@ -53,75 +53,33 @@
             "route": "earth-venus",
             "displayName": "Earth → Venus",
             "burnLevelG": 0.3,
-            "floorDays": 14.109088856261224,
-            "windowMaxDays": 42.32726656878367,
-            "note": "Gateway station; 0.3 g is the default level; plot 14.10909 d, retime mid 28.21818 d, retime max 42.32727 d, begin 14.10909 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 376 ms median, 420 ms worst, 0 built, 8 from cache, 6 prefetched",
+            "floorDays": 4.2090074685402218,
+            "windowMaxDays": 12.627022405620665,
+            "note": "Gateway station; 0.3 g is the default level; plot 4.20901 d, retime mid 8.41801 d, retime max 12.62702 d, begin 4.11895 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 438 ms median, 562 ms worst, 1 built, 7 from cache, 5 prefetched",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 10323.108
+                    "milliseconds": 2798.0486
                 },
                 {
                     "phase": "drag-median",
-                    "milliseconds": 375.9517
+                    "milliseconds": 437.7906
                 },
                 {
                     "phase": "drag-worst",
-                    "milliseconds": 420.0151
+                    "milliseconds": 562.2119
                 },
                 {
                     "phase": "retime-mid",
-                    "milliseconds": 486.9415
+                    "milliseconds": 571.1534
                 },
                 {
                     "phase": "retime-max",
-                    "milliseconds": 484.8921
+                    "milliseconds": 466.8812
                 },
                 {
                     "phase": "begin-min",
-                    "milliseconds": 0.0699
-                },
-                {
-                    "phase": "begin-retime",
-                    "milliseconds": 0.0022999999999999967
-                },
-                {
-                    "phase": "begin-total",
-                    "milliseconds": 0.0722
-                }
-            ]
-        },
-        {
-            "route": "earth-uranus",
-            "displayName": "Earth → Uranus",
-            "burnLevelG": 0.3,
-            "floorDays": 92.13088452070952,
-            "windowMaxDays": 276.39265356212857,
-            "note": "Gateway station; 0.3 g is the default level; plot 92.13088 d, retime mid 184.26177 d, retime max 276.39265 d, begin 92.13088 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 379 ms median, 382 ms worst, 1 built, 7 from cache, 5 prefetched",
-            "phases": [
-                {
-                    "phase": "plot",
-                    "milliseconds": 2119.9992
-                },
-                {
-                    "phase": "drag-median",
-                    "milliseconds": 378.5073
-                },
-                {
-                    "phase": "drag-worst",
-                    "milliseconds": 382.0696
-                },
-                {
-                    "phase": "retime-mid",
-                    "milliseconds": 511.7053
-                },
-                {
-                    "phase": "retime-max",
-                    "milliseconds": 500.5435
-                },
-                {
-                    "phase": "begin-min",
-                    "milliseconds": 0.0726
+                    "milliseconds": 2993.3366
                 },
                 {
                     "phase": "begin-retime",
@@ -129,7 +87,49 @@
                 },
                 {
                     "phase": "begin-total",
-                    "milliseconds": 0.073
+                    "milliseconds": 0.065
+                }
+            ]
+        },
+        {
+            "route": "earth-uranus",
+            "displayName": "Earth → Uranus",
+            "burnLevelG": 0.3,
+            "floorDays": 37.00539751490578,
+            "windowMaxDays": 111.01619254471734,
+            "note": "Gateway station; 0.3 g is the default level; plot 37.00540 d, retime mid 74.01080 d, retime max 111.01619 d, begin 37.00540 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first; drag of 8 steps: 504 ms median, 541 ms worst, 0 built, 8 from cache, 6 prefetched",
+            "phases": [
+                {
+                    "phase": "plot",
+                    "milliseconds": 3979.5776
+                },
+                {
+                    "phase": "drag-median",
+                    "milliseconds": 504.2943
+                },
+                {
+                    "phase": "drag-worst",
+                    "milliseconds": 541.1011
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 526.3676
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 612.0493
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 0.0711
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 0.0006000000000000033
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 0.0715
                 }
             ]
         },
@@ -143,7 +143,7 @@
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 411.0062
+                    "milliseconds": 796.7055
                 }
             ]
         },
@@ -151,13 +151,33 @@
             "route": "venus-earth",
             "displayName": "Venus → Earth",
             "burnLevelG": 1.0,
-            "floorDays": 0.0,
-            "windowMaxDays": 0.0,
-            "note": "Venus conic parking orbit; 0.3 g cannot lift out of Venus's well, so 1 g; plot refused (burn-coast-burn: coast: no prograde short-way Lambert transfer at this trip time (transfer angle 1.0 deg); the coast needs a prograde transfer short of 180 deg); retime and begin are not measured; a fixed 90 d build is refused too (burn-coast-burn: the approach conic cannot reach the handover ceiling from the brake's start)",
+            "floorDays": 6.62748920544982,
+            "windowMaxDays": 19.88246761634946,
+            "note": "Venus conic parking orbit; 0.3 g cannot lift out of Venus's well, so 1 g; plot 6.62749 d, retime mid infeasible (burn-coast-burn: coast: no prograde short-way Lambert transfer at this trip time (transfer angle 7.4 deg); the coast needs a prograde transfer short of 180 deg), retime max 19.88247 d, begin 8.41906 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 430.8662
+                    "milliseconds": 10233.5506
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 36.0998
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 749.7034
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 4708.5963
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 0.0
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 4697.1753
                 }
             ]
         },
@@ -165,13 +185,33 @@
             "route": "uranus-earth",
             "displayName": "Uranus → Earth",
             "burnLevelG": 1.0,
-            "floorDays": 0.0,
-            "windowMaxDays": 0.0,
-            "note": "Uranus conic parking orbit; 0.3 g cannot lift out of Uranus's well, so 1 g; plot refused (burn-coast-burn: the trip time leaves no room for the break and the escape climb at the 9.700 m/s² level); retime and begin are not measured; a fixed 90 d build is refused too (burn-coast-burn: the trip time leaves no room for the break and the escape climb at the 9.700 m/s² level)",
+            "floorDays": 64.1547159855254,
+            "windowMaxDays": 176.42546896019486,
+            "note": "Uranus conic parking orbit; 0.3 g cannot lift out of Uranus's well, so 1 g; plot 64.15472 d, retime mid 120.29009 d, retime max 176.42547 d, begin 65.39530 d; begin flies the drawn minimum; its @max phase retimes the preview to the window maximum first",
             "phases": [
                 {
                     "phase": "plot",
-                    "milliseconds": 512.8711
+                    "milliseconds": 39026.425
+                },
+                {
+                    "phase": "retime-mid",
+                    "milliseconds": 664.7183
+                },
+                {
+                    "phase": "retime-max",
+                    "milliseconds": 614.2144
+                },
+                {
+                    "phase": "begin-min",
+                    "milliseconds": 3018.7384
+                },
+                {
+                    "phase": "begin-retime",
+                    "milliseconds": 3.4440999999997077
+                },
+                {
+                    "phase": "begin-total",
+                    "milliseconds": 3026.2876
                 }
             ]
         }

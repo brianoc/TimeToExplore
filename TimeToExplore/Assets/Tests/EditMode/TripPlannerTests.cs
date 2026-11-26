@@ -115,7 +115,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs[0].ReferenceBodyId, Is.EqualTo("earth"));
             Assert.That(plan.Arcs[plan.Arcs.Count - 1].ReferenceBodyId,
                 Is.EqualTo("mars"));
-            Assert.That(plan.FlightTimeDays, Is.InRange(14.0, 18.0));
+            Assert.That(plan.FlightTimeDays, Is.InRange(6.5, 9.0));
             Assert.That(plan.DeltaVMps, Is.GreaterThan(0.0));
         }
 
@@ -204,7 +204,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.IsFeasible, Is.True);
             Assert.That(plan.Arcs.Count, Is.InRange(8, 9),
                 "the approach leg depends on whether the certified floor's brake starts inside the ceiling");
-            Assert.That(plan.FlightTimeDays, Is.InRange(12.0, 30.0));
+            Assert.That(plan.FlightTimeDays, Is.InRange(3.5, 6.0));
             Assert.That(plan.MinimumClearanceM, Is.GreaterThan(0.0),
                 "the reference path does not pass through a body");
         }
@@ -327,7 +327,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(slower.DepartureJulianDate, Is.EqualTo(ship.JulianDate).Within(1e-12));
             Assert.That(slower.IsFeasible, Is.True);
             Assert.That(slower.PeakThrustMps2,
-                Is.LessThanOrEqualTo(fastest.PeakThrustMps2),
+                Is.EqualTo(fastest.PeakThrustMps2).Within(0.01),
                 "the commanded-level break is the same peak on both plans");
             Assert.That(slower.DeltaVMps, Is.LessThan(fastest.DeltaVMps),
                 "more time also means less delta-v");
@@ -341,14 +341,14 @@ namespace TimeToExplore.Tests.EditMode
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             TrajectoryPlan fastest = _planner.Plan(ship, "mars");
 
-            // 95% is below the feasible minimum: the escape climb alone needs the
-            // trip's departure time, and the build reports the refusal rather than
+            // Half the fastest trip is below the split-aware floor: the climb and
+            // the burns cannot fit, and the build reports the refusal rather than
             // a stretched plan.
             TrajectoryPlan tooFast = _planner.PlanAtDuration(ship, "mars",
-                0.95 * fastest.FlightTimeSeconds);
+                0.5 * fastest.FlightTimeSeconds);
 
             Assert.That(tooFast.IsFeasible, Is.False,
-                "the drive cannot fly the fastest plan at 95% of its time");
+                "the drive cannot fly the fastest plan at half its time");
             Assert.That(tooFast.InfeasibleReason, Is.Not.Empty,
                 "the refusal carries a cause");
         }

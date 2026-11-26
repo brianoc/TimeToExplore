@@ -225,9 +225,10 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// The step-1 planet anchor does not move: Gateway to Mars at 90 days and
-        /// 0.3 g is still 38.9678 km/s across nine arcs. A point-target station
-        /// must not change the planet path.
+        /// The planet anchor re-baselines with the split: Gateway to Mars at
+        /// 90 days and 0.3 g is 38.5411 km/s across nine arcs (the station target
+        /// keeps the unforced climb, so this test and the station path are
+        /// independent). A point-target station must not change the planet path.
         /// </summary>
         [Test]
         public void ThePlanetAnchorIsUnmovedByTheStationTarget()
@@ -240,8 +241,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs.Count, Is.EqualTo(9));
             TestContext.WriteLine($"Gateway -> Mars 90 d: " +
                                   $"{plan.DeltaVMps / 1000.0:F4} km/s");
-            Assert.That(Math.Round(plan.DeltaVMps / 1000.0, 4), Is.EqualTo(38.9678),
-                "the re-baselined step-1 anchor is unchanged");
+            Assert.That(Math.Round(plan.DeltaVMps / 1000.0, 4), Is.EqualTo(38.5411),
+                "the re-baselined planet anchor is the split-aware value");
         }
 
         /// <summary>

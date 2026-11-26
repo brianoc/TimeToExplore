@@ -513,8 +513,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(TextNamed("TimeSliderValue").text,
                 Does.StartWith(SolarSystemHud.FormatDuration(minimum)));
             Assert.That(TextNamed("TimeSliderValue").text,
-                Does.Contain("0.3 g burns · no coast"),
-                "the minimum is the zero-coast crossing, and the label says so");
+                Does.Contain("0.3 g burns · coast"),
+                "the minimum is the coast floor, and the label says so");
 
             float step = StepFor(slider, 2.0 * minimum, minimum, maximum);
             double chosen = SecondsFor(slider, step, minimum, maximum);
@@ -575,8 +575,8 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color),
                 "the active style is marked");
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "the default is the conic capture on the zero-coast crossing");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(8),
+                "the default is the conic capture on the coast floor");
 
             // The zero-coast minimum carries the conic capture chain whichever
             // arrival style is chosen, so retime above the floor first: there the
@@ -600,8 +600,8 @@ namespace TimeToExplore.Tests.EditMode
                 .EntryImpulseMps, Is.GreaterThan(0.0),
                 "the hybrid circularises impulsively");
             Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
-                Is.EqualTo(conicMinimum).Within(1e-6),
-                "the window's minimum is the conic burn-only crossing; the retime carries the style");
+                Is.EqualTo(conicMinimum).Within(120.0),
+                "the window's minimum is the conic coast floor; the retime carries the style");
             Assert.That(SliderNamed("TimeSlider").minValue,
                 Is.EqualTo(0f).Within(1e-6));
             Assert.That(SliderNamed("TimeSlider").maxValue,
@@ -715,13 +715,13 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
                 "the profile flies its departure burn and brake");
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.False,
-                "the minimum is the zero-coast crossing, so no cruise coast");
+                Is.True,
+                "the split-aware minimum keeps its cruise coast");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(17.5),
-                "the window starts at the profile's burn-only minimum");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(16.0),
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(8.0),
+                "the window starts at the split-aware coast floor");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.5),
                 "the floor is the shortest plan the profile can fly, not the torch plan");
             double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
@@ -750,8 +750,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(brake.Value, Does.Contain("km/s"));
             Assert.That(brake.Value, Does.Contain("0.3 g"));
             Assert.That(report.Any(row => row.Label == "Coast" &&
-                                          row.Value.StartsWith("drive off")), Is.False,
-                "the zero-coast minimum has no cruise coast to report");
+                                          row.Value.StartsWith("drive off")), Is.True,
+                "the coast-floor minimum reports its cruise coast");
             Assert.That(report.Any(row => row.Label == "Capture"), Is.True);
             Assert.That(report.Any(row => row.Label == "Cruise" &&
                                           row.Value.Contains("prograde burn")), Is.True);
@@ -900,9 +900,9 @@ namespace TimeToExplore.Tests.EditMode
             };
             TrajectoryPlan rejected = planner.PlanAtDuration(
                 FlightFixture.ShipAt(_bootstrap.Model, "gateway"), "mercury",
-                3.0 * JulianDate.SecondsPerDay);
+                1.0 * JulianDate.SecondsPerDay);
             Assert.That(rejected.IsFeasible, Is.False);
-            Assert.That(rejected.InfeasibleReason, Does.Contain("trip time"));
+            Assert.That(rejected.InfeasibleReason, Does.Contain("escape climb"));
 
             // A rejected flight is a state the planner only reaches through a
             // full Begin; put the session there directly so the display path is
@@ -919,21 +919,21 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo("Plan infeasible"));
 
             string reason = rejected.InfeasibleReason;
-            Assert.That(RowText("DetailsRow", 40), Does.Contain("trip time"),
+            Assert.That(RowText("DetailsRow", "escape climb"), Does.Contain("escape climb"),
                 "the details panel names the cause beside the rejected route");
-            Assert.That(RowText("FlightRow", 30), Does.Contain("trip time"),
+            Assert.That(RowText("FlightRow", "escape climb"), Does.Contain("escape climb"),
                 "the nav computer shows the cause");
-            Assert.That(RowText("FlightRow", 30), Does.Contain(reason),
+            Assert.That(RowText("FlightRow", reason), Does.Contain(reason),
                 "the nav computer shows the whole reason");
         }
 
-        private string RowText(string prefix, int count)
+        private string RowText(string prefix, string needle)
         {
             foreach (Text value in _hud.GetComponentsInChildren<Text>(true))
             {
                 if (!value.gameObject.name.StartsWith(prefix)) continue;
                 if (value.gameObject.activeInHierarchy && !string.IsNullOrEmpty(value.text)
-                    && value.text.Contains("trip time"))
+                    && value.text.Contains(needle))
                 {
                     return value.text;
                 }
