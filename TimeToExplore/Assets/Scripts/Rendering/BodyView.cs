@@ -22,6 +22,9 @@ namespace TimeToExplore.Rendering
         private Material _material;
         private float _scaleFactor = 1f;
         private float _unitsPerMeter;
+        private Texture2D _albedoTexture;
+        private bool _albedoRequested;
+        private bool _albedoApplied;
 
         public void Initialise(BodyRuntime body, float unitsPerMeter, Transform parent)
         {
@@ -83,6 +86,15 @@ namespace TimeToExplore.Rendering
             float distance = relative.magnitude;
             float angularSize = (float)(displayRadius / Mathf.Max(distance, 1e-6f));
 
+            // The detail gate reads the true angular radius, not the marker the
+            // minimum-size aid may have inflated. Load the map on the first
+            // frame the gate opens, and only touch the material when the state
+            // changes, so a distant marker costs no material churn.
+            bool wantsAlbedo = BodyAppearance.UsesAlbedo(angularSize) &&
+                               !string.IsNullOrEmpty(Body.Data.albedoTexture);
+            if (wantsAlbedo && !_albedoRequested) LoadAlbedo();
+            ApplyAlbedo(wantsAlbedo && _albedoTexture != null);
+
             float targetFactor = TargetScaleFactor(angularSize, minAngularSize, trueScale);
 
             // Smooth the marker-size transition so distant bodies do not pop.
@@ -107,6 +119,43 @@ namespace TimeToExplore.Rendering
         }
 
         public float DistanceTo(Vector3d pointM) => (float)(Body.PositionM - pointM).Magnitude;
+
+        /// <summary>
+        /// Load the map named by the catalogue on the first close pass. Doing
+        /// it in <c>Initialise</c> would pay for every 2K map at startup, for
+        /// bodies the player may never approach. A missing map warns once and
+        /// leaves the body a flat marker.
+        /// </summary>
+        private void LoadAlbedo()
+        {
+            _albedoRequested = true;
+
+            string key = Body.Data.albedoTexture;
+            _albedoTexture = Resources.Load<Texture2D>(key);
+            if (_albedoTexture == null)
+            {
+                Debug.LogWarning(
+                    $"Body '{Body.Id}' names albedo texture '{key}', but Resources holds none.",
+                    this);
+                return;
+            }
+
+            if (_material.HasProperty("_MainTex"))
+                _material.SetTexture("_MainTex", _albedoTexture);
+        }
+
+        /// <summary>
+        /// Toggle the shader's marker-versus-map switch, writing only when the
+        /// state changes so a frame with no crossing does no work.
+        /// </summary>
+        private void ApplyAlbedo(bool active)
+        {
+            if (active == _albedoApplied) return;
+
+            _albedoApplied = active;
+            if (_material.HasProperty("_HasAlbedo"))
+                _material.SetFloat("_HasAlbedo", active ? 1f : 0f);
+        }
 
         /// <summary>
         /// How much the true radius must grow to reach the minimum apparent

@@ -239,8 +239,9 @@ Three minimal URP shaders live in `Assets/Resources/Shaders/` so a runtime
 `Shader.Find` resolves them in a build:
 
 * `TimeToExplore/BodyLit` — Lambert term from a global `_SunPosition`, 5.5%
-  ambient so the night side is not pure black, per-body `_Color`, no textures,
-  no normal maps, no shadows. It uses a `UniversalForward` pass and declares
+  ambient so the night side is not pure black, per-body `_Color`, and an albedo
+  map (`_MainTex`) that replaces the tint once the detail gate opens. It has no
+  normal maps and no shadows. It uses a `UniversalForward` pass and declares
   `RenderPipeline = UniversalPipeline`.
 * `TimeToExplore/Unlit` — flat `_Color`, used by the Sun, the ship marker, the
   thrust vector, and the plan markers.
@@ -294,9 +295,13 @@ the Sun is unlit `[1.0, 0.93, 0.72]`; route and orbit colours are at most 1 with
 alpha below 1. The band's 0.55 and the washed body colours sit under the
 threshold, and only the brightest catalogue stars write above it.
 
-The shader is intentionally simple. It exists to make the orrery legible, not to
-be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
-and the far-field camera stack without changing the scale rules.
+The shader is still intentionally simple: it exists to make the orrery legible,
+not to be a final planet renderer. It now samples the nine albedo maps **at
+arrival**, when a body's true angular radius passes 0.025 rad, and keeps the
+flat catalogue tint below that; the maps are loaded lazily, so a marker costs no
+texture fetch. See [Planet appearance](/technical/planet-appearance.md). The
+next pass adds the atmosphere shell, then rings, clouds, and the far-field
+camera stack, without changing the scale rules.
 
 # Colour space
 

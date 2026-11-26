@@ -1,24 +1,82 @@
 ---
 type: Reference
 title: Planet appearance
-description: The albedo maps, their import settings and attribution, and the appearance fields the body shader and atmosphere shell will consume.
+description: The albedo maps, their import settings and attribution, the detail gate that swaps a flat marker for the map, and the appearance fields the body shader consumes.
 tags: [technical, rendering, textures, planets, atmosphere, attribution]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T17:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T18:30:00Z }
 ---
 
 # What exists now
 
-The catalogue carries the appearance data and the project ships the texture
-files. Nothing draws them yet: `TimeToExplore/BodyLit` is still a flat
-`_Color` shader, and no atmosphere geometry exists. The renderer's detail gate
-— the rule that swaps the flat marker for the albedo map only when the true
-angular radius is large enough — and the additive rim shell are the next steps.
+A body has two appearance regimes. Far away it is a **marker**: the flat
+`_Color` from the catalogue, no texture fetch. Once it is close enough that its
+disc is readable, the **detail gate** opens and the body shader samples its
+albedo map. The atmosphere shell is the remaining step; no atmosphere geometry
+exists yet, and the data waits in the catalogue.
 
-Keeping the data first means the catalogue, the validator and the runtime shape
-settle once, before two shaders depend on them.
+Keeping the data first meant the catalogue, the validator and the runtime shape
+settled once, before two shaders depend on them.
+
+# The detail gate
+
+`TimeToExplore/Assets/Scripts/Rendering/BodyAppearance.cs` owns the rule. It is
+a plain static class with no Unity state, so the EditMode suite tests it
+directly:
+
+```text
+AlbedoMinAngularRadius = 0.025 rad
+UsesAlbedo(angularRadius) => angularRadius >= 0.025
+```
+
+The input is the body's **true angular radius**, `radius / distance` in the
+render frame, before the minimum-apparent-size aid. The aid inflates a distant
+body to a click target; it must not earn that body a texture. A planet scaled up
+a hundredfold by the aid therefore stays a flat marker, and only real proximity
+opens the gate.
+
+The threshold is deliberately low. At 1600x900 with the 60° field of view,
+0.025 rad is about a **31-pixel diameter**, so the map is already sampling by
+the time the disc becomes legible. A higher threshold would make the hand-over
+from marker to textured sphere visible as a pop.
+
+`BodyView` applies the gate every `Refresh` from the `angularSize` it already
+computes, and writes `_HasAlbedo` only when the state changes, so a marker frame
+costs no material churn. It does **not** gate on `_scaleFactor`: that value
+carries the aid.
+
+## Lazy loading
+
+`BodyView.Initialise` never calls `Resources.Load`. On the first frame the gate
+opens for a body, it loads the catalogue's `albedoTexture` key once, caches the
+`Texture2D`, and sets `_MainTex`. A body the player never approaches therefore
+never pays for its 2K map. A key that is present but resolves to nothing logs one
+warning and leaves the body a flat marker for the rest of the session.
+
+# The body shader
+
+`TimeToExplore/BodyLit` gained `_MainTex` (the map) and `_HasAlbedo` (the
+switch, 0 or 1):
+
+```hlsl
+half3 albedo = lerp(_Color.rgb, SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv).rgb,
+                    _HasAlbedo);
+half3 colour = albedo * (ambient + (1.0h - ambient) * ndl);
+```
+
+`_Color` remains the catalogue **marker tint**, and `_Ambient` is unchanged. The
+map replaces the tint at arrival; it is not tinted by it and is not pre-mixed
+with an average colour. Lighting is the same ambient plus N·L term in both
+regimes, so a textured body and its marker share one terminator.
+
+The texture and sampler are declared outside the `UnityPerMaterial` buffer and
+`_MainTex_ST` inside it. The maps import sRGB
+([ADR-021](/decisions/adr-021-linear-colour-space.md)), so the sampler delivers
+linear light and the shader does not convert the sample again. The pass keeps its
+`RenderPipeline` tag, `UniversalForward` light mode and target 2.0.
 
 # Catalogue fields
+
 
 Both fields are optional and are emitted for every body, `null` where absent
 ([Data schema](/technical/data-schema.md#appearance)):
@@ -104,15 +162,13 @@ Do not convert the texture's colour in C# or in the shader a second time. An
 sRGB import plus Unity's material and sampler path already delivers linear
 values.
 
-# What the next steps add
+# What the next step adds
 
-* **Detail gate.** The body shader gains `_MainTex` and `_HasAlbedo`, and
-  `BodyView` loads the map lazily on the first close pass. The gate opens on the
-  body's **true angular radius**, not the inflated minimum marker size, so
-  distant bodies stay flat and cheap.
 * **Atmosphere shell.** A second sphere at `1 + heightM / radiusM`, additive,
   depth-write off, rim-weighted by `pow(1 - dot(N, V), k)` and multiplied by a
   soft sun term. Mercury gets none; every planet with an `atmosphere` record
-  gets one.
+  gets one. It is gated like the map: a flat marker gets no shell, and the
+  camera inside the shell draws nothing.
 
-Neither exists yet, and this page should not claim otherwise until they land.
+The shell does not exist yet, and this page should not claim otherwise until it
+lands. The albedo half is live.

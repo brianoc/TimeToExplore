@@ -1,15 +1,18 @@
+using System;
+using System.IO;
 using NUnit.Framework;
 using TimeToExplore.Core;
+using TimeToExplore.Rendering;
 using UnityEditor;
 using UnityEngine;
 
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
-    /// The shipped catalogue's appearance data: the nine albedo maps it names
-    /// and the atmosphere records the next steps will draw. This is the data
-    /// half of the appearance work; the shader, the detail gate and the
-    /// atmosphere shell are separate steps and are not asserted here.
+    /// The shipped catalogue's appearance data — the nine albedo maps it names
+    /// and the atmosphere records the next step will draw — plus the detail
+    /// gate and the body shader's marker-versus-map switch. The atmosphere
+    /// shell is the last step and is not asserted here.
     /// </summary>
     [Category("presentation")]
     public class PlanetAppearanceTests
@@ -97,6 +100,89 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(earth, Is.Not.Null);
             Assert.That(earth.heightM, Is.EqualTo(100_000.0).Within(1e-6),
                 "Earth's visible atmosphere is 100 km");
+        }
+
+        [Test]
+        public void TheDetailGateOpensAtTheTrueAngularRadius()
+        {
+            Assert.That(BodyAppearance.AlbedoMinAngularRadius, Is.EqualTo(0.025f));
+
+            Assert.That(BodyAppearance.UsesAlbedo(0f), Is.False,
+                "a body below the gate is a flat marker");
+            Assert.That(BodyAppearance.UsesAlbedo(0.0249f), Is.False,
+                "just below the threshold is still a marker");
+            Assert.That(BodyAppearance.UsesAlbedo(BodyAppearance.AlbedoMinAngularRadius),
+                Is.True, "the threshold itself opens the gate");
+            Assert.That(BodyAppearance.UsesAlbedo(0.026f), Is.True);
+            Assert.That(BodyAppearance.UsesAlbedo(0.4f), Is.True,
+                "a close pass samples the map");
+        }
+
+        [Test]
+        public void TheBodyShaderDeclaresTheAlbedoSwitch()
+        {
+            Shader shader = Shader.Find(RenderingShaders.BodyLit);
+            Assert.That(shader, Is.Not.Null, RenderingShaders.BodyLit + " was not found");
+
+            var material = new Material(shader);
+            try
+            {
+                Assert.That(material.HasProperty("_Color"), Is.True,
+                    "the catalogue tint stays the marker colour");
+                Assert.That(material.HasProperty("_Ambient"), Is.True);
+                Assert.That(material.HasProperty("_MainTex"), Is.True,
+                    "the body shader must declare the albedo map");
+                Assert.That(material.HasProperty("_HasAlbedo"), Is.True,
+                    "the body shader must declare the marker-versus-map switch");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        /// <summary>
+        /// The map imports sRGB, so the sampler already delivers linear light.
+        /// A second conversion in the shader would darken and over-saturate
+        /// every planet, so the only <c>SRGBToLinear</c> left is the ambient
+        /// literal's.
+        /// </summary>
+        [Test]
+        public void TheBodyShaderSamplesTheMapWithoutConvertingItAgain()
+        {
+            Shader shader = Shader.Find(RenderingShaders.BodyLit);
+            Assert.That(shader, Is.Not.Null, RenderingShaders.BodyLit + " was not found");
+
+            string source = File.ReadAllText(AssetDatabase.GetAssetPath(shader));
+
+            StringAssert.Contains("SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex", source,
+                "the body shader must sample the albedo map");
+            Assert.That(CountCodeOccurrences(source, "SRGBToLinear"), Is.EqualTo(1),
+                "only _Ambient converts; the sRGB albedo map arrives linear");
+            StringAssert.Contains("SRGBToLinear(_Ambient)", source,
+                "the one conversion is the ambient literal");
+        }
+
+        /// <summary>Count a token outside <c>//</c> comments, so a comment that
+        /// names the function cannot fool the assertion.</summary>
+        private static int CountCodeOccurrences(string source, string token)
+        {
+            int found = 0;
+            foreach (string line in source.Split('\n'))
+            {
+                string code = line;
+                int comment = code.IndexOf("//", StringComparison.Ordinal);
+                if (comment >= 0) code = code.Substring(0, comment);
+
+                int index = 0;
+                while ((index = code.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
+                {
+                    found++;
+                    index += token.Length;
+                }
+            }
+
+            return found;
         }
     }
 }
