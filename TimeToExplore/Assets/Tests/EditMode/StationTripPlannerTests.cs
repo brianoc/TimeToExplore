@@ -62,8 +62,8 @@ namespace TimeToExplore.Tests.EditMode
         /// chain gate. From a Mars 300 km orbit to Gateway at 120 days the plan is
         /// the departure climb, the cruise burn, the coast and the velocity-match
         /// burn — five arcs — with no approach, no parking orbit and no capture
-        /// chain. Measured at the epoch: 25.648 km/s total, and the brake's own end
-        /// is 0.0006 m and 7.6 × 10⁻⁸ m/s from the hold state.
+        /// chain. Measured at the epoch: 24.314 km/s total, and the brake's own end
+        /// is 0.0005 m and 2.5 × 10⁻⁷ m/s from the hold state.
         /// </summary>
         [Test]
         public void AStationArrivalEndsOnTheHoldPointWithNoCaptureChain()
@@ -226,9 +226,9 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// The planet anchor re-baselines with the split: Gateway to Mars at
-        /// 90 days and 0.3 g is 38.5411 km/s across nine arcs (the station target
-        /// keeps the unforced climb, so this test and the station path are
-        /// independent). A point-target station must not change the planet path.
+        /// 90 days and 0.3 g is 38.5411 km/s across nine arcs. A point-target
+        /// station must not change the planet path, and its own split is pinned
+        /// in <see cref="StationDepartureSplitTests"/>.
         /// </summary>
         [Test]
         public void ThePlanetAnchorIsUnmovedByTheStationTarget()

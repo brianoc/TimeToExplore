@@ -7,17 +7,13 @@ using TimeToExplore.Simulation;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
-    /// The **station** departure split, measured before it is wired in. A station
-    /// plan ends on the hold state instead of a capture chain, so the planet
-    /// rank-only cost has no entry state to price the brake against. The
-    /// measurement seam
-    /// <see cref="TripPlanner.MeasureStationSplitCandidate"/> enters at the hold
-    /// state at the arrival date and drops the chain's duration; everything else
-    /// is the planet cost. This suite grids it against the full fast-probe
-    /// station build on the routes that carry a climb, and checks both no-climb
-    /// cases: a heliocentric start, and a target whose parent is the departure
-    /// body. No shipping plan changes here: the chooser still leaves a station
-    /// unforced, so the tables are measurements, not a chosen plan.
+    /// The **station** departure split. A station plan ends on the hold state
+    /// instead of a capture chain, so the planet rank-only cost has no entry
+    /// state to price the brake against. <see cref="TripPlanner"/> enters at the
+    /// hold state at the arrival date, drops the chain's duration, and requires
+    /// no arrival band. This suite grids the cheap search against the full
+    /// fast-probe station build on the routes that carry a climb, checks both
+    /// no-climb cases, and pins the shipped station floor, anchors and arrival.
     /// </summary>
     [Category("flight")]
     public class StationDepartureSplitTests
@@ -165,42 +161,253 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// This step adds measurement seams only. A station plan with a climb
-        /// still takes the unforced parabolic climb, and it is the same plan with
-        /// the split flag on or off: <see cref="TripPlanner.Build"/> hands a
-        /// station a fixed `-1`, so the chooser never sees it.
+        /// The split now reaches a climbing station: <see cref="TripPlanner.Build"/>
+        /// chooses the excess speed once per station build and hands it to every
+        /// climb solve. At 60 days the chooser takes 2 km/s and the plan is
+        /// cheaper than the unforced parabolic climb.
         /// </summary>
         [Test]
-        public void AClimbingStationPlanIsUnchangedByTheSplitFlag()
+        public void AClimbingStationPlanUsesTheChosenSplit()
         {
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
-            double seconds = 120.0 * SecondsPerDay;
+            double seconds = 60.0 * SecondsPerDay;
 
             _planner.UseDepartureSplit = true;
             TrajectoryPlan withFlag = _planner.PlanAtDuration(ship,
                 "ares_junction", seconds);
+            double chosen = withFlag.DepartureVInfinityMps;
             _planner.UseDepartureSplit = false;
             TrajectoryPlan withoutFlag = _planner.PlanAtDuration(ship,
                 "ares_junction", seconds);
 
-            TestContext.WriteLine($"station split flag: " +
-                                  $"{withFlag.DeltaVMps / KmPerSecond:F4} km/s, " +
-                                  $"{withFlag.FlightTimeDays:F5} d, " +
-                                  $"{withFlag.Arcs.Count} arcs, " +
-                                  $"v∞ {withFlag.DepartureVInfinityMps:F1}");
+            TestContext.WriteLine($"station split flag: with " +
+                                  $"{withFlag.DeltaVMps / KmPerSecond:F4} km/s " +
+                                  $"(v∞ {chosen / KmPerSecond:F3}), without " +
+                                  $"{withoutFlag.DeltaVMps / KmPerSecond:F4} km/s");
 
             Assert.That(withFlag.IsFeasible, Is.True, withFlag.InfeasibleReason);
-            Assert.That(withFlag.DepartureVInfinityMps, Is.EqualTo(0.0),
-                "a station still keeps the unforced parabolic climb");
-            Assert.That(withFlag.DeltaVMps, Is.EqualTo(withoutFlag.DeltaVMps),
-                "the flag does not reach a station plan");
-            Assert.That(withFlag.FlightTimeDays,
-                Is.EqualTo(withoutFlag.FlightTimeDays));
-            Assert.That(withFlag.Arcs.Count, Is.EqualTo(withoutFlag.Arcs.Count));
+            Assert.That(withoutFlag.IsFeasible, Is.True, withoutFlag.InfeasibleReason);
+            Assert.That(chosen, Is.GreaterThan(0.0),
+                "a climbing station gets a chosen excess speed");
+            Assert.That(withFlag.DeltaVMps, Is.LessThan(withoutFlag.DeltaVMps),
+                "the split makes the station trip cheaper");
         }
 
-        /// <summary>One route/duration case: both searches, the table row and the
-        /// ranking assertions.</summary>
+        /// <summary>
+        /// The station coast floor, before and after the split. From a Mars
+        /// 300 km orbit to Gateway the floor is the shortest station trip the
+        /// planner will certify; the split changes the departure weight it builds
+        /// at every probe and at the certificate. The table is the measured
+        /// before and after, and the after plan must be feasible and exact.
+        /// </summary>
+        [Test]
+        public void TheStationCoastFloorIsSplitAware()
+        {
+            ShipState ship = FlightFixture.ShipInEquatorialOrbit(_model, "mars", 300e3);
+
+            _planner.UseDepartureSplit = false;
+            TrajectoryPlan before = _planner.Plan(ship, "gateway");
+            _planner.UseDepartureSplit = true;
+            TrajectoryPlan after = _planner.Plan(ship, "gateway");
+
+            TestContext.WriteLine("station floor | days | dv km/s | v∞ km/s | arcs | ok");
+            WriteFloor("before", before);
+            WriteFloor("after ", after);
+
+            Assert.That(before.IsFeasible, Is.True, before.InfeasibleReason);
+            Assert.That(after.IsFeasible, Is.True, after.InfeasibleReason);
+            Assert.That(before.FlightTimeDays, Is.EqualTo(59.57357).Within(0.01),
+                "the flag-off floor is the pre-split anchor");
+            Assert.That(before.DeltaVMps / KmPerSecond,
+                Is.EqualTo(76.4939).Within(0.001));
+            Assert.That(after.FlightTimeDays, Is.EqualTo(54.36495).Within(0.01),
+                "the split-aware floor is the new anchor");
+            Assert.That(after.DeltaVMps / KmPerSecond,
+                Is.EqualTo(98.4091).Within(0.001));
+            Assert.That(after.DepartureVInfinityMps,
+                Is.EqualTo(16.0 * KmPerSecond),
+                "the shortest certified trip needs the grid's 16 km/s cap");
+            Assert.That(after.Arcs.Count, Is.EqualTo(5));
+            Assert.That(after.FlightTimeDays, Is.LessThan(before.FlightTimeDays),
+                "the split-aware station floor is faster");
+            AssertChainCloses(after);
+            AssertArrivesOnTheHoldPoint(after, "gateway");
+        }
+
+        /// <summary>
+        /// The fixed-duration station anchors, before and after: Gateway to Ares
+        /// Junction at 60, 90, 120 and 160 days. The pre-split totals are the
+        /// unforced parabolic climb; the split-aware totals are the chooser's. The
+        /// table is the pinned re-baseline.
+        /// </summary>
+        [Test]
+        public void TheStationAnchorsCarryTheChosenSplit()
+        {
+            ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+
+            var anchors = new[]
+            {
+                (Days: 60.0, BeforeKm: 71.9303, AfterKm: 67.8154, VInfinityKms: 2.0),
+                (Days: 90.0, BeforeKm: 39.3398, AfterKm: 38.9403, VInfinityKms: 1.0),
+                (Days: 120.0, BeforeKm: 24.7331, AfterKm: 24.7331, VInfinityKms: 0.0),
+                (Days: 160.0, BeforeKm: 15.1026, AfterKm: 15.0673, VInfinityKms: 0.5)
+            };
+
+            TestContext.WriteLine("gateway → ares_junction | d | before dv | before v∞ | " +
+                                  "after dv | after v∞ | arcs");
+            foreach ((double days, double beforeKm, double afterKm, double vInfinityKms)
+                     in anchors)
+            {
+                double seconds = days * SecondsPerDay;
+                _planner.UseDepartureSplit = false;
+                TrajectoryPlan before = _planner.PlanAtDuration(ship,
+                    "ares_junction", seconds);
+                _planner.UseDepartureSplit = true;
+                TrajectoryPlan after = _planner.PlanAtDuration(ship,
+                    "ares_junction", seconds);
+
+                TestContext.WriteLine($"{days,6:F0} | " +
+                                      $"{before.DeltaVMps / KmPerSecond,10:F4} | " +
+                                      $"{before.DepartureVInfinityMps / KmPerSecond,9:F3} | " +
+                                      $"{after.DeltaVMps / KmPerSecond,9:F4} | " +
+                                      $"{after.DepartureVInfinityMps / KmPerSecond,8:F3} | " +
+                                      $"{after.Arcs.Count,4}");
+
+                Assert.That(before.IsFeasible, Is.True, before.InfeasibleReason);
+                Assert.That(after.IsFeasible, Is.True, after.InfeasibleReason);
+                Assert.That(Math.Round(before.DeltaVMps / KmPerSecond, 4),
+                    Is.EqualTo(beforeKm), $"{days:F0} d flag-off anchor");
+                Assert.That(Math.Round(after.DeltaVMps / KmPerSecond, 4),
+                    Is.EqualTo(afterKm), $"{days:F0} d split-aware anchor");
+                Assert.That(after.DepartureVInfinityMps,
+                    Is.EqualTo(vInfinityKms * KmPerSecond),
+                    $"{days:F0} d chosen excess speed");
+                Assert.That(after.Arcs.Count, Is.EqualTo(5));
+                AssertChainCloses(after);
+                AssertArrivesOnTheHoldPoint(after, "ares_junction");
+            }
+        }
+
+        /// <summary>
+        /// The Mars orbit to Gateway anchor at 120 days: the unforced plan is
+        /// 25.648 km/s; the split-aware plan is the chooser's. The plan arrives on
+        /// the hold point, and the chooser's own search is inside its 50 ms
+        /// budget.
+        /// </summary>
+        [Test]
+        public void TheMarsOrbitAnchorAndTheSearchBudget()
+        {
+            ShipState ship = FlightFixture.ShipInEquatorialOrbit(_model, "mars", 300e3);
+            double seconds = 120.0 * SecondsPerDay;
+
+            _planner.UseDepartureSplit = false;
+            TrajectoryPlan before = _planner.PlanAtDuration(ship, "gateway", seconds);
+            _planner.UseDepartureSplit = true;
+            TrajectoryPlan after = _planner.PlanAtDuration(ship, "gateway", seconds);
+            double searchSeconds = _planner.LastDepartureSplitSeconds;
+
+            TestContext.WriteLine($"mars 300 km → gateway 120 d: before " +
+                                  $"{before.DeltaVMps / KmPerSecond:F4} km/s " +
+                                  $"(v∞ {before.DepartureVInfinityMps / KmPerSecond:F3}), " +
+                                  $"after {after.DeltaVMps / KmPerSecond:F4} km/s " +
+                                  $"(v∞ {after.DepartureVInfinityMps / KmPerSecond:F3}), " +
+                                  $"search {searchSeconds * 1000.0:F1} ms");
+
+            Assert.That(before.DeltaVMps / KmPerSecond,
+                Is.EqualTo(25.648).Within(0.001), "the flag-off anchor is unmoved");
+            Assert.That(after.IsFeasible, Is.True, after.InfeasibleReason);
+            Assert.That(Math.Round(after.DeltaVMps / KmPerSecond, 4),
+                Is.EqualTo(24.3137), "the split-aware anchor");
+            Assert.That(after.DepartureVInfinityMps, Is.EqualTo(1.0 * KmPerSecond),
+                "the chooser takes 1 km/s at 120 d");
+            Assert.That(searchSeconds, Is.LessThan(0.050),
+                "the station chooser is inside its 50 ms budget");
+            AssertChainCloses(after);
+            AssertArrivesOnTheHoldPoint(after, "gateway");
+        }
+
+        /// <summary>
+        /// The planet anchor and the heliocentric no-climb control do not move.
+        /// Gateway to Mars at 90 days stays 38.5411 km/s, and Ares Junction to
+        /// Gateway at 160 days stays 12.2391 km/s.
+        /// </summary>
+        [Test]
+        public void ThePlanetAndHeliocentricAnchorsDoNotMove()
+        {
+            _planner.UseDepartureSplit = true;
+
+            TrajectoryPlan planet = _planner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "gateway"), "mars", 90.0 * SecondsPerDay);
+            TrajectoryPlan heliocentric = _planner.PlanAtDuration(
+                FlightFixture.ShipAt(_model, "ares_junction"), "gateway",
+                160.0 * SecondsPerDay);
+
+            TestContext.WriteLine($"gateway → mars 90 d: " +
+                                  $"{planet.DeltaVMps / KmPerSecond:F4} km/s; " +
+                                  $"ares_junction → gateway 160 d: " +
+                                  $"{heliocentric.DeltaVMps / KmPerSecond:F4} km/s");
+
+            Assert.That(Math.Round(planet.DeltaVMps / KmPerSecond, 4),
+                Is.EqualTo(38.5411), "the planet split arithmetic is unchanged");
+            Assert.That(Math.Round(heliocentric.DeltaVMps / KmPerSecond, 4),
+                Is.EqualTo(12.2391), "a heliocentric station start has no climb");
+            Assert.That(heliocentric.DepartureVInfinityMps, Is.EqualTo(-1.0));
+        }
+
+        private static void WriteFloor(string label, TrajectoryPlan plan)
+        {
+            TestContext.WriteLine($"{label} | {plan.FlightTimeDays,9:F5} | " +
+                                  $"{plan.DeltaVMps / KmPerSecond,9:F4} | " +
+                                  $"{plan.DepartureVInfinityMps / KmPerSecond,7:F3} | " +
+                                  $"{plan.Arcs.Count,4} | " +
+                                  $"{(plan.IsFeasible ? "ok" : plan.InfeasibleReason)}");
+        }
+
+        /// <summary>The profile's chain gate: every seam inside 1 km and 1 m/s.</summary>
+        private static void AssertChainCloses(TrajectoryPlan plan)
+        {
+            for (int i = 0; i < plan.Arcs.Count - 1; i++)
+            {
+                PlanArc left = plan.Arcs[i];
+                PlanArc right = plan.Arcs[i + 1];
+                double positionStep = Vector3d.Distance(
+                    left.Path.PositionAt(1.0), right.Path.PositionAt(0.0));
+                double velocityStep = (left.Path.VelocityAt(1.0)
+                                       + right.EntryImpulseVectorMps
+                                       - right.Path.VelocityAt(0.0)).Magnitude;
+
+                Assert.That(positionStep, Is.LessThan(1e3),
+                    $"seam {i} ({left.Phase}->{right.Phase}) position");
+                Assert.That(velocityStep, Is.LessThan(1.0),
+                    $"seam {i} ({left.Phase}->{right.Phase}) velocity");
+            }
+        }
+
+        /// <summary>The station arrival: the last arc ends on the hold state at
+        /// the requested date, inside 1 m and 1e-3 m/s.</summary>
+        private void AssertArrivesOnTheHoldPoint(TrajectoryPlan plan, string stationId)
+        {
+            BodyRuntime station = _model.Get(stationId);
+            _model.ComputeState(station, plan.ArrivalJulianDate,
+                out Vector3d stationPosition, out Vector3d stationVelocity);
+            Vector3d hold = stationPosition
+                            - stationVelocity.Normalized * TripPlanner.StationHoldDistanceM;
+
+            PlanArc last = plan.Arcs[plan.Arcs.Count - 1];
+            double positionStep = Vector3d.Distance(last.Path.PositionAt(1.0), hold);
+            double velocityStep = (last.Path.VelocityAt(1.0) - stationVelocity).Magnitude;
+            TestContext.WriteLine($"arrival: {positionStep:E3} m, " +
+                                  $"{velocityStep:E3} m/s from the hold state");
+
+            Assert.That(positionStep, Is.LessThan(1.0),
+                "the velocity match ends on the hold point");
+            Assert.That(velocityStep, Is.LessThan(1e-3),
+                "the velocity match ends on the station's velocity");
+            Assert.That(plan.ArrivalJulianDate,
+                Is.EqualTo(plan.DepartureJulianDate + plan.FlightTimeSeconds
+                    / SecondsPerDay).Within(1e-6));
+        }
+
         private void Measure(double[] grid, string route, string targetId, double days,
             ShipState ship)
         {

@@ -442,7 +442,9 @@ namespace TimeToExplore.Simulation
         /// probe grows a bracket until its seam closes, bisects it to
         /// <see cref="StationFloorRelativeTolerance"/>, and the feasible end is
         /// rebuilt as a certified full-field plan. A refused certificate steps
-        /// the bracket up rather than loosening it.
+        /// the bracket up rather than loosening it. The probes go through the
+        /// ordinary <see cref="Build"/>, so each carries the same split-aware
+        /// departure choice its certified rebuild will.
         /// </summary>
         private TrajectoryPlan PlanStationFloor(ShipState ship, BodyRuntime station)
         {
@@ -464,7 +466,7 @@ namespace TimeToExplore.Simulation
 
             for (int step = 0; step < 24; step++)
             {
-                BuildResult result = BuildStationTrip(ship, station, probe, fast: true);
+                BuildResult result = Build(ship, station, probe, fast: true);
                 lastPlan = result.Plan;
                 Trace?.Invoke($"station floor {probe / SecondsPerDay:F5} d: " +
                               $"feasible {IsFeasibleAt(result.Plan, probe)}, " +
@@ -490,7 +492,7 @@ namespace TimeToExplore.Simulation
             for (int iteration = 0; iteration < 12 && high - low > tolerance; iteration++)
             {
                 double middle = 0.5 * (low + high);
-                BuildResult result = BuildStationTrip(ship, station, middle, fast: true);
+                BuildResult result = Build(ship, station, middle, fast: true);
                 lastPlan = result.Plan;
                 if (IsFeasibleAt(result.Plan, middle)
                     && result.Plan.FlightTimeSeconds < high)
@@ -1871,8 +1873,16 @@ namespace TimeToExplore.Simulation
             bool fast = false, bool probe = false, PinSeed seed = default)
         {
             if (target.Data.IsStation)
-                return BuildWithRetry(ship, target, totalSeconds, fast, probe, station: true,
-                    seed, forcedVInfinityMps: -1.0);
+            {
+                // The split is chosen once for the whole station build, exactly
+                // as for a planet: the same excess speed reaches the reference
+                // skeleton, the pin loop, the settle pass and the certificate.
+                double stationVInfinityMps = ChooseDepartureVInfinityMps(ship, target,
+                    totalSeconds);
+                return BuildWithRetry(ship, target, totalSeconds, fast, probe,
+                    station: true, seed,
+                    forcedVInfinityMps: stationVInfinityMps);
+            }
 
             _model.ComputeState(target, ship.JulianDate, out Vector3d targetAtDeparture, out _);
             if (Vector3d.Distance(ship.PositionM, targetAtDeparture)
@@ -4137,10 +4147,10 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// Diagnostic only: one rank-only candidate cost for a **station**
-        /// target, as the split would measure it. The entry state is the hold
-        /// state at the arrival date — the station's own state, 500 m astern
-        /// along its velocity — so there is no capture chain to build and no
-        /// chain duration to take off the trip. Everything else is the planet
+        /// target, exactly as the shipping chooser measures it. The entry state
+        /// is the hold state at the arrival date — the station's own state, 500 m
+        /// astern along its velocity — so there is no capture chain to build and
+        /// no chain duration to take off the trip. Everything else is the planet
         /// cost: the same climb solve, the same 600 s burn and brake seeds, and
         /// the same three terms, with the brake a magnitude because a rendezvous
         /// may add speed. Returns <see cref="double.PositiveInfinity"/> when the
@@ -4362,10 +4372,14 @@ namespace TimeToExplore.Simulation
         /// would stop the fixed point converging.
         ///
         /// Returns `-1` when the split does not apply: the flag is off, the ship
-        /// starts outside every sphere, the target is a station (its plan has no
-        /// capture chain to cost), or no candidate fits. `-1` is the climb
-        /// solver's "no forced excess", so the build is then exactly the profile
-        /// it was.
+        /// starts outside every sphere, the target is a heliocentric station with
+        /// no departure body, or no candidate fits. `-1` is the climb solver's
+        /// "no forced excess", so the build is then exactly the profile it was.
+        ///
+        /// A **climbing station** is costed like a planet, entering at the hold
+        /// state at the arrival date. A station has no capture chain and no
+        /// handover band of its own, so there is no arrival band to require and
+        /// no chain duration to take off the trip.
         /// </summary>
         private double ChooseDepartureVInfinityMps(ShipState ship, BodyRuntime target,
             double totalSeconds)
@@ -4376,32 +4390,44 @@ namespace TimeToExplore.Simulation
             // there is nothing to choose, and the climb solver takes the seam.
             if (DepartureVInfinityOverrideMps >= 0.0) return -1.0;
 
-            // A station is a point target: its plan has no capture chain, so the
-            // candidate build this search costs against does not exist and the
-            // station keeps its unforced climb.
-            if (target.Data.IsStation) return -1.0;
             if (!(totalSeconds > 0.0)) return -1.0;
 
             BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
             if (departureBody == null) return -1.0;
 
-            HandoverBand arrivalBand = HandoverBand.For(target, FixedBurnAccelerationMps2);
             HandoverBand departureBand = HandoverBand.For(departureBody,
                 FixedBurnAccelerationMps2);
-            if (!arrivalBand.IsValid || !departureBand.IsValid) return -1.0;
+            if (!departureBand.IsValid) return -1.0;
 
             var clock = System.Diagnostics.Stopwatch.StartNew();
 
-            double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
             double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
-            TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius, arrivalJd);
-            if (!chain.IsValid) return -1.0;
 
-            // The geometry every candidate shares: the capture chain, its entry
-            // state, the bands and the departure body. Only the climb and the
+            // The geometry every candidate shares: the terminal's entry state,
+            // the departure band and the departure body. Only the climb and the
             // Lambert coast move with the excess speed.
-            var cost = DepartureSplitCost.ForCaptureChain(this, ship, target,
-                departureBody, departureBand, chain, totalSeconds, arrivalJd);
+            DepartureSplitCost cost;
+            if (target.Data.IsStation)
+            {
+                // A station is a point target: its entry is the hold state at the
+                // arrival date, so there is no chain and no arrival band.
+                cost = DepartureSplitCost.AtStationHold(this, ship, target,
+                    departureBody, departureBand, totalSeconds, arrivalJd);
+            }
+            else
+            {
+                HandoverBand arrivalBand = HandoverBand.For(target,
+                    FixedBurnAccelerationMps2);
+                if (!arrivalBand.IsValid) return -1.0;
+
+                double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
+                TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius,
+                    arrivalJd);
+                if (!chain.IsValid) return -1.0;
+
+                cost = DepartureSplitCost.ForCaptureChain(this, ship, target,
+                    departureBody, departureBand, chain, totalSeconds, arrivalJd);
+            }
 
             double Cost(double vInfinity)
             {
