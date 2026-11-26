@@ -148,6 +148,7 @@ because Unity test assemblies cannot reference the predefined
 | `SelectionAndFocusTests` | details rows and physics, screen-space picking, the star→planet→station→moon→asteroid rank, the ordered stack and its depth tie, the repeated-click cycle, smoothstep/slerp transition, approach offset |
 | `SceneSmokeTests` | the shipped scene resolves the bootstrap; the catalogue resource imports; its camera carries `UniversalAdditionalCameraData` with post-processing on (the bloom) and depth/colour copies off, and a black solid-colour clear (the serialized scene; the bootstrap switches the live camera to `Skybox`) |
 | `RenderingPipelineTests` | the graphics default is a URP asset; the shipped pipeline and renderer assets are wired together; the renderer carries URP's `PostProcessData`; HDR is on in the 32-bit R11G11B10 buffer and the rest of the cheap settings hold (MSAA 1, scale 1, no depth/opaque copy, no shadows); the default volume profile is the one URP registers, with Bloom over the 1.0 threshold and Neutral Tonemapping; quality levels do not override the default; the body, unlit, and line shaders are found under `Resources`, have no compile errors, declare the URP pipeline and forward-pass tags, and expose the properties the renderer writes; `material.color` still works; `RenderingShaders.ForBody` picks the Sun shader |
+| `ColourSpaceTests` | the project renders in Linear; the catalogue body colour reaches the material unchanged, because Unity converts a material colour property on submit; a missing colour falls back to the neutral grey; the route palette and the orbit ramp stay sRGB, with the orbit alpha unchanged; the two line renderers apply `.linear` (a source scan); and `BodyLit`'s authored ambient floor goes through `SRGBToLinear` (a source scan) |
 | `SkyboxTests` | the committed `Sky/milky_way` texture is 2048 × 1024 with no mip chain, is dark overall and has a bright band covering part of the sky, and the skybox shader is found under `Resources` with no compile errors; `SkyView` points `RenderSettings.skybox` at its material and clears the camera to `Skybox`, `Remove` restores the previous skybox and clear flags and releases the runtime star map while leaving the band asset alone, and a missing texture or shader is refused without half-applying; the bright-star catalogue is every entry inside the V 4.0 cut with unit directions and Sirius at −1.46, the map it builds is 1024 × 512 `RGBA32` with point filtering, no mips, repeat/clamp wrapping and one occupied cell per star, Sirius lands within half a texel of its own direction, the brighter of two stars wins a shared cell, the magnitude and colour codes are monotonic with zero reserved for empty, and the shader's cell count is pinned to `StarCatalogue`'s constants by a source scan |
 | `ShipDynamicsTests` | two-body speeds, energy, eccentricity, flight-path angle, thrust clamping |
 | `GravityFieldTests` | Newton at 1 AU, Mars dominance, pruning versus the full sum, surface clamp, no mutation of the model, pure versus frame state |
@@ -211,6 +212,7 @@ invocation (`-testPlatform PlayMode`) with its own log and results file.
 | `BootstrapPlayModeTests` | `RuntimeInitializeOnLoad` creates the `Time to Explore` root; the renderer builds one view per renderable body; every body view and every visible orbit `LineRenderer` carries the frame's model state and `ShowOrbits` reaches the real lines on the next frame; the HUD canvas is live and its status clock is rewritten from the frame clock; a frame probe sees the model advanced in `Update` while the body views still hold the previous frame, then matching in `LateUpdate`, with the clock held between the phases and exactly one step per frame; the real details panel's route button passes its one-frame opening guard, plots through the async planner and the HUD's per-frame pump, and the flight panel and route legend appear; every arc is an enabled `LineRenderer` with positions, one width key per vertex, the arc's own colour, and most of the framed route inside the camera's view; the ghost marks Mars at the arrival date; the 64-step trip-time slider requests a retime through its real `onValueChanged` and the HUD publishes it; `ShowHud` and `ShowLabels` take effect on the following frame; Begin through the real button starts the flight, the clock clamp holds across frames, and Cancel clears the route and the panel |
 | `FrameOrderProbe` | a helper that runs after the bootstrap in both phases, so the test can read what `Update` produced before `LateUpdate` drew it |
 | `LateUpdateProbe` | a helper that runs a callback at the end of a frame, because a `[UnityTest]` coroutine resumes in the `Update` phase and cannot otherwise read state drawn later in that frame |
+| `BodyCaptureTests` | carries only the `capture` category: parks the ship beside Earth, Mars, and Jupiter, frames each through the live view camera, and writes `body-*.png` into `BODY_CAPTURE_DIR`. Evidence for a look change, not a gate |
 
 The deterministic step comes from the same `DeltaTimeSeconds` seam: the PlayMode
 setup supplies one second per frame at 1×. That keeps a preview, its retime, and
@@ -231,8 +233,15 @@ scaling away from 1080p remain human checks.
 `check.sh` run nor `--tests playmode` starts it. It flies the cheap Ares
 Junction → Gateway route through the real session, opens the details screen and
 the market through their real buttons, buys a few units, and writes a 1600×900
-`trade-panel.png`. `RoutePrimeCaptureTests` records a numbered frame sequence
-instead: an idle ship, the selection warming Mars's plan with the screen
+`trade-panel.png`. `BodyCaptureTests` does the same kind of thing for the
+rendered body: it parks the ship at a distance that gives each of Earth, Mars,
+and Jupiter a 0.40 rad apparent radius, on the terminator's side, and writes
+`body-earth.png`, `body-mars.png`, and `body-jupiter.png` into
+`BODY_CAPTURE_DIR` (`/tmp` by default). Both are the before/after evidence
+for a colour-space or lighting change; neither asserts a pixel. Select one class
+with `-testFilter`, for example
+`-testFilter TimeToExplore.Tests.PlayMode.BodyCaptureTests`.
+`RoutePrimeCaptureTests` records a numbered frame sequence instead: an idle ship, the selection warming Mars's plan with the screen
 unchanged, the route appearing in the Plot click's own frame, and the camera
 move that click asks for.
 Its frames land in `route-prime-frames/` beside `trade-panel.png` and are

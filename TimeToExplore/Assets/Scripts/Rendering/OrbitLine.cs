@@ -52,8 +52,12 @@ namespace TimeToExplore.Rendering
 
             Shader shader = Shader.Find(RenderingShaders.Line);
             _line.material = new Material(shader) { name = body.Name + " Orbit Material" };
-            _line.startColor = colour;
-            _line.endColor = colour;
+
+            // The palette is authored in sRGB. A LineRenderer's vertex colour
+            // reaches the shader unconverted, so the conversion to linear light
+            // happens here, at the boundary.
+            _line.startColor = colour.linear;
+            _line.endColor = colour.linear;
         }
 
         /// <summary>
@@ -120,8 +124,8 @@ namespace TimeToExplore.Rendering
         public void SetColour(Color colour)
         {
             if (_line == null) return;
-            _line.startColor = colour;
-            _line.endColor = colour;
+            _line.startColor = colour.linear;
+            _line.endColor = colour.linear;
         }
     }
 }

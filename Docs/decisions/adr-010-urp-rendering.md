@@ -117,7 +117,8 @@ shadows off, URP lights disabled, one base camera, no renderer features. See
   built-in path. At 137 bodies and a handful of lines it is not measurable in
   practice, but it is not free.
 * The project stays in Gamma colour space, so the migration does not change
-  colour grading; a later linear-colour pass is a separate decision.
+  colour grading; a later linear-colour pass is a separate decision. **Superseded
+  by [ADR-021](/decisions/adr-021-linear-colour-space.md) on 2026-11-25.**
 
 # Alternatives considered
 

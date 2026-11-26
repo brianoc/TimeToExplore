@@ -26,6 +26,7 @@ Shader "TimeToExplore/BodyLit"
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 
             struct Attributes
             {
@@ -63,7 +64,12 @@ Shader "TimeToExplore/BodyLit"
                 float3 n = normalize(input.normalWS);
                 float3 toSun = normalize(_SunPosition.xyz - input.positionWS);
                 half ndl = saturate(dot(n, toSun));
-                half3 colour = _Color.rgb * (_Ambient + (1.0h - _Ambient) * ndl);
+
+                // _Ambient is authored as an sRGB grey, the way it was in the
+                // gamma pipeline, so the night side keeps the same perceived
+                // floor. The light itself is linear.
+                half ambient = SRGBToLinear(_Ambient);
+                half3 colour = _Color.rgb * (ambient + (1.0h - ambient) * ndl);
                 return half4(colour, 1.0h);
             }
             ENDHLSL

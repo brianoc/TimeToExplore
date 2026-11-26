@@ -274,8 +274,12 @@ namespace TimeToExplore.Rendering
             arcLine.Renderer.textureMode = style.Dashed
                 ? LineTextureMode.Tile
                 : LineTextureMode.Stretch;
-            arcLine.Renderer.startColor = style.Colour;
-            arcLine.Renderer.endColor = style.Colour;
+
+            // A LineRenderer's vertex colour reaches the shader unconverted.
+            // The route palette is authored in sRGB, so this is the boundary
+            // where it becomes linear light.
+            arcLine.Renderer.startColor = style.Colour.linear;
+            arcLine.Renderer.endColor = style.Colour.linear;
             arcLine.Material.mainTexture = style.Dashed ? _dashTexture : null;
         }
 

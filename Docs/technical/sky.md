@@ -255,6 +255,14 @@ cores a shoulder because the display still ends at white. The bloom's cost is a
 downsampled chain in the post-processing pass, not in the skybox pass. Details
 are in [Rendering at solar scale](/technical/rendering-scale.md).
 
+The project renders in **Linear** colour space
+([ADR-021](../decisions/adr-021-linear-colour-space.md)). The band already
+imports as sRGB, so sampling and the final write cancel and the texture keeps
+the values the generator drew. The star tints are literals in the shader, so
+they pass through `SRGBToLinear`. The star and band **gains** needed no change:
+the captures put the band and the bloom halos on the same values as before the
+switch.
+
 The rendered result, judged from the offscreen captures rather than from numbers
 alone: the band stays smooth and unhaloed, with its mottling and its dark lanes
 intact; Sirius, Vega, and Rigel carry a soft halo some sixty pixels across

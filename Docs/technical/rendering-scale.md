@@ -298,6 +298,35 @@ The shader is intentionally simple. It exists to make the orrery legible, not to
 be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
 and the far-field camera stack without changing the scale rules.
 
+# Colour space
+
+The project renders in **Linear** colour space
+([ADR-021](../decisions/adr-021-linear-colour-space.md)). Every colour in the
+source — the catalogue JSON, the C# palette constants, the shader literals — is
+authored in sRGB, and converts once, where it enters a shader. The boundary
+depends on the consumer, and the difference matters:
+
+* **Material colour properties** (`_Color`) are converted by Unity when it
+  submits the material. `BodyView`, `ShipView`, and the trajectory markers pass
+  the authored value through untouched; `.linear` there would convert twice and
+  leave a body dark and over-saturated.
+* **`LineRenderer` vertex colours** are not converted, so `OrbitLine` and
+  `TrajectoryLine` apply `.linear` to the palette as they hand it over.
+* **Shader literals and floats** are not converted: `BodyLit` runs its authored
+  `_Ambient` through `SRGBToLinear`, and the skybox does the same for its star
+  tints.
+* **The HUD** needs nothing: Unity's `UI/Default` and `UI/Default Font` shaders
+  call `UIGammaToLinear` on the vertex colour in a linear project, so the
+  palette stays an sRGB palette.
+
+Colour textures import as sRGB — the Milky Way band does. Data textures must be
+created `linear: true`, which the bright-star map already is; an sRGB import
+would decode its magnitude and position codes as if they were light.
+
+Bloom and Neutral tonemapping now operate on the values they were written for.
+Their threshold and gains are the numbers to re-tune after a colour-space or
+lighting change, not the authored colours.
+
 # What breaks at this scale
 
 * **Shadows.** Unity's shadow cascades cannot span the solar system. Shadows are

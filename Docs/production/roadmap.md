@@ -20,6 +20,9 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:00:00Z }
 * Universal Render Pipeline 17.3.0, with a project pipeline asset, a minimal
   forward renderer, and four small runtime shaders (lit bodies, unlit markers,
   vertex-coloured lines, and the Milky Way skybox).
+* Linear colour space, with every authored colour kept in sRGB and converted
+  once at the shader boundary
+  ([ADR-021](../decisions/adr-021-linear-colour-space.md)).
 * Input System 1.20.1 behind one `PlayerControls` gameplay seam and one
   `UiInput` uGUI module, with Active Input Handling **New** only; no runtime code
   reads the legacy backend.

@@ -38,7 +38,8 @@ namespace TimeToExplore.Rendering
         public const double MinimumThrustMps2 = 1e-3;
 
         /// <summary>The arrow's colour: a bright green, distinct from the gold,
-        /// blue, and red route arcs.</summary>
+        /// blue, and red route arcs. Authored in sRGB; a material colour
+        /// property converts to linear on submit.</summary>
         public static readonly Color ArrowColour = new Color(0.52f, 1f, 0.62f);
 
         private Transform _visual;

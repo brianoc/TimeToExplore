@@ -54,12 +54,19 @@ namespace TimeToExplore.Rendering
             if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
             _material = new Material(shader) { name = body.Name + " Material" };
 
-            Color colour = ColorFrom(body.Data);
+            Color colour = ShaderColourFrom(body.Data);
             if (_material.HasProperty("_Color")) _material.SetColor("_Color", colour);
             Renderer.sharedMaterial = _material;
         }
 
-        private static Color ColorFrom(BodyData data)
+        /// <summary>
+        /// The body's colour as the catalogue authored it. Do not convert it:
+        /// Unity converts a material colour property from sRGB to linear when
+        /// the project uses linear colour space, so converting here would
+        /// convert twice and leave the body dark and over-saturated. The
+        /// catalogue stays the one sRGB source of truth.
+        /// </summary>
+        public static Color ShaderColourFrom(BodyData data)
         {
             if (data.color == null || data.color.Length < 3)
                 return new Color(0.7f, 0.7f, 0.7f);
