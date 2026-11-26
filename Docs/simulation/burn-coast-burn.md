@@ -634,9 +634,9 @@ reported numbers. At the 90-day Mars plan's mid-burn the summed field is
 solve absorbs the field difference into the burn's thrust direction and the path,
 not the spend. The numbers moved with the physical departure, not because of the
 field: 1,649.4 km/s at the 3.67616-day Mercury floor, 282.8 at 16, 38.54 at Mars
-90 days, and floors of 3.68 and 7.17 days. The seams close to 55.8 m and
-8.6 × 10⁻² m/s at the short Mercury trip; the Mars 90-day flight arrives exactly
-(0.0 m and 7.3 × 10⁻⁶ m/s from the reference state).
+90 days, and floors of 3.68 and 7.17 days. The seams close to 3.2 m and
+1.3 × 10⁻³ m/s at the 14.1-day Mercury trip; the Mars 90-day flight arrives
+exactly (0.0 m and 7.3 × 10⁻⁶ m/s from the reference state).
 
 The cost is planning time, not delta-v: a full-field step evaluates the summed
 field over the catalogue, and the active set refreshes every eighth step, so a

@@ -102,9 +102,10 @@ of them binds and the event cap's 130,059 s wins. They are released once the pla
 completes, so the clock is not pinned at the hold point after arrival.
 
 Go To also **raises** the warp, to the largest scale the trip can still be
-watched at: Gateway→Mars is about 16.5 days, so it starts at 10,000× (about
-143 s) and the policy takes over near Mars. The status panel says `warp held by
-the flight policy · auto from x1,000,000` whenever the cap is binding.
+watched at: Gateway→Mars is about 7.17 days, so it starts at 10,000× (about
+62 s at that scale; the measured flight takes 131.8 s as the policy slows near
+Mars). The status panel says `warp held by the flight policy · auto from
+x1,000,000` whenever the cap is binding.
 
 # Plot route, then Begin
 
@@ -138,47 +139,47 @@ The details footer splits the old one-press **Go To** into two actions:
 Once a preview exists, the details footer grows a **trip-time slider**. Its
 handle is one of **64 integer steps**, mapped linearly onto
 `PreviewMinimumSeconds` to `PreviewMaximumSeconds`, so each position is a
-distinct flight time rather than a continuous value. A step is about a fifth of
+distinct flight time rather than a continuous value. A step is about a quarter of
 a day on the Mars window below, which reads as a smooth drag and puts exactly
 one trip in each slot of the retimed-plan cache. The **minimum is the planner's
-`PlanFastest`**: the zero-coast burn-only crossing when it is the shorter
-feasible plan, otherwise the coast floor. The upper end is still
+`PlanFastest`**: the split-aware coast floor. Since
+[ADR-022](/decisions/adr-022-departure-split.md) the burn-only crossing keeps
+the minimum-energy parabolic climb and is longer than the coast floor at every
+measured route, so it does not set the minimum; `PlanFastest` still compares the
+two and returns the crossing on a route where it wins. At the epoch the minimum
+is **7.16751 d / 1,070.1 km/s** to Mars at 0.3 g, **3.67616 / 1,649.4** to
+Mercury at 1 g, **13.58298 / 2,133.8** to Jupiter at 0.3 g, and **28.18209 /
+37.00540 d** to Uranus at 1 g / 0.3 g. The upper end is still
 `PlanAtDuration` — three times the minimum, or the slowest duration the planner
 still accepts when the cap itself is refused. At the epoch the profile's
-**coast windows** are 16.84–50.53 days to Mars at 0.3 g, 14.06–34.27 to Mercury
-at 1 g, 23.73–71.20 to Jupiter at 0.3 g, 57.02–171.07 to Uranus at 1 g and
-92.13–276.39 at 0.3 g; the slider starts at the shorter **burn-only minimum**
-where that wins (16.48669 days to Mars, 13.86287 to Mercury, 22.55555 to
-Jupiter) and stops at the largest accepted duration inside three times it. A
+**coast windows** are 7.17–21.50 days to Mars at 0.3 g, 3.68–11.03 to Mercury
+at 1 g, 13.58–40.75 to Jupiter at 0.3 g, 28.18–84.55 to Uranus at 1 g and
+37.01–111.02 at 0.3 g. The burn-only crossings are 16.48669 days to Mars,
+13.86287 to Mercury and 22.55555 to Jupiter, all longer than their floors. A
 90-day Mars build is outside that window and the cap.
 
-The **range between a burn-only minimum and the coast floor is a short-coast
-regime**, not a hole. `PlanAtDuration` builds a duration the coast path refuses
-in that range as the burn-only crossing with a heliocentric conic coast between
-the departure burn and the brake: the requested total is an input, and the
-coast, the burn's duration, the ship's own escape climb, and the brake's
-direction are the
-solve ([the short coast](/simulation/burn-coast-burn.md#the-short-coast)). It is
-not a Lambert coast, so the plan's shape is still break → escape → departure
-burn → conic coast → brake → capture. At the minimum the planner returns the
-burn-only
-plan itself. Below the minimum the refusal is unchanged, and above the coast
-floor the path is the unchanged Lambert profile. Measured at the epoch, Mercury
-1 g's 13.96-day gap midpoint builds in **2,021.4 km/s**, Mars 0.3 g's 16.65-day
-midpoint in 1,140.8 km/s, and Jupiter 0.3 g's 23.10-day midpoint in 2,189.8 km/s,
-with every seam inside the gate. The first selection now pays for the
-short-coast seed as well as the floor and the moving-target minimum only when a
-slider retime lands in the gap: the seed is the burn-only crossing, and the
-short-coast Newton is a few seconds on the background worker. The editor's first
-`Plot()` measured **2.81 s at Uranus 0.3 g, 3.08 s at 1 g, 5.07 s at Mars 0.3 g,
-3.89 s at Mercury 1 g, and 4.61 s at Jupiter 0.3 g** in the warm test project on
-the pre-physical-departure profile; the added conic climb has not been
-re-profiled.
+The **short-coast gap is empty at the current epoch.** The branch used to fill
+the range between a shorter burn-only minimum and a later coast floor; the
+split inverts that, so `PlanAtDuration` refuses a request below the coast floor
+and builds the ordinary Lambert profile above it. The branch stays in the
+planner for a route whose burn-only crossing still wins, and the minimum
+comparison still uses the burn-only crossing as its seed. The old gap midpoints
+are ordinary long-coast plans now: Mercury 1 g at 13.96179 days sits above the
+3.67616-day floor, so it is the Lambert profile with its cruise coast, not the
+short coast, and the old Mars 0.3 g 16.65-day and Jupiter 0.3 g 23.10-day
+midpoints are above their floors for the same reason. The first selection pays
+for the floor and the burn-only crossing's own total; it pays for the
+short-coast seed only when a slider retime lands in a gap, which no current
+route has. The editor's first `Plot()` measured **2.81 s at Uranus 0.3 g,
+3.08 s at 1 g, 5.07 s at Mars 0.3 g, 3.89 s at Mercury 1 g, and 4.61 s at
+Jupiter 0.3 g** in the warm test project on the pre-physical-departure profile;
+the added conic climb has not been re-profiled.
 A repeat plot at the same departure date, target, burn level, and arrival style
 still reuses the cached plan and window; a changed departure date, or a
 place/teleport, drops the cache. Every case still certifies on its **first**
-certificate with no continuation probes, so the added plot time is the
-moving-target minimum, not a longer floor search; .NET's `Plan()` is 0.21–0.38 s
+certificate with no continuation probes, so the added plot time is the floor
+search plus one fixed-date burn-only comparison, not a moving-target loop;
+.NET's `Plan()` is 0.21–0.38 s
 for the same cases ([planning
 performance](/technical/planning-performance.md#step-4-the-bracket-was-not-needed-2026-11-20)).
 
@@ -289,16 +290,16 @@ plotted departure, and the first `Advance` carries it forward to the current
 date, at most 1% of the trip.
 
 Past the window Begin **replans** at the current state and date. Its base plan is
-`PlanFastest` — the same burn-only minimum or coast floor the preview's window
-advertises — and it re-times above that minimum with `PlanAtDuration` when the
-preview asked for a longer trip. A stale preview that sat at its minimum flies
-the **fresh** minimum: at the new date the old number can sit in the zero-coast
-gap. At a coast-floor target the base is the coast floor; a chosen longer time
-still retimes. The status already reads `Preview, stale` and the note says
-**replot or begin anyway**, so the replan is what the panel promised. A request
-inside the gap builds the **short coast** rather than reporting a refusal, so
-every duration the window offers is flyable; below the burn-only minimum the
-planner still refuses with the arc that is over the drive.
+`PlanFastest` — the coast floor the preview's window advertises, or the
+burn-only crossing on a route where that is shorter — and it re-times above that
+minimum with `PlanAtDuration` when the preview asked for a longer trip. A stale
+preview that sat at its minimum flies the **fresh** minimum: the clock may have
+moved, and the old number can sit a few seconds above the new floor. Every
+measured planet route's minimum is the coast floor, so a Begin from a stale
+preview flies the coast plan. The status already reads `Preview, stale` and the
+note says **replot or begin anyway**, so the replan is what the panel promised.
+A request below the floor is refused with the arc that is over the drive; every
+duration the window offers is above the floor and builds the coast path.
 
 The preview is a contract while it is fresh — Begin flies it exactly — and a
 promise of shape once it is stale. The clock keeps running, warp may be raised,
@@ -314,11 +315,12 @@ one calls `FlightSession.SetArrivalStyle`, which sets the planner mode, rebuilds
 the preview from the pinned departure state, and resets the trip-time window to
 the new style's fastest plan. The previous flight time is kept when it still
 falls inside that window; a preview that sat **at** its minimum instead lands on
-the new style's own minimum, because the two styles' burn-only totals can differ
-by seconds and the old number would sit just above the new minimum's own date
-tolerance. The zero-coast
-minimum always ends on the conic capture chain, so the style's effect on the
-drawn route shows on a retime above the floor. The active choice's label is gold
+the new style's own minimum, because the two styles' floors can differ by
+seconds and the old number would sit just above the new minimum's own date
+tolerance. The minimum is a coast plan, so the selected style's capture chain is
+on the drawn route even at the floor; the zero-coast crossing, which appears only
+on a route where it wins, always ends on the conic capture chain. The active
+choice's label is gold
 and its fill brighter; the route redraws with the coast, burn, and parking
 orbit, and the flight panel gains the `Coast`, `Capture`, `Parking`, and
 `Departure burn` / `Brake` rows. The hybrid adds a capture burn and its trim; the
@@ -557,27 +559,27 @@ Run through the scene's frame loop at 60 fps, without a scene
 | Quantity | Value |
 |---|---|
 | Departure | Gateway Station, 2026-11-15 00:00 UTC |
-| Arrival | 2026-12-01 11:40:50 UTC (16.49 days later) |
-| Plan | the 0.3 g burn-only minimum: 7 arcs, no cruise coast, 1,450 km/s |
+| Arrival | 2026-11-22 04:01:12 UTC (7.17 days later) |
+| Plan | the 0.3 g split-aware coast floor: 8 arcs, one cruise coast, 1,070 km/s |
 | Arrival error | 0.1 m, 0.0001 m/s |
-| After three orbits | r = 3,898 km, e = 3.12 × 10⁻⁶, drive off |
-| Real time | 202.0 s over 12,118 frames at the suggested 10,000× |
+| After three orbits | r = 3,898 km, e = 3.05 × 10⁻⁶, drive off |
+| Real time | 131.8 s over 7,907 frames at the suggested 10,000× |
 | Peak substeps in one frame | 14 of the 2,000 budget |
 | Warp | x10,000 → x10, auto-limited |
 | Teleports | none |
 
 The budget never bound, but a starved-budget test with two substeps per frame
-proves the clamp: 400 frames reach only 2026-11-15 00:15 and the clock is never
-ahead of the ship.
+proves the clamp: 400 frames reach only 2026-11-15 04:47:33 and the clock is
+never ahead of the ship.
 
 The same flight also runs through the real composition root
 (`BootstrapSmokeTests`): select Mars, plot, Begin, and let the bootstrap's own
-`Update`/`LateUpdate` run. It arrives at the same 2026-12-01 11:40:50 UTC after
-12,118 frames and 202.0 real seconds, with 0.1 m and 0.0001 m/s and the
-3,898 km parking orbit at e = 1.95 × 10⁻⁹. The shorter
-`AProfileFlightArrivesThroughTheBootstrap` run (4,922 frames, 82.0 s) uses the
+`Update`/`LateUpdate` run. It arrives at the same 2026-11-22 04:01:12 UTC after
+7,907 frames and 131.8 real seconds, with 0.1 m and 0.0001 m/s and the
+3,898 km parking orbit at e = 2.89 × 10⁻⁹. The shorter
+`AProfileFlightArrivesThroughTheBootstrap` run (5,421 frames, 90.4 s) uses the
 bootstrap's larger default frame step and reaches the same state at
-e = 2.19 × 10⁻⁹.
+e = 3.35 × 10⁻⁹.
 
 # Verification
 
@@ -587,11 +589,12 @@ orrery untouched, and the preview: it never moves the ship, one replaces
 another, Begin consumes it — flying it inside the freshness window and
 replanning past it — Cancel clears it,
 the staleness window is one percent of the flight, the trip-time window is
-`[minimum, 3 × minimum]` and clamps to it, the **minimum is the burn-only plan
-with no cruise coast** while a retime above the coast floor still builds the
-coasting profile, **a retime inside the gap builds the short coast** (Mercury
-1 g at half the gap, 13.96179 d: 2,021.4 km/s, 8 arcs, seams inside the gate),
-retiming changes
+`[minimum, 3 × minimum]` and clamps to it, the **minimum is the split-aware coast
+floor with its cruise coast**, the burn-only crossing is longer at every measured
+route, a retime above the floor still builds the coasting profile, and a request
+below the floor keeps the refusal; the old gap midpoint (Mercury 1 g at
+13.96179 d) is now an ordinary coast plan above the 3.67616-day floor.
+Retiming changes
 the flight time
 and arrival without moving the ship, Begin keeps the chosen time, and the preview
 window is cached — a repeat plot at the same date returns the same plan, another
@@ -601,12 +604,12 @@ returns the same plan, a background ask for an already-built duration publishes
 without starting the worker, a repeat within 0.2% of the window reuses it, and a
 date change drops it. The bound is measured rather than assumed: a Mars plan's
 finite-burn tables are about 50 KiB, so sixty-four plans are a few megabytes.
-Begin itself is pinned to the preview: at Mercury 1 g it flies the **13.86287 d
-burn-only minimum** (break → escape → departure burn → brake → capture, seven
-arcs, no cruise coast)
-and the autopilot reaches the arrival state inside the test's bound, while at
-Uranus it flies the **57.02223 d coast floor** because that is the shorter plan
-there. Begin flies the **drawn** plan inside the preview's freshness window —
+Begin itself is pinned to the preview: at Mercury 1 g it flies the **3.67616 d
+coast floor** (break → escape → departure burn → coast → brake → capture, eight
+arcs with a cruise coast) and the autopilot reaches the arrival state inside the
+test's bound, while at Uranus it flies the coast floor because that is the
+minimum there. Begin flies the **drawn** plan inside the preview's freshness
+window —
 `BeginInsideThePreviewWindowFliesTheDrawnPlanAndArrivesExactly` pins it to the
 same plan instance, the plotted departure, and the plotted arrival, and asserts
 the planner was never called — while past the window it replans at the current
@@ -615,9 +618,8 @@ date and flies the **fresh** minimum rather than the old number
 `BeginningAtTheMinimumBeyondTheWindowFliesTheReplannedMinimum`). A Begin for
 another target never flies the preview. The real-HUD
 `PressingBeginInTheRealHudFliesAndCancelClearsTheRoute` is the PlayMode guard.
-The Mars anchor is the **16.48669 d burn-only minimum**
-(**1,450.4 km/s**, seven arcs, 156.1 t of propellant), not the 16.84485-day
-coast floor.
+The Mars anchor is the **7.16751 d coast floor** (**1,070.1 km/s**, eight arcs,
+112.9 t of propellant); the 16.48669-day burn-only crossing is the longer plan.
 It also covers the **background planner**: the second of two requests made while
 the first is building is the plan that is published and the older build is
 dropped, the worker's plan equals the synchronous plan for the same duration,
@@ -626,23 +628,21 @@ retime supersedes an outstanding ask, discarding the preview drops one, and
 Dispose joins the worker and refuses
 new work. `SolarSystemHudTests` covers the arrival buttons and the profile
 window: the two-button `ARRIVAL` row defaults to Conic, a switch rebuilds the
-preview, the burn-level floor is 0.05 g, the trip-time label reads `burns · no
-coast` on the zero-coast minimum and `burns · coast` after a retime, and the
-slider runs in **64 whole steps** from the burn-only minimum to three times it
-(16.49–49.46 days at the epoch for Gateway→Mars, from the 16.48669-day minimum
-against the 16.84485-day coast floor).
+preview, the burn-level floor is 0.05 g, the trip-time label reads
+`burns · coast` at the floor and after a retime, and the slider runs in **64
+whole steps** from the coast floor to three times it (7.17–21.50 days at the
+epoch for Gateway→Mars).
 `TripPlannerTests` covers the pinned duration: exact flight time, a gentler burn
 and lower delta-v at twice the minimum, and an infeasible report below it.
 `BurnCoastBurnTripPlannerTests` covers the profile and the Lambert coast: the
 six-unknown seam at a fixed date, the **moving-target loop** (a settled arrival
 date that reproduces its own total, a stable total across calls, the closed seam,
-and no cruise coast), and `PlanFastest` returning the burn-only plan at Mercury
-1 g below the coast floor. It also covers the **short coast**: the three gap
-midpoints build as break → departure burn → conic coast → brake → capture with
-the requested total and every seam inside the gate, the family is continuous
-from the minimum through the quartiles to the coast floor, and every slider
-duration from the minimum to the floor and a little above it builds — the "no
-hole" sweep at Mercury 1 g, Mars 0.3 g, and Jupiter 0.3 g. `LambertSolverTests`
+and no cruise coast), and `PlanFastest` returning the coast floor at Mercury
+1 g, Mars 0.3 g and Jupiter 0.3 g, with the burn-only crossing the longer plan.
+It also covers the **empty short-coast gap**: the minimum is an ordinary coast
+plan, the old gap durations build as long-coast plans, and every slider duration
+above the floor builds with its requested total — the "no hole" sweep at Mercury
+1 g, Mars 0.3 g, and Jupiter 0.3 g. `LambertSolverTests`
 covers the solver itself.
 `WarpPolicyTests` covers the clearance, local-dynamics and plan-event caps, the
 two station caps and the scale rounding. `PlanPathTests` covers the arc boundaries. `FlightReportTests` covers the panel
@@ -655,7 +655,7 @@ runs the real composition root — `Awake`, `Update`, `LateUpdate` — in edit m
 including drawing the preview and its arrival ghost without flying, Begin
 flying the drawn plan inside the freshness window and replanning past it,
 discard leaving the ship alone, the full
-frame-loop acceptance (12,118 frames, 202.0 s, 0.1 m and 0.0001 m/s, on the
+frame-loop acceptance (7,907 frames, 131.8 s, 0.1 m and 0.0001 m/s, on the
 3,898 km parking orbit), and the burn–coast–burn profile plotted and flown to
 the conic parking orbit through the same loop.
 

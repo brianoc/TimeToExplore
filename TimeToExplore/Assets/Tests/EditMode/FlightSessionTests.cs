@@ -135,7 +135,7 @@ namespace TimeToExplore.Tests.EditMode
                 plan.ArrivalState.PositionM);
             double velocityError = (_session.State.VelocityMps - plan.ArrivalState.VelocityMps)
                 .Magnitude;
-            TestContext.WriteLine($"burn-only flight arrived {JulianDate.Format(step.ReachedJulianDate)}, " +
+            TestContext.WriteLine($"coast-floor flight arrived {JulianDate.Format(step.ReachedJulianDate)}, " +
                                   $"{positionError:F1} m, {velocityError:F4} m/s, " +
                                   $"{step.Substeps} substeps");
 

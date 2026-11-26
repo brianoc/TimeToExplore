@@ -1037,18 +1037,21 @@ namespace TimeToExplore.Simulation
         /// <summary>
         /// The nav computer's **minimum trip time**: the shorter feasible plan of
         /// the zero-coast crossing and the profile's coast floor. The burn-only
-        /// total is an **output** of the seam solve, not a requested duration, and
-        /// it is normally the shorter of the two at a high burn level (Mercury at
-        /// 1 g: 3.04470 d against the 3.21610 d floor). The two are compared, not
+        /// total is an **output** of the seam solve, not a requested duration.
+        /// Since the split the coast floor is shorter at every measured route
+        /// (Mars at 0.3 g: 7.16751 d against the crossing's 16.48669 d), because
+        /// the crossing keeps the minimum-energy parabolic climb while the floor
+        /// buys a short climb and a longer coast. The two are still compared, not
         /// assumed: when the zero-coast solve is infeasible, does not settle, or
-        /// comes out longer, the coast floor is returned.
+        /// comes out longer, the coast floor is returned; on a route where the
+        /// crossing wins it is still returned.
         ///
         /// This does **not** change <see cref="Plan"/>'s floors or the
         /// fixed-duration delta-v anchors, which still come from the coast path.
-        /// The range between this minimum and the coast floor is the **short
-        /// coast**, which <see cref="PlanAtDuration"/> builds from the burn-only
-        /// seam and a conic coast; the minimum itself stays this burn-only
-        /// crossing, and a duration below it keeps the coast path's refusal.
+        /// The old range between a shorter burn-only minimum and a later coast
+        /// floor — the **short coast** — is empty at the current epoch, so a
+        /// duration below the coast floor keeps the coast path's refusal. The
+        /// branch stays for a route whose burn-only crossing still wins.
         /// </summary>
         public TrajectoryPlan PlanFastest(ShipState ship, string targetId)
         {

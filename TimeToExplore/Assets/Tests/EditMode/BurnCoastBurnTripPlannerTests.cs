@@ -292,10 +292,10 @@ namespace TimeToExplore.Tests.EditMode
         /// The arrival leg is planetocentric from the handover ceiling down. At the
         /// epoch from Gateway to Uranus at 1 g and 400 days the heliocentric coast
         /// now ends on the 52,795,223.9 km ceiling (1.02 × the sphere) and a
-        /// 7.544-day conic about Uranus falls to the brake's start, which is
-        /// 368,111.4 km out. The approach is a free fall — no burn, and its own
+        /// 7.623-day conic about Uranus falls to the brake's start, which is
+        /// 361,329.2 km out. The approach is a free fall — no burn, and its own
         /// third-body correction is 0.007 km/s against the old coast's 0.221 — and
-        /// it never reaches the 38,643.0 km floor: its periapsis is 84,354.2 km, so
+        /// it never reaches the 38,643.0 km floor: its periapsis is 83,919.2 km, so
         /// the brake still spans the last part of the descent. Both seams close
         /// inside the 1 km / 1 m/s gate.
         /// </summary>
@@ -357,7 +357,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the approach's start radius is the ceiling");
             Assert.That(endPosition.Magnitude,
                 Is.EqualTo(361_329_160.6).Within(5_000.0),
-                "measured: the brake starts 374,026.9 km out");
+                "measured: the brake starts 361,329.2 km out");
 
             Assert.That(approach.IsCoast, Is.True, "the approach is a free fall");
             Assert.That(approach.DeltaVMps / 1000.0, Is.LessThan(0.01),
@@ -824,10 +824,10 @@ namespace TimeToExplore.Tests.EditMode
                                            - right.Path.VelocityAt(0.0)).Magnitude;
                     TestContext.WriteLine($"seam {i} {left.Phase}->{right.Phase}: " +
                                           $"{positionStep:E2} m, {velocityStep:E2} m/s");
-                    // The brake now ends at the handover floor, so the fixed
-                    // point's residual and the coast's Lambert correction show up
-                    // in these seams: measured worst 55.8 m and 8.6 × 10⁻² m/s at
-                    // the short Mercury trip, still well inside the profile's
+                    // The brake ends at the handover floor, so the fixed point's
+                    // residual and the coast's Lambert correction show up in
+                    // these seams: measured worst 3.2 m and 1.3 × 10⁻³ m/s at the
+                    // 14.1-day Mercury trip, still well inside the profile's
                     // 1 km / 1 m/s gate. The century-metre and 0.2 m/s bounds are
                     // the regression guard, not a relaxed gate.
                     Assert.That(positionStep, Is.LessThan(100.0), $"seam {i}");
@@ -1177,9 +1177,10 @@ namespace TimeToExplore.Tests.EditMode
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             double limit = _planner.MaxAccelerationMps2 * _planner.ThrustMargin;
 
-            // 14.1 d sits just above the floor, 14.5 and 16 d are gentler trips,
-            // and 2.0 d is the rejected just-under case below the split-aware
-            // floor (the old 13-day case became buildable when the split landed).
+            // 14.1 d is a short trip above the 3.67616-day floor, 14.5 and 16 d
+            // are gentler trips, and 2.0 d is the rejected just-under case below
+            // the split-aware floor (the old 13-day case became buildable when
+            // the split landed).
             foreach (double days in new[] { 14.1, 14.5, 16.0 })
             {
                 TrajectoryPlan plan = _planner.PlanAtDuration(ship, "mercury",
@@ -1538,8 +1539,10 @@ namespace TimeToExplore.Tests.EditMode
         /// date for the capture chain, not a trip time, and never calls
         /// <see cref="TripPlanner.PlanAtDuration"/>. Measured at the epoch from
         /// Gateway to Mercury at 1 g on the date of the certified burn-only
-        /// minimum: the seam closes inside the gate, and the crossing is shorter
-        /// than the coast floor at a much higher delta-v.
+        /// minimum: the seam closes inside the gate, and the crossing is **longer**
+        /// than the split-aware coast floor at a much higher delta-v. The old
+        /// 14.06070-day floor belongs to the pre-split profile; the current floor
+        /// is 3.67616 days.
         /// </summary>
         [Category("flight")]
         [Test]
@@ -1548,7 +1551,7 @@ namespace TimeToExplore.Tests.EditMode
             _planner.BurnLevelG = 1.0;
 
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
-            const double floorDays = 14.06070;
+            const double floorDays = 3.67616;
             double arrivalJd = ship.JulianDate + 13.86287;
 
             var trace = new List<string>();
@@ -1649,12 +1652,12 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(brakeStartRadius, Is.GreaterThan(band.CeilingRadiusM),
                 "the fast crossing's brake starts outside the handover ceiling");
-            Assert.That(totalDays, Is.LessThan(floorDays),
-                "the burn-only crossing is shorter than the certified 1 g coast floor");
+            Assert.That(totalDays, Is.GreaterThan(floorDays),
+                "the burn-only crossing is longer than the certified 1 g coast floor");
             Assert.That(totalDays, Is.EqualTo(13.86287).Within(0.05),
                 "measured: the burn-only crossing's output length");
-            Assert.That(plan.DeltaVMps / 1000.0, Is.GreaterThan(1821.1),
-                "and it buys that time with delta-v, above the floor's 1,821 km/s");
+            Assert.That(plan.DeltaVMps / 1000.0, Is.GreaterThan(1649.4),
+                "and it buys its other shape with delta-v, above the floor's 1,649.4 km/s");
             Assert.That(plan.DeltaVMps / 1000.0, Is.LessThan(3000.0));
         }
 
