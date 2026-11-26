@@ -15,6 +15,7 @@
 # Editor and IDE files
 *.csproj
 *.sln
+!tools/dotnet-bench/*.csproj
 *.suo
 *.user
 *.userprefs
@@ -40,6 +41,11 @@ crashlytics-build.properties
 # Warm test project used by tools/check.sh
 .cache/
 
+# Plain .NET benchmark harness and local comparison artefacts
+/tools/dotnet-bench/bin/
+/tools/dotnet-bench/obj/
+/build/
+
 # Python
 .venv
 __pycache__/
@@ -52,3 +58,6 @@ __pycache__/
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# Test Framework's transient play-mode scene
+/[Tt]ime[Tt]o[Ee]xplore/[Aa]ssets/InitTestScene*.unity*

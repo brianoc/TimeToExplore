@@ -609,6 +609,8 @@ namespace TimeToExplore.Simulation
             if (!IsWithinFreshnessWindow(primed)) return false;
 
             Preview = fastest;
+            fastest.RebindGravity(_gravity);
+            primed.WindowPlan.RebindGravity(_gravity);
             PreviewJulianDate = primed.DepartureJulianDate;
             PreviewMinimumSeconds = primed.WindowPlan.FlightTimeSeconds;
             PreviewMaximumSeconds = primed.MaximumSeconds;
@@ -869,6 +871,7 @@ namespace TimeToExplore.Simulation
 
             if (Preview == null || Preview.TargetId != plan.TargetId) return false;
 
+            plan.RebindGravity(_gravity);
             Preview = plan;
             _requestedPreviewSeconds = plan.FlightTimeSeconds;
             return true;
@@ -1088,6 +1091,8 @@ namespace TimeToExplore.Simulation
             }
 
             Preview = completed.FinalPlan;
+            completed.FinalPlan.RebindGravity(_gravity);
+            completed.WindowPlan.RebindGravity(_gravity);
             PreviewJulianDate = completed.DepartureJulianDate;
             PreviewMinimumSeconds = completed.WindowPlan.FlightTimeSeconds;
             PreviewMaximumSeconds = completed.MaximumSeconds;

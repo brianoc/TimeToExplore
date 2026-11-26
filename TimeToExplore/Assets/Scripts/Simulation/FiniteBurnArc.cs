@@ -54,7 +54,7 @@ namespace TimeToExplore.Simulation
 
         private readonly SolarSystemModel _model;
         private readonly BodyRuntime _centre;
-        private readonly IGravityField _gravity;
+        private IGravityField _gravity;
         private readonly double _startJulianDate;
         private readonly double _durationSeconds;
         private readonly double _accelerationMps2;
@@ -97,6 +97,14 @@ namespace TimeToExplore.Simulation
         /// the first RK4 step and every eighth step after it, so a caller must
         /// not rely on a prepared set it did not ask for last.</summary>
         public IGravityField Gravity => _gravity;
+
+        /// <summary>
+        /// Point this arc at the field its flyer uses. A plan built on the
+        /// session's worker carries the worker's field, which the worker still
+        /// prepares for later requests; flying that plan on the main thread must
+        /// not prepare the same stateful field from two threads.
+        /// </summary>
+        internal void RebindGravity(IGravityField gravity) => _gravity = gravity;
 
         /// <summary>The local state at the end of the burn.</summary>
         public Vector3d EndLocalPositionM => _localPositionsM[_localPositionsM.Length - 1];

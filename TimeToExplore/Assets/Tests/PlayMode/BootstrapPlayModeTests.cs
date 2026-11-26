@@ -484,8 +484,7 @@ namespace TimeToExplore.Tests.PlayMode
 
             for (int i = 0; i < _bootstrap.Trajectory.ArcCount; i++)
             {
-                Transform child = _bootstrap.Trajectory.transform.Find(
-                    "Plan Arc " + (i + 1) + " Line");
+                Transform child = _bootstrap.Trajectory.ArcLineTransform(i);
                 Assert.That(child, Is.Not.Null,
                     $"arc {i} has no line object");
                 var line = child.GetComponent<LineRenderer>();

@@ -12,8 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bf2edee5c58d82540a51f03df9d42094, type: 3}
   m_Name: TimeToExploreUniversalRenderPipeline
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset
-  k_AssetVersion: 13
-  k_AssetPreviousVersion: 13
+  k_AssetVersion: 16
+  k_AssetPreviousVersion: 16
+  m_ShadowSettingsMigrationPending: 0
   m_RendererType: 1
   m_RendererData: {fileID: 0}
   m_RendererDataList:
@@ -28,11 +29,18 @@ MonoBehaviour:
   m_MSAA: 1
   m_RenderScale: 1
   m_UpscalingFilter: 0
+  m_ScalingMode: 0
+  m_SelectedUpscalerName: 
+  m_UpscalerPriority:
+  - upscalerId: unity.auto
+    upscalerName: Auto (Bilinear or Nearest-Neighbor)
+  m_UpscalerOptions: []
   m_FsrOverrideSharpness: 0
   m_FsrSharpness: 0.92
   m_EnableLODCrossFade: 1
   m_LODCrossFadeDitheringType: 1
   m_ShEvalMode: 0
+  m_ObsoleteLightFalloffMode: 0
   m_LightProbeSystem: 0
   m_ProbeVolumeMemoryBudget: 1024
   m_ProbeVolumeBlendingMemoryBudget: 256
@@ -44,22 +52,24 @@ MonoBehaviour:
   m_MainLightRenderingMode: 0
   m_MainLightShadowsSupported: 0
   m_MainLightShadowmapResolution: 2048
+  m_MainLightShadowmapDepthBits: 16
   m_AdditionalLightsRenderingMode: 0
   m_AdditionalLightsPerObjectLimit: 4
   m_AdditionalLightShadowsSupported: 0
   m_AdditionalLightsShadowmapResolution: 2048
+  m_AdditionalLightsShadowmapDepthBits: 16
   m_AdditionalLightsShadowResolutionTierLow: 256
   m_AdditionalLightsShadowResolutionTierMedium: 512
   m_AdditionalLightsShadowResolutionTierHigh: 1024
   m_ReflectionProbeBlending: 0
   m_ReflectionProbeBoxProjection: 0
   m_ReflectionProbeAtlas: 1
-  m_ShadowDistance: 0
-  m_ShadowCascadeCount: 1
-  m_Cascade2Split: 0.25
-  m_Cascade3Split: {x: 0.1, y: 0.3}
-  m_Cascade4Split: {x: 0.067, y: 0.2, z: 0.467}
-  m_CascadeBorder: 0.2
+  m_ObsoleteShadowDistance: 0
+  m_ObsoleteShadowCascadeCount: 1
+  m_ObsoleteCascade2Split: 0.25
+  m_ObsoleteCascade3Split: {x: 0.1, y: 0.3}
+  m_ObsoleteCascade4Split: {x: 0.067, y: 0.2, z: 0.467}
+  m_ObsoleteCascadeBorder: 0.2
   m_ShadowDepthBias: 1
   m_ShadowNormalBias: 1
   m_AnyShadowsSupported: 0
@@ -67,6 +77,9 @@ MonoBehaviour:
   m_ConservativeEnclosingSphere: 1
   m_NumIterationsEnclosingSphere: 64
   m_SoftShadowQuality: 2
+  m_SoftShadowKernelRadiusPercent: 0
+  m_MainLightShadowsPCSS: 0
+  m_AdditionalLightShadowsPCSS: 0
   m_AdditionalLightsCookieResolution: 2048
   m_AdditionalLightsCookieFormat: 3
   m_UseSRPBatcher: 1
@@ -74,7 +87,6 @@ MonoBehaviour:
   m_MixedLightingSupported: 1
   m_SupportsLightCookies: 1
   m_SupportsLightLayers: 0
-  m_DebugLevel: 0
   m_StoreActionsOptimization: 0
   m_UseAdaptivePerformance: 1
   m_ColorGradingMode: 0
@@ -85,6 +97,7 @@ MonoBehaviour:
   m_SupportScreenSpaceLensFlare: 1
   m_GPUResidentDrawerMode: 0
   m_SmallMeshScreenPercentage: 0
+  m_ShadowSmallMeshScreenPercentages: {x: 0, y: 0, z: 0, w: 0}
   m_GPUResidentDrawerEnableOcclusionCullingInCameras: 0
   m_ShadowType: 1
   m_LocalShadowsSupported: 0
@@ -92,7 +105,7 @@ MonoBehaviour:
   m_MaxPixelLights: 0
   m_ShadowAtlasResolution: 256
   m_VolumeFrameworkUpdateMode: 0
-  m_VolumeProfile: {fileID: 0}
+  m_VolumeProfile: {fileID: 11400000, guid: 5fd353eae5938408ca2f6d4a78d9965e, type: 2}
   apvScenesData:
     obsoleteSceneBounds:
       m_Keys: []
@@ -107,19 +120,13 @@ MonoBehaviour:
   m_PrefilteringModeForwardPlus: 1
   m_PrefilteringModeDeferredRendering: 1
   m_PrefilteringModeScreenSpaceOcclusion: 1
+  m_PrefilteringModeScreenSpaceReflection: 1
+  m_PrefilterWriteSmoothness: 1
   m_PrefilterDebugKeywords: 0
   m_PrefilterWriteRenderingLayers: 0
   m_PrefilterHDROutput: 0
   m_PrefilterAlphaOutput: 0
-  m_PrefilterSSAODepthNormals: 0
-  m_PrefilterSSAOSourceDepthLow: 0
-  m_PrefilterSSAOSourceDepthMedium: 0
-  m_PrefilterSSAOSourceDepthHigh: 0
-  m_PrefilterSSAOInterleaved: 0
-  m_PrefilterSSAOBlueNoise: 0
-  m_PrefilterSSAOSampleCountLow: 0
-  m_PrefilterSSAOSampleCountMedium: 0
-  m_PrefilterSSAOSampleCountHigh: 0
+  m_PrefilterSSAOKeywords: 0
   m_PrefilterDBufferMRT1: 0
   m_PrefilterDBufferMRT2: 0
   m_PrefilterDBufferMRT3: 0
@@ -127,6 +134,7 @@ MonoBehaviour:
   m_PrefilterSoftShadowsQualityMedium: 0
   m_PrefilterSoftShadowsQualityHigh: 0
   m_PrefilterSoftShadows: 0
+  m_PrefilterShadowsPCSS: 0
   m_PrefilterScreenCoord: 0
   m_PrefilterScreenSpaceIrradiance: 0
   m_PrefilterNativeRenderPass: 0
@@ -136,6 +144,13 @@ MonoBehaviour:
   m_PrefilterReflectionProbeBlending: 0
   m_PrefilterReflectionProbeBoxProjection: 0
   m_PrefilterReflectionProbeAtlas: 0
+  m_PrefilterPointSamplingUpsampling: 0
+  m_PrefilterExposure: 0
+  m_PrefilterVolumetricFog: 0
+  m_PrefilterLightFalloffQuadratic: 1
+  m_PrefilterShadowReceiverNormalBias: 0
+  m_Light2DPrefilteringMode: 0
+  m_Light2DKeptVariantCombos: []
   m_ShaderVariantLogLevel: 0
   m_ShadowCascades: 0
   m_Textures:

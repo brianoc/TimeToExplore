@@ -381,7 +381,7 @@ namespace TimeToExplore.Tests.EditMode
                 trajectory.Show(plan);
                 trajectory.Refresh(start, camera);
 
-                LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();
+                LineRenderer line = trajectory.ArcLineTransform(0)?.GetComponent<LineRenderer>();
                 Assert.That(line, Is.Not.Null);
                 Assert.That(line.positionCount, Is.GreaterThanOrEqualTo(2));
                 Assert.That(line.widthCurve.length, Is.EqualTo(line.positionCount));
@@ -464,7 +464,7 @@ namespace TimeToExplore.Tests.EditMode
                 trajectory.Show(plan);
                 trajectory.Refresh(arc.Path.PositionAt(0.0), camera);
 
-                LineRenderer line = lineObject.GetComponentInChildren<LineRenderer>();
+                LineRenderer line = trajectory.ArcLineTransform(0)?.GetComponent<LineRenderer>();
                 Assert.That(line, Is.Not.Null);
                 Assert.That(line.positionCount, Is.GreaterThan(8),
                     "the curved route must have mid-path vertices to test");

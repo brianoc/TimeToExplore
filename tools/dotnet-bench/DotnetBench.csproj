@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A plain .NET 10 host for the route planner benchmark. It compiles the same
+    Core and Simulation sources the Editor uses, plus a tiny UnityEngine shim,
+    so the numbers isolate the runtime from the Unity host. It is not imported
+    by Unity and never writes into Assets.
+
+    Run it through tools/dotnet-bench.sh.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Optimize>true</Optimize>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>TimeToExplore.Editor</AssemblyName>
+    <!-- Match the Editor's release build rather than the SDK's debug defaults. -->
+    <DebugType>none</DebugType>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../TimeToExplore/Assets/Scripts/Core/**/*.cs" />
+    <Compile Include="../../TimeToExplore/Assets/Scripts/Simulation/**/*.cs" />
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
+</Project>

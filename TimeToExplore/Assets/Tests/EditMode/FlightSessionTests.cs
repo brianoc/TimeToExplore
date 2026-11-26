@@ -560,6 +560,37 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void APublishedPlanBindsItsFiniteBurnsToTheFlightsField()
+        {
+            _session.PlotAsync("mars", _epoch);
+            TrajectoryPlan published = WaitForPublishedPreview();
+            AssertFiniteBurnsUse(published, _gravity);
+
+            // The retime is built on the same worker field and published by the
+            // same pump, so it must take the flight's field too.
+            _session.Plot("mars", _epoch);
+            double middle = _session.PreviewMinimumSeconds
+                + 0.5 * (_session.PreviewMaximumSeconds - _session.PreviewMinimumSeconds);
+            Assert.That(_session.RequestPreviewDuration(middle), Is.True);
+            TrajectoryPlan retimed = WaitForPublishedRetime();
+            AssertFiniteBurnsUse(retimed, _gravity);
+        }
+
+        private static void AssertFiniteBurnsUse(TrajectoryPlan plan, IGravityField field)
+        {
+            int burns = 0;
+            foreach (FiniteBurnArc burn in plan.Arcs.Select(arc => arc.Path)
+                         .OfType<FiniteBurnArc>())
+            {
+                burns++;
+                Assert.That(burn.Gravity, Is.SameAs(field),
+                    "a published finite burn still prepares the worker's field");
+            }
+
+            Assert.That(burns, Is.GreaterThan(0), "the route has a finite burn to check");
+        }
+
+        [Test]
         public void APlotAsyncMatchesTheSynchronousPlot()
         {
             _session.PlotAsync("mars", _epoch);

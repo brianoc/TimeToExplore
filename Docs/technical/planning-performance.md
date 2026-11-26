@@ -817,6 +817,10 @@ number is the one that ships**, which is why the anchors in
 figures stay as the harness's own measurement and as evidence that both points
 are certified. Whatever the runtime, a reported floor is a certified full-field
 plan, never a probe's answer.
+
+The same basin selects a different Uranus floor on Unity 7's CoreCLR Editor and
+on the plain .NET 10 harness; the side-by-side runtimes are in
+[the Unity 7 experiment](/technical/unity-7-coreclr.md).
 ## Post-close re-measure (step 4b merged, 2026-11-20)
 
 The **planetocentric approach leg** landed after the first-plot plan and was
