@@ -3,7 +3,7 @@ using UnityEngine;
 namespace TimeToExplore.Rendering
 {
     /// <summary>
-    /// Names of the shaders the renderer builds at runtime. All four live in
+    /// Names of the shaders the renderer builds at runtime. All five live in
     /// <c>Assets/Resources/Shaders</c>, so <see cref="Shader.Find"/> resolves
     /// them in a player build as well as in the editor.
     /// </summary>
@@ -11,6 +11,9 @@ namespace TimeToExplore.Rendering
     {
         /// <summary>Lit body shader: Lambert from the global sun position.</summary>
         public const string BodyLit = "TimeToExplore/BodyLit";
+
+        /// <summary>Additive rim-glow shell drawn just above an atmosphere.</summary>
+        public const string Atmosphere = "TimeToExplore/BodyAtmosphere";
 
         /// <summary>Flat colour, used for the Sun, the ship, and markers.</summary>
         public const string Unlit = "TimeToExplore/Unlit";

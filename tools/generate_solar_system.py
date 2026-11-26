@@ -63,6 +63,7 @@ PLANETS = [
         "pole_ra": 281.01, "pole_dec": 61.42,
         "color": [0.56, 0.52, 0.46],
         "description": "Smallest planet; large iron core; 3:2 spin-orbit resonance.",
+        "atmosphere": None,
     },
     {
         "id": "venus", "name": "Venus",
@@ -74,6 +75,8 @@ PLANETS = [
         "pole_ra": 272.76, "pole_dec": 67.16,
         "color": [0.86, 0.79, 0.64],
         "description": "Runaway-greenhouse world with a retrograde rotation.",
+        "atmosphere": dict(height_km=250.0, color=[0.95, 0.86, 0.66],
+                          intensity=1.0),
     },
     {
         "id": "earth", "name": "Earth",
@@ -85,6 +88,8 @@ PLANETS = [
         "pole_ra": 0.0, "pole_dec": 90.0,
         "color": [0.20, 0.42, 0.72],
         "description": "Home world; the Earth-Moon barycentre is used for the heliocentric orbit.",
+        "atmosphere": dict(height_km=100.0, color=[0.35, 0.56, 1.0],
+                          intensity=1.1),
     },
     {
         "id": "mars", "name": "Mars",
@@ -96,6 +101,8 @@ PLANETS = [
         "pole_ra": 317.68, "pole_dec": 52.89,
         "color": [0.72, 0.38, 0.24],
         "description": "Cold desert world with two small captured moons.",
+        "atmosphere": dict(height_km=120.0, color=[0.88, 0.62, 0.45],
+                          intensity=0.8),
     },
     {
         "id": "jupiter", "name": "Jupiter",
@@ -107,6 +114,8 @@ PLANETS = [
         "pole_ra": 268.06, "pole_dec": 64.50,
         "color": [0.80, 0.70, 0.56],
         "description": "Largest planet; four Galilean moons; strong radiation belts.",
+        "atmosphere": dict(height_km=1000.0, color=[0.92, 0.84, 0.70],
+                          intensity=0.9),
     },
     {
         "id": "saturn", "name": "Saturn",
@@ -118,6 +127,8 @@ PLANETS = [
         "pole_ra": 40.59, "pole_dec": 83.54,
         "color": [0.86, 0.79, 0.62],
         "description": "Ringed gas giant; Titan is the only moon with a dense atmosphere.",
+        "atmosphere": dict(height_km=1000.0, color=[0.94, 0.86, 0.66],
+                          intensity=0.9),
     },
     {
         "id": "uranus", "name": "Uranus",
@@ -129,6 +140,8 @@ PLANETS = [
         "pole_ra": 257.31, "pole_dec": -15.18,
         "color": [0.56, 0.79, 0.83],
         "description": "Ice giant tipped on its side; its moon system shares the extreme tilt.",
+        "atmosphere": dict(height_km=800.0, color=[0.55, 0.85, 0.88],
+                          intensity=0.9),
     },
     {
         "id": "neptune", "name": "Neptune",
@@ -140,6 +153,8 @@ PLANETS = [
         "pole_ra": 299.36, "pole_dec": 43.46,
         "color": [0.26, 0.40, 0.80],
         "description": "Outermost giant planet; Triton orbits retrograde.",
+        "atmosphere": dict(height_km=800.0, color=[0.35, 0.55, 1.0],
+                          intensity=0.9),
     },
 ]
 
@@ -294,6 +309,17 @@ def moon_elements(km: dict, index: int) -> dict:
     )
 
 
+def atmosphere_record(atmosphere: dict | None) -> dict | None:
+    """Convert an authored atmosphere into the catalogue's metre form."""
+    if atmosphere is None:
+        return None
+    return dict(
+        heightM=atmosphere["height_km"] * 1000.0,
+        color=list(atmosphere["color"]),
+        intensity=atmosphere["intensity"],
+    )
+
+
 def fetch_asteroids(offline: bool) -> list:
     if offline:
         with open(CACHE, "r", encoding="utf-8") as fh:
@@ -340,6 +366,7 @@ def main() -> None:
         axialTiltDeg=SUN["tilt"],
         poleRaDeg=SUN["pole_ra"], poleDecDeg=SUN["pole_dec"],
         color=SUN["color"], description=SUN["description"],
+        albedoTexture=None, atmosphere=None,
         orbit=None, lagrange=None,
     ))
 
@@ -353,6 +380,8 @@ def main() -> None:
             axialTiltDeg=planet["tilt"],
             poleRaDeg=planet["pole_ra"], poleDecDeg=planet["pole_dec"],
             color=planet["color"], description=planet["description"],
+            albedoTexture=f"Planets/{planet['id']}_albedo",
+            atmosphere=atmosphere_record(planet["atmosphere"]),
             orbit=dict(
                 aM=el["a"] * AU_M, e=el["e"], iDeg=el["i"],
                 raanDeg=el["raan"], argPeriDeg=el["arg_peri"],
@@ -372,6 +401,8 @@ def main() -> None:
             axialTiltDeg=0.0,
             poleRaDeg=0.0, poleDecDeg=90.0,
             color=moon["color"], description=moon["description"],
+            albedoTexture=("Planets/moon_albedo" if moon["id"] == "moon" else None),
+            atmosphere=None,
             orbit=dict(
                 aM=el["a_m"], e=el["e"], iDeg=el["i_deg"],
                 raanDeg=el["raan_deg"], argPeriDeg=el["arg_peri_deg"],
@@ -435,6 +466,7 @@ def main() -> None:
             poleRaDeg=(index * 47.0) % 360.0, poleDecDeg=-60.0 + (index * 17.0) % 120.0,
             color=[shade + 0.06, shade + 0.03, shade],
             description=f"Main-belt asteroid, effective diameter {diameter_km:.1f} km.",
+            albedoTexture=None, atmosphere=None,
             orbit=dict(
                 aM=a_m, e=float(ast["e"]), iDeg=float(ast["i"]),
                 raanDeg=float(ast["om"]), argPeriDeg=float(ast["w"]),
@@ -453,6 +485,7 @@ def main() -> None:
             rotationPeriodS=600.0, axialTiltDeg=0.0,
             poleRaDeg=0.0, poleDecDeg=90.0,
             color=[0.72, 0.80, 0.86], description=station["description"],
+            albedoTexture=None, atmosphere=None,
             orbit=None,
             lagrange=dict(primary=station["primary"], secondary=station["secondary"],
                           point=station["point"]),

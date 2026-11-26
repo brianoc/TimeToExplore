@@ -13,6 +13,12 @@ namespace TimeToExplore.Rendering
         public BodyRuntime Body { get; private set; }
         public Renderer Renderer { get; private set; }
 
+        /// <summary>The additive rim-glow shell, or null for an airless body.
+        /// It is a child of the visual, scaled by the real atmosphere height,
+        /// and is hidden below the atmosphere gate and when the camera is
+        /// inside it.</summary>
+        public Renderer AtmosphereRenderer { get; private set; }
+
         /// <summary>Radius of the drawn marker in Unity units, including the
         /// minimum-apparent-size aid. Used for mouse picking.</summary>
         public float VisualRadiusUnits =>
@@ -22,6 +28,11 @@ namespace TimeToExplore.Rendering
         private Material _material;
         private float _scaleFactor = 1f;
         private float _unitsPerMeter;
+        private Texture2D _albedoTexture;
+        private bool _albedoRequested;
+        private bool _albedoApplied;
+        private Material _atmosphereMaterial;
+        private float _atmosphereShellScale = 1f;
 
         public void Initialise(BodyRuntime body, float unitsPerMeter, Transform parent)
         {
@@ -57,6 +68,67 @@ namespace TimeToExplore.Rendering
             Color colour = ShaderColourFrom(body.Data);
             if (_material.HasProperty("_Color")) _material.SetColor("_Color", colour);
             Renderer.sharedMaterial = _material;
+
+            BuildAtmosphereShell();
+        }
+
+        /// <summary>
+        /// Build the tier-1 atmosphere: a second sphere at the real atmosphere
+        /// height, drawn additively as a limb glow. It rides as a child of the
+        /// visual, so it inherits the body's scale and spin and only its local
+        /// scale is the height ratio. Started disabled; <see cref="Refresh"/>
+        /// shows it once the body is close enough and the camera is outside it.
+        /// </summary>
+        private void BuildAtmosphereShell()
+        {
+            if (!Body.Data.HasAtmosphere) return;
+
+            Shader shader = Shader.Find(RenderingShaders.Atmosphere);
+            if (shader == null)
+            {
+                Debug.LogWarning(
+                    $"Atmosphere shader '{RenderingShaders.Atmosphere}' was not found, " +
+                    $"so '{Body.Id}' gets no shell.", this);
+                return;
+            }
+
+            _atmosphereShellScale = BodyAppearance.AtmosphereScale(
+                Body.RadiusM, Body.Data.atmosphere.heightM);
+
+            GameObject shellObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            shellObject.name = "Atmosphere";
+            Transform shell = shellObject.transform;
+            shell.SetParent(_visual, false);
+            shell.localScale = Vector3.one * _atmosphereShellScale;
+
+            Collider collider = shellObject.GetComponent<Collider>();
+            if (collider != null)
+            {
+                if (Application.isPlaying) Destroy(collider);
+                else DestroyImmediate(collider);
+            }
+
+            _atmosphereMaterial = new Material(shader)
+            {
+                name = Body.Name + " Atmosphere Material",
+            };
+
+            // Do not convert the colour: Unity converts a material colour
+            // property from sRGB to linear on submit. The catalogue has three
+            // channels, so the shell is fully opaque in its own blend weight.
+            AtmosphereData atmosphere = Body.Data.atmosphere;
+            if (atmosphere.color != null && atmosphere.color.Length >= 3)
+            {
+                _atmosphereMaterial.SetColor("_Color", new Color(
+                    atmosphere.color[0], atmosphere.color[1], atmosphere.color[2], 1f));
+            }
+            _atmosphereMaterial.SetFloat("_Intensity", atmosphere.intensity);
+
+            AtmosphereRenderer = shellObject.GetComponent<Renderer>();
+            AtmosphereRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            AtmosphereRenderer.receiveShadows = false;
+            AtmosphereRenderer.sharedMaterial = _atmosphereMaterial;
+            AtmosphereRenderer.enabled = false;
         }
 
         /// <summary>
@@ -83,6 +155,28 @@ namespace TimeToExplore.Rendering
             float distance = relative.magnitude;
             float angularSize = (float)(displayRadius / Mathf.Max(distance, 1e-6f));
 
+            // The detail gate reads the true angular radius, not the marker the
+            // minimum-size aid may have inflated. Load the map on the first
+            // frame the gate opens, and only touch the material when the state
+            // changes, so a distant marker costs no material churn.
+            bool wantsAlbedo = BodyAppearance.UsesAlbedo(angularSize) &&
+                               !string.IsNullOrEmpty(Body.Data.albedoTexture);
+            if (wantsAlbedo && !_albedoRequested) LoadAlbedo();
+            ApplyAlbedo(wantsAlbedo && _albedoTexture != null);
+
+            // The atmosphere gate opens at a much larger disc than the marker
+            // aid ever inflates, so displayRadius is the drawn radius by then.
+            // The shell is also hidden when the camera is inside it: an
+            // additive rim seen from within would fill the view.
+            if (AtmosphereRenderer != null)
+            {
+                bool showAtmosphere =
+                    BodyAppearance.UsesAtmosphere(angularSize) &&
+                    distance > (float)(displayRadius * _atmosphereShellScale) * 1.001f;
+                if (AtmosphereRenderer.enabled != showAtmosphere)
+                    AtmosphereRenderer.enabled = showAtmosphere;
+            }
+
             float targetFactor = TargetScaleFactor(angularSize, minAngularSize, trueScale);
 
             // Smooth the marker-size transition so distant bodies do not pop.
@@ -107,6 +201,43 @@ namespace TimeToExplore.Rendering
         }
 
         public float DistanceTo(Vector3d pointM) => (float)(Body.PositionM - pointM).Magnitude;
+
+        /// <summary>
+        /// Load the map named by the catalogue on the first close pass. Doing
+        /// it in <c>Initialise</c> would pay for every 2K map at startup, for
+        /// bodies the player may never approach. A missing map warns once and
+        /// leaves the body a flat marker.
+        /// </summary>
+        private void LoadAlbedo()
+        {
+            _albedoRequested = true;
+
+            string key = Body.Data.albedoTexture;
+            _albedoTexture = Resources.Load<Texture2D>(key);
+            if (_albedoTexture == null)
+            {
+                Debug.LogWarning(
+                    $"Body '{Body.Id}' names albedo texture '{key}', but Resources holds none.",
+                    this);
+                return;
+            }
+
+            if (_material.HasProperty("_MainTex"))
+                _material.SetTexture("_MainTex", _albedoTexture);
+        }
+
+        /// <summary>
+        /// Toggle the shader's marker-versus-map switch, writing only when the
+        /// state changes so a frame with no crossing does no work.
+        /// </summary>
+        private void ApplyAlbedo(bool active)
+        {
+            if (active == _albedoApplied) return;
+
+            _albedoApplied = active;
+            if (_material.HasProperty("_HasAlbedo"))
+                _material.SetFloat("_HasAlbedo", active ? 1f : 0f);
+        }
 
         /// <summary>
         /// How much the true radius must grow to reach the minimum apparent

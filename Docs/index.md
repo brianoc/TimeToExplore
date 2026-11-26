@@ -55,6 +55,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, the EditMode and PlayMode test matrices, and numerical reference values.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
+* [Planet appearance](/technical/planet-appearance.md) — the albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere shell, and why scattering waits.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.
 * [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, the real bright stars behind the constellations, and the galactic frame.
 
@@ -87,3 +88,4 @@ bundle-relative paths that stay valid when a document moves.
 * [ADR-021: Linear colour space, and one conversion boundary](/decisions/adr-021-linear-colour-space.md) — move from Gamma to Linear, keep every authored colour in sRGB, convert once where it enters a shader, and re-tune only the maths that was nonlinear.
 * [ADR-022: the departure climb split and the 3×-floor trip window](/decisions/adr-022-departure-split.md) — the escape conic's excess is chosen once per build by a rank-only Lambert cost and is on by default; the burn-only crossing keeps the minimum-energy climb and is dominated; the trip window stays three times the split-aware floor.
 * [ADR-023: the station departure split](/decisions/adr-023-station-departure-split.md) — a station with a departure body takes the same excess-speed choice, entered at the hold state with no capture chain; the floor is faster and costlier, fixed durations are cheaper, and the window stays three times the floor.
+* [ADR-024: planet appearance, gated detail and a rim-shell atmosphere](/decisions/adr-024-planet-appearance.md) — detail opens on the true angular radius, albedo maps replace the tint at arrival, a real-height additive rim stands in for scattering, and ray-marching and rings are deferred.

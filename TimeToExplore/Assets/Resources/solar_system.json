@@ -22,6 +22,8 @@
     0.72
    ],
    "description": "G2V star containing 99.86% of the system mass.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": null
   },
@@ -42,6 +44,8 @@
     0.46
    ],
    "description": "Smallest planet; large iron core; 3:2 spin-orbit resonance.",
+   "albedoTexture": "Planets/mercury_albedo",
+   "atmosphere": null,
    "orbit": {
     "aM": 57909241414.74744,
     "e": 0.2056410515433265,
@@ -71,6 +75,16 @@
     0.64
    ],
    "description": "Runaway-greenhouse world with a retrograde rotation.",
+   "albedoTexture": "Planets/venus_albedo",
+   "atmosphere": {
+    "heightM": 250000.0,
+    "color": [
+     0.95,
+     0.86,
+     0.66
+    ],
+    "intensity": 1.0
+   },
    "orbit": {
     "aM": 108209631309.18965,
     "e": 0.0067656842295687886,
@@ -100,6 +114,16 @@
     0.72
    ],
    "description": "Home world; the Earth-Moon barycentre is used for the heliocentric orbit.",
+   "albedoTexture": "Planets/earth_albedo",
+   "atmosphere": {
+    "heightM": 100000.0,
+    "color": [
+     0.35,
+     0.56,
+     1.0
+    ],
+    "intensity": 1.1
+   },
    "orbit": {
     "aM": 149598487062.6412,
     "e": 0.016699428416427107,
@@ -129,6 +153,16 @@
     0.24
    ],
    "description": "Cold desert world with two small captured moons.",
+   "albedoTexture": "Planets/mars_albedo",
+   "atmosphere": {
+    "heightM": 120000.0,
+    "color": [
+     0.88,
+     0.62,
+     0.45
+    ],
+    "intensity": 0.8
+   },
    "orbit": {
     "aM": 227944564882.7883,
     "e": 0.09341527943572894,
@@ -158,6 +192,16 @@
     0.56
    ],
    "description": "Largest planet; four Galilean moons; strong radiation belts.",
+   "albedoTexture": "Planets/jupiter_albedo",
+   "atmosphere": {
+    "heightM": 1000000.0,
+    "color": [
+     0.92,
+     0.84,
+     0.7
+    ],
+    "intensity": 0.9
+   },
    "orbit": {
     "aM": 778336150922.4436,
     "e": 0.04835062834537988,
@@ -187,6 +231,16 @@
     0.62
    ],
    "description": "Ringed gas giant; Titan is the only moon with a dense atmosphere.",
+   "albedoTexture": "Planets/saturn_albedo",
+   "atmosphere": {
+    "heightM": 1000000.0,
+    "color": [
+     0.94,
+     0.86,
+     0.66
+    ],
+    "intensity": 0.9
+   },
    "orbit": {
     "aM": 1426616142686.0273,
     "e": 0.05372477393716633,
@@ -216,6 +270,16 @@
     0.83
    ],
    "description": "Ice giant tipped on its side; its moon system shares the extreme tilt.",
+   "albedoTexture": "Planets/uranus_albedo",
+   "atmosphere": {
+    "heightM": 800000.0,
+    "color": [
+     0.55,
+     0.85,
+     0.88
+    ],
+    "intensity": 0.9
+   },
    "orbit": {
     "aM": 2870579312023.187,
     "e": 0.047245624981108826,
@@ -245,6 +309,16 @@
     0.8
    ],
    "description": "Outermost giant planet; Triton orbits retrograde.",
+   "albedoTexture": "Planets/neptune_albedo",
+   "atmosphere": {
+    "heightM": 800000.0,
+    "color": [
+     0.35,
+     0.55,
+     1.0
+    ],
+    "intensity": 0.9
+   },
    "orbit": {
     "aM": 4498406985439.389,
     "e": 0.008604197459958931,
@@ -274,6 +348,8 @@
     0.6
    ],
    "description": "Tidally locked; the only other world walked on by humans.",
+   "albedoTexture": "Planets/moon_albedo",
+   "atmosphere": null,
    "orbit": {
     "aM": 384400000.0,
     "e": 0.0549,
@@ -303,6 +379,8 @@
     0.38
    ],
    "description": "Irregular inner moon, spiralling inward.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 9376000.0,
     "e": 0.0151,
@@ -332,6 +410,8 @@
     0.41
    ],
    "description": "Small outer moon of Mars.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 23463000.0,
     "e": 0.0002,
@@ -361,6 +441,8 @@
     0.42
    ],
    "description": "Volcanic moon heated by tidal flexing.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 421700000.0,
     "e": 0.0041,
@@ -390,6 +472,8 @@
     0.64
    ],
    "description": "Ice shell over a probable subsurface ocean.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 671034000.0,
     "e": 0.009,
@@ -419,6 +503,8 @@
     0.52
    ],
    "description": "Largest moon in the solar system.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 1070412000.0,
     "e": 0.0013,
@@ -448,6 +534,8 @@
     0.35
    ],
    "description": "Heavily cratered ancient surface.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 1882709000.0,
     "e": 0.0074,
@@ -477,6 +565,8 @@
     0.64
    ],
    "description": "Small icy moon with the Herschel crater.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 185539000.0,
     "e": 0.0196,
@@ -506,6 +596,8 @@
     0.88
    ],
    "description": "South-polar plumes vent a subsurface ocean.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 238037000.0,
     "e": 0.0047,
@@ -535,6 +627,8 @@
     0.74
    ],
    "description": "Icy moon with the Odysseus impact basin.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 294672000.0,
     "e": 0.0001,
@@ -564,6 +658,8 @@
     0.71
    ],
    "description": "Icy moon with bright tectonic fractures.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 377415000.0,
     "e": 0.0022,
@@ -593,6 +689,8 @@
     0.69
    ],
    "description": "Saturn's second-largest moon.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 527068000.0,
     "e": 0.0013,
@@ -622,6 +720,8 @@
     0.32
    ],
    "description": "Thick nitrogen atmosphere and methane lakes.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 1221870000.0,
     "e": 0.0288,
@@ -651,6 +751,8 @@
     0.44
    ],
    "description": "Two-tone surface and a distant inclined orbit.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 3560820000.0,
     "e": 0.0286,
@@ -680,6 +782,8 @@
     0.66
    ],
    "description": "Small moon with extreme fault scarps.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 129390000.0,
     "e": 0.0013,
@@ -709,6 +813,8 @@
     0.71
    ],
    "description": "Brightest and most fractured Uranian moon.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 190900000.0,
     "e": 0.0012,
@@ -738,6 +844,8 @@
     0.41
    ],
    "description": "Dark, ancient Uranian moon.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 266000000.0,
     "e": 0.0039,
@@ -767,6 +875,8 @@
     0.61
    ],
    "description": "Largest moon of Uranus.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 436300000.0,
     "e": 0.0011,
@@ -796,6 +906,8 @@
     0.52
    ],
    "description": "Outer major moon of Uranus.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 583500000.0,
     "e": 0.0014,
@@ -825,6 +937,8 @@
     0.74
    ],
    "description": "Retrograde captured moon with nitrogen geysers.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 354759000.0,
     "e": 0.0,
@@ -854,6 +968,8 @@
     0.38
    ],
    "description": "Irregular, dark inner moon of Neptune.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 117647000.0,
     "e": 0.0005,
@@ -883,6 +999,8 @@
     0.45
    ],
    "description": "Highly eccentric outer moon of Neptune.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 5513400000.0,
     "e": 0.7507,
@@ -912,6 +1030,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 939.4 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 413787710356.2,
     "e": 0.0797,
@@ -941,6 +1061,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 522.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 353200572722.7,
     "e": 0.0902,
@@ -970,6 +1092,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 513.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 414386101839.0,
     "e": 0.2307,
@@ -999,6 +1123,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 407.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 471382890575.69995,
     "e": 0.1067,
@@ -1028,6 +1154,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 306.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 457320690729.89996,
     "e": 0.1551,
@@ -1057,6 +1185,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 303.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 462855811945.8,
     "e": 0.1125,
@@ -1086,6 +1216,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 270.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 473028467153.39996,
     "e": 0.1894,
@@ -1115,6 +1247,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 267.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 473028467153.39996,
     "e": 0.2158,
@@ -1144,6 +1278,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 253.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 458517473695.5,
     "e": 0.0695,
@@ -1173,6 +1309,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 246.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 399575912639.69995,
     "e": 0.2557,
@@ -1202,6 +1340,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 232.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 413787710356.2,
     "e": 0.1656,
@@ -1231,6 +1371,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 231.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 395237574389.39996,
     "e": 0.1878,
@@ -1260,6 +1402,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 222.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 437723369668.2,
     "e": 0.1349,
@@ -1289,6 +1433,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 220.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 401371087088.1,
     "e": 0.3404,
@@ -1318,6 +1464,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 216.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 465847769359.8,
     "e": 0.0661,
@@ -1347,6 +1495,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 216.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 467792541678.89996,
     "e": 0.1022,
@@ -1376,6 +1526,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 209.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 447596829134.4,
     "e": 0.0228,
@@ -1405,6 +1557,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 207.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 476020424567.39996,
     "e": 0.1587,
@@ -1434,6 +1588,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 205.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 413937308226.89996,
     "e": 0.2702,
@@ -1463,6 +1619,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 204.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 472579673541.3,
     "e": 0.0973,
@@ -1492,6 +1650,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 202.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 385364114923.2,
     "e": 0.0846,
@@ -1521,6 +1681,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 202.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 407355001916.1,
     "e": 0.0814,
@@ -1550,6 +1712,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 200.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 365318000249.4,
     "e": 0.1581,
@@ -1579,6 +1743,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 199.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 356940519490.2,
     "e": 0.2303,
@@ -1608,6 +1774,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 198.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 470335705480.80005,
     "e": 0.1154,
@@ -1637,6 +1805,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 192.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 477815599015.8,
     "e": 0.0772,
@@ -1666,6 +1836,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 191.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 477516403274.4,
     "e": 0.0153,
@@ -1695,6 +1867,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 190.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 357090117360.9,
     "e": 0.1225,
@@ -1724,6 +1898,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 189.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 382222559638.5,
     "e": 0.0732,
@@ -1753,6 +1929,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 185.2 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 362924434318.2,
     "e": 0.2023,
@@ -1782,6 +1960,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 180.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 467493345937.5,
     "e": 0.2097,
@@ -1811,6 +1991,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 180.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 467642943808.2,
     "e": 0.0835,
@@ -1840,6 +2022,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 179.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 414236503968.30005,
     "e": 0.1138,
@@ -1869,6 +2053,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 179.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 471831684187.8,
     "e": 0.052,
@@ -1898,6 +2084,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 177.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 455974309893.60004,
     "e": 0.1425,
@@ -1927,6 +2115,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 175.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 458966267307.60004,
     "e": 0.0333,
@@ -1956,6 +2146,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 174.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 468690128903.1,
     "e": 0.13,
@@ -1985,6 +2177,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 173.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 473178065024.1,
     "e": 0.2523,
@@ -2014,6 +2208,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 171.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 448644014229.3,
     "e": 0.3398,
@@ -2043,6 +2239,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 171.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 385364114923.2,
     "e": 0.0735,
@@ -2072,6 +2270,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 168.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 455675114152.19995,
     "e": 0.1062,
@@ -2101,6 +2301,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 168.2 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 430692269745.3,
     "e": 0.134,
@@ -2130,6 +2332,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 168.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 473926054377.60004,
     "e": 0.1585,
@@ -2159,6 +2363,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 167.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 414386101839.0,
     "e": 0.1804,
@@ -2188,6 +2394,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 167.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 435180205866.3,
     "e": 0.0988,
@@ -2217,6 +2425,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 166.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 463304605557.9,
     "e": 0.2213,
@@ -2246,6 +2456,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 165.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 405859023209.10004,
     "e": 0.1165,
@@ -2275,6 +2487,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 165.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 433684227159.3,
     "e": 0.1696,
@@ -2304,6 +2518,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 162.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 411394144425.0,
     "e": 0.1269,
@@ -2333,6 +2549,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 161.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 391796823363.30005,
     "e": 0.2375,
@@ -2362,6 +2580,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 160.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 343626308997.9,
     "e": 0.2317,
@@ -2391,6 +2611,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 160.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 409598969976.6,
     "e": 0.1268,
@@ -2420,6 +2642,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 160.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 407055806174.7,
     "e": 0.0639,
@@ -2449,6 +2673,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 160.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 405410229597.0,
     "e": 0.1992,
@@ -2478,6 +2704,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 159.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 438770554763.1,
     "e": 0.1595,
@@ -2507,6 +2735,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 159.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 414535699709.7,
     "e": 0.1733,
@@ -2536,6 +2766,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 155.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 434581814383.5,
     "e": 0.0917,
@@ -2565,6 +2797,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 155.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 466745356584.0,
     "e": 0.049,
@@ -2594,6 +2828,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 154.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 397032748837.8,
     "e": 0.193,
@@ -2623,6 +2859,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 154.2 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 411842938037.10004,
     "e": 0.143,
@@ -2652,6 +2890,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 152.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 387159289371.60004,
     "e": 0.1628,
@@ -2681,6 +2921,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 151.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 438471359021.7,
     "e": 0.165,
@@ -2710,6 +2952,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 151.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 416779667770.2,
     "e": 0.1703,
@@ -2739,6 +2983,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 149.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 419023635830.7,
     "e": 0.1119,
@@ -2768,6 +3014,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 148.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 388206474466.5,
     "e": 0.2523,
@@ -2797,6 +3045,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 148.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 432337846323.0,
     "e": 0.2295,
@@ -2826,6 +3076,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 148.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 458517473695.5,
     "e": 0.1524,
@@ -2855,6 +3107,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 147.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 329414511281.39996,
     "e": 0.1562,
@@ -2884,6 +3138,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 147.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 471532488446.4,
     "e": 0.108,
@@ -2913,6 +3169,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 147.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 408701382752.4,
     "e": 0.2383,
@@ -2942,6 +3200,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 145.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 465099780006.3,
     "e": 0.1078,
@@ -2971,6 +3231,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 145.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 411992535907.8,
     "e": 0.242,
@@ -3000,6 +3262,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 145.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 381624168155.7,
     "e": 0.1837,
@@ -3029,6 +3293,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 144.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 466446160842.6,
     "e": 0.0126,
@@ -3058,6 +3324,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 144.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 462407018333.7,
     "e": 0.1373,
@@ -3087,6 +3355,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 143.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 408850980623.10004,
     "e": 0.2215,
@@ -3116,6 +3386,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 142.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 366813978956.39996,
     "e": 0.1009,
@@ -3145,6 +3417,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 142.4 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 397032748837.8,
     "e": 0.2354,
@@ -3174,6 +3448,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 141.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 455974309893.60004,
     "e": 0.1544,
@@ -3203,6 +3479,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 139.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 437573771797.5,
     "e": 0.0885,
@@ -3232,6 +3510,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 139.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 343476711127.19995,
     "e": 0.2178,
@@ -3261,6 +3541,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 139.4 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 471382890575.69995,
     "e": 0.0491,
@@ -3290,6 +3572,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 138.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 396434357355.0,
     "e": 0.075,
@@ -3319,6 +3603,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 138.2 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 353948562076.2,
     "e": 0.066,
@@ -3348,6 +3634,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 138.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 445352861073.89996,
     "e": 0.1689,
@@ -3377,6 +3665,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 138.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 424558757046.60004,
     "e": 0.1416,
@@ -3406,6 +3696,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 137.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 431889052710.9,
     "e": 0.1067,
@@ -3435,6 +3727,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 136.6 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 470485303351.5,
     "e": 0.163,
@@ -3464,6 +3758,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 136.1 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 466296562971.9,
     "e": 0.1028,
@@ -3493,6 +3789,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 135.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 360231672645.6,
     "e": 0.1436,
@@ -3522,6 +3820,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 134.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 471532488446.4,
     "e": 0.1758,
@@ -3551,6 +3851,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 133.7 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 475571630955.3,
     "e": 0.1617,
@@ -3580,6 +3882,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 133.0 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 402119076441.60004,
     "e": 0.1065,
@@ -3609,6 +3913,8 @@
     0.39
    ],
    "description": "Main-belt asteroid, effective diameter 132.9 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 469288520385.9,
     "e": 0.0218,
@@ -3638,6 +3944,8 @@
     0.41500000000000004
    ],
    "description": "Main-belt asteroid, effective diameter 132.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 410646155071.5,
     "e": 0.3062,
@@ -3667,6 +3975,8 @@
     0.44000000000000006
    ],
    "description": "Main-belt asteroid, effective diameter 132.8 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 402119076441.60004,
     "e": 0.1878,
@@ -3696,6 +4006,8 @@
     0.465
    ],
    "description": "Main-belt asteroid, effective diameter 132.4 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 456123907764.3,
     "e": 0.144,
@@ -3725,6 +4037,8 @@
     0.49000000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 132.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 437124978185.4,
     "e": 0.0521,
@@ -3754,6 +4068,8 @@
     0.34
    ],
    "description": "Main-belt asteroid, effective diameter 131.5 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 377884221388.19995,
     "e": 0.1718,
@@ -3783,6 +4099,8 @@
     0.36500000000000005
    ],
    "description": "Main-belt asteroid, effective diameter 131.3 km.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": {
     "aM": 477217207533.0,
     "e": 0.0682,
@@ -3812,6 +4130,8 @@
     0.86
    ],
    "description": "Earth-Moon L1 transit hub and lunar-surface logistics depot.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "earth",
@@ -3836,6 +4156,8 @@
     0.86
    ],
    "description": "Solar observatory and space-weather warning station, 1.5 million km sunward of Earth.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "sun",
@@ -3860,6 +4182,8 @@
     0.86
    ],
    "description": "Deep-space telescope servicing yard and quiet-sector research station.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "sun",
@@ -3884,6 +4208,8 @@
     0.86
    ],
    "description": "Mars approach control, propellant cache and transfer rendezvous.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "sun",
@@ -3908,6 +4234,8 @@
     0.86
    ],
    "description": "Large construction yard in Jupiter's leading Trojan swarm.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "sun",
@@ -3932,6 +4260,8 @@
     0.86
    ],
    "description": "Saturn-system depot at the Titan-Saturn L1 point.",
+   "albedoTexture": null,
+   "atmosphere": null,
    "orbit": null,
    "lagrange": {
     "primary": "saturn",

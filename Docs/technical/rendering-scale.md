@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T23:55:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T20:10:00Z }
 ---
 
 # The problem
@@ -235,19 +235,24 @@ wants them.
 The prototype renders through URP 17.3.0. The geometry is unchanged; only the
 shader language and the pipeline asset are new.
 
-Three minimal URP shaders live in `Assets/Resources/Shaders/` so a runtime
-`Shader.Find` resolves them in a build:
+Four minimal URP forward shaders live in `Assets/Resources/Shaders/` so a
+runtime `Shader.Find` resolves them in a build:
 
 * `TimeToExplore/BodyLit` — Lambert term from a global `_SunPosition`, 5.5%
-  ambient so the night side is not pure black, per-body `_Color`, no textures,
-  no normal maps, no shadows. It uses a `UniversalForward` pass and declares
+  ambient so the night side is not pure black, per-body `_Color`, and an albedo
+  map (`_MainTex`) that replaces the tint once the detail gate opens. It has no
+  normal maps and no shadows. It uses a `UniversalForward` pass and declares
   `RenderPipeline = UniversalPipeline`.
+* `TimeToExplore/BodyAtmosphere` — the additive rim shell: transparent queue,
+  `Blend SrcAlpha One`, depth write off, back faces culled. Its alpha is a rim
+  term times a soft sun term, so the glow is a limb and fades round the
+  terminator. It is drawn only above 0.06 rad and only from outside the shell.
 * `TimeToExplore/Unlit` — flat `_Color`, used by the Sun, the ship marker, the
   thrust vector, and the plan markers.
 * `TimeToExplore/Line` — transparent, vertex-coloured, samples a `_MainTex` with
   `TRANSFORM_TEX` so the capture arc's tiled dash texture still works.
 
-A fourth shader, `TimeToExplore/Skybox`, is a background pass rather than a URP
+A fifth shader, `TimeToExplore/Skybox`, is a background pass rather than a URP
 forward pass: it is queued at `Background`, writes no depth, and draws the Milky
 Way texture plus procedural stars. Skybox shaders are exempt from the
 `RenderPipeline` and forward-pass tags because Unity draws them through its own
@@ -294,9 +299,22 @@ the Sun is unlit `[1.0, 0.93, 0.72]`; route and orbit colours are at most 1 with
 alpha below 1. The band's 0.55 and the washed body colours sit under the
 threshold, and only the brightest catalogue stars write above it.
 
-The shader is intentionally simple. It exists to make the orrery legible, not to
-be a final planet renderer. A later URP pass can add atmosphere, rings, clouds,
-and the far-field camera stack without changing the scale rules.
+The shader is still intentionally simple: it exists to make the orrery legible,
+not to be a final planet renderer. It now samples the nine albedo maps **at
+arrival**, when a body's true angular radius passes 0.025 rad, and keeps the
+flat catalogue tint below that; the maps are loaded lazily, so a marker costs no
+texture fetch. Above a second gate, **0.06 rad**, an atmospheric body also gains
+a second sphere at its **real** atmosphere height, drawn additively as a rim
+glow with a soft sun term (`TimeToExplore/BodyAtmosphere`). Earth's shell sits
+about 100 km up, so its scale is 1.0157. Both passes run in the same URP
+forward renderer with no depth texture, and the shell's blend is
+`SrcAlpha One` with depth write off. See
+[Planet appearance](/technical/planet-appearance.md).
+
+Rings and ray-marched single scattering remain future work; the rim is the
+cheap stand-in and keeps the real height so a later scattering pass can replace
+it without moving the silhouette. The far-field camera stack and clouds join
+them, none of which changes the scale rules.
 
 # Colour space
 
@@ -362,8 +380,9 @@ lighting change, not the authored colours.
 4. ~~**Starfield** with real bright stars and the Milky Way; currently the
    background is black.~~ Done: a generated Milky Way band, procedural stars,
    and the real bright-star catalogue ([The sky](/technical/sky.md)).
-5. **Rings for Saturn and Uranus**, and a tenuous atmosphere shell for Earth,
-   Venus, Titan, and the gas giants.
+5. **Rings for Saturn and Uranus**, and ray-marched single scattering to replace
+   the rim-shell atmosphere ([ADR-024](/decisions/adr-024-planet-appearance.md)).
+   The tier-1 rim is in.
 6. **Local lighting** for stations and ships: running lights, docking guides,
    radiators.
 7. **Post-processing.** Bloom for the brightest stars is in, through the

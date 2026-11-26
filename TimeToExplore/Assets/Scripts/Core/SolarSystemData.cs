@@ -29,11 +29,23 @@ namespace TimeToExplore.Core
         public double poleDecDeg;
         public float[] color;
         public string description;
+        public string albedoTexture;
+        public AtmosphereData atmosphere;
         public OrbitData orbit;
         public LagrangeData lagrange;
 
         public bool IsStation => kind == "station";
         public bool IsStar => kind == "star";
+
+        public bool HasAtmosphere => atmosphere != null && atmosphere.heightM > 0.0;
+    }
+
+    [Serializable]
+    public class AtmosphereData
+    {
+        public double heightM;
+        public float[] color;
+        public float intensity;
     }
 
     [Serializable]

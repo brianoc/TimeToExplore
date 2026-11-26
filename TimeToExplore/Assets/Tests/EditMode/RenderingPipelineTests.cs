@@ -174,6 +174,14 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheAtmosphereShaderCompilesForTheUniversalPipeline()
+        {
+            // The rim shell's own properties and blend state are pinned in
+            // PlanetAppearanceTests; this is the URP tag and compile check.
+            AssertUniversalShader(RenderingShaders.Atmosphere);
+        }
+
+        [Test]
         public void TheUnlitShaderIsRuntimeAvailable()
         {
             Shader shader = AssertUniversalShader(RenderingShaders.Unlit);
