@@ -98,12 +98,12 @@ Lower is better.
 
 | Route | Mono | Unity 7 CoreCLR | .NET 10 | Unity 7 vs Mono | .NET vs Mono |
 |---|---:|---:|---:|---:|---:|
-| Earth → Mars | 3,628 ms | 2,232 ms | 596 ms | −38% | −84% |
-| Earth → Venus | 2,899 ms | 1,781 ms | 477 ms | −39% | −84% |
-| Earth → Uranus † | 4,122 ms | 2,527 ms | 666 ms | −39% | −84% |
-| Mars → Earth (refused) | 827 ms | 506 ms | 152 ms | −39% | −82% |
-| Venus → Earth | 10,557 ms | 6,549 ms | 1,891 ms | −38% | −82% |
-| Uranus → Earth † | 40,303 ms | 24,741 ms | 689 ms | −39% | −98% |
+| Earth → Mars | 3,595 ms | 2,007 ms | 540 ms | −44% | −85% |
+| Earth → Venus | 2,889 ms | 1,645 ms | 432 ms | −43% | −85% |
+| Earth → Uranus † | 4,094 ms | 2,369 ms | 610 ms | −42% | −85% |
+| Mars → Earth (refused) | 827 ms | 482 ms | 137 ms | −42% | −83% |
+| Venus → Earth | 10,572 ms | 6,154 ms | 1,680 ms | −42% | −84% |
+| Uranus → Earth † | 40,118 ms | 23,681 ms | 616 ms | −41% | −98% |
 
 † The .NET harness finds a different **certified** floor at Uranus: 32.14971 d
 against 37.00540 d for Earth → Uranus, and 63.06636 d against 64.15472 d for
@@ -120,14 +120,14 @@ Same route, same departure, same floor (7.16751 d) and window (21.50253 d).
 
 | Phase | Mono | Unity 7 CoreCLR | .NET 10 | Unity 7 vs Mono | .NET vs Mono |
 |---|---:|---:|---:|---:|---:|
-| Plot | 3,628 ms | 2,232 ms | 596 ms | −38% | −84% |
-| Retime, window middle | 596 ms | 367 ms | 102 ms | −38% | −83% |
-| Retime, window maximum | 518 ms | 314 ms | 87 ms | −40% | −83% |
-| Drag median (8 steps) | 456 ms | 284 ms | 78 ms | −38% | −83% |
-| Drag worst | 1,250 ms | 774 ms | 220 ms | −38% | −82% |
-| Begin (3 h later) | 2,745 ms | 1,680 ms | 429 ms | −39% | −84% |
+| Plot | 3,595 ms | 2,007 ms | 540 ms | −44% | −85% |
+| Retime, window middle | 588 ms | 330 ms | 93 ms | −44% | −84% |
+| Retime, window maximum | 501 ms | 282 ms | 79 ms | −44% | −84% |
+| Drag median (8 steps) | 461 ms | 256 ms | 72 ms | −45% | −84% |
+| Drag worst | 1,233 ms | 704 ms | 201 ms | −43% | −84% |
+| Begin (3 h later) | 2,716 ms | 1,544 ms | 391 ms | −43% | −86% |
 
-Earth → Venus tells the same story at every phase (−37% to −39% for Unity 7).
+Earth → Venus tells the same story at every phase (−42% to −43% for Unity 7).
 The reverse routes move the same way; their drag phases are not measured because
 the session's slider does not run for those departures.
 
@@ -150,10 +150,12 @@ certified needle, as described above.
 
 ## What the numbers mean
 
-- **The CoreCLR Editor is about 37–40% faster than Mono on every measured
+- **The CoreCLR Editor is about 41–45% faster than Mono on every measured
   phase.** The win is uniform enough to be the runtime, not a cache or a
   scheduling accident: plot, both retimes, the eight-step drag, and Begin all
-  move by the same fraction on every route.
+  move by the same fraction on every route. Two independent CoreCLR runs agreed
+  within 1%; the earlier, warmer run was about 38%, so treat the exact fraction
+  as the machine's state rather than a constant.
 - **The plain .NET 10 Release harness is a further 5–6× faster than the
   CoreCLR Editor on the clean routes.** That gap is not a runtime difference
   alone: the Editor's scripting assemblies carry `DebuggableAttribute` and are
