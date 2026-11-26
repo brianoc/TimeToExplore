@@ -4,7 +4,7 @@ title: Planet appearance
 description: The albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere, and the appearance fields the body shaders consume.
 tags: [technical, rendering, textures, planets, atmosphere, attribution]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T20:10:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T17:05:00Z }
 ---
 
 # What exists now
@@ -230,6 +230,34 @@ always `Body.Data.HasAtmosphere`, never a null check on `atmosphere`.
 
 The shell is deliberately outside `VisualRadiusUnits`, so mouse picking stays
 against the body itself.
+
+# Evidence: the five captures
+
+`BodyCaptureTests` (category `capture`, so no gate starts it) framed five bodies
+at a 0.40 rad true angular radius, with the camera on the terminator's side, and
+wrote five 1600x900 PNGs into `BODY_CAPTURE_DIR`:
+
+| File | What it shows |
+|---|---|
+| `body-earth.png` | The albedo map with the terminator through the middle of the disc, and a clear **blue** limb: the pixel 3 px outside the silhouette is `101,146,211` against a local sky of `8,10,13` |
+| `body-mars.png` | The red map with a **warm** rim 3 px out, `150,110,80` against a sky of `1,2,3`; the rim is the most obvious of the five |
+| `body-jupiter.png` | The banded map, lit as a crescent; the rim is pale (`195,184,163`, `6,5,6` sky) and reads as a thin edge rather than a halo |
+| `body-saturn.png` | The banded map, including the north-polar hexagon of the source texture; rim `197,186,154`, similar to Jupiter's |
+| `body-moon.png` | The cratered map with **no** rim: the ring 3 px out is `51,54,64` against the galactic band's `26,27,31` on the same ray, which is the sky, not a shell |
+
+The measured silhouette radius confirms the shell geometry. A body framed at
+`R/d = 0.4` projects to 340 px at 1600x900 and 60°; the shell's outer edge
+projects to `779.4 × tan(asin(0.4 s))`, which is 347 px for Earth (1.0157),
+355 for Mars (1.0354), 346 for Jupiter (1.0143), 347 for Saturn (1.0172), and
+340 for the Moon. The edge found in each image is 346, 352, 344, 346 and 339 px.
+
+Jupiter's is the **faintest** of the four, but only slightly: 1,000 km on a
+69,911 km radius is a 1.4% shell against Earth's 1.6%, both 6–7 px here. The
+difference the eye reads is the pale tint (`0.92,0.84,0.7` at intensity 0.9)
+against a bright banded disc, not a geometrically thinner shell.
+
+The captures are evidence for the session. `Screenshots/` is ignored and none of
+these files is shipped.
 
 # What is deferred
 

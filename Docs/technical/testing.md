@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T17:05:00Z }
 ---
 
 # One command
@@ -212,7 +212,7 @@ invocation (`-testPlatform PlayMode`) with its own log and results file.
 | `BootstrapPlayModeTests` | `RuntimeInitializeOnLoad` creates the `Time to Explore` root; the renderer builds one view per renderable body; every body view and every visible orbit `LineRenderer` carries the frame's model state and `ShowOrbits` reaches the real lines on the next frame; the HUD canvas is live and its status clock is rewritten from the frame clock; a frame probe sees the model advanced in `Update` while the body views still hold the previous frame, then matching in `LateUpdate`, with the clock held between the phases and exactly one step per frame; the real details panel's route button passes its one-frame opening guard, plots through the async planner and the HUD's per-frame pump, and the flight panel and route legend appear; every arc is an enabled `LineRenderer` with positions, one width key per vertex, the arc's own colour, and most of the framed route inside the camera's view; the ghost marks Mars at the arrival date; the 64-step trip-time slider requests a retime through its real `onValueChanged` and the HUD publishes it; `ShowHud` and `ShowLabels` take effect on the following frame; Begin through the real button starts the flight, the clock clamp holds across frames, and Cancel clears the route and the panel |
 | `FrameOrderProbe` | a helper that runs after the bootstrap in both phases, so the test can read what `Update` produced before `LateUpdate` drew it |
 | `LateUpdateProbe` | a helper that runs a callback at the end of a frame, because a `[UnityTest]` coroutine resumes in the `Update` phase and cannot otherwise read state drawn later in that frame |
-| `BodyCaptureTests` | carries only the `capture` category: parks the ship beside Earth, Mars, and Jupiter, frames each through the live view camera, and writes `body-*.png` into `BODY_CAPTURE_DIR`. Evidence for a look change, not a gate |
+| `BodyCaptureTests` | carries only the `capture` category: parks the ship beside Earth, Mars, Jupiter, Saturn, and the Moon, frames each through the live view camera, and writes `body-*.png` into `BODY_CAPTURE_DIR`. Evidence for a look change, not a gate |
 
 The deterministic step comes from the same `DeltaTimeSeconds` seam: the PlayMode
 setup supplies one second per frame at 1×. That keeps a preview, its retime, and
@@ -235,11 +235,11 @@ Junction → Gateway route through the real session, opens the details screen an
 the market through their real buttons, buys a few units, and writes a 1600×900
 `trade-panel.png`. `BodyCaptureTests` does the same kind of thing for the
 rendered body: it parks the ship at a distance that gives each of Earth, Mars,
-and Jupiter a 0.40 rad apparent radius, on the terminator's side, and writes
-`body-earth.png`, `body-mars.png`, and `body-jupiter.png` into
-`BODY_CAPTURE_DIR` (`/tmp` by default). Both are the before/after evidence
-for a colour-space or lighting change; neither asserts a pixel. Select one class
-with `-testFilter`, for example
+Jupiter, Saturn, and the Moon a 0.40 rad apparent radius, on the terminator's
+side, and writes `body-earth.png`, `body-mars.png`, `body-jupiter.png`,
+`body-saturn.png`, and `body-moon.png` into `BODY_CAPTURE_DIR` (`/tmp` by
+default). Both are the before/after evidence for a colour-space or lighting
+change; neither asserts a pixel. Select one class with `-testFilter`, for example
 `-testFilter TimeToExplore.Tests.PlayMode.BodyCaptureTests`.
 `RoutePrimeCaptureTests` records a numbered frame sequence instead: an idle ship, the selection warming Mars's plan with the screen
 unchanged, the route appearing in the Plot click's own frame, and the camera

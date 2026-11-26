@@ -11,11 +11,12 @@ using Object = UnityEngine.Object;
 namespace TimeToExplore.Tests.PlayMode
 {
     /// <summary>
-    /// Evidence for the way a body renders, not a gate: the terminator, the
-    /// body colour, and the sky behind them. It parks the ship beside Earth,
-    /// Mars, and Jupiter, frames each one through the live view camera, and
-    /// writes <c>body-*.png</c> into <c>BODY_CAPTURE_DIR</c>. The same shots are
-    /// the before/after evidence for a colour-space or lighting change.
+    /// Evidence for the way a body renders, not a gate: the albedo map, the
+    /// atmosphere rim, the terminator, and the sky behind them. It parks the
+    /// ship beside Earth, Mars, Jupiter, Saturn, and the Moon, frames each one
+    /// through the live view camera, and writes <c>body-*.png</c> into
+    /// <c>BODY_CAPTURE_DIR</c>. The same shots are the before/after evidence for
+    /// a colour-space or lighting change.
     ///
     /// It carries only the <c>capture</c> category, so the default headless
     /// <c>tools/check.sh</c> run never starts it, and it needs a graphics device:
@@ -63,6 +64,8 @@ namespace TimeToExplore.Tests.PlayMode
             yield return Shoot(bootstrap, "earth", dir);
             yield return Shoot(bootstrap, "mars", dir);
             yield return Shoot(bootstrap, "jupiter", dir);
+            yield return Shoot(bootstrap, "saturn", dir);
+            yield return Shoot(bootstrap, "moon", dir);
         }
 
         private static IEnumerator Shoot(SolarSystemBootstrap bootstrap, string bodyId, string dir)
