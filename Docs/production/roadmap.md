@@ -313,12 +313,12 @@ torch-ship fiction uses is flyable. The design is
   the chain closing. At the time the epoch's Mars coast window was **6.73–20.19
   days** and the Mercury fast end was 3.21610 days at 1 g; Jupiter's was
   13.07–39.22 and Uranus's 33.60–100.81 at 0.3 g and 33.65–100.96 at 1 g. The
-  physical departure re-baselined every one of those: Mars is now **16.84–50.53
-  days** on the coast path and the nav minimum is the 16.48669-day burn-only
-  crossing. The slider's left end
-  is the burn-only minimum where that wins (Mercury 13.86287, Mars 16.48669,
-  Jupiter 22.55555 days), and the range between it and the coast floor is the
-  short-coast regime. A 90-day Mars plan is a
+  physical departure re-baselined every one of those to a Mars **16.84–50.53
+  days** window, and the departure climb split re-baselined them again: Mars is
+  now **7.17–21.50 days** on the coast path. The burn-only crossing keeps the
+  parabolic climb and is the **longer** plan everywhere it builds, so the
+  short-coast gap is empty and the nav minimum is the split-aware coast floor
+  ([ADR-021](../decisions/adr-021-departure-split.md)). A 90-day Mars plan is a
   direct `PlanAtDuration` build outside that window. The floor plan and window are
   cached per date, target, level, cruise and arrival style, and moving the
   slider retimes on a latest-wins background worker; every published preview is
@@ -330,11 +330,11 @@ torch-ship fiction uses is flyable. The design is
   an 85.0-day coast, an 18.5 km/s brake in 1.7 hours, and the 3.5 km/s conic
   capture into a 6,033 km entry), against the cheap coast's 14 km/s at 200 days
   and the torch plan's 2,345 km/s at 4.4 days. The re-measured profile is
-  **38.9678 km/s over nine arcs** at the same 90 days, with a 10.74-day parabolic
-  climb; seams close under a metre and 3.7 × 10⁻⁴ m/s. The true floors are
-  14.06070 days to Mercury at 1 g (1,821.1 km/s) and 16.84485 days to Mars at
-  0.3 g (1,017.1 km/s), and an over-thrust plan carries an
-  `InfeasibleReason` naming the arc and the peak it needs.
+  **38.5411 km/s over nine arcs** at the same 90 days, with a 7.405-day climb;
+  seams close inside the profile's gate. The split-aware floors are
+  **3.67616 days** to Mercury at 1 g (1,649.4 km/s) and **7.16751 days** to Mars
+  at 0.3 g (1,070.1 km/s), both at the 16 km/s excess cap, and an over-thrust
+  plan carries an `InfeasibleReason` naming the arc and the peak it needs.
 
 # Done: PlayMode suite (2026-11-22)
 
@@ -445,6 +445,22 @@ cargo mass in flight, docking, persistence, and ship selection.
 6. Label a handful of constellations, or draw faint asterism outlines, now that
    the real stars are in place
    ([The sky](/technical/sky.md#the-real-stars)).
+
+# Follow-ups from the departure climb split (2026-11-26)
+
+The split is [ADR-021](../decisions/adr-021-departure-split.md). These two were
+found while landing it and are deliberately left out of that plan.
+
+* **The station departure split.** A station plan's terminal velocity match has
+  no capture chain to price, so the chooser has nothing to cost a candidate
+  against and a station departure keeps the unforced minimum-energy climb.
+  Extending the split to stations needs a cost of its own and its own
+  re-baselined anchors.
+* **The reverse-route plot cost.** Venus → Earth now plots in about **10.2 s**
+  and Uranus → Earth in about **39.0 s**, against the **0.4–0.5 s** refusals
+  they returned before the split. Both are new capability, not regressions — the
+  routes build where they used to be refused — but the first plot is slow and
+  needs its own investigation before the reverse routes feel usable.
 
 # Risks
 
