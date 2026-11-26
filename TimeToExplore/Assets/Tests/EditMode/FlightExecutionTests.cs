@@ -9,7 +9,7 @@ namespace TimeToExplore.Tests.EditMode
     /// End-to-end checks: plan a trip, fly it with the autopilot, and inspect the
     /// orbit the ship is left in. These are the milestone's acceptance tests.
     /// </summary>
-    [Category("flight")]
+    [Category("deep")]
     public class FlightExecutionTests
     {
         private SolarSystemModel _model;

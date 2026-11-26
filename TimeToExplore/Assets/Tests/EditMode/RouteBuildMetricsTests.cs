@@ -29,7 +29,7 @@ namespace TimeToExplore.Tests.EditMode
     /// returns zero from <see cref="GC.GetAllocatedBytesForCurrentThread"/> in
     /// this editor.
     /// </summary>
-    [Category("flight")]
+    [Category("deep")]
     public class RouteBuildMetricsTests
     {
         private SolarSystemModel _model;

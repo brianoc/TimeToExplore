@@ -8,7 +8,7 @@ using TimeToExplore.UI;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>The flight panel's content, verified without a scene.</summary>
-    [Category("flight")]
+    [Category("deep")]
     public class FlightReportTests
     {
         private SolarSystemModel _model;

@@ -19,8 +19,12 @@ namespace TimeToExplore.Tests.EditMode
     /// commanded-level burn; the escape conic carries the climb, not the break.
     /// The profile is the planner's only route; a trip that starts inside the
     /// target's sphere of influence is a single quintic capture.
+    /// <para>
+    /// The cheap assertions carry <c>flight</c>; the duration and level sweeps,
+    /// which build a whole plan per sample, carry <c>deep</c> so the inner
+    /// loop can skip them. Both categories run in a bare <c>tools/check.sh</c>.
+    /// </para>
     /// </summary>
-    [Category("flight")]
     public class BurnCoastBurnTripPlannerTests
     {
         private const double TripDays = 90.0;
@@ -78,6 +82,7 @@ namespace TimeToExplore.Tests.EditMode
             return null;
         }
 
+        [Category("flight")]
         [Test]
         public void TheProfileIsAShortBreakAnEscapeConicABurnACoastAnApproachABrakeAndTheCapture()
         {
@@ -137,6 +142,7 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo(plan.ArrivalJulianDate).Within(1e-12));
         }
 
+        [Category("flight")]
         [Test]
         public void TheCommandedBurnLevelIsRespectedOnBothBurns()
         {
@@ -165,6 +171,7 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        [Category("flight")]
         [Test]
         public void TheDepartureBurnIsSizedFromTheVelocityChangeNotTheTimeShare()
         {
@@ -193,6 +200,7 @@ namespace TimeToExplore.Tests.EditMode
                 Is.EqualTo(2.0).Within(0.05), "half the level is twice the burn");
         }
 
+        [Category("flight")]
         [Test]
         public void TheHandoverAtTheArrivalFloorIsFlownNotImpulsive()
         {
@@ -233,6 +241,7 @@ namespace TimeToExplore.Tests.EditMode
         /// against the old 117.13 days from the 51.76 million km sphere, and every
         /// seam closes inside the 1 km / 1 m/s gate.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheChainEntersAtTheArrivalHandoverFloor()
         {
@@ -290,6 +299,7 @@ namespace TimeToExplore.Tests.EditMode
         /// the brake still spans the last part of the descent. Both seams close
         /// inside the 1 km / 1 m/s gate.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheArrivalLegIsAPlanetocentricApproachFromTheCeiling()
         {
@@ -402,6 +412,7 @@ namespace TimeToExplore.Tests.EditMode
         /// Mercury at 20 spheres would be a worse model than the heliocentric coast
         /// it replaced.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheShortTripsHaveNoApproachBecauseTheBrakeSpansTheSphere()
         {
@@ -437,6 +448,7 @@ namespace TimeToExplore.Tests.EditMode
                 "and the coast runs straight to the brake's start");
         }
 
+        [Category("flight")]
         [Test]
         public void TheChainIsContinuousEverywhereItIsNotImpulsive()
         {
@@ -473,6 +485,7 @@ namespace TimeToExplore.Tests.EditMode
         /// the band's ceiling and climbs, so it also happens to stay outside the
         /// sphere — a consequence of the pinned endpoint, not the gate.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void EveryFixedBurnClearsTheBodyItWorksNear()
         {
@@ -504,6 +517,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(burns, Is.EqualTo(2), "the departure burn and the brake");
         }
 
+        [Category("deep")]
         [Test]
         public void AFlightArrivesOnTheParkingOrbitAndHoldsIt()
         {
@@ -553,6 +567,7 @@ namespace TimeToExplore.Tests.EditMode
         /// branch remains in the solver; it did not trigger at Mars between 200 and
         /// 300 days after this change.
         /// </summary>
+        [Category("deep")]
         [Test]
         public void ASlowCrossingClosesCheaplyAndTheSlowEndIsTheCoast()
         {
@@ -579,6 +594,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(refused.InfeasibleReason, Does.Contain("180"));
         }
 
+        [Category("deep")]
         [Test]
         public void ATripTimeWithoutAProgradeShortTransferIsRejectedWithAReason()
         {
@@ -590,6 +606,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.InfeasibleReason, Does.Contain("180"));
         }
 
+        [Category("flight")]
         [Test]
         public void TheHybridArrivalKeepsTheBrakeAndTheCaptureBurnAtTheLevel()
         {
@@ -637,6 +654,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the brake hands the capture chain its entry state");
         }
 
+        [Category("flight")]
         [Test]
         public void TheBreakEndsAtTheParkingRadiusAndTheEscapeConicReachesTheCeiling()
         {
@@ -723,6 +741,7 @@ namespace TimeToExplore.Tests.EditMode
             return velocity;
         }
 
+        [Category("flight")]
         [TestCase(14.1)]
         [TestCase(16.0)]
         [TestCase(20.0)]
@@ -749,6 +768,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the escape conic ends on the clearance sphere");
         }
 
+        [Category("flight")]
         [Test]
         public void AFastMercuryFlightArrivesOnTheParkingOrbit()
         {
@@ -776,6 +796,7 @@ namespace TimeToExplore.Tests.EditMode
             AssertOrbitAround(mercury, ship, ParkingOrbit.ConicRadiusM(mercury), 0.02, 0.02);
         }
 
+        [Category("flight")]
         [Test]
         public void TheOlderFastAndSlowPlansKeepContinuousSeams()
         {
@@ -814,6 +835,7 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        [Category("flight")]
         [Test]
         public void ALevelTooLowForTheFastTripIsRejected()
         {
@@ -825,6 +847,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.InfeasibleReason, Does.Contain("burn-coast-burn"));
         }
 
+        [Category("deep")]
         [Test]
         public void TheAdvertisedMinimumIsTheTrueMercuryFloor()
         {
@@ -864,6 +887,7 @@ namespace TimeToExplore.Tests.EditMode
         /// the same trip through a field that holds only the Sun moves the plan,
         /// which is what a burn that quietly used one body could not do.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void EveryBurnInAReportedPlanIntegratesTheFullField()
         {
@@ -926,6 +950,7 @@ namespace TimeToExplore.Tests.EditMode
         /// a full-field plan, so it is integrated full-field too — the capture
         /// solver and the arc that is reported use the same field.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheHybridCaptureInjectionBurnAlsoIntegratesTheFullField()
         {
@@ -977,6 +1002,7 @@ namespace TimeToExplore.Tests.EditMode
         /// pinned as refusals in
         /// <see cref="TheSubFloorFixedDurationsAreNowRefused"/>.
         /// </summary>
+        [Category("flight")]
         [TestCase("mars", 0.3, 90.0, 38.9678)]
         [TestCase("uranus", 1.0, 400.0, 183.9153)]
         [TestCase("mars", 0.3, 20.0, 495.9818)]
@@ -1005,6 +1031,7 @@ namespace TimeToExplore.Tests.EditMode
         /// refusal names the departure time rather than inventing a plan; this is
         /// the measured move the re-baseline records.
         /// </summary>
+        [Category("flight")]
         [TestCase("mercury", 1.0, 8.0)]
         [TestCase("mars", 0.3, 10.0)]
         [TestCase("uranus", 1.0, 35.0)]
@@ -1029,6 +1056,7 @@ namespace TimeToExplore.Tests.EditMode
         /// long-burn case: the burn-to-coast seam is 2.0 × 10⁻⁴ m and 3.4 × 10⁻⁶
         /// m/s, and every seam in the chain stays inside the 1 km / 1 m/s gate.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheDepartureBurnHandsACoastSolvedFromItsOwnEnd()
         {
@@ -1061,6 +1089,7 @@ namespace TimeToExplore.Tests.EditMode
         /// near-limit case is the one that runs through the 5% screen. The new
         /// break is the short commanded-level burn, so its peak is a level, not a
         /// trip-dependent residue.</summary>
+        [Category("flight")]
         [TestCase("mercury", 1.0, 14.1, 9.7000, 1.4044, 1762.32)]
         [TestCase("mercury", 1.0, 16.0, 9.7000, 1.4044, 869.0568)]
         [TestCase("mars", 0.3, 90.0, 2.9467, 1.4044, 38.9678)]
@@ -1105,6 +1134,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the reported total delta-v is unchanged");
         }
 
+        [Category("flight")]
         [Test]
         public void TheFastBreakPeakTracksTheFullFieldAtTheMercuryFloor()
         {
@@ -1140,6 +1170,7 @@ namespace TimeToExplore.Tests.EditMode
         /// <summary>The 5% screen: when the fast peak is inside the band the
         /// break search certifies with the full field, so no fast estimate can
         /// talk an over-thrust break past the drive.</summary>
+        [Category("deep")]
         [Test]
         public void TheFivePercentScreenCertifiesNearLimitBreaksWithTheFullField()
         {
@@ -1186,6 +1217,7 @@ namespace TimeToExplore.Tests.EditMode
         /// <summary>The floor search may probe with the cheap model, but the
         /// plan it returns is built and measured with the full field, and no
         /// fast estimate is allowed to stand in at the drive limit.</summary>
+        [Category("flight")]
         [Test]
         public void TheFloorSearchReturnsAFullFieldPlanThatFitsTheDrive()
         {
@@ -1223,6 +1255,7 @@ namespace TimeToExplore.Tests.EditMode
         /// retried; Uranus is an unchanged low-cost case, and Jupiter's editor
         /// floor takes the same retry.
         /// </summary>
+        [Category("deep")]
         [TestCase("uranus", 0.3)]
         [TestCase("mars", 0.3)]
         [TestCase("jupiter", 0.3)]
@@ -1262,6 +1295,7 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        [Category("deep")]
         [Test]
         public void TheAdvertisedMinimumIsTheTrueMarsFloor()
         {
@@ -1313,6 +1347,7 @@ namespace TimeToExplore.Tests.EditMode
         /// measurement of that same curve, so the departure body's field plus the
         /// Sun's small term lands within a few percent.
         /// </summary>
+        [Category("flight")]
         [TestCase("mars", 0.3, 30.0)]
         [TestCase("mercury", 1.0, 14.1)]
         public void TheBreakPeaksAtTheCommandLevel(string targetId, double level,
@@ -1346,6 +1381,7 @@ namespace TimeToExplore.Tests.EditMode
         /// burn and its duration must not move at all. The trip enters only through
         /// the time left for the climb, and at these durations it is not binding.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheBreakDurationDoesNotMoveWithTripTime()
         {
@@ -1383,6 +1419,7 @@ namespace TimeToExplore.Tests.EditMode
             }
         }
 
+        [Category("flight")]
         [TestCase("mars", 0.3, 30.0)]
         [TestCase("mercury", 1.0, 14.1)]
         public void TheBreakChainStillCloses(string targetId, double level, double days)
@@ -1402,6 +1439,7 @@ namespace TimeToExplore.Tests.EditMode
         /// short burn on every row; the escape conic is the climb, and the coast is
         /// what is left. This is the table the caretaker reviews.
         /// </summary>
+        [Category("deep")]
         [Test]
         public void TheDepartureSweepIsRecorded()
         {
@@ -1503,6 +1541,7 @@ namespace TimeToExplore.Tests.EditMode
         /// minimum: the seam closes inside the gate, and the crossing is shorter
         /// than the coast floor at a much higher delta-v.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void ABurnOnlyCrossingClosesWithoutACoast()
         {
@@ -1628,6 +1667,7 @@ namespace TimeToExplore.Tests.EditMode
         /// self-consistency check: the date is a fixed point, not a seed that
         /// happened to be close.
         /// </summary>
+        [Category("deep")]
         [Test]
         public void TheBurnOnlyMovingTargetSettles()
         {
@@ -1701,6 +1741,7 @@ namespace TimeToExplore.Tests.EditMode
         /// and the returned plan is the six-arc burn-only shape. The comparison is
         /// the two plans', not an assumption.
         /// </summary>
+        [Category("deep")]
         [Test]
         public void PlanFastestReturnsTheBurnOnlyMinimum()
         {
@@ -1819,6 +1860,7 @@ namespace TimeToExplore.Tests.EditMode
         /// the epoch from Gateway, the gap midpoints close inside the 1 km / 1 m/s
         /// gate and are exactly the requested total.
         /// </summary>
+        [Category("deep")]
         [TestCase("mercury", 1.0)]
         [TestCase("mars", 0.3)]
         [TestCase("jupiter", 0.3)]
@@ -1875,6 +1917,7 @@ namespace TimeToExplore.Tests.EditMode
         /// 1,569 → 1,394 / 1,319 / 1,195 → 1,172 and Jupiter 0.3 g 3,109 → 3,076
         /// → 2,689 / 2,533 / 2,420 → 2,271 the same way.
         /// </summary>
+        [Category("deep")]
         [TestCase("mercury", 1.0)]
         [TestCase("mars", 0.3)]
         [TestCase("jupiter", 0.3)]
@@ -1951,6 +1994,7 @@ namespace TimeToExplore.Tests.EditMode
         /// quartiles, the old coast floor, and a duration above it — the slider's
         /// whole range, with no exception between the two old branches.
         /// </summary>
+        [Category("deep")]
         [TestCase("mercury", 1.0)]
         [TestCase("mars", 0.3)]
         [TestCase("jupiter", 0.3)]
@@ -2015,6 +2059,7 @@ namespace TimeToExplore.Tests.EditMode
         /// 0.3 g it buys about 9 hours for roughly 49 t (156 t against 107 t). The
         /// short coast lets the player buy the propellant back by adding time.
         /// </summary>
+        [Category("deep")]
         [Test]
         public void TheFastPlansSpendMorePropellantNotLess()
         {
@@ -2152,6 +2197,7 @@ namespace TimeToExplore.Tests.EditMode
         /// monotone — a longer trip costs less. The arrival is the requested date
         /// and every seam is inside the profile's gate.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void AMarsOrbitDepartureClimbsBallisticallyToEarthAndTheMoon()
         {
@@ -2240,6 +2286,7 @@ namespace TimeToExplore.Tests.EditMode
         /// 1.404 against 0.471 (2.98×). It must not be hundreds of kilometres per
         /// second, which is what the old multi-day radial quintic spent.
         /// </summary>
+        [Category("flight")]
         [Test]
         public void TheBreakSpendsAnImpulsiveEscapeNotHundredsOfKilometresPerSecond()
         {
