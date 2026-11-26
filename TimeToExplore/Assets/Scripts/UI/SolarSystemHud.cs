@@ -604,13 +604,17 @@ namespace TimeToExplore.UI
             {
                 RowView entry = _detailsRows[i];
                 bool used = i < rows.Count;
-                if (entry.Heading.gameObject.activeSelf != used)
+                if (!used)
                 {
-                    entry.Heading.gameObject.SetActive(used);
-                    entry.Label.gameObject.SetActive(used);
-                    entry.Value.gameObject.SetActive(used);
+                    // Hide all three parts by their own state. A row view that
+                    // last carried a label/value has an inactive heading, so a
+                    // test on the heading alone would leave its text on screen
+                    // under the next body's shorter list.
+                    entry.Heading.gameObject.SetActive(false);
+                    entry.Label.gameObject.SetActive(false);
+                    entry.Value.gameObject.SetActive(false);
+                    continue;
                 }
-                if (!used) continue;
 
                 DetailRow row = rows[i];
                 if (row.IsHeading)

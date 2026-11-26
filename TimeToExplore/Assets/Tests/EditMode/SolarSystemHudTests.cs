@@ -143,6 +143,62 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Child("DetailsPanel").activeSelf, Is.False);
         }
 
+        /// <summary>
+        /// The row views are reused between bodies. Mars fills all nineteen and
+        /// leaves row 14 with an inactive heading and an active label and value;
+        /// Ares Junction needs fourteen, so rows 14–18 must be hidden rather
+        /// than keep Mars's last five lines under LOCATION. The bug is about
+        /// row counts, not stations: any body shorter than the one before it
+        /// reproduces it.
+        /// </summary>
+        [Test]
+        public void AShorterBodyHidesTheRowsTheLongerBodyFilled()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+            BodyRuntime ares = _bootstrap.Model.Get("ares_junction");
+
+            _bootstrap.Select(mars);
+            _hud.OpenDetails();
+            Update();
+            Update();
+
+            Assert.That(Child("DetailsRow14Label").activeSelf, Is.True,
+                "Mars fills row 14");
+            Assert.That(Child("DetailsRow18Value").activeSelf, Is.True,
+                "Mars fills all nineteen rows");
+
+            _bootstrap.Select(ares);
+            Update();
+            Update();
+
+            for (int i = 14; i < 19; i++)
+            {
+                Assert.That(Child("DetailsRow" + i + "Heading").activeSelf, Is.False,
+                    "row " + i + " keeps a stale heading");
+                Assert.That(Child("DetailsRow" + i + "Label").activeSelf, Is.False,
+                    "row " + i + " keeps a stale label");
+                Assert.That(Child("DetailsRow" + i + "Value").activeSelf, Is.False,
+                    "row " + i + " keeps a stale value");
+            }
+
+            // The trip-time control sits in the footer, under the last row the
+            // body uses. Read the live rects: a stale row under LOCATION would
+            // reach into it.
+            ButtonNamed("RouteButton").onClick.Invoke();
+            WaitForPreview();
+            Update();
+
+            var sliderGroup = (RectTransform)Child("TimeSliderGroup").transform;
+            var lastRow = (RectTransform)Child("DetailsRow13Value").transform;
+            Assert.That(sliderGroup.gameObject.activeSelf, Is.True,
+                "the plotted route offers the trip-time control");
+            float lastRowBottom = -lastRow.anchoredPosition.y + lastRow.rect.height;
+            float sliderTop = -sliderGroup.anchoredPosition.y;
+            Assert.That(sliderTop, Is.GreaterThanOrEqualTo(lastRowBottom - 0.5f),
+                "the trip-time control must not overlap the last visible row");
+        }
+
         [Test]
         public void TheFlightPanelAppearsForAPreviewAndForAPlan()
         {

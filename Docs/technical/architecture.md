@@ -296,7 +296,10 @@ from the pure builders (`BodyDetails`, `FlightReport`, `TradeReport`,
 
 The detail and flight rows are pooled: the builders return at most 19 and 17
 rows, so the panel creates 20 and 18 row entries and toggles them. Selecting a
-new body rewrites the same entries instead of rebuilding the panel. The route
+new body rewrites the same entries instead of rebuilding the panel. An unused
+entry hides its heading, label, and value by their own active state: an entry
+that last carried a label/value has an inactive heading, so the heading alone
+cannot say whether the row is on screen. The route
 legend is pooled the same way: a fixed row of swatch and label widgets is filled
 from the visible plan's arc types (quintic, conic, fixed burn), one row per
 type, so the three conic arcs of a coasted arrival share a row while their
