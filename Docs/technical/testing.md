@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T22:06:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T00:20:00Z }
 ---
 
 # One command
@@ -44,15 +44,22 @@ for the numbers and the warm-up rule.
 | Runtime (EditMode) | Unity EditMode suite | Kepler maths, catalogue loading, model propagation, clock, the scene's frame loop |
 | Player loop (PlayMode) | Unity PlayMode suite | The runtime-built bootstrap, renderer, trajectory line, and HUD through Unity's own frames |
 
-The EditMode tests carry one category each: `core`, `flight`, `presentation`, or
-`smoke`; the PlayMode suite carries `playmode`. `--tests` narrows the Unity gate
-to the categories named; the fast gates still run. A `core` or `presentation`
-run is a few seconds and the flight category is the bulk of a full run, which
-takes about **three minutes** on the warm project (187 s measured on the
-first-plot branch). The burn–coast–burn plan is still the expensive part — its
-fixed burns integrate the summed field — but a certified build is no longer
-fifteen seconds in the editor. The PlayMode suite is separate and takes about
-**half a minute** on the warm project. A bare `tools/check.sh` runs both
+The EditMode tests carry one category each: `core`, `flight`, `deep`,
+`presentation`, or `smoke`; the PlayMode suite carries `playmode`. `--tests`
+narrows the Unity gate to the categories named; the fast gates still run.
+
+`flight` holds the cheap flight checks, a few seconds per test at most.
+`deep` holds the sweeps that build a whole plan per sample: the slider
+duration and burn-level ranges, the coast-gap families, the worst-case windows,
+and the session, report, path-sampling and warm-start tests that plot a real
+route. Splitting them kept every assertion; it moved the expensive ones off the
+inner loop. Use `--tests flight` while editing simulation code, `--tests
+flight-full` (both categories) before a merge, and a bare `tools/check.sh` for
+the full gate. A `core` or `presentation` run is a few seconds. The
+burn–coast–burn plan is the expensive part — its fixed burns integrate the
+summed field — but a certified build is no longer fifteen seconds in the
+editor. The PlayMode suite is separate and takes about **half a minute** on the
+warm project. A bare `tools/check.sh` runs both
 platforms; the PlayMode invocation still names the `playmode` category, so a
 file in that assembly with another category alone does not join a bare run.
 `--tests` with only EditMode categories skips the PlayMode launch.
@@ -76,7 +83,7 @@ reads the results that were written, so a hang at the end does not throw away a
 completed run. Logs are `.cache/test-project/unity-editmode.log` and
 `unity-playmode.log`. The EditMode stall window is **thirty minutes** because
 Unity writes no per-test progress to the log: the whole run is one silent
-stretch, and the flight category alone is about 1,400 s. The PlayMode window is
+stretch, and the deep sweeps alone are about 1,300 s. The PlayMode window is
 **fifteen minutes**. Their time budgets are forty and twenty minutes. The
 windows are deliberately generous rather than tight; the budget still stops a
 real hang.
@@ -93,11 +100,30 @@ bloom pair through HDR and post-processing, which needs the graphics device, so
 its command (in [The sky](/technical/sky.md#verification)) deliberately omits
 the flag and runs as its own Unity invocation rather than through this suite.
 
-A full run takes about three minutes for EditMode plus half a minute for
-PlayMode with the warm project (187 s measured on the first-plot branch); the
-`flight` category is the bulk of the EditMode time. `--fast` is the loop to use
-while editing docs, Python tools, or catalogue data. The Unity suites are the
-gate for any C# change.
+With the warm project, `--tests flight` is the fast Unity loop: the cheap
+flight checks without the planner sweeps. `--tests deep` runs only the sweeps,
+and the PlayMode suite is the other half of a bare run. Measured durations for
+each tier are in [How long the gates take](#how-long-the-gates-take). `--fast`
+is the loop to use while editing docs, Python tools, or catalogue data. The
+Unity suites are the gate for any C# change.
+
+# How long the gates take
+
+Measured on an M4 Max with a warm `.cache/test-project`, Unity 6000.3.28f1, at
+the epoch. Wall times include Unity's start-up and the fast gates; the test
+counts are EditMode unless the row says otherwise.
+
+| Command | Tests | Time |
+|---|---|---|
+| `--fast` | — | 6 s |
+| `--tests flight` | 199 | 2 min 20 s |
+| `--tests flight-full` | 323 | 23 min 44 s |
+| bare `tools/check.sh` | 673 + 6 PlayMode | 28 min 48 s |
+
+The `deep` category is **1,294 s** of the bare run and the cheap `flight` tests
+are **126 s**; `core` is under a second, and `presentation` and `smoke` take
+99 s and 165 s. When a gate feels slow, look at those two flight numbers before
+suspecting a regression.
 
 # Unity EditMode suite
 
@@ -476,7 +502,7 @@ Those timings are the two-body-burn profile. Since the certified plan's fixed
 burns integrate the summed field, the same work in a .NET harness before step 7
 was a **0.47 s** 90-day Mars build, **1.1 s** at Mercury 14 d, and a **2.0–2.4 s**
 `Plan()` at the Mars and Mercury floors; the editor is several times slower
-again, which is why the flight category is about ten minutes
+again, which is why the deep sweeps are about twenty minutes
 ([full-field burns](/simulation/powered-leg-floor.md)). Step 7's per-eighth-step
 active-set refresh and 1e-6 m/s pin cut the harness numbers to **0.31 s**,
 **0.43 s**, and **1.0–2.5 s**, with the Uranus 1 g floor at 3.6 s instead of

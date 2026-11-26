@@ -6,15 +6,21 @@
 #   tools/check.sh --fast                # everything except Unity (a few seconds)
 #   tools/check.sh --tests flight        # the fast gates plus one test category
 #   tools/check.sh --tests core,smoke    # any comma-separated categories
+#   tools/check.sh --tests flight-full   # cheap and deep flight checks together
 #   tools/check.sh --tests playmode      # the PlayMode suite only
 #   tools/check.sh --reset               # drop the warm test project first
 #   tools/check.sh --keep                # keep the generator temp directory
 #
-# Test categories: core, flight, presentation, smoke are EditMode; playmode is
-# the PlayMode suite. A bare run executes both platforms. The Unity suites run in
-# a persistent project under .cache/test-project with a symlinked Assets folder
-# and its own Library, so the package import is paid once instead of every run.
-# The first run after --reset rebuilds it (adds roughly half a minute).
+# Test categories: core, flight, deep, presentation, smoke are EditMode;
+# playmode is the PlayMode suite. `flight` is the cheap half, seconds per test;
+# `deep` holds the sweeps that build a whole plan per sample and run for a
+# minute or more. Do not name a category with `flight` in it: Unity matches
+# -testCategory as a regular expression, so `flight` would select it too. A
+# bare run executes both platforms and every category, so the deep tests still
+# gate a merge. The Unity suites run in a persistent
+# project under .cache/test-project with a symlinked Assets folder and its own
+# Library, so the package import is paid once instead of every run. The first
+# run after --reset rebuilds it (adds roughly half a minute).
 #
 # Unity runs under tools/unity_guard.py, which stops it if it stalls, exceeds its
 # time budget, or enters the known cloud-endpoint retry loop at shutdown. Results
@@ -42,7 +48,7 @@ for arg in "$@"; do
         --tests=*) TESTS="${arg#*=}" ;;
         --tests) TESTS="__NEXT__" ;;
         -h|--help)
-            sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -180,9 +186,10 @@ if [[ -n "$TESTS" ]]; then
         category="${category//[[:space:]]/}"
         [[ -z "$category" ]] && continue
         case "$category" in
-            core|flight|presentation|smoke) RUN_EDITMODE=1 ;;
+            core|flight|deep|presentation|smoke) RUN_EDITMODE=1 ;;
+            flight-full) RUN_EDITMODE=1; category="flight;deep" ;;
             playmode) RUN_PLAYMODE=1 ;;
-            *) fail "unknown test category: $category (choose core, flight, presentation, smoke, playmode)" ;;
+            *) fail "unknown test category: $category (choose core, flight, deep, flight-full, presentation, smoke, playmode)" ;;
         esac
         CATEGORIES="${CATEGORIES:+$CATEGORIES;}$category"
     done
@@ -303,7 +310,7 @@ PY
 if (( RUN_EDITMODE )); then
     # Unity writes no per-test progress to the log, so the whole EditMode run is
     # one silent stretch. The window covers it; the time budget bounds a hang.
-    # The suite grew: the flight category alone is about 1,400 s, so the old
+    # The suite grew: the deep flight sweeps alone are about 1,000 s, so the old
     # 1,200 s stall window tripped on a run that was still healthy.
     run_unity_suite EditMode "Unity EditMode" 1800 2400
 fi

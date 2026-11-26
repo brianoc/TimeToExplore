@@ -20,7 +20,7 @@ namespace TimeToExplore.Tests.EditMode
     /// * a seed that does not fit is abandoned after a few passes and the build
     ///   is repeated cold, so a wrong seed cannot change the answer.
     /// </summary>
-    [Category("flight")]
+    [Category("deep")]
     public class WarmStartTests
     {
         private SolarSystemModel _model;
