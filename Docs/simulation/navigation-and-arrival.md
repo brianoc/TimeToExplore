@@ -175,17 +175,22 @@ raises the ship to the parking radius on its prograde tangent at the
 planetocentric escape speed — `√(2μ/r₀ + v∞²)`, with `v∞ = 0` the parabolic
 boundary — and a ballistic `ConicArc` about the departure body carries that state
 out to the handover ceiling. The escape's duration is the conic's own radius
-crossing, not a share of the trip: a long trip gets the minimum-energy parabolic
-climb, and a trip that leaves the departure less than that gets a hyperbolic
-excess speed solved so the conic still reaches the ceiling in the time available.
-The departure burn starts at the conic's ceiling **state** and its thrust
+crossing, not a share of the trip. The
+[departure split](/decisions/adr-022-departure-split.md) chooses the excess speed
+`v∞` by cost at **every** duration, for a planet and for a station with a
+departure body, so a long trip can take a small hyperbolic climb when that is
+cheaper: at 90 days to Mars the chosen 1 km/s finishes the climb in 7.405 days
+instead of the 10.741-day parabola. The old rule — the minimum-energy parabola
+whenever the trip allowed it, an excess only when it did not — is retired. The
+departure burn starts at the conic's ceiling **state** and its thrust
 direction (two angles) and duration are solved against the Lambert coast; the
 burn's start position is no longer a free ray. This is the change that removed the
 old multi-day powered hover: the old break spent 8.8 km/s at Gateway to reach the
 ceiling along the crossing's escape ray, while the new break spends 1.4 km/s in
 about 15 minutes and the free climb does the rest. A faster trip therefore pays
-more: a shorter available time means a larger `v∞`, a larger periapsis speed, and
-a longer commanded-level break, while the coast absorbs whatever time is left.
+more: the chosen `v∞` rises with the demand for time, a larger `v∞` raises the
+periapsis speed, and the commanded-level break grows, while the coast absorbs
+whatever time is left.
 The old chain placed the burn by integrating it backwards from the coast's start,
 so at fast trip times it began 4.7 SOI out at 32 km/s and the break had to be
 fitted to that; the physical climb removes that backwards departure solve. A
@@ -277,6 +282,20 @@ At the epoch the floors and windows are **3.67616–11.02847 days** to Mercury a
 **28.18209–84.54626** to Uranus at 1 g and **37.00540–111.01619** at 0.3 g. The slider's value
 line says what the drive is doing — `0.3 g burns · coast` — instead of quoting a
 peak throttle for a plan that coasts.
+
+A **station** with a departure body follows the same rule at the epoch: from a
+Mars 300 km orbit to Gateway the split-aware floor is **54.36495 d** (98.4091
+km/s at a 16 km/s excess, five arcs) and the window **54.36–163.09 d**, against
+59.57357 d / 76.494 km/s with the unforced climb
+([ADR-023](/decisions/adr-023-station-departure-split.md)). The floor is faster
+and costlier; every fixed station duration is cheaper — Gateway → Ares Junction
+at 60 / 90 / 120 / 160 days is **67.8154 / 38.9403 / 24.7331 / 15.0673 km/s**
+against 71.9303 / 39.3398 / 24.7331 / 15.1026, and Mars 300 km → Gateway at
+120 days is **24.3137** against 25.6479. A station plan has no split when the
+ship has no departure body: a ship outside every sphere starts heliocentrically
+for every station, and Helios Watch and Nyx Anchor never climb from inside Earth's
+sphere because their parent is Earth and `FindDepartureBody` skips the target's
+parent. Widening that rule is separate work.
 
 Finding that window is the expensive part of a selection, so `FlightSession`
 caches the floor plan and the window per departure date, target, burn level, and

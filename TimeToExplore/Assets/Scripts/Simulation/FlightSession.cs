@@ -409,6 +409,17 @@ namespace TimeToExplore.Simulation
             RefreshTelemetry();
         }
 
+        /// <summary>Adopt an exact ship state. The catalogue has no body for an
+        /// orbit, so the tests place the ship in one through this seam; gameplay
+        /// places by body with <see cref="PlaceAt"/>.</summary>
+        internal void Place(ShipState state)
+        {
+            Cancel();
+            ClearWindows();
+            _state = state;
+            RefreshTelemetry();
+        }
+
         /// <summary>Move the ship without a trajectory. Used by the debug camera
         /// and by the debug teleport, never during a flight. The velocity is
         /// cleared because a teleport has no trajectory.</summary>

@@ -246,6 +246,51 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// The station's 3× trip-time window. From a Mars 300 km equatorial orbit
+        /// to Gateway the minimum is <see cref="TripPlanner.PlanFastest"/>'s coast
+        /// floor — for a station that is the split-aware floor, not a burn-only
+        /// crossing — and the maximum is the planner's 3× cap, because the cap
+        /// itself is feasible. The class is a deep sweep; this case is one floor
+        /// build and one cap probe, so it is also tagged flight and runs in the
+        /// fast gate.
+        /// </summary>
+        [Test]
+        [Category("flight")]
+        public void TheStationWindowIsTheSplitAwareFloorAndThreeTimesIt()
+        {
+            _session.Place(FlightFixture.ShipInEquatorialOrbit(_model, "mars", 300e3));
+
+            TrajectoryPlan preview = _session.Plot("gateway", _epoch);
+            double minimumDays = _session.PreviewMinimumSeconds / JulianDate.SecondsPerDay;
+            double maximumDays = _session.PreviewMaximumSeconds / JulianDate.SecondsPerDay;
+
+            TestContext.WriteLine($"mars 300 km → gateway window " +
+                                  $"{minimumDays:F5}–{maximumDays:F5} d, " +
+                                  $"{preview.DeltaVMps / 1000.0:F4} km/s, " +
+                                  $"{preview.Arcs.Count} arcs");
+
+            Assert.That(preview.IsFeasible, Is.True, preview.InfeasibleReason);
+            Assert.That(preview.TargetId, Is.EqualTo("gateway"));
+            Assert.That(preview.FlightTimeSeconds,
+                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1e-6),
+                "the plotted preview is the window's own floor plan");
+            Assert.That(minimumDays, Is.EqualTo(54.36495).Within(0.01),
+                "a station's nav minimum is the split-aware coast floor");
+            Assert.That(maximumDays, Is.EqualTo(163.09485).Within(0.03),
+                "the window ends at three times the floor");
+            Assert.That(maximumDays,
+                Is.EqualTo(minimumDays * TripPlanner.MaxDurationScale).Within(1e-9),
+                "the cap itself is feasible, so the window is exactly 3×");
+            Assert.That(preview.Arcs.Count, Is.EqualTo(5),
+                "break, escape, departure burn, coast, velocity match");
+            Assert.That(preview.Arcs[preview.Arcs.Count - 1].Phase,
+                Is.EqualTo(FlightPhase.Capture));
+            Assert.That(preview.Arcs.Any(arc =>
+                    arc.Phase == FlightPhase.Cruise && arc.IsCoast),
+                Is.True, "the split floor keeps a cruise coast");
+        }
+
+        /// <summary>
         /// Begin a station trip and fly it through <see cref="FlightSession.Advance"/>.
         /// Ares Junction to Gateway is the measured 54.16210-day, three-arc
         /// rendezvous, and the session reaches the hold state with no parking

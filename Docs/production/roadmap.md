@@ -378,8 +378,8 @@ stations are [Lagrange stations](/world/lagrange-stations.md).
 * **The departure is a short prograde escape burn and a ballistic climb.** The
   break ends at the parking radius on the ship's own tangent at the planetary
   escape speed; a planetocentric `ConicArc` carries it to the `1.02 × SOI`
-  ceiling (parabolic when the trip allows, hyperbolic when it does not), and the
-  departure burn starts at the conic's ceiling state. The break's duration is its
+  ceiling at the split's chosen excess, not a forced parabola, and the departure
+  burn starts at the conic's ceiling state. The break's duration is its
   own commanded-level solve, never a share of the trip: **2.854 km/s from a Mars
   300 km orbit** (2.02× the impulsive `v_esc − v_circ`) and **1.404 km/s from
   Gateway** (2.98×). A 0.3 g departure from a 400 km Earth orbit is refused
@@ -400,6 +400,22 @@ stations are [Lagrange stations](/world/lagrange-stations.md).
   and drive row read **Match** (never Capture or Brake), the next event reads
   `Match T− …`, and the status reads **Arrived, at the hold point**; every
   planet label is unchanged.
+
+**The station departure split followed on 2026-11-26**
+([ADR-023](../decisions/adr-023-station-departure-split.md)). A station with a
+departure body now takes the planet split: the cost enters at the hold state at
+the arrival date, so there is no chain to price and no chain duration to subtract,
+and the same grid and refinement choose the excess once per build. From a Mars
+300 km orbit to Gateway the coast floor is **54.36495 d / 98.4091 km/s** at a
+16 km/s excess, five arcs, against 59.57357 d / 76.494 with the unforced climb,
+and the trip window is **54.36–163.09 d**. The floor is **faster but costlier** —
+the shortest trip takes the grid's cap, as every planet floor does — while every
+fixed duration gets cheaper: Gateway → Ares Junction at 60 / 90 / 120 / 160 days
+is **67.8154 / 38.9403 / 24.7331 / 15.0673 km/s** against 71.9303 / 39.3398 /
+24.7331 / 15.1026, and Mars 300 km → Gateway at 120 days is **24.3137** against
+25.6479. A station whose parent is the departure body — Helios Watch and Nyx
+Anchor from inside Earth's sphere — never climbs, because `FindDepartureBody`
+skips the target's parent; widening that rule is separate work.
 
 # Done: the first-pass trade model (2026-11-25)
 
@@ -451,14 +467,11 @@ cargo mass in flight, docking, persistence, and ship selection.
 
 # Follow-ups from the departure climb split (2026-11-26)
 
-The split is [ADR-022](../decisions/adr-022-departure-split.md). These three were
-found while landing it and are deliberately left out of that plan.
+The split is [ADR-022](../decisions/adr-022-departure-split.md). These two were
+found while landing it and are deliberately left out of that plan. (The third,
+the station departure split, shipped on 2026-11-26 as
+[ADR-023](../decisions/adr-023-station-departure-split.md).)
 
-* **The station departure split.** A station plan's terminal velocity match has
-  no capture chain to price, so the chooser has nothing to cost a candidate
-  against and a station departure keeps the unforced minimum-energy climb.
-  Extending the split to stations needs a cost of its own and its own
-  re-baselined anchors.
 * **The reverse-route plot cost.** Venus → Earth now plots in about **10.2 s**
   and Uranus → Earth in about **39.0 s**, against the **0.4–0.5 s** refusals
   they returned before the split. Both are new capability, not regressions — the

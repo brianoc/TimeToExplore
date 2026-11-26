@@ -7,6 +7,11 @@ status: accepted
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
 ---
 
+> **Superseded in part: decision 5.** Stations no longer keep the unforced
+> climb. A station with a departure body now takes the same split, entered at the
+> hold state ([ADR-023](/decisions/adr-023-station-departure-split.md)). The rest
+> of this record stands as the planet decision of 2026-11-26.
+
 # Context
 
 Every go-to plan starts with a short break and a ballistic escape conic out of

@@ -9,7 +9,7 @@ against. The planet split is [ADR-022](Docs/decisions/adr-022-departure-split.md
 the station profile is [Burn–coast–burn trips](Docs/simulation/burn-coast-burn.md)
 and [Navigation and arrival](Docs/simulation/navigation-and-arrival.md).
 
-**Step 2 is committed. Step 3 is next.**
+**Step 3 is committed. Step 4 is next.**
 
 ## What is done
 
@@ -31,6 +31,16 @@ and [Navigation and arrival](Docs/simulation/navigation-and-arrival.md).
   - `PlanStationFloor`'s probes go through `Build`, so the bracket, bisection
     and certificate share one rule.
   - The planet path and the heliocentric no-climb cases are unchanged.
+- **Step 3 (pin the window and re-baseline the docs)** is in:
+  - `FlightSessionTests.TheStationWindowIsTheSplitAwareFloorAndThreeTimesIt`
+    places the ship in a Mars 300 km orbit through the new internal
+    `FlightSession.Place(ShipState)` seam and pins the window at
+    **54.36495–163.09484 d**. It carries `flight` as well as the class's `deep`
+    category, so `--tests flight` runs it.
+  - [ADR-023](Docs/decisions/adr-023-station-departure-split.md) records the
+    station rule and the numbers; ADR-022 carries a "superseded in part:
+    decision 5" note; the testing anchors, the two simulation concepts, the
+    roadmap and `Docs/index.md` are re-baselined.
 
 ## Measured findings (epoch, 0.3 g, conic arrival)
 
@@ -86,30 +96,35 @@ parentheses.
 - `StationDepartureSplitTests` (`flight`) pins all of the above. The suite runs
   in about nine seconds, so the floor test stays in `flight`, not `deep`.
 
-## Step 3 — re-baseline anchors, windows and docs
+## Step 3 result — the published anchors
 
-Publish exactly these moved numbers in [Testing and verification](Docs/technical/testing.md),
-the roadmap, the burn–coast–burn and navigation concepts, and ADR-022:
+The test and the docs are in. The rebuilt anchors that step 4 must capture:
 
 - Station coast floor, Mars 300 km → Gateway: **54.36495 d / 98.4091 km/s**, five
-  arcs, 16 km/s excess (old 59.57357 d / 76.494).
+  arcs, 16 km/s excess (old 59.57357 d / 76.494). Faster and **costlier**. The
+  window is **54.36–163.09 d** (old 59.57–178.72).
 - Gateway → Ares Junction: 60 d **67.8154** (2.0), 90 d **38.9403** (1.0),
   120 d **24.7331** (0.0, unmoved), 160 d **15.0673** (0.5).
 - Mars 300 km → Gateway at 120 d: **24.3137** (1.0), old 25.6479.
-- The trip window is `[minimum, 3 × minimum]`, so the station window becomes
-  **54.36–163.09 d** (was 59.57–178.72 d).
-- Unchanged and must stay: Ares Junction → Gateway 160 d **12.2391**
-  (`PlanFastest` 54.16210 d / 69.541 km/s), Gateway → Mars 90 d **38.5411**,
-  Gateway → Helios Watch 1.733 / 1.565 / 1.481 / 1.415.
+- Unchanged: Ares Junction → Gateway 160 d **12.2391** (`PlanFastest`
+  54.16210 d / 69.541 km/s), Gateway → Mars 90 d **38.5411**, Gateway → Helios
+  Watch 1.733 / 1.565 / 1.481 / 1.415.
+- The window test reads **54.36495–163.09484 d** (the printed 3× value is one
+  unit in the fifth decimal below 163.09485; the ratio assertion is exact).
 
-Also fix the ADR-022 line "Stations keep the unforced climb" and the roadmap's
-"station plan keeps the unforced climb" wording; the split now reaches a
-climbing station. Leave the Helios Watch/Nyx Anchor no-climb rule alone.
+[ADR-023](Docs/decisions/adr-023-station-departure-split.md) records the station
+rule, ADR-022 carries a "superseded in part: decision 5" note, and the station
+follow-up is gone from [the roadmap](Docs/production/roadmap.md) (two remain).
+A station whose parent is the departure body — Helios Watch, Nyx Anchor from
+Earth — still never climbs; that is a recorded limitation, not work for step 4.
 
 ## Step 4 — show the result and close out
 
 Capture a station departure through the real HUD with the new floor and window,
-and the flown arrival on the hold point. Run the full gate and clear
+and the flown arrival on the hold point. The HUD starts at Gateway, so a station
+with a climb needs a ship inside a sphere: use Ares Junction → Gateway for the
+window, or a Mars-orbit start through the session for the **54.36–163.09 d**
+window and **54.36495 d / 98.4091 km/s** floor. Run the full gate and clear
 `HANDOFF.md` in the same commit.
 
 ## Verification
@@ -132,6 +147,12 @@ and 0 skipped in 163 s, `tools/check.sh --fast` passed, and
 `.venv/bin/python tools/validate_okf.py` reported 49 concepts, 0 warnings and 0
 errors. `StationDepartureSplitTests` now runs eight tests in about nine seconds,
 including the 1.2 s floor search, so it stays in `flight`.
+
+Step 3 result: `tools/check.sh --tests flight` passed **215 tests with 0 failed
+and 0 skipped in 162 s** (the new window test took 0.92 s), `tools/check.sh
+--fast` passed in 5 s, and `.venv/bin/python tools/validate_okf.py` reported
+**50 concepts, 0 warnings and 0 errors**. The new test prints
+`mars 300 km → gateway window 54.36495–163.09484 d, 98.4091 km/s, 5 arcs`.
 
 A targeted test needs the absolute results path: Unity resolves `-testResults`
 and `-testFilter` relative to `-projectPath`, so from the worktree root use

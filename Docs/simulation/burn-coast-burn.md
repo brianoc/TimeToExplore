@@ -112,9 +112,31 @@ A station outside every sphere — Helios Watch, Nyx Anchor, Ares Junction and t
 Jovian Transfer Yard — has no departure or escape arc at all: its plan starts
 with a finite burn on the ship's own heliocentric state, and the measured three-arc
 Ares Junction → Gateway trip is the reference. Gateway and Titan Reach are inside
-a sphere, so they keep the break and the climb and still end on the point target.
+a sphere, so they keep the break and the climb and still end on the point target;
+the climb's excess is the departure split's choice, not a forced parabola.
 Docking is not implemented; the plan ends at the hold point
 ([ADR-019](/decisions/adr-019-station-calls-and-departure.md)).
+
+**A station with a departure body takes the split.** The station cost enters at
+the **hold state** at the arrival date, so there is no capture chain to price and
+no chain duration to subtract; the break, the departure burn and the velocity
+match are the same three terms as the planet cost, with the same grid, the same
+600 s brake seed and one refinement round. The split is chosen once per build and
+held through the pin and settle passes, and `PlanStationFloor`'s probes go
+through `Build`, so the bracket, the bisection and the certificate share it
+([ADR-023](/decisions/adr-023-station-departure-split.md)). From a **Mars 300 km
+equatorial orbit** to Gateway at 0.3 g and the epoch, the coast floor is
+**54.36495 d / 98.4091 km/s** at a 16 km/s excess, five arcs, against 59.57357 d
+/ 76.494 km/s with the unforced parabolic climb; the trip-time window is
+**54.36–163.09 d**. The floor is **faster but costlier** — the shortest trip takes
+the grid's cap, the same fast-end trade every planet floor took — while every
+fixed duration gets cheaper. Gateway → Ares Junction at 60 / 90 / 120 / 160 days
+is **67.8154 / 38.9403 / 24.7331 / 15.0673 km/s** (chosen v∞ 2.0 / 1.0 / 0.0 /
+0.5), against 71.9303 / 39.3398 / 24.7331 / 15.1026; Mars 300 km → Gateway at
+120 days is **24.3137** against 25.6479. A station whose parent is the departure
+body — Helios Watch and Nyx Anchor from a ship inside Earth's sphere — never
+climbs, because `FindDepartureBody` skips the target's parent; widening that
+rule is separate work.
 
 # Speed is the input
 
@@ -245,15 +267,18 @@ cancels the station's motion and carries the phase.
 
 The **escape conic** is built from that endpoint: a Keplerian state whose
 periapsis is the parking radius, so it never dips into the planet. Its duration is
-the conic's own radius crossing, not a share of the trip. A long trip gets the
-minimum-energy **parabolic** climb — 10.74066 days from Gateway's 308,455 km
-radius to Earth's 943,144 km ceiling, and 12.02249 days from a Mars 300 km orbit
-to 588,786 km. A trip that leaves the departure less than that gets a
-**hyperbolic** excess speed: the flight time falls monotonically as `v∞` rises, so
-the solve bisects `v∞` until the conic reaches the ceiling in the time left after
-the break and the other legs. A larger `v∞` raises the periapsis speed, so the
-break's commanded-level duration and delta-v grow with it. If the break and even
-the fastest climb cannot fit the time available, the trip is refused with the
+the conic's own radius crossing, not a share of the trip. On the **unforced**
+climb a long trip takes the minimum-energy **parabolic** branch — 10.74066 days
+from Gateway's 308,455 km radius to Earth's 943,144 km ceiling, and 12.02249 days
+from a Mars 300 km orbit to 588,786 km — and a trip that leaves the departure less
+than that gets a hyperbolic excess. The split replaces that rule: it chooses the
+excess by cost at **every** duration, so a 90-day Mars trip takes a 1 km/s conic
+and finishes the climb in 7.405 days instead of the 10.741-day parabola
+([ADR-022](/decisions/adr-022-departure-split.md)). The flight time falls
+monotonically as `v∞` rises, so the conic reaches the ceiling in the time left
+after the break and the other legs. A larger `v∞` raises the periapsis speed, so
+the break's commanded-level duration and delta-v grow with it. If the break and
+even the fastest climb cannot fit the time available, the trip is refused with the
 numbers rather than stretched; that is why the old 8-day Mercury, 10-day Mars and
 35-day Uranus anchors are now below the floor.
 
