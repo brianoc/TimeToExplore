@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T18:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T12:00:00Z }
 ---
 
 # Current state — milestone 0
@@ -451,7 +451,7 @@ cargo mass in flight, docking, persistence, and ship selection.
 
 # Follow-ups from the departure climb split (2026-11-26)
 
-The split is [ADR-022](../decisions/adr-022-departure-split.md). These two were
+The split is [ADR-022](../decisions/adr-022-departure-split.md). These three were
 found while landing it and are deliberately left out of that plan.
 
 * **The station departure split.** A station plan's terminal velocity match has
@@ -464,6 +464,18 @@ found while landing it and are deliberately left out of that plan.
   they returned before the split. Both are new capability, not regressions — the
   routes build where they used to be refused — but the first plot is slow and
   needs its own investigation before the reverse routes feel usable.
+* **The full-blast minimum-time route.** The burn-only crossing is the
+  planner's no-coast shape, but it keeps the minimum-energy parabolic climb
+  because its duration is an output, so it measures 16.49 d against the split
+  coast floor's 7.17 d. Give it the same climb choice with **time** as the
+  objective — a small `v∞` grid and the shortest feasible plan — so the slider's
+  left end is a full-blast route with no coast. At Gateway → Mars 0.3 g expect
+  about **6–6.5 d** (the kinematic no-coast bound is 6.0 d) at roughly
+  **1,500 km/s**, against the coast floor's 1,070. The burn-only seam solve is
+  the delicate part, so "nearly" is the target. Keep the 3× window anchored to
+  the **coast** floor (21.5 d) so only the left end moves; the time-optimal
+  `v∞` may also sit above the fuel grid's 16 km/s cap.
+
 
 # Risks
 
