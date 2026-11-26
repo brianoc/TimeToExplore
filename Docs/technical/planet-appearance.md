@@ -1,24 +1,24 @@
 ---
 type: Reference
 title: Planet appearance
-description: The albedo maps, their import settings and attribution, the detail gate that swaps a flat marker for the map, and the appearance fields the body shader consumes.
+description: The albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere, and the appearance fields the body shaders consume.
 tags: [technical, rendering, textures, planets, atmosphere, attribution]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T18:30:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T20:10:00Z }
 ---
 
 # What exists now
 
 A body has two appearance regimes. Far away it is a **marker**: the flat
-`_Color` from the catalogue, no texture fetch. Once it is close enough that its
-disc is readable, the **detail gate** opens and the body shader samples its
-albedo map. The atmosphere shell is the remaining step; no atmosphere geometry
-exists yet, and the data waits in the catalogue.
+`_Color` from the catalogue, no texture fetch, no atmosphere geometry. Once it
+is close enough that its disc is readable, a **detail gate** opens and the body
+shader samples its albedo map; a second, higher gate opens the atmosphere shell
+for a body that has one. Both gates read the body's **true** angular radius.
 
 Keeping the data first meant the catalogue, the validator and the runtime shape
-settled once, before two shaders depend on them.
+settled once, before the shaders depend on them.
 
-# The detail gate
+# The albedo detail gate
 
 `TimeToExplore/Assets/Scripts/Rendering/BodyAppearance.cs` owns the rule. It is
 a plain static class with no Unity state, so the EditMode suite tests it
@@ -162,13 +162,81 @@ Do not convert the texture's colour in C# or in the shader a second time. An
 sRGB import plus Unity's material and sampler path already delivers linear
 values.
 
-# What the next step adds
+# The atmosphere shell
 
-* **Atmosphere shell.** A second sphere at `1 + heightM / radiusM`, additive,
-  depth-write off, rim-weighted by `pow(1 - dot(N, V), k)` and multiplied by a
-  soft sun term. Mercury gets none; every planet with an `atmosphere` record
-  gets one. It is gated like the map: a flat marker gets no shell, and the
-  camera inside the shell draws nothing.
+The atmosphere is **tier 1**: a second sphere and an additive rim. It is not
+scattering. The shell is a child of the body's visual, so it inherits the
+body's spin and scale; only its local scale is the height ratio.
 
-The shell does not exist yet, and this page should not claim otherwise until it
-lands. The albedo half is live.
+## Shell scale
+
+`BodyAppearance.AtmosphereScale(bodyRadiusM, heightM)` returns
+`1 + heightM / bodyRadiusM`, both in metres, clamped to
+`[1.001, 1.08]`. The heights are the catalogue's **real** visible-atmosphere
+heights, not an art-inflated shell:
+
+| Body | Height | Shell scale |
+|---|---:|---:|
+| Venus | 250 km | 1.0413 |
+| Earth | 100 km | 1.0157 |
+| Mars | 120 km | 1.0354 |
+| Jupiter | 1,000 km | 1.0143 |
+| Saturn | 1,000 km | 1.0172 |
+| Uranus | 800 km | 1.0315 |
+| Neptune | 800 km | 1.0325 |
+
+The clamp is only a guard against a bad catalogue record. Earth's shell is
+therefore about **100 km** above the surface: the rim is thin because the real
+atmosphere is thin.
+
+## The shader
+
+`TimeToExplore/BodyAtmosphere` is additive:
+`Blend SrcAlpha One`, `ZWrite Off`, `Cull Back`, in the `Transparent` queue. It
+is a URP forward pass like the body shader, with a `UniversalForward` light
+mode and target 2.0.
+
+```hlsl
+half rim = pow(saturate(1 - saturate(dot(n, view))), _RimPower);
+half sun = smoothstep(-0.2, 0.35, dot(n, toSun));
+half alpha = saturate(rim * sun * _Intensity * _Color.a);
+return half4(_Color.rgb, alpha);
+```
+
+* The rim is brightest where the shell turns away from the camera, so the glow
+  is a limb rather than a disc. `_RimPower` (default 3) narrows it.
+* The soft sun term fades the glow round the terminator: the day side glows and
+  the night side does not get a bright outline. It is a smoothstep, not a
+  hard hemisphere cut, so the join is not a visible edge.
+* `_Intensity` and `_Color` come from the catalogue's `atmosphere` record.
+  `_Color` is authored sRGB and Unity converts it when it submits the material;
+  the shader does not convert it again.
+* `_WorldSpaceCameraPos` is URP's; `_SunPosition` is the global float4
+  `SolarSystemRenderer` already sets for the body shader.
+
+## The visibility gate
+
+The shell opens at `AtmosphereMinAngularRadius = 0.06 rad`, the body's **true**
+angular radius: about a 90-pixel diameter at 1600x900 with a 60° field of view.
+That is higher than the albedo gate because a thin rim reads as a smudge on a
+small disc, and it is far above every minimum apparent size, so the marker aid
+is already off when the shell appears.
+
+`BodyView.Refresh` also hides the shell when the ship is inside it
+(`distance > drawnRadius × shellScale`, with a small epsilon): an additive rim
+seen from within would fill the view. A body with no `atmosphere` record gets no
+shell object at all, and `BodyView.AtmosphereRenderer` stays null. The test is
+always `Body.Data.HasAtmosphere`, never a null check on `atmosphere`.
+
+The shell is deliberately outside `VisualRadiusUnits`, so mouse picking stays
+against the body itself.
+
+# What is deferred
+
+**Single scattering.** A ray-marched Rayleigh/Mie shell is tier 2: it needs a
+per-pixel optical depth through the atmosphere and a phase function, and it
+belongs with rings and clouds in a later pass. The additive rim is the cheap
+stand-in until then, and it keeps the real height so the hand-over to a proper
+model does not move the silhouette.
+
+Rings for Saturn and Uranus are separate work with their own geometry.

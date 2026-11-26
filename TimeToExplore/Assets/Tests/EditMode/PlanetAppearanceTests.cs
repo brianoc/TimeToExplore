@@ -9,10 +9,9 @@ using UnityEngine;
 namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
-    /// The shipped catalogue's appearance data — the nine albedo maps it names
-    /// and the atmosphere records the next step will draw — plus the detail
-    /// gate and the body shader's marker-versus-map switch. The atmosphere
-    /// shell is the last step and is not asserted here.
+    /// The shipped catalogue's appearance data — the nine albedo maps and the
+    /// atmosphere records — plus the two detail gates, the atmosphere height
+    /// maths, and the body and atmosphere shaders' contracts.
     /// </summary>
     [Category("presentation")]
     public class PlanetAppearanceTests
@@ -119,9 +118,100 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void TheBodyShaderDeclaresTheAlbedoSwitch()
+        public void TheAtmosphereGateOpensAtTheTrueAngularRadius()
         {
-            Shader shader = Shader.Find(RenderingShaders.BodyLit);
+            Assert.That(BodyAppearance.AtmosphereMinAngularRadius, Is.EqualTo(0.06f));
+
+            Assert.That(BodyAppearance.UsesAtmosphere(0f), Is.False);
+            Assert.That(BodyAppearance.UsesAtmosphere(0.0599f), Is.False,
+                "just below the atmosphere gate is unchanged");
+            Assert.That(BodyAppearance.UsesAtmosphere(BodyAppearance.AtmosphereMinAngularRadius),
+                Is.True, "the threshold itself draws the shell");
+            Assert.That(BodyAppearance.UsesAtmosphere(0.061f), Is.True);
+            Assert.That(BodyAppearance.UsesAtmosphere(0.4f), Is.True);
+        }
+
+        [Test]
+        public void TheAtmosphereShellScalesFromTheRealHeight()
+        {
+            Assert.That(BodyAppearance.AtmosphereScale(6_371_000.0, 100_000.0),
+                Is.EqualTo(1.0157f).Within(1e-4f),
+                "Earth's 100 km on 6,371 km is about 1.0157");
+
+            Assert.That(BodyAppearance.AtmosphereScale(6_371_000.0, 60_000_000.0),
+                Is.EqualTo(BodyAppearance.MaxAtmosphereScale),
+                "an absurd height clamps at 1.08");
+            Assert.That(BodyAppearance.AtmosphereScale(6_371_000.0, 1.0),
+                Is.EqualTo(BodyAppearance.MinAtmosphereScale),
+                "a tiny height clamps at 1.001");
+
+            Assert.That(BodyAppearance.AtmosphereScale(0.0, 100_000.0), Is.EqualTo(1f));
+            Assert.That(BodyAppearance.AtmosphereScale(-6_371_000.0, 100_000.0), Is.EqualTo(1f));
+            Assert.That(BodyAppearance.AtmosphereScale(6_371_000.0, 0.0), Is.EqualTo(1f));
+            Assert.That(BodyAppearance.AtmosphereScale(6_371_000.0, -100_000.0), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void TheShippedAtmospheresScaleFromTheirCatalogueHeights()
+        {
+            var expected = new (string Id, float Scale)[]
+            {
+                ("venus", 1.0413f),
+                ("earth", 1.0157f),
+                ("mars", 1.0354f),
+                ("jupiter", 1.0143f),
+                ("saturn", 1.0172f),
+                ("uranus", 1.0315f),
+                ("neptune", 1.0325f),
+            };
+
+            foreach ((string id, float scale) in expected)
+            {
+                BodyData body = CatalogueFixture.Find(id);
+                Assert.That(body.HasAtmosphere, Is.True, id + " should have an atmosphere");
+                Assert.That(
+                    BodyAppearance.AtmosphereScale(body.radiusM, body.atmosphere.heightM),
+                    Is.EqualTo(scale).Within(1e-3f),
+                    id + "'s shell should sit at its real height above the surface");
+            }
+        }
+
+        [Test]
+        public void TheAtmosphereShaderAddsARimInTheTransparentQueue()
+        {
+            Shader shader = Shader.Find(RenderingShaders.Atmosphere);
+            Assert.That(shader, Is.Not.Null, RenderingShaders.Atmosphere + " was not found");
+
+            var material = new Material(shader);
+            try
+            {
+                Assert.That(material.HasProperty("_Color"), Is.True,
+                    "the catalogue atmosphere colour must reach the shader");
+                Assert.That(material.HasProperty("_Intensity"), Is.True);
+                Assert.That(material.HasProperty("_RimPower"), Is.True,
+                    "the rim falloff must be adjustable");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+
+            string source = File.ReadAllText(AssetDatabase.GetAssetPath(shader));
+            StringAssert.Contains("\"Queue\" = \"Transparent\"", source);
+            StringAssert.Contains("\"RenderType\" = \"Transparent\"", source);
+            StringAssert.Contains("Blend SrcAlpha One", source,
+                "the glow adds to the body behind it");
+            StringAssert.Contains("ZWrite Off", source,
+                "a transparent shell has no depth of its own");
+            StringAssert.Contains("Cull Back", source,
+                "the camera is outside the shell whenever it draws");
+            Assert.That(source.Contains("SRGBToLinear"), Is.False,
+                "_Color is converted once when Unity submits the material");
+        }
+
+        [Test]
+        public void TheBodyShaderDeclaresTheAlbedoSwitch()
+        {            Shader shader = Shader.Find(RenderingShaders.BodyLit);
             Assert.That(shader, Is.Not.Null, RenderingShaders.BodyLit + " was not found");
 
             var material = new Material(shader);

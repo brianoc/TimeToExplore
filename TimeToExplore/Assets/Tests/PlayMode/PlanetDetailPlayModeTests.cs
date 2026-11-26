@@ -14,6 +14,11 @@ namespace TimeToExplore.Tests.PlayMode
     /// stays a flat marker with no texture on the material. The framing maths
     /// follows <c>BodyCaptureTests</c>: park the ship at radius over the wanted
     /// apparent radius, on the terminator's side.
+    /// <para>
+    /// The atmosphere shell rides the same two regimes: an atmospheric body
+    /// close up gains its additive rim, a distant one hides it, and an airless
+    /// body has no shell at all.
+    /// </para>
     /// </summary>
     [Category("playmode")]
     public class PlanetDetailPlayModeTests
@@ -93,6 +98,45 @@ namespace TimeToExplore.Tests.PlayMode
 
             Assert.That(AlbedoState(view), Is.EqualTo(0f),
                 "a distant Earth is a flat marker again");
+        }
+
+        [UnityTest]
+        public IEnumerator EarthShowsItsAtmosphereShellOnlyWhenCloseEnough()
+        {
+            BodyRuntime earth = _bootstrap.Model.Get("earth");
+            BodyView view = _bootstrap.Renderer.GetView(earth);
+            Assert.That(view, Is.Not.Null, "the renderer must build a view for Earth");
+            Assert.That(view.AtmosphereRenderer, Is.Not.Null,
+                "Earth has an atmosphere record, so it gets a shell");
+            Assert.That(view.AtmosphereRenderer.enabled, Is.False,
+                "Gateway is far below the atmosphere gate");
+
+            TeleportAtApparentRadius(earth, CloseAngularRadius);
+            yield return null;
+            yield return null;
+
+            Assert.That(view.AtmosphereRenderer.enabled, Is.True,
+                "at 0.4 rad the rim shell must be drawing");
+            Assert.That(view.AtmosphereRenderer.transform.localScale.x,
+                Is.EqualTo(1.0157f).Within(1e-4f),
+                "the shell sits at Earth's real 100 km atmosphere height");
+
+            TeleportAtApparentRadius(earth, FarAngularRadius);
+            yield return null;
+            yield return null;
+
+            Assert.That(view.AtmosphereRenderer.enabled, Is.False,
+                "a distant Earth is a bare marker again");
+        }
+
+        [Test]
+        public void MercuryHasNoAtmosphereShell()
+        {
+            BodyRuntime mercury = _bootstrap.Model.Get("mercury");
+            BodyView view = _bootstrap.Renderer.GetView(mercury);
+            Assert.That(view, Is.Not.Null, "the renderer must build a view for Mercury");
+            Assert.That(view.AtmosphereRenderer, Is.Null,
+                "airless Mercury must not get an atmosphere shell");
         }
 
         private static float AlbedoState(BodyView view) =>

@@ -62,24 +62,30 @@ atmosphere shell.
   [Planet appearance](Docs/technical/planet-appearance.md), and the materials
   section of [Rendering at solar scale](Docs/technical/rendering-scale.md).
 
-### Step 3 — atmosphere shell (next)
+### Step 3 — atmosphere shell (done, committed)
 
-* `TimeToExplore/BodyAtmosphere`: additive, front-face, depth-write-off rim
-  glow with a soft sun term. `BodyView` builds one shell per atmospheric body,
-  scaled by `1 + height/R`, hidden below the atmosphere gate and when the
-  camera is inside it.
-* Gate with `Body.Data.HasAtmosphere`, never a null test. The shell's scale
-  comes from `atmosphere.heightM / body.radiusM`, both in metres, then into
-  render units; keep the real height, do not inflate it.
-* ADR-023 records rim-shell now, scattering later, and the detail gate.
-* Tests: atmosphere scale and visibility maths, shader compile/property tests,
-  `tools/check.sh --tests presentation`, `--fast`.
+* `BodyAppearance` gained `AtmosphereMinAngularRadius = 0.06 rad`,
+  `UsesAtmosphere`, `MinAtmosphereScale`/`MaxAtmosphereScale` and
+  `AtmosphereScale(radiusM, heightM)`. The height is the catalogue's real one,
+  and the clamp is only a guard: Earth 1.0157, Venus 1.0413, Jupiter 1.0143.
+* `TimeToExplore/BodyAtmosphere` is an additive rim: transparent queue,
+  `Blend SrcAlpha One`, `ZWrite Off`, `Cull Back`, `pow(1 - N·V, k)` times a
+  soft sun smoothstep, no scattering integral.
+* `BodyView` builds one shell per atmospheric body as a child of the visual,
+  scaled by the height ratio, and shows it above 0.06 rad when the ship is
+  outside it. `AtmosphereRenderer` is null for an airless body.
+* ADR-023 records the pass, with scattering and rings deferred.
+* Tests: `PlanetAppearanceTests` (gate, scale, shipped planets, shader source and
+  properties), `RenderingPipelineTests` (URP tag and compile),
+  `PlanetDetailPlayModeTests` (Earth close, Earth far, Mercury none).
 
-### Step 4 — verification and evidence
+### Step 4 — verification and evidence (next)
 
 * Full `tools/check.sh` (EditMode + PlayMode) green.
 * Capture Earth, Mars and Jupiter close up with the PlayMode capture suite,
   write them under `Screenshots/after/`, and report the paths and measurements.
+  Earth and Mars should show a rim; Jupiter's is faint (1.0143) and Mercury has
+  none.
 * Clear this handoff to the no-active-handoff stub in the final commit, then
   merge `work/planet-look` into `main`; do not push until the person testing
   confirms the look.
@@ -87,10 +93,9 @@ atmosphere shell.
 ## Verification commands
 
 ```bash
-tools/check.sh --fast                 # docs, data, generators, tooling tests
-tools/check.sh --tests core,presentation
-tools/check.sh --tests presentation   # once the shader work lands
-tools/check.sh                        # full gate before the merge
+tools/check.sh --fast                       # docs, data, generators, tooling tests
+tools/check.sh --tests presentation,playmode
+tools/check.sh                              # full gate before the merge
 ```
 
 Captures need a graphics device; follow
@@ -100,31 +105,36 @@ command (no `-nographics`, `BODY_CAPTURE_DIR` set).
 ## Traps
 
 * The worktree has no `.venv` of its own; it is symlinked to the main checkout.
-* Unity writes `.meta` files for new textures and scripts on its first import.
-  Run an EditMode gate before committing so the metas are in the tree.
+* Unity writes `.meta` files for new textures, scripts and shaders on its first
+  import. Run an EditMode gate before committing so the metas are in the tree;
+  `BodyAtmosphere.shader.meta` is new in this step.
 * `tools/check.sh` compares a fresh offline catalogue byte for byte. Regenerate
   `TimeToExplore/Assets/Resources/solar_system.json` after touching the
   generator; never hand-edit it.
 * Do not convert catalogue colours or texture colours in C#. Unity converts
-  material colours; imported sRGB textures arrive linear. The albedo maps import
-  sRGB through `PlanetTextureImporter`, so a second conversion darkens them. The
-  shader has exactly one `SRGBToLinear`, on `_Ambient`, and
-  `PlanetAppearanceTests` counts it.
+  material colours; imported sRGB textures arrive linear. The shader has exactly
+  one `SRGBToLinear`, on `_Ambient`, and `PlanetAppearanceTests` counts it. The
+  atmosphere shader has **none**: its `_Color` goes through the material.
 * **`JsonUtility` does not keep a null nested object.** `"atmosphere": null`
   deserialises as a default `AtmosphereData` with `heightM` 0, so a runtime null
-  test never fires. Use `BodyData.HasAtmosphere`. The validator checks the
-  catalogue's nulls; the C# test checks the height.
-* The nine maps are committed, not fetched at build time. `fetch_planet_textures.py
-  --check` reads JPEG frame headers only, so it is fast and needs no network.
+  test never fires. Use `BodyData.HasAtmosphere`.
+* The nine maps are committed, not fetched at build time.
+  `fetch_planet_textures.py --check` reads JPEG frame headers only.
 * The capture camera eases marker size at 8/s; wait two seconds after a
   teleport before shooting.
 * **A PlayMode test needs `[Category("playmode")]` on its class.** `check.sh`
-  runs the PlayMode suite with `-testCategory playmode` even on a bare run, so a
-  test with no category never starts. `PlanetDetailPlayModeTests` carries it.
-* `_HasAlbedo` is written only when the gate's state changes, and the material's
-  initial value is the shader property's 0. If step 3 changes that default,
-  `BodyView._albedoApplied` starts wrong and the first marker frame will not
-  write 0.
-* The detail gate reads the true `angularSize`, not `_scaleFactor`. Step 3's
-  atmosphere gate should do the same; gating on the aid would give a distant
-  marker a shell.
+  runs the PlayMode suite with `-testCategory playmode` even on a bare run.
+* `_HasAlbedo` is written only when the albedo gate's state changes, and the
+  material's initial value is the shader property's 0.
+* Both gates read the true `angularSize`, not `_scaleFactor`. The 0.06 rad
+  atmosphere gate is above every minimum apparent size, so the aid is off by the
+  time a shell appears; do not lower it or a marker will gain a shell.
+* The shell is a child of `_visual`, not of the body root, so it inherits the
+  body's spin and scale. Its local scale is the ratio only; do not set the
+  world scale.
+* `SolarSystemRenderer` sets the `_SunPosition` global **after** it refreshes
+  the views, so the shell's first enabled frame lights from the previous
+  frame's sun position. That is one frame of a stale direction, and it only
+  matters if the sun moves a long way in one step.
+* `AtmosphereRenderer` is null for Mercury and every airless body, so any new
+  call site must null-test it rather than the `atmosphere` object.
