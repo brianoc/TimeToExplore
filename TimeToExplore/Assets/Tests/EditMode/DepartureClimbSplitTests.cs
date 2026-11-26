@@ -54,6 +54,112 @@ namespace TimeToExplore.Tests.EditMode
         /// the forced climb fits the requested time. Each plan is exact, feasible
         /// and on the target parking orbit; the table is the measured trade.
         /// </summary>
+        /// <summary>
+        /// The cheap rank-only chooser against the full step-2 search. The full
+        /// search costs a fast probe build with its own pin loop per candidate; the
+        /// shipping chooser costs one climb solve and one Lambert solve. At 8, 18,
+        /// 30 and 90 days they choose the same excess speed or one grid step apart,
+        /// and no shipped plan is worse than the step-1 coarse anchors. The search
+        /// itself is timed against its 50 ms budget.
+        /// </summary>
+        [Test]
+        public void TheCheapChooserMatchesTheFullSearchAtTheAnchorDurations()
+        {
+            _planner.UseDepartureSplit = true;
+            _planner.DepartureVInfinityOverrideMps = -1.0;
+            var grid = new[] { 0.0, 1.0, 3.0, 6.0, 10.0, 16.0 };
+            var cases = new (double Days, double Limit)[]
+            {
+                (8.0, 875.5), (18.0, 304.0), (30.0, 158.0), (90.0, 38.6)
+            };
+
+            foreach ((double days, double limit) in cases)
+            {
+                double seconds = days * SecondsPerDay;
+                ShipState ship = FlightFixture.ShipAt(_model, "gateway");
+
+                TrajectoryPlan shipped = PlanWithSplit(days);
+                double shippedMs = _planner.LastDepartureSplitSeconds * 1_000.0;
+
+                double full = Search(grid, v =>
+                    _planner.MeasureFullSplitCandidateCost(ship, TargetId, seconds,
+                        v * KmPerSecond).CostMps, rounds: 2, out double fullCost);
+                double cheap = Search(grid, v =>
+                    _planner.MeasureCheapSplitCandidate(ship, TargetId, seconds,
+                        v * KmPerSecond), rounds: 1, out double cheapCost);
+
+                TestContext.WriteLine(
+                    $"split at {days:F0} d: shipped " +
+                    $"{shipped.DepartureVInfinityMps / KmPerSecond:F3} km/s " +
+                    $"({shipped.DeltaVMps / KmPerSecond:F3} km/s, {shippedMs:F0} ms); " +
+                    $"cheap {cheap:F3} ({cheapCost / KmPerSecond:F3}); " +
+                    $"full {full:F3} ({fullCost / KmPerSecond:F3})");
+
+                Assert.That(shipped.IsFeasible, Is.True, shipped.InfeasibleReason);
+                Assert.That(shippedMs, Is.LessThan(50.0),
+                    $"{days:F0} d: the rank-only search is within its 50 ms budget");
+                Assert.That(shipped.DeltaVMps / KmPerSecond, Is.LessThan(limit),
+                    $"{days:F0} d: no worse than the step-1 coarse anchor");
+                Assert.That(shipped.DepartureVInfinityMps / KmPerSecond,
+                    Is.EqualTo(cheap).Within(1e-6),
+                    "the shipped plan is the cheap chooser's choice");
+                Assert.That(shipped.DepartureVInfinityMps / KmPerSecond,
+                    Is.EqualTo(full).Within(6.0),
+                    $"{days:F0} d: the cheap choice is the full search's or one grid step away");
+                AssertArrivesOnTheParkingOrbit(shipped, $"{days:F0} d chooser");
+                AssertChainCloses(shipped, $"{days:F0} d chooser");
+            }
+        }
+
+        private static double Search(double[] grid, Func<double, double> cost, int rounds,
+            out double bestCost)
+        {
+            int bestIndex = -1;
+            bestCost = double.PositiveInfinity;
+            double best = 0.0;
+            for (int i = 0; i < grid.Length; i++)
+            {
+                double candidate = cost(grid[i]);
+                if (!(candidate < bestCost)) continue;
+                bestCost = candidate;
+                best = grid[i];
+                bestIndex = i;
+            }
+
+            if (bestIndex < 0) return double.NaN;
+
+            double low = bestIndex > 0 ? grid[bestIndex - 1] : grid[0];
+            double high = bestIndex < grid.Length - 1
+                ? grid[bestIndex + 1]
+                : grid[grid.Length - 1];
+            for (int round = 0; round < rounds; round++)
+            {
+                double lower = 0.5 * (low + best);
+                double upper = 0.5 * (best + high);
+                double lowerCost = cost(lower);
+                double upperCost = cost(upper);
+                if (lowerCost < bestCost && lowerCost <= upperCost)
+                {
+                    high = best;
+                    best = lower;
+                    bestCost = lowerCost;
+                }
+                else if (upperCost < bestCost)
+                {
+                    low = best;
+                    best = upper;
+                    bestCost = upperCost;
+                }
+                else
+                {
+                    low = lower;
+                    high = upper;
+                }
+            }
+
+            return best;
+        }
+
         [Test]
         public void TheForcedExcessSpeedMovesTheCostBetweenTheClimbAndTheCoast()
         {

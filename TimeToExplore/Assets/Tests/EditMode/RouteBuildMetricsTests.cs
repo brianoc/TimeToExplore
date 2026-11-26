@@ -208,9 +208,9 @@ namespace TimeToExplore.Tests.EditMode
                                   $"last {_gcAllocated.LastValue}");
 
             // ---- one retime: a mid-window duration ----
-            // The live Mars window runs from the 16.84485 d coast floor to
-            // 50.529 d, so 33.7 d is inside it and needs no short coast.
-            const double retimeDays = 33.7;
+            // The live Mars window runs from the 7.16751 d coast floor to
+            // 21.5025 d, so 14.0 d is inside it and needs no short coast.
+            const double retimeDays = 14.0;
             double retimeSeconds = retimeDays * JulianDate.SecondsPerDay;
             _planner.PlanAtDuration(ship, "mars", retimeSeconds); // warm-up
             Run[] retimeRuns = Measure(3,
@@ -312,7 +312,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plot.Plan.IsFeasible, Is.True, plot.Plan.InfeasibleReason);
             Assert.That(pm.FastestCalls, Is.EqualTo(1));
             Assert.That(pm.FastestCoastPlanSeconds / JulianDate.SecondsPerDay,
-                Is.EqualTo(16.84485).Within(0.05),
+                Is.EqualTo(7.16751).Within(0.05),
                 "the first plot's coast floor is the current Mars 0.3 g anchor");
             Assert.That(pm.BurnOnlyBuilds, Is.GreaterThanOrEqualTo(1),
                 "the first plot also solves the zero-coast crossing");

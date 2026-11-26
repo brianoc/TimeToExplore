@@ -203,7 +203,11 @@ namespace TimeToExplore.Simulation
         /// Mercury case settles in two or three; the cap keeps a two-point ring
         /// from turning one plan into a minute of work, and a loop that hits it
         /// is reported as infeasible rather than returned.</summary>
-        private const int BurnOnlyDateIterations = 8;
+        /// <summary>The moving-target date loop's pass cap. Twelve leaves room for
+        /// the split's shorter coast floors: the loop starts several passes below
+        /// the burn-only crossing's own total, and the first passes grow the date
+        /// before the fixed point walks in.</summary>
+        private const int BurnOnlyDateIterations = 12;
 
         /// <summary>Under-relaxation for a moving-target pass that overshoots
         /// and reverses the previous step. Halving the update turns a two-point
@@ -327,14 +331,16 @@ namespace TimeToExplore.Simulation
         /// Search the departure climb split: choose the escape conic's hyperbolic
         /// excess speed that minimises the plan's total delta-v at the requested
         /// duration, instead of taking the minimum-energy parabolic climb whenever
-        /// it fits. Off by default, so every returned plan is unchanged. The
-        /// choice is made **once per build** and the same value reaches the
-        /// reference skeleton, the pin loop, the settle pass and the direct
-        /// branch entry points; re-choosing it inside the pin loop would move the
-        /// fixed point. See
+        /// it fits. **On by default** since step 3: a little excess at periapsis
+        /// buys a longer coast, and the longer coast shrinks both fixed burns by
+        /// more than the break grows. Internal so the tests can turn it off and
+        /// pin the pre-split anchors. The choice is made **once per build** and
+        /// the same value reaches the reference skeleton, the pin loop, the
+        /// settle pass and the direct branch entry points; re-choosing it inside
+        /// the pin loop would move the fixed point. See
         /// <see cref="ChooseDepartureVInfinityMps(ShipState, BodyRuntime, double)"/>.
         /// </summary>
-        internal bool UseDepartureSplit { get; set; }
+        internal bool UseDepartureSplit { get; set; } = true;
 
         /// <summary>How long the last <see cref="UseDepartureSplit"/> search took,
         /// in seconds. Diagnostics only: it is written when the search runs and
@@ -614,6 +620,30 @@ namespace TimeToExplore.Simulation
 
                 if (certificate == MaxFloorCertificates - 1)
                     break;
+
+                // A failed certificate is usually the fast/full gap at the fast
+                // end: the full-field break or brake is a fraction of a percent
+                // longer, so the climb misses the time available by seconds.
+                // Retry the certified build a little above before paying for a
+                // full-field probe bisection — a certificate is an answer, not a
+                // probe. The 0.2% and 0.5% steps are the same near-floor retries
+                // the probe searches use, and the continuation below remains the
+                // fallback for a gap that is wider than that.
+                double retry = candidate;
+                for (int step = 0; step < 2; step++)
+                {
+                    retry = step == 0 ? candidate * 1.002 : candidate * 1.005;
+                    if (tried.ContainsKey(retry)) continue;
+                    BuildResult retried = Build(ship, target, retry);
+                    tried[retry] = retried;
+                    lastRefusal = retried.Plan;
+                    bool retryFeasible = IsFeasibleAt(retried.Plan, retry);
+                    Trace?.Invoke($"certify retry {retry / SecondsPerDay:F5} d: " +
+                                  $"feasible {retryFeasible}, " +
+                                  $"time {retried.Plan.FlightTimeSeconds / SecondsPerDay:F5} d, " +
+                                  $"reason {retried.Plan.InfeasibleReason}");
+                    if (retryFeasible) return Reported(retried.Plan);
+                }
 
                 // The fast or probe model was optimistic at this duration.
                 // Continue above it with full-field probes; the certificate is
@@ -930,7 +960,10 @@ namespace TimeToExplore.Simulation
             // squeezed. That is the gap the short coast fills. A refusal from the
             // coast's own geometry (no prograde short-way transfer) is a
             // different answer and keeps its reason.
-            if (!result.Plan.IsFeasible
+            string reason = result.Plan.InfeasibleReason ?? string.Empty;
+            bool coastGeometryRefusal = reason.Contains("short-way")
+                                        || reason.Contains("Lambert");
+            if (!result.Plan.IsFeasible && !coastGeometryRefusal
                 && (result.ShortCoastWorthy
                     || result.Plan.PeakThrustMps2
                     > MaxAccelerationMps2 * ThrustMargin))
@@ -996,8 +1029,7 @@ namespace TimeToExplore.Simulation
             }
 
             return BuildBurnOnly(ship, target, arrivalJulianDate,
-                ChooseDepartureVInfinityMps(ship, target,
-                    (arrivalJulianDate - ship.JulianDate) * SecondsPerDay));
+                forcedVInfinityMps: 0.0);
         }
 
         /// <summary>
@@ -1036,9 +1068,19 @@ namespace TimeToExplore.Simulation
             }
 
             long burnOnlyStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
-            TrajectoryPlan burnOnly = PlanBurnOnlyMovingTarget(ship, target,
-                coast.FlightTimeSeconds,
-                ChooseDepartureVInfinityMps(ship, target, coast.FlightTimeSeconds));
+            // A burn-only crossing that cannot fit the coast floor's date needs
+            // more time than the coast floor, so it cannot be the faster plan.
+            // One build decides that; the moving-target loop only runs when the
+            // fixed-date crossing already fits. (Since the split, the coast floor
+            // is far below the burn-only crossing's own minimum, so the loop
+            // would otherwise start from a date the crossing cannot fly.)
+            TrajectoryPlan seedCrossing = BuildBurnOnly(ship, target,
+                ship.JulianDate + coast.FlightTimeSeconds / SecondsPerDay,
+                forcedVInfinityMps: 0.0);
+            TrajectoryPlan burnOnly = seedCrossing.IsFeasible
+                ? PlanBurnOnlyMovingTarget(ship, target,
+                    seedCrossing.FlightTimeSeconds, forcedVInfinityMps: 0.0)
+                : seedCrossing;
             if (metrics != null)
                 metrics.AddFastestBurnOnly(PlanMetrics.Timestamp() - burnOnlyStart,
                     burnOnly?.FlightTimeSeconds ?? double.NaN);
@@ -1080,7 +1122,7 @@ namespace TimeToExplore.Simulation
             BodyRuntime target = RequireTarget(targetId);
             double seedSeconds = PlanCoastFloor(ship, target).FlightTimeSeconds;
             return PlanBurnOnlyMovingTarget(ship, target, seedSeconds,
-                ChooseDepartureVInfinityMps(ship, target, seedSeconds));
+                forcedVInfinityMps: 0.0);
         }
 
         /// <summary>
@@ -1108,6 +1150,23 @@ namespace TimeToExplore.Simulation
             double total = Math.Max(seedSeconds, MinimumArcSeconds);
             double lastStep = double.PositiveInfinity;
             TrajectoryPlan plan = null;
+
+            // Grow the seed until a fixed-date crossing fits. Since the split the
+            // coast floor can be far below the burn-only crossing's own minimum
+            // (Mars 0.3 g: 7.17 d against 16.49 d), so the seed may be a date the
+            // crossing cannot fly. Growth is separate from the fixed point: the
+            // twelve date passes below are the convergence budget, not the search.
+            for (int growth = 0; growth < 6; growth++)
+            {
+                double chainDate = ship.JulianDate + total / SecondsPerDay;
+                plan = BuildBurnOnly(ship, target, chainDate, forcedVInfinityMps);
+                if (plan.IsFeasible) break;
+                Trace?.Invoke($"burn-only seed growth {growth}: the build at " +
+                              $"{total / SecondsPerDay:F5} d is infeasible: " +
+                              plan.InfeasibleReason);
+                if (growth == 5) return plan;
+                total *= 1.5;
+            }
 
             for (int pass = 0; pass < BurnOnlyDateIterations; pass++)
             {
@@ -2604,6 +2663,7 @@ namespace TimeToExplore.Simulation
                     if (metrics != null)
                         metrics.AddPinLoop(PlanMetrics.Timestamp() - passStart);
                     return StretchedPlan(ship, target, totalSeconds, reason,
+                        pinStalled: !fast && !probe && !pinSettled,
                         shortCoastWorthy: true);
                 }
 
@@ -3507,9 +3567,9 @@ namespace TimeToExplore.Simulation
         /// <see cref="Measure"/>, so a probe pays one body's ephemeris per
         /// sample rather than the whole catalogue.</summary>
         private double BreakPeakCentralBodyAlongPath(IArcPath path, double startJd,
-            BodyRuntime body)
+            BodyRuntime body, int samples = 0)
         {
-            int samples = Math.Max(8, ArcSamples);
+            if (samples <= 0) samples = Math.Max(8, ArcSamples);
             double peak = 0.0;
             for (int i = 0; i <= samples; i++)
             {
@@ -3530,9 +3590,9 @@ namespace TimeToExplore.Simulation
         /// (<see cref="MeasureFast"/>), so a split candidate's break is restored
         /// here without paying for the full field.</summary>
         private double BreakDeltaVCentralBodyAlongPath(IArcPath path, double startJd,
-            BodyRuntime body)
+            BodyRuntime body, int samples = 0)
         {
-            int samples = Math.Max(8, ArcSamples);
+            if (samples <= 0) samples = Math.Max(8, ArcSamples);
             double total = 0.0;
             double previousMagnitude = 0.0;
             double previousSeconds = 0.0;
@@ -3735,22 +3795,38 @@ namespace TimeToExplore.Simulation
         private double BreakPeakToEndpoint(ShipState ship, BodyRuntime body,
             Vector3d radial, Vector3d tangent, Vector3d normal, double radius,
             double angularRateRadPerSecond, double periapsisSpeedMps, double seconds,
-            bool cheap)
+            bool cheap, bool rankOnly = false)
         {
             BreakEndpoint(ship, body, radial, tangent, normal, radius,
                 angularRateRadPerSecond, periapsisSpeedMps, seconds,
                 out _, out _, out Vector3d endPosition, out Vector3d endVelocity,
                 out double endJulianDate);
 
-            _gravity.Prepare(ship.PositionM, ship.JulianDate);
-            Vector3d startGravity = _gravity.AccelerationAt(ship.PositionM, ship.JulianDate);
-            _gravity.Prepare(endPosition, endJulianDate);
-            Vector3d endGravity = _gravity.AccelerationAt(endPosition, endJulianDate);
+            Vector3d startGravity;
+            Vector3d endGravity;
+            if (rankOnly)
+            {
+                // The rank-only cost compares excess speeds, not plans: the
+                // departure body's own gravity at both endpoints is enough to
+                // place the quintic, and it skips the catalogue sweep the plan's
+                // break pays for. The reported break still uses the full field.
+                startGravity = CentralBodyGravity(body, ship.PositionM, ship.JulianDate);
+                endGravity = CentralBodyGravity(body, endPosition, endJulianDate);
+            }
+            else
+            {
+                _gravity.Prepare(ship.PositionM, ship.JulianDate);
+                startGravity = _gravity.AccelerationAt(ship.PositionM, ship.JulianDate);
+                _gravity.Prepare(endPosition, endJulianDate);
+                endGravity = _gravity.AccelerationAt(endPosition, endJulianDate);
+            }
 
             Quintic path = Quintic.Create(ship.PositionM, ship.VelocityMps, startGravity,
                 endPosition, endVelocity, endGravity, seconds);
 
-            if (cheap) return BreakPeakCentralBodyAlongPath(path, ship.JulianDate, body);
+            if (cheap)
+                return BreakPeakCentralBodyAlongPath(path, ship.JulianDate, body,
+                    rankOnly ? DepartureSplitBreakSamples : 0);
 
             double fast = BreakPeakCentralBodyAlongPath(path, ship.JulianDate, body);
             double limit = MaxAccelerationMps2 * ThrustMargin;
@@ -3772,12 +3848,13 @@ namespace TimeToExplore.Simulation
         private double SolveBreakSecondsToEscapeState(ShipState ship, BodyRuntime body,
             Vector3d radial, Vector3d tangent, Vector3d normal, double radius,
             double angularRateRadPerSecond, double periapsisSpeedMps,
-            double seedSeconds, double capSeconds, bool cheap)
+            double seedSeconds, double capSeconds, bool cheap, bool rankOnly = false)
         {
             double limit = FixedBurnAccelerationMps2;
             double cap = Math.Max(MinimumArcSeconds, capSeconds);
             double Peak(double seconds) => BreakPeakToEndpoint(ship, body, radial, tangent,
-                normal, radius, angularRateRadPerSecond, periapsisSpeedMps, seconds, cheap);
+                normal, radius, angularRateRadPerSecond, periapsisSpeedMps, seconds, cheap,
+                rankOnly);
 
             double seed = Math.Clamp(seedSeconds, MinimumArcSeconds, cap);
             double low;
@@ -3963,18 +4040,211 @@ namespace TimeToExplore.Simulation
             return true;
         }
 
+        /// <summary>
+        /// Diagnostic only: the **full** step-2 candidate cost, as the split
+        /// search costed a candidate before it was made cheap — a fast probe
+        /// build with its own pin loop, plus the break's integrated delta-v.
+        /// The planner never calls this; the split test does, to prove the cheap
+        /// rank-only chooser reaches the same answer. A cheap candidate's cost is
+        /// the rank-only Lambert estimate in <see cref="DepartureSplitCost"/>.
+        /// </summary>
+        internal (double CostMps, double Milliseconds) MeasureFullSplitCandidateCost(
+            ShipState ship, string targetId, double totalSeconds, double vInfinityMps,
+            int passes = 12)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            BuildResult candidate = BuildBurnCoastBurn(ship, target, totalSeconds,
+                fast: true, probe: false, outerPassesLimit: passes,
+                forcedVInfinityMps: vInfinityMps);
+            double cost = double.PositiveInfinity;
+            if (string.IsNullOrEmpty(candidate.Plan.InfeasibleReason))
+            {
+                cost = candidate.Plan.DeltaVMps;
+                foreach (PlanArc arc in candidate.Plan.Arcs)
+                {
+                    if (arc.Phase != FlightPhase.Departure || arc.IsFiniteBurn) continue;
+                    cost += BreakDeltaVCentralBodyAlongPath(arc.Path,
+                        arc.StartJulianDate, departureBody);
+                }
+            }
+
+            return (cost, clock.Elapsed.TotalMilliseconds);
+        }
+
+        /// <summary>
+        /// Diagnostic only: one rank-only candidate cost, as the shipping chooser
+        /// measures it. The split test grids it and proves its winner matches the
+        /// full <see cref="MeasureFullSplitCandidateCost"/> search. Returns
+        /// <see cref="double.PositiveInfinity"/> for a candidate that does not fit.
+        /// </summary>
+        internal double MeasureCheapSplitCandidate(ShipState ship, string targetId,
+            double totalSeconds, double vInfinityMps)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            if (target.Data.IsStation) return double.PositiveInfinity;
+            BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
+            if (departureBody == null) return double.PositiveInfinity;
+            HandoverBand arrivalBand = HandoverBand.For(target, FixedBurnAccelerationMps2);
+            HandoverBand departureBand = HandoverBand.For(departureBody,
+                FixedBurnAccelerationMps2);
+            if (!arrivalBand.IsValid || !departureBand.IsValid)
+                return double.PositiveInfinity;
+            double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
+            double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
+            TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius, arrivalJd);
+            if (!chain.IsValid) return double.PositiveInfinity;
+            var cost = new DepartureSplitCost(this, ship, target, departureBody,
+                departureBand, chain, totalSeconds, arrivalJd);
+            return cost.Cost(vInfinityMps);
+        }
+
         /// <summary>The coarse grid the departure split search starts from, in
         /// m/s. The measured curve is <b>not</b> unimodal — 10 km/s wins at 18
         /// days, 3 at 30 and 1 at 90 — so a single bisection could sit in the
         /// wrong lobe. 16 km/s is the cap.</summary>
         private static readonly double[] DepartureSplitGridMps =
         {
-            0.0, 1_000.0, 2_000.0, 3_000.0, 6_000.0, 10_000.0, 16_000.0
+            0.0, 1_000.0, 3_000.0, 6_000.0, 10_000.0, 16_000.0
         };
 
-        /// <summary>Local refinement rounds between the best grid point and its
-        /// neighbours. Two rounds quarter the bracket.</summary>
-        private const int DepartureSplitRefinements = 2;
+        /// <summary>The nominal burn and brake duration a rank-only candidate
+        /// assumes. It is held constant across the grid, so the candidates are
+        /// compared at the same coast duration and only the climb's cost and the
+        /// Lambert velocity change move. Ten minutes is a tenth of the fastest
+        /// trip's burn and a fraction of the slow end's; the point is that it is
+        /// the same number for every candidate. The first refinement round is
+        /// measured at the winner's own cost, not at this seed.</summary>
+        private const double DepartureSplitSeedBurnSeconds = 600.0;
+
+        /// <summary>Refinement rounds between the best grid point and its
+        /// neighbours. One round probes two midpoints: the rank-only cost is
+        /// monotone enough near the best that a second round buys less than its
+        /// share of the 50 ms budget.</summary>
+        private const int DepartureSplitRefinements = 1;
+
+        /// <summary>The rank-only candidate cost. It is built once per search
+        /// from the geometry every candidate shares — the target's capture
+        /// chain, its entry state, the departure body and the bands — and then
+        /// costs each excess speed with one climb solve and one Lambert solve.
+        ///
+        /// The cost keeps the profile's three terms separate, which is what the
+        /// reference skeleton cannot do:
+        /// <list type="bullet">
+        /// <item>the **break**'s integrated delta-v against the departure body,
+        /// measured on the quintic the climb solve builds at the rank-only
+        /// sample count;</item>
+        /// <item>the **departure burn**'s change from the escape conic's ceiling
+        /// state to the Lambert coast's departure velocity;</item>
+        /// <item>the **brake**'s change from the coast's arrival velocity to the
+        /// chain's entry velocity.</item>
+        /// </list>
+        /// The capture chain's own cost is the same for every candidate (the
+        /// arrival date is fixed), so it is left out. This is a cost model, not a
+        /// plan: no arcs are measured, the fixed burns are velocity changes at
+        /// their endpoints rather than integrated arcs, and the seed's burn and
+        /// brake duration is common to the grid.
+        /// </summary>
+        private sealed class DepartureSplitCost
+        {
+            private readonly TripPlanner _planner;
+            private readonly ShipState _ship;
+            private readonly BodyRuntime _target;
+            private readonly BodyRuntime _departureBody;
+            private readonly HandoverBand _departureBand;
+            private readonly TransferConic _chain;
+            private readonly double _totalSeconds;
+            private readonly double _entryJulianDate;
+            private readonly Vector3d _entryPositionM;
+            private readonly Vector3d _entryVelocityMps;
+            private readonly double _arrivalJulianDate;
+
+            public DepartureSplitCost(TripPlanner planner, ShipState ship,
+                BodyRuntime target, BodyRuntime departureBody,
+                HandoverBand departureBand, TransferConic chain,
+                double totalSeconds, double arrivalJulianDate)
+            {
+                _planner = planner;
+                _ship = ship;
+                _target = target;
+                _departureBody = departureBody;
+                _departureBand = departureBand;
+                _chain = chain;
+                _totalSeconds = totalSeconds;
+                _arrivalJulianDate = arrivalJulianDate;
+                _entryJulianDate = arrivalJulianDate - chain.TotalSeconds / SecondsPerDay;
+                planner._model.ComputeState(target, _entryJulianDate,
+                    out Vector3d targetPosition, out Vector3d targetVelocity);
+                _entryPositionM = targetPosition + chain.EntryLocalPositionM;
+                _entryVelocityMps = targetVelocity + chain.EntryLocalVelocityMps;
+            }
+
+            public double Cost(double vInfinityMps)
+            {
+                double available = _totalSeconds - _chain.TotalSeconds
+                                   - DepartureSplitSeedBurnSeconds
+                                   - DepartureSplitSeedBurnSeconds;
+                if (!(available > MinimumArcSeconds))
+                    return double.PositiveInfinity;
+
+                if (!_planner.TryBuildDepartureClimb(_ship, _departureBody,
+                        _departureBand.DepartureRadiusM, available,
+                        ClimbSeedSeconds(available), cheap: true,
+                        out DepartureClimb climb, out _, vInfinityMps,
+                        rankOnly: true))
+                    return double.PositiveInfinity;
+
+                _planner.ClimbBurnStart(_departureBody, climb,
+                    out Vector3d exitPosition, out Vector3d exitVelocity);
+                double brakeStartJd = _entryJulianDate
+                                      - DepartureSplitSeedBurnSeconds / SecondsPerDay;
+                double coastSeconds = (brakeStartJd - climb.BurnStartJulianDate)
+                                      * SecondsPerDay;
+                if (!(coastSeconds > MinimumArcSeconds))
+                    return double.PositiveInfinity;
+
+                LambertSolution coast = LambertSolver.SolveShortWay(
+                    exitPosition, _entryPositionM, coastSeconds,
+                    _planner._model.Sun.Gm);
+                if (!coast.HasSolution) return double.PositiveInfinity;
+
+                double departureCost = (coast.DepartureVelocityMps - exitVelocity)
+                    .Magnitude;
+                double brakeCost = (_entryVelocityMps - coast.ArrivalVelocityMps)
+                    .Magnitude;
+                return departureCost + brakeCost + BreakCost(climb);
+            }
+
+            /// <summary>The break's integrated thrust against the departure
+            /// body alone, on the same quintic the plan builds: the ship's state
+            /// to the conic's periapsis on the prograde tangent. The rank-only
+            /// model uses the body's own gravity at both quintic endpoints and a
+            /// coarse sample count; the reported plan's break is built and
+            /// measured by <see cref="AppendDepartureClimb"/> at the full
+            /// quality, so this number never reaches a plan.</summary>
+            private double BreakCost(DepartureClimb climb)
+            {
+                _planner._model.ComputeState(_departureBody, climb.BreakEndJulianDate,
+                    out Vector3d bodyAtEnd, out Vector3d bodyVelocityAtEnd);
+                Vector3d endPosition = bodyAtEnd + climb.BreakEndLocalPositionM;
+                Vector3d endVelocity = bodyVelocityAtEnd + climb.BreakEndLocalVelocityMps;
+                Vector3d startGravity = _planner.CentralBodyGravity(_departureBody,
+                    _ship.PositionM, _ship.JulianDate);
+                Vector3d endGravity = _planner.CentralBodyGravity(_departureBody,
+                    endPosition, climb.BreakEndJulianDate);
+                Quintic path = Quintic.Create(_ship.PositionM, _ship.VelocityMps,
+                    startGravity, endPosition, endVelocity, endGravity,
+                    climb.BreakSeconds);
+                return _planner.BreakDeltaVCentralBodyAlongPath(path, _ship.JulianDate,
+                    _departureBody, DepartureSplitBreakSamples);
+            }
+        }
+
+        /// <summary>Samples the rank-only break cost integrates over. The break
+        /// is a smooth quintic of minutes against one body, so a sixteenth of the
+        /// plan's grid still resolves its cost to a fraction of a km/s.</summary>
+        private const int DepartureSplitBreakSamples = 16;
 
         /// <summary>
         /// Choose the departure split: the escape conic's hyperbolic excess speed
@@ -4016,42 +4286,30 @@ namespace TimeToExplore.Simulation
             if (departureBody == null) return -1.0;
 
             HandoverBand arrivalBand = HandoverBand.For(target, FixedBurnAccelerationMps2);
-            if (!arrivalBand.IsValid) return -1.0;
+            HandoverBand departureBand = HandoverBand.For(departureBody,
+                FixedBurnAccelerationMps2);
+            if (!arrivalBand.IsValid || !departureBand.IsValid) return -1.0;
 
             var clock = System.Diagnostics.Stopwatch.StartNew();
 
-            // The cost of a candidate is a **cheap build's** total delta-v: the
-            // break, the departure burn, the brake and the capture — the real
-            // profile at the fast probe's quality, not the reference skeleton's.
-            // The skeleton fuses its departure into one powered quintic, and that
-            // quintic's cost falls monotonically as the climb shortens, so it
-            // cannot see the break's growth and always ranks the grid's top
-            // corner. The fast build keeps the break and the two burns separate;
-            // its only missing term is the break's integrated delta-v, which
-            // `MeasureFast` reports as zero and this adds back against the
-            // departure body alone.
+            double arrivalRadius = ArrivalEntryRadiusM(arrivalBand, target);
+            double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
+            TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius, arrivalJd);
+            if (!chain.IsValid) return -1.0;
+
+            // The geometry every candidate shares: the capture chain, its entry
+            // state, the bands and the departure body. Only the climb and the
+            // Lambert coast move with the excess speed.
+            var cost = new DepartureSplitCost(this, ship, target, departureBody,
+                departureBand, chain, totalSeconds, arrivalJd);
+
             double Cost(double vInfinity)
             {
-                BuildResult candidate = BuildBurnCoastBurn(ship, target, totalSeconds,
-                    fast: true, probe: false, forcedVInfinityMps: vInfinity);
-                if (!string.IsNullOrEmpty(candidate.Plan.InfeasibleReason))
-                    return double.PositiveInfinity;
-
-                double cost = candidate.Plan.DeltaVMps;
-                double breakCost = 0.0;
-                foreach (PlanArc arc in candidate.Plan.Arcs)
-                {
-                    if (arc.Phase != FlightPhase.Departure || arc.IsFiniteBurn) continue;
-                    breakCost += BreakDeltaVCentralBodyAlongPath(arc.Path,
-                        arc.StartJulianDate, departureBody);
-                }
-
-                cost += breakCost;
+                double value = cost.Cost(vInfinity);
                 Trace?.Invoke($"departure split at {totalSeconds / SecondsPerDay:F4} d: " +
                               $"v∞ {vInfinity / 1000.0:F3} km/s -> " +
-                              $"{cost / 1000.0:F3} km/s " +
-                              $"(break {breakCost / 1000.0:F3})");
-                return cost;
+                              $"{(double.IsFinite(value) ? $"{value / 1000.0:F3} km/s" : "no fit")}");
+                return value;
             }
 
             double bestVInfinity = -1.0;
@@ -4059,9 +4317,9 @@ namespace TimeToExplore.Simulation
             int bestIndex = -1;
             for (int index = 0; index < DepartureSplitGridMps.Length; index++)
             {
-                double cost = Cost(DepartureSplitGridMps[index]);
-                if (!(cost < bestCost)) continue;
-                bestCost = cost;
+                double value = Cost(DepartureSplitGridMps[index]);
+                if (!(value < bestCost)) continue;
+                bestCost = value;
                 bestVInfinity = DepartureSplitGridMps[index];
                 bestIndex = index;
             }
@@ -4128,7 +4386,7 @@ namespace TimeToExplore.Simulation
         private bool TryBuildDepartureClimb(ShipState ship, BodyRuntime body,
             double ceilingRadiusM, double availableSeconds, double seedBreakSeconds,
             bool cheap, out DepartureClimb climb, out string reason,
-            double forcedVInfinityMps = -1.0)
+            double forcedVInfinityMps = -1.0, bool rankOnly = false)
         {
             climb = default;
             reason = null;
@@ -4159,7 +4417,8 @@ namespace TimeToExplore.Simulation
 
             double periapsisSpeed = escapeSpeed;
             double breakSeconds = SolveBreakSecondsToEscapeState(ship, body, radial,
-                tangent, normal, radius, angularRate, periapsisSpeed, seed, cap, cheap);
+                tangent, normal, radius, angularRate, periapsisSpeed, seed, cap, cheap,
+                rankOnly);
 
             if (!TryEscapeCeilingState(body, radial, tangent, radius, periapsisSpeed,
                     ceilingRadiusM, out ConicElements parabolicElements,
@@ -4195,7 +4454,7 @@ namespace TimeToExplore.Simulation
                                            + vInfinity * vInfinity);
                 breakSeconds = SolveBreakSecondsToEscapeState(ship, body, radial,
                     tangent, normal, radius, angularRate, periapsisSpeed, seed, cap,
-                    cheap);
+                    cheap, rankOnly);
 
                 if (!TryEscapeCeilingState(body, radial, tangent, radius, periapsisSpeed,
                         ceilingRadiusM, out elements, out anomaly, out escapeSeconds,
@@ -4250,7 +4509,7 @@ namespace TimeToExplore.Simulation
 
                     breakSeconds = SolveBreakSecondsToEscapeState(ship, body, radial,
                         tangent, normal, radius, angularRate, periapsisSpeed, seed, cap,
-                        cheap);
+                        cheap, rankOnly);
 
                     if (breakSeconds + escapeSeconds <= availableSeconds + 1e-6) break;
                 }
@@ -4304,7 +4563,8 @@ namespace TimeToExplore.Simulation
             climb = new DepartureClimb(radius, periapsisSpeed, vInfinity, parabolic,
                 breakSeconds, escapeSeconds,
                 BreakPeakToEndpoint(ship, body, radial, tangent, normal, radius,
-                    angularRate, periapsisSpeed, breakSeconds, cheap: false),
+                    angularRate, periapsisSpeed, breakSeconds, cheap: false,
+                    rankOnly: rankOnly),
                 breakEndJd, burnStartJd, breakLocalPosition, breakLocalVelocity,
                 escapePosition, escapeVelocity);
             return true;
@@ -5153,6 +5413,7 @@ namespace TimeToExplore.Simulation
             var jacobian = new double[3, 3];
             var rhs = new double[3];
             int jacobianAge = int.MaxValue;
+            bool restarted = false;
 
             for (int iteration = 0; iteration < DepartureSolveIterations; iteration++)
             {
@@ -5290,6 +5551,22 @@ namespace TimeToExplore.Simulation
 
                 if (!accepted)
                 {
+                    // A flat basin can stall a hair above the tolerance: the
+                    // damped Newton finds no step that lowers the residual, but
+                    // the residual is already within ten tolerances. Retry once
+                    // from a perturbed burn duration before rejecting the trip;
+                    // the tolerance and the chain gate do not move.
+                    if (!restarted && best <= 10.0 * DepartureSolveToleranceMps)
+                    {
+                        restarted = true;
+                        angle1 = 0.0;
+                        angle2 = 0.0;
+                        seconds = burnSeconds * 1.01;
+                        jacobianAge = int.MaxValue;
+                        best = double.PositiveInfinity;
+                        continue;
+                    }
+
                     reason = "burn-coast-burn: the departure burn cannot be placed " +
                              $"at this trip time ({best:E3} m/s short of the coast)";
                     return false;

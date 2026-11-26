@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
 ---
 
 # The one big assumption
@@ -221,24 +221,27 @@ The measured plan at 90 days, after the physical departure:
 
 | Leg | Duration | Delta-v | Peak thrust |
 |---|---:|---:|---:|
-| Quintic break | 928 s | 1.404 km/s | 2.9467 m/s² |
-| Escape conic | 10.74 d | 0.252 km/s | 0.0016 m/s² |
-| Departure burn (prograde) | 79.5 min | 14.040 km/s | 2.9420 m/s² |
-| Lambert coast | 78.83 d | 0.039 km/s | 0.0004 m/s² |
-| Approach conic | 5.64 h | 0.000 km/s | 0 |
-| Brake (fixed thrust) | 111.6 min | 19.699 km/s | 2.9420 m/s² |
+| Quintic break | 1,309 s | 1.982 km/s | 2.9467 m/s² |
+| Escape conic | 7.405 d | 0.162 km/s | 0.0016 m/s² |
+| Departure burn (prograde) | 77.7 min | 13.709 km/s | 2.9420 m/s² |
+| Lambert coast | 82.158 d | 0.045 km/s | 0.0005 m/s² |
+| Approach conic | 5.84 h | 0.000 km/s | 0 |
+| Brake (fixed thrust) | 108.2 min | 19.108 km/s | 2.9420 m/s² |
 | Capture chain | 1.2 h | 3.458 + 0.076 km/s (impulse) | 0 |
-| **Total** | **90.00000 d** | **38.968 km/s** | **2.9467 m/s²** |
+| **Total** | **90.00000 d** | **38.541 km/s** | **2.9467 m/s²** |
 
-The total is 38.968 km/s against the coast plan's 11.21 km/s at 200 days: the
-burns buy the speed. The break ends at the parking radius on the ship's own
-prograde tangent at the planetocentric escape speed; a ballistic `ConicArc`
-carries that state to the departure ceiling (`1.02 × SOI`), and the departure
+The total is 38.541 km/s against the coast plan's 11.1 km/s at 200 days: the
+burns buy the speed. The split chooses a 1 km/s excess at 90 days, so the climb
+is 7.405 days and the two burns are 13.709 and 19.108 km/s. The break ends at the
+parking radius on the ship's own
+prograde tangent at the planetocentric escape speed the conic carries; a
+ballistic `ConicArc` carries that state to the departure ceiling
+(`1.02 × SOI`), and the departure
 burn starts at the conic's ceiling **state** with a solved thrust direction and
 duration. The burns are sized from velocity changes, not from a time share: the
 departure burn spends the coast's departure speed above the local escape speed,
-so its delta-v is fixed at a level — 14.040 km/s here — while its duration
-scales inversely with the level. The break is a short 928-second burn at the
+so its delta-v is fixed at a level — 13.709 km/s here — while its duration
+scales inversely with the level. The break is a short 1,309-second burn at the
 commanded 2.9467 m/s², not a multi-day hover, and a faster trip pays a larger
 hyperbolic excess speed rather than a longer break.
 The brake spends the handover the coast plan leaves as an impulse and ends at
@@ -250,24 +253,21 @@ burn-level slider's floor is 0.05 g. The
 arrival adds a planetocentric approach leg; on a fast trip, whose brake starts
 outside the target's ceiling, it is absent.
 
-The profile's true floors at the epoch are **14.06070 days** to Mercury at 1 g
-(peak 9.70 m/s², 1,821.1 km/s) and **16.84485 days** to Mars at 0.3 g
-(2.95 m/s², 1,017.1 km/s); the Mars **coast** trip-time window ends at **50.53
-days**, three times the floor, so the 90-day plan above is a direct
-`PlanAtDuration` build outside the nav computer's window. The nav minimum is the
-burn-only total where it wins — Mercury **13.86287**, Mars **16.48669**, Jupiter
-**22.55555** days — and the coast floor is its fallback. Jupiter at 0.3 g floors
-at **23.73299 days** (coast window 23.73–71.20) and Uranus at **92.13088 days** at
-0.3 g and **57.02223 days** at 1 g (windows 92.13–276.39 and 57.02–171.07). The
-physical departure moved every one of these; the .NET harness
-can select a different certified point near a giants' floor and the editor's is
-the one that ships
-([the divergence](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug)).
-Faster crossings are now limited by the ballistic climb and the
-burns, not by an over-thrusting break. The capture enters at the arrival handover
+The profile's true floors at the epoch are **3.67616 days** to Mercury at 1 g
+(peak 9.70 m/s², 1,649.4 km/s) and **7.16751 days** to Mars at 0.3 g
+(2.95 m/s², 1,070.1 km/s), each at the 16 km/s grid cap; the Mars trip-time
+window ends at **21.50253 days**, three times the floor, so the 90-day plan above
+is a direct `PlanAtDuration` build outside the nav computer's window. The nav
+minimum is the coast floor ([ADR-021](/decisions/adr-021-departure-split.md)):
+the burn-only crossing is longer — Mercury **13.86287**, Mars **16.48669**,
+Jupiter **22.55555** days — so it is dominated. Jupiter at 0.3 g floors at
+**13.58298 days** (window 13.58–40.75), Uranus at **37.00540 days** at 0.3 g and
+**28.18209 days** at 1 g (windows 37.01–111.02 and 28.18–84.55). Faster crossings
+are limited by the ballistic climb and the burns, not by an over-thrusting
+break. The capture enters at the arrival handover
 floor rather than the sphere of influence, so the inbound fall is minutes. The
-slow end is bounded
-by the short-way coast's geometry, and a coast that arrives slower than the
+slow end of the slider is three times the floor; the planner itself accepts
+longer trips in synodic bands, and a coast that arrives slower than the
 target's frame would still need an acceleration rather than a brake. A plan
 the drive cannot fly carries an `InfeasibleReason` naming the arc and the peak it
 needs.
@@ -303,18 +303,15 @@ boundary, the 5% screen, and the background planner.
 
 The route preview has one **trip-time slider**. Its handle is one of **64
 integer steps** across the window: step 0 is the fastest feasible plan of the
-profile and step 63 the slowest duration the planner accepts, so every position
+profile and step 63 the slowest duration the slider offers, so every position
 is a distinct flight time and a fresh solve at that duration. The arcs are
 rebuilt, the arrival date moves, and the target is met where the ephemeris puts
-it on that date. The profile has a real upper bound — the short-way Lambert
-transfer sweeps past 180°, and a coast that arrives slower than the target's
-frame would need an acceleration — so its right-hand end is the slowest duration
-the planner still accepts, probed inside the same three-times span. At the epoch
-the Mars coast window is **16.84–50.53 days**, so the coast path begins at its
-true floor (16.84485 days at 0.3 g) and ends at three times that floor; the
-slider starts at the shorter **16.48669-day burn-only minimum** where that wins.
+it on that date. The window is **three times the split-aware floor**. At the
+epoch the Mars window is **7.16751–21.50253 days**
+(3.67616–11.02847 at Mercury 1 g, 4.20901–12.62702 at Venus 0.3 g,
+13.58298–40.74894 at Jupiter 0.3 g, 37.00540–111.01619 at Uranus 0.3 g).
 A 90-day Mars plan exists as a direct `PlanAtDuration` build but the slider
-cannot reach it.
+cannot reach it ([ADR-021](/decisions/adr-021-departure-split.md)).
 
 The slider is one honest axis with two costs on it:
 
@@ -426,11 +423,10 @@ its mass does not change in flight, and no plan is refused or stranded for
 fuel. A finite tank, mass-dependent acceleration, and the failure state are
 milestone 3 ([ADR-016](../decisions/adr-016-fuel-readout.md)).
 
-The measured trade across the burn-only minimum, the short-coast family and the
-coast floor — and what the break pin costs in propellant — is in [burn–coast–burn
+The measured trade across the coast floor and a trip at twice its duration — and
+what the break pin costs in propellant — is in [burn–coast–burn
 trips](burn-coast-burn.md#fuel-versus-delta-v). The fast end spends more, not
-less: the Mercury 1 g minimum is 275.4 t against the coast floor's 193.1 t for
-4 h 7 min less trip.
+less: the Mercury 1 g floor is 179.3 t against 59.0 t at twice the trip.
 
 ## Command thrust is not the fuel lever
 

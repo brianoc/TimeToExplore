@@ -88,6 +88,7 @@ namespace TimeToExplore.Tests.EditMode
             string label)
         {
             Assert.That(warm, Is.Not.Null, label);
+            Assert.That(cold.IsFeasible, Is.True, $"{label} cold: {cold.InfeasibleReason}");
             Assert.That(warm.IsFeasible, Is.True, $"{label}: {warm.InfeasibleReason}");
             Assert.That(warm.Arcs.Count, Is.EqualTo(cold.Arcs.Count), label);
             Assert.That(warm.FlightTimeSeconds, Is.EqualTo(cold.FlightTimeSeconds).Within(1e-6),
@@ -148,7 +149,8 @@ namespace TimeToExplore.Tests.EditMode
                         $"{coldMetrics.PinPasses} passes, seeded " +
                         $"{warmMetrics.PinPasses} passes, seed " +
                         $"{(neighbour.PinSeed.Covers(seconds) ? "yes" : "no")}, " +
-                        $"fallbacks {warmMetrics.SeedFallbacks}");
+                        $"fallbacks {warmMetrics.SeedFallbacks}, cold feasible " +
+                        $"{cold.IsFeasible} ({cold.InfeasibleReason})");
 
                     AssertSamePlan(cold, warm, $"{targetId} step {step}");
                     neighbour = cold;
@@ -224,11 +226,13 @@ namespace TimeToExplore.Tests.EditMode
                 $"venus {venus.FlightTimeDays:F5} d, " +
                 $"uranus {uranus.FlightTimeDays:F5} d");
             Assert.That(mars.IsFeasible, Is.True, mars.InfeasibleReason);
-            Assert.That(mars.FlightTimeDays, Is.EqualTo(16.84485).Within(0.05),
-                "the Mars 0.3 g floor anchor");
+            Assert.That(mars.FlightTimeDays, Is.EqualTo(7.16751).Within(0.05),
+                "the Mars 0.3 g split-aware floor anchor");
             Assert.That(venus.IsFeasible, Is.True, venus.InfeasibleReason);
+            Assert.That(venus.FlightTimeDays, Is.EqualTo(4.20901).Within(0.05),
+                "the Venus 0.3 g split-aware floor anchor");
             Assert.That(uranus.IsFeasible, Is.True, uranus.InfeasibleReason);
-            Assert.That(uranus.FlightTimeDays, Is.EqualTo(92.13088).Within(0.05),
+            Assert.That(uranus.FlightTimeDays, Is.EqualTo(37.00540).Within(0.05),
                 "the Uranus 0.3 g floor anchor: a seed must not move the frontier");
         }
 

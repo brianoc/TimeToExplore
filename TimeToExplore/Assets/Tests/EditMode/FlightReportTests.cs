@@ -292,20 +292,21 @@ namespace TimeToExplore.Tests.EditMode
             string fuel = Find(rows, "Fuel")?.Value;
 
             TestContext.WriteLine($"flying fuel {fuel}; " +
-                                  $"burn-only {plan.PropellantKg / 1000.0:F1} t, " +
+                                  $"plan {plan.PropellantKg / 1000.0:F1} t, " +
                                   $"coast floor {coastFloor.PropellantKg / 1000.0:F1} t");
 
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.False, "Begin flies the burn-only minimum the preview drew");
+                Is.True, "Begin flies the coast floor the preview drew");
             Assert.That(plan.FlightTimeSeconds,
                 Is.EqualTo(preview.FlightTimeSeconds).Within(1e-6));
             Assert.That(plan.PropellantKg, Is.EqualTo(preview.PropellantKg).Within(1.0),
-                "the flight and the preview are the same burn-only plan");
-            Assert.That(plan.PropellantKg, Is.GreaterThan(coastFloor.PropellantKg),
-                "the burn-only crossing costs more propellant than the coast floor");
+                "the flight and the preview are the same plan");
+            Assert.That(plan.PropellantKg,
+                Is.EqualTo(coastFloor.PropellantKg).Within(1.0),
+                "Begin at the minimum flies the coast floor");
             Assert.That(fuel, Is.EqualTo(FlightReport.FuelLabel(plan)),
                 "the panel's fuel row follows the flying plan, not the old preview or floor");
-            Assert.That(fuel, Is.Not.EqualTo(FlightReport.FuelLabel(coastFloor)));
+            Assert.That(fuel, Is.EqualTo(FlightReport.FuelLabel(coastFloor)));
         }
 
         [Test]

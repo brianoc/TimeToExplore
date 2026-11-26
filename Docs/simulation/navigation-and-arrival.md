@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, arrives in orbit at a planet or at a station's hold point, and why docking is a later phase.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
 ---
 
 # The problem
@@ -211,17 +211,17 @@ radius)` — not the sphere of influence: the brake ends there and the chain's
 inbound fall starts there. Measured at the epoch from Gateway to Uranus at 1 g
 and 400 days, the chain enters at 38,643 km and falls for 31 minutes, against
 117.13 days from the 51.76 million km sphere. The approach starts on the
-52,795,224 km ceiling and ends at 374,026.9 km, where the brake begins; the
-ballistic approach's periapsis is 84,719 km, above the floor, so the brake still
-spans the last part of the descent. The editor's certified floor with the physical
-departure is **57.02 days** (1,417.8 km/s); the .NET harness was not re-swept in
-this step. Every seam is continuous in position and velocity, and the plan arrives
-on the parking orbit exactly. The brake's thrust direction is fixed along the
-change the chain needs, because a burn along the instantaneous velocity can only
-change the speed; the direction opposes the arrival velocity, and a trip time
-whose coast arrives slower than the target's frame would need an acceleration
-rather than a brake. (After the floor entry that branch did not trigger at Mars
-between 20 and 200 days: a 200-day crossing closes at **11.21 km/s** — its last
+52,795,224 km ceiling and ends at 361,329.2 km, where the brake begins; the
+ballistic approach's periapsis is above the floor, so the brake still
+spans the last part of the descent. The editor's certified floor with the split
+is **28.18209 days** (2,483.4 km/s at 1 g); every seam is continuous in position
+and velocity, and the plan arrives on the parking orbit exactly. The brake's
+thrust direction is fixed along the change the chain needs, because a burn along
+the instantaneous velocity can only change the speed; the direction opposes the
+arrival velocity, and a trip time whose coast arrives slower than the target's
+frame would need an acceleration rather than a brake. (After the floor entry
+that branch did not trigger at Mars between 20 and 200 days: a 200-day crossing
+closes at **11.1 km/s** — its last
 27.2 hours a planetocentric approach — and the slow end is the short-way coast's
 own geometry, refused at 305 days for a 175.6° transfer.)
 The departure burn begins on the departure handover band's ceiling, `1.02 × SOI`, and
@@ -230,24 +230,21 @@ influence: a burn that crosses the boundary while clearing both bodies is valid,
 because a full-field burn integrates the summed gravity field
 ([full-field burns and the powered-leg floor](/simulation/powered-leg-floor.md)).
 
-Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: a 928-second
-break (1.4 km/s, 2.95 m/s² peak) that ends at Gateway's 308,455 km radius, a
-10.74-day parabolic escape conic, a 79.5-minute departure burn of 14.0 km/s, a
-78.8-day coast, a 5.6-hour planetocentric approach, a 1.9-hour brake of 19.7 km/s,
-and the 3.5 km/s conic capture, **38.97 km/s** in total. The capture enters at
-6,033 km (the Mars 0.3 g floor) and falls for 13.6 minutes. The old plan at the
-same 90 days cost 44.35 km/s; the climb takes 5.9 days more of the trip than the
-old break did, so the remaining coast is shorter and the two burns are larger
-(13.4 → 14.0 and 18.5 → 19.7 km/s); that old anchor is deliberately not
-preserved ([ADR-019](../decisions/adr-019-station-calls-and-departure.md)). The profile's true floor at the epoch is
-**16.84485 days** to Mars at 0.3 g (1,017.1 km/s) and **14.06070 days** to
-Mercury at 1 g (1,821.1 km/s); the Mars trip-time window ends at **50.53 days**,
-so the 90-day plan above is a direct `PlanAtDuration` build outside the nav
-computer's window. The fast 14.1-day Mercury flight arrives inside the test's
-10 m / 0.1 m/s bound and holds the parking orbit. The nav computer exposes the
-crossing as the only route and the existing burn-level slider as the level both
-fixed burns (and the break) are planned at; its floor is 0.05 g, so there is no
-zero-thrust version.
+Measured at the epoch from Gateway to Mars at 90 days and 0.3 g: the split
+chooses a 1 km/s excess, so a 1,982 m/s break over 0.015 d, a 7.405-day escape
+conic, a 77.7-minute departure burn of 13.709 km/s, an 82.158-day coast, a
+0.243-day planetocentric approach, a 108-minute brake of 19.108 km/s, and the
+3.5 km/s conic capture, **38.5411 km/s** in total
+([ADR-021](/decisions/adr-021-departure-split.md)). The capture enters at
+6,033 km and falls for 13.6 minutes. The profile's true floor at the epoch is
+**7.16751 days** to Mars at 0.3 g (1,070.1 km/s, a 16 km/s excess) and
+**3.67616 days** to Mercury at 1 g (1,649.4 km/s); the Mars trip-time window
+ends at **21.50253 days**, so the 90-day plan above is a direct
+`PlanAtDuration` build outside the nav computer's window. The fast Mercury
+flight arrives inside the test's 10 m / 0.1 m/s bound and holds the parking
+orbit. The nav computer exposes the crossing as the only route and the existing
+burn-level slider as the level both fixed burns (and the break) are planned at;
+its floor is 0.05 g, so there is no zero-thrust version.
 
 ## The trip-time control
 
@@ -261,17 +258,23 @@ it would silently move where the ship parks.
 
 The span starts at the profile's fastest plan — `PlanFastest`: the zero-coast
 burn-only crossing when that is the shorter feasible plan, otherwise the coast
-floor — and has a real upper bound: the prograde short-way Lambert transfer
-sweeps past 180° as the trip lengthens, and a slow coast arrives slower than the
-target's frame, which would need an acceleration rather than a brake. At the
-epoch the profile's **coast windows** are **16.84–50.53 days** to Mars at 0.3 g,
-**14.06–34.27** to Mercury at 1 g, **23.73–71.20** to Jupiter at 0.3 g,
-**57.02–171.07** to Uranus at 1 g and **92.13–276.39** at 0.3 g. The slider
-starts at the shorter **burn-only minimum** where that wins — 16.48669 days to
-Mars, 13.86287 to Mercury, 22.55555 to Jupiter — and its right end is the
-largest accepted duration inside three times that minimum. The 90-day Mars
-build above is outside both the window and the cap, so it can only be built
-directly with `PlanAtDuration`. The slider's value
+floor. Since the split the coast floor is much shorter than the burn-only
+crossing (Mars 0.3 g: 7.17 d against 16.49 d), so the minimum is the coast floor
+and the burn-only branch is dominated ([ADR-021](/decisions/adr-021-departure-split.md)).
+The right-hand end is **three times that minimum**, the same 3× rule the window
+always used, now applied to the split-aware floor. The old Mars end (about
+49.5 d) was three times the *old* 16.84-day floor, not a physical limit: the
+planner accepts up to ~295 d, in synodic bands. Growing the window to that limit
+would put a 2,000-day trip on the Uranus slider and take the benchmark's retime
+and drag phases with it, so the window keeps the 3× shape at the new left end.
+The 90-day Mars build above is outside the window and can only be built directly
+with `PlanAtDuration`, as it was before this step.
+
+At the epoch the floors and windows are **3.67616–11.02847 days** to Mercury at
+1 g, **6.322–18.966** at 0.3 g, **4.23343–12.70028** to Mars at 1 g,
+**7.16751–21.50253** at 0.3 g, **4.20901–12.62702** to Venus at 0.3 g,
+**9.194–27.582** to Jupiter at 1 g, **13.58298–40.74894** at 0.3 g,
+**28.18209–84.54626** to Uranus at 1 g and **37.00540–111.01619** at 0.3 g. The slider's value
 line says what the drive is doing — `0.3 g burns · coast` — instead of quoting a
 peak throttle for a plan that coasts.
 

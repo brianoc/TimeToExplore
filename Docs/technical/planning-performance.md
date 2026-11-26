@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, and Begin flying the fresh preview.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-25T22:30:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
 ---
 
 # The problem
@@ -1449,3 +1449,79 @@ belonging to the call, and the Mars floor; it never asserts a time. See
 The design and the numbers for the profile are in
 [Burn–coast–burn trips](/simulation/burn-coast-burn.md); the slider's behaviour
 is in [The flight session](/technical/flight-session.md#plot-route-then-begin).
+
+## Step 6: the departure split search (2026-11-26)
+
+The departure climb split chooses the escape conic's hyperbolic excess speed
+that minimises the plan's total delta-v at the requested duration
+([ADR-021](/decisions/adr-021-departure-split.md)). Step 2 costed a candidate
+with a **fast probe build** (its own pin loop) and eleven of them took about
+**0.6 s** per search. That cannot ship: the floor search calls `Build` on every
+probe, so the plot would pay it more than twenty times.
+
+**The rank-only cost.** The geometry every candidate shares — the capture chain,
+its entry state, the bands and the departure body — is built once. A candidate
+is then costed with **one climb solve and one Lambert solve**: the break's
+integrated delta-v against the departure body, the departure burn's change from
+the conic's ceiling state to the coast's departure velocity, and the brake's
+change from the coast's arrival velocity to the chain's entry velocity. The
+capture's own cost is common to the candidates and is left out. The grid is
+`0, 1, 3, 6, 10, 16` km/s and one refinement round probes the two midpoints
+beside the winner. A search is **4–7 ms**, about 1/100th of the full cost, and
+it chooses the full search's excess speed or one grid step away at 8, 18, 30 and
+90 days and across sixteen route/duration cases.
+
+**The floor search's two retries.** The much shorter fast end exposed two
+solver stalls that the old floors did not:
+
+* a refused certificate is retried as a **certified** build 0.2% and 0.5% above
+  before a full-field probe bisection. The fast/full gap at the fast end is a
+  fraction of a percent (the full-field break is a hair longer, so the climb
+  misses the available time by seconds), and a certificate is an answer, not a
+  probe. Mars 0.3 g's floor search fell from 9.4 s to 2.9 s with this retry;
+* the pinned departure solve retries **once** from a 1% longer burn when its
+  damped Newton stalls with a residual inside ten tolerances. The tolerance and
+  the chain gate do not move, and the retry is what lets the cold and seeded
+  builds agree at Uranus's fast end. It also found a shorter Uranus floor
+  (**37.00540 d** at 0.3 g, 28.18209 at 1 g) after the change.
+
+**The plan moves.** Every coast floor fell: Mars 0.3 g 16.84485 → **7.16751 d**
+(1,070.1 km/s), Mercury 1 g 14.06070 → **3.67616** (1,649.4), Venus 0.3 g
+14.31827 → **4.20901** (588.3), Jupiter 0.3 g 23.73299 → **13.58298** (2,133.8),
+Uranus 0.3 g 92.13088 → **37.00540** (2,004.9) and 1 g 57.02223 → **28.18209**
+(2,483.4). The window is three times the new floor, not the planner's true limit:
+the planner accepts much longer trips in synodic bands, but growing the window to
+that limit gave Mars 7.17–294.92 d and Uranus 38.38–2,086 d and took the retime
+and drag phases with it. The burn-only crossing keeps the parabolic climb and is
+now the **longer** plan, so the coast floor is the nav minimum and the
+short-coast gap is empty.
+
+**Benchmark.** `tools/bench.sh`, before (2026-11-25) and after (2026-11-26),
+median of three. Milliseconds; the delta is after against before.
+
+| Route | Plot | Retime mid | Retime max | Drag median | Drag worst | Begin total |
+|---|---|---|---|---|---|---|
+| Earth → Mars | 4,136 → **3,513** (−15.0%) | 473 → **572** (+21.0%) | 379 → **487** (+28.3%) | 377 → **438** (+16.2%) | 392 → **1,204** (+207.1%) | 0.07 → **0.07** (+4.6%) |
+| Earth → Venus | 10,323 → **2,798** (−72.9%) | 487 → **571** (+17.3%) | 485 → **467** (−3.7%) | 376 → **438** (+16.4%) | 420 → **562** (+33.9%) | 4.65 → **4.19** (−10.0%) |
+| Earth → Uranus | 2,120 → **3,980** (+87.7%) | 512 → **526** (+2.9%) | 501 → **612** (+22.3%) | 379 → **504** (+33.2%) | 382 → **541** (+41.6%) | 0.06 → **0.06** (−2.1%) |
+| Venus → Earth | 431 → **10,234** (new) | — → **36** | — → **750** | — | — | — → **4,697** |
+| Uranus → Earth | 513 → **39,026** (new) | — → **665** | — → **614** | — | — | — → **3,026** |
+
+The shape is the split's trade, not a regression in the search. The floor is
+half the old one, so the fast-end plans have **longer fixed burns** — at Mars the
+7.17-day floor's departure burn and brake are 2.0 and 2.1 days, against about 0.4
+and 0.5 at the old 16.8-day floor — and one certified build of them costs more.
+The retimes at the new window's middle (14.3 d at Mars, against 33.7 before) and
+the drag's first steps sit in that regime. The Uranus plot pays a harder floor
+search at 37 d (the fast model cannot place the departure burn at many probes
+until the bracket reaches the floor). The two reverse routes were **refused** by
+the old profile and are now real plots: a new capability, not a slower refusal.
+The three-hour `Begin` staleness is the benchmark's stress gap: at a 7.17-day
+minimum, 3 h is more than the preview's 1% freshness, so `Begin` replans. The
+player's real preview is minutes old.
+
+The committed baseline was re-recorded for the new floors, the new window and
+the newly feasible reverses. The search itself is faster; a phase whose duration
+changed is compared with a different build. The 25% threshold still guards the
+search cost, and the search's own line is the **4–7 ms** rank-only choice, which
+is far inside it.

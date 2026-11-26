@@ -93,30 +93,58 @@ heliocentric start (Ares Junction → Gateway, 160 d) is bit-identical either wa
 Determinism is tested: two 18-day builds choose the same `v∞` and return the
 same plan.
 
-## Step 3 design (settled before turning it on)
+## Step 3 done (2026-11-26)
 
-* **Make the chooser cheap first.** At 0.6 s the search cannot ship: it runs in
-  every `Build`, so the floor search would pay it per probe. Target **≤ 50 ms**
-  per search. The first attempt is a **rank-only single-pass** fast build (stop
-  the pin after one pass) on a **5–7 point grid**, no refinement until the
-  ranking is proven. Check the chosen `v∞` still matches the full search at 8,
-  18, 30 and 90 days; if it does not, implement a Lambert-based estimate that
-  keeps the fixed burns separate. Do not flip the flag until the cheap chooser
-  gives the same answers.
-* **Use 3× the new floor (decision, 2026-11-25).** Keep
-  `FlightSession.MaximumPreviewSeconds` as it is: the right-hand end is
-  `minimum * TripPlanner.MaxDurationScale` (3.0), applied to the new split-aware
-  minimum. At the epoch that is about 7.17–21.52 d to Mars, 4.21–12.63 to Venus
-  and 38.38–115.13 to Uranus. The old ~49.5 d Mars end was 3× the *old* floor,
-  not a physical limit; the planner genuinely accepts up to ~295 d. The cheap
-  slow trips therefore leave the slider but remain buildable by direct
-  `PlanAtDuration`. This is the smallest change and keeps the benchmark near
-  baseline. Record it in ADR-021 and the navigation concept. Do **not** grow the
-  window to the planner's true limit in this branch.
-* **Stations are a follow-up.** A station plan has a velocity match instead of
-  a capture chain, and step 2 left it unforced. Do not expand step 3 to cover
-  it; note it in the ADR and the roadmap as the next departure-split change.
+* **The chooser is cheap.** The candidate cost is a **rank-only Lambert
+  estimate**: the shared geometry (capture chain, entry state, bands, departure
+  body) is built once, then one climb solve and one Lambert solve per candidate
+  price the break, the departure burn and the brake. The grid is
+  `0, 1, 3, 6, 10, 16` km/s plus one refinement round. A search is **4–7 ms**
+  (target ≤ 50 ms), and `TheCheapChooserMatchesTheFullSearchAtTheAnchorDurations`
+  proves it picks the full search's excess speed, or one grid step away, at 8,
+  18, 30 and 90 days; the same held across sixteen route/duration cases.
+* **The flag is on.** `UseDepartureSplit` defaults **true**, internal so the
+  flag-off anchors still pin the pre-split plans. Gateway → Mars 0.3 g:
+  **8 d 817.1658 km/s** (v∞ 16), **18 d 276.0994** (10), **20 d 244.9177** (8),
+  **30 d 154.9093** (6), **90 d 38.5411** (1). Every plan is exact, on the
+  parking orbit, and closes its seams (worst measured floor 848 m / 0.067 m/s).
+* **The floors and windows (3× the floor):**
 
+  | Target | Level | Floor | Window |
+  |---|---|---:|---|
+  | Mercury | 1 g | 3.67616 d | 3.68–11.03 |
+  | Mercury | 0.3 g | 6.322 | 6.32–18.97 |
+  | Mars | 1 g | 4.23343 | 4.23–12.70 |
+  | Mars | 0.3 g | **7.16751** | 7.17–21.50 |
+  | Venus | 0.3 g | 4.20901 | 4.21–12.63 |
+  | Jupiter | 1 g | 9.194 | 9.19–27.58 |
+  | Jupiter | 0.3 g | 13.58298 | 13.58–40.75 |
+  | Uranus | 1 g | 28.18209 | 28.18–84.55 |
+  | Uranus | 0.3 g | **37.00540** | 37.01–111.02 |
+
+* **The burn-only crossing is dominated.** It keeps the parabolic climb (its
+  duration is an output), so it is longer than the coast floor everywhere it
+  builds (Mars 0.3 g 16.49 d against 7.17); `PlanFastest` returns the coast
+  floor and the short-coast gap is empty. The branch stays for a route where the
+  crossing wins.
+* **Two solver retries the fast end needs.** A refused certificate is retried as
+  a certified build 0.2%/0.5% above before a full-field bisection (Mars floor
+  search 9.4 → 2.9 s); the pinned departure Newton retries once from a 1% longer
+  burn when it stalls inside ten tolerances. Neither moves a tolerance or the
+  gate; the second also lowered the Uranus 0.3 g floor from 38.378 to 37.005.
+* **Benchmark re-recorded** (`tools/bench.sh --record`). Plot: Mars −15.0%,
+  Venus −72.9%, Uranus **+87.7%** (its 37-day floor search is harder).
+  Retime-mid/max: Mars +21.0/+28.3%, Venus +17.3/−3.7%, Uranus +2.9/+22.3%.
+  Drag median/worst: Mars +16.2/**+207.1%**, Venus +16.4/+33.9%, Uranus
+  +33.2/+41.6%. The fast-end plans have multi-day burns, so one certified build
+  costs more; a phase whose duration changed compares a different build. The
+  **newly feasible reverses** Venus→Earth and Uranus→Earth are real plots now
+  (10.2 s and 39.0 s) and were re-recorded as new rows. `Begin` at the
+  minimum replans after the benchmark's 3 h gap because 3 h > 1% of 7.17 d; the
+  real preview is minutes old.
+* **Verification:** `tools/check.sh --tests flight` → 327 tests, 0 failed. The
+  full `tools/check.sh`, `tools/validate_okf.py` and the bench run are in the
+  verification table below.
 
 ## Design settled
 
@@ -157,41 +185,18 @@ same plan.
    154.753 / 38.541 km/s. One search ≈ **0.6 s**. Flag-off anchors unchanged.
    Verified with `tools/check.sh --tests flight` (326 tests, 0 failed) and
    `tools/check.sh --fast`.
-3. **Next — Turn it on and re-baseline.** The cheap chooser is working
-   (4–7 ms, matches the full search on the 16 measured route/duration cases);
-   the flag, the re-baseline and the docs remain. Keep the window at 3× the new
-   floor (the decision above), not the planner's true limit. Re-sweep the
-   floors, the windows and the fixed-duration anchors, and update every
-   affected test. Update
-   [burn–coast–burn](Docs/simulation/burn-coast-burn.md),
-   [navigation and arrival](Docs/simulation/navigation-and-arrival.md),
-   [the flight model](Docs/simulation/flight-model.md),
-   [planning performance](Docs/technical/planning-performance.md) and
-   [testing](Docs/technical/testing.md). Add ADR-021 for the split and the
-   window change. Fix the two wrong propellant rows in the burn–coast–burn
-   table while there (the code gives 50.8 t at 20 d and 3.9 t at 90 d). Measure
-   the plot and retime with `tools/bench.sh`; the 25% threshold is the
-   regression gate, except that the newly feasible reverse routes are a new
-   capability and are re-recorded rather than called regressions. Keep or
-   remove the `DepartureVInfinityOverrideMps` seam deliberately; the step-1
-   measurement tests may still use it. Verify the full `tools/check.sh` and
-   `tools/validate_okf.py`.
-
-## Step 3 stopped and resumed (2026-11-25)
-
-The first attempt made the chooser cheap and flipped the flag, then stopped on
-the window. The literal "largest accepted duration" end gave Mars 7.17–294.92 d,
-Venus 4.21–109.56 and Uranus 38.38–2,086.28 (whose certified max is refused),
-and the bench regressed 12 phases: Uranus plot **+120.8%**, Uranus retime-max
-**+333.7%**, Venus→Earth plot **+1,611.8%** and Uranus→Earth **+484.0%** as the
-split made previously refused reverses feasible. The `Begin` replan also fired
-because 3 h is now more than 1% of a 7.17-day trip.
-
-Decision: keep 3× the new floor. The wide-window experiment is discarded. The
-newly feasible reverses stay (a real improvement) and their bench rows are
-re-recorded as new plots, not regressions. The 3-hour `Begin` staleness on a
-7-day minimum is left as is for this branch; the player's real preview is
-minutes old, and the benchmark's 3-hour gap is a stress case.
+3. **Done — Turn it on and re-baseline.** The rank-only chooser (4–7 ms,
+   matching the full search on the 16 measured route/duration cases), the flag
+   on by default, the new floors and 3× windows, the anchors, every affected
+   test, ADR-021 and the concept docs. The burn-only crossing is unsplit and
+   dominated; the short-coast gap is empty. Verified with
+   `tools/check.sh --tests flight` (327 tests, 0 failed) and the full check and
+   bench below.
+4. **Next — Close out.** Add a PlayMode `capture` test that plots Gateway → Mars
+   at 18 days and writes the HUD screenshot, run it without `-nographics`, and
+   show the result in the chat. Clear this handoff to the no-active stub in the
+   same commit as the final step, merge the branch to `main`, and remove the
+   worktree. Do **not** push; publication waits for the person testing.
 
 4. **Close out.** Add a PlayMode `capture` test that plots Gateway → Mars at 18
    days and writes the HUD screenshot, run it without `-nographics`, and show
@@ -256,7 +261,8 @@ minutes old, and the benchmark's 3-hour gap is a stress case.
 
 | Command | Last result |
 |---|---|
-| `tools/check.sh --tests flight` | Passed in 1,364 s; EditMode 326 tests, 0 failed, 0 skipped |
+| `tools/check.sh --tests flight` | Passed in 968 s; EditMode 327 tests, 0 failed, 0 skipped |
 | `tools/check.sh --fast` | Passed in 6 s |
-| `tools/check.sh` | not run on this branch yet |
-| `tools/bench.sh` | not run on this branch yet |
+| `tools/bench.sh --record` | Re-recorded 2026-11-26; plot Mars −15.0%, Venus −72.9%, Uranus +87.7%; the reverse routes newly feasible |
+| `tools/check.sh` | run on the committed tree below |
+| `tools/validate_okf.py` | 47 concepts, 0 warnings, 0 errors (before ADR-021; re-run on the commit) |
