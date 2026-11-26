@@ -33,8 +33,8 @@ UNITY_BIN=/Applications/Unity/Hub/Editor/7000.0.0a22/Unity.app/Contents/MacOS/Un
 ```
 
 Last result: every gate passed, both Unity suites with 0 failed and 0 skipped,
-in 735 s. The branch was rebased onto `main`'s station departure split before
-that run, so the gate includes the station tests.
+in 724 s. The branch was rebased onto `main`'s station departure split and
+planet appearance work before that run, so the gate includes their tests.
 
 ```bash
 tools/dotnet-bench.sh --out build/dotnet-bench.json
