@@ -1,22 +1,110 @@
-# Handoff
+# Handoff — two fixes after the station departure split
 
-**No active handoff (2026-11-26).** The station departure split and the planet
-appearance pass are complete and merged. Their close-outs are in
-[the log](Docs/log.md); their designs are
-[ADR-023](Docs/decisions/adr-023-station-departure-split.md) and
-[ADR-024](Docs/decisions/adr-024-planet-appearance.md). Planet appearance is
-[the concept](Docs/technical/planet-appearance.md); its five capture evidence
-shots are under the ignored `Screenshots/after/`. `main` is merged but **not
-pushed** until the person testing confirms the look.
+**Plan in progress (2026-11-26).** Branch `work/station-split-followups` in this
+worktree, based on `0e085b5` (main already carries the station split at
+`af57a3c` and the planet-appearance merge).
 
-The route follow-ups remain in [the roadmap](Docs/production/roadmap.md): the
-reverse-route plot cost and the full-blast minimum-time route. The appearance
-follow-ups are in [Planet appearance](Docs/technical/planet-appearance.md):
-ray-marched single scattering as atmosphere tier 2, albedo maps for the other
-moons, rings for Saturn and Uranus, and the Sun's own bloom halo.
+The station split's close-out found two problems outside its scope. Fix both,
+one step per commit, then run the full gate, merge, and show the capture.
 
-Start from [the design bundle](Docs/index.md),
-[the roadmap](Docs/production/roadmap.md), and
-[the working agreement](Docs/working-agreement.md). When a multi-step plan
-starts, replace this file with a live handoff; when that plan finishes, clear it
-back to this stub.
+## Step 1 — the details panel keeps stale rows
+
+**Repro:** in the station-split capture, select Mars, then select Ares Junction
+(or any station with fewer detail rows). The station panel is sized for its own
+14 rows, but five stale Mars rows — Semi-major axis, Eccentricity, Inclination,
+Orbital period, Distance from parent — stay visible under **LOCATION /
+Lagrange point**, and the ARRIVAL / TRIP TIME controls overlap them.
+
+**Cause (verify, do not assume):** `SolarSystemHud.RefreshDetails` decides
+whether to hide a row from the **heading's** active state alone:
+
+```csharp
+bool used = i < rows.Count;
+if (entry.Heading.gameObject.activeSelf != used)
+{
+    entry.Heading.gameObject.SetActive(used);
+    entry.Label.gameObject.SetActive(used);
+    entry.Value.gameObject.SetActive(used);
+}
+if (!used) continue;
+```
+
+For a row view whose heading is already inactive (a label/value row) and which
+is now unused, `false != false` is false, so its label and value are never
+deactivated. Mars has 19 rows, a station has 14, and rows 14–18 leak.
+
+**Fix:** when `!used`, deactivate heading, label and value unconditionally, then
+continue. Keep the used path unchanged.
+
+**Test:** extend `SolarSystemHudTests` with a case that opens Mars (19 rows),
+then selects a station (14 rows), and asserts the five extra rows' label/value
+objects are inactive. If a layout assertion is cheap, also assert the
+trip-time group's top is at or below the last visible row (no overlap), reading
+the live `RectTransform`s. The names are `DetailsRow<n>Heading`, `…Label`,
+`…Value` and `TimeSliderGroup`.
+
+**Evidence:** re-run `StationDepartureSplitCaptureTests` by hand without
+`-nographics`, confirm the PNG has a clean station panel, and replace
+`Screenshots/station-departure-split.png` with the new one (gitignored). Do not
+change the capture's assertions.
+
+## Step 2 — the pre-split planet anchors in the current docs
+
+Two documents still quote the planet profile from before ADR-022. ADR-022's
+consequences table and the current
+[Burn–coast–burn trips](/Users/brian.oconnor/.local/share/opencode/worktree/6479b2/station-split-followups/Docs/simulation/burn-coast-burn.md)
+are the authority; re-measure anything the docs do not settle, and do not invent
+a number.
+
+1. `Docs/technical/testing.md`, the burn–coast–burn anchor table beginning
+   "The burn–coast–burn profile has these anchors at the epoch": the windows,
+   the "nav minimum" rows (the burn-only crossing is **dominated** since
+   ADR-022, so `PlanFastest` returns the coast floor and there is no shorter
+   burn-only minimum), the true floors, the "just below" refusals, and the
+   90-day Mars plan rows. Current floors: Mars 0.3 g 7.16751 d / 1,070.1 km/s,
+   Mercury 1 g 3.67616 / 1,649.4, Jupiter 0.3 g 13.58298 / 2,133.8, Uranus 1 g
+   28.18209 / 2,483.4 and 0.3 g 37.00540 / 2,004.9; windows are 3× those
+   floors. The 90-day Mars plan is 38.541 km/s over nine arcs, with the
+   breakdown in the concept (break 1,309 s / 1.982, escape 7.40498 d / 0.162,
+   departure 77.7 min / 13.709, coast 82.15790 d / 0.045, approach 5.84 h,
+   brake 108.2 min / 19.108, capture 3.458 + 0.076). The six fixed-duration
+   anchors are the current ones in the concept, not the step-2 set. Read the
+   whole table and fix every stale row, not just the ones quoted here.
+2. `Docs/technical/flight-session.md`: the "nav minimum" prose and the Begin
+   anchors. Since ADR-022 the Minimum is the coast floor for every planet — Mars
+   **7.16751 d** (1,070.1 km/s), Mercury **3.67616 d** (1,649.4), Jupiter
+   **13.58298 d** (2,133.8), Uranus **28.18209 / 37.00540 d** — and the
+   burn-only 16.48669 / 13.86287 / 22.55555 d row is gone. The frame-loop
+   acceptance table (arrival 2026-12-01 11:40:50 UTC, 16.49 days, 7 arcs,
+   1,450 km/s) is also pre-split. Re-measure it from the current
+   `BootstrapSmokeTests` / PlayMode acceptance if that is cheap; if it is not,
+   say so in the handoff and mark the table as the pre-split run rather than
+   leaving a stale "current" claim. The `16.49–49.46` slider window prose and
+   the `57.02223` Uranus sentence must move to the current floors.
+3. `Docs/log.md`: one dated entry for the docs correction, naming the two files
+   and the current anchors. Update `HANDOFF.md` as each step lands.
+
+## Verification
+
+```bash
+tools/check.sh --tests flight        # HUD test and the fast suite
+tools/check.sh --fast                # bundle and tools
+.venv/bin/python tools/validate_okf.py
+tools/check.sh                       # full gate before the merge
+```
+
+The PlayMode capture is run by hand without `-nographics`, from this worktree
+root, with the warm test project in `.cache/test-project`.
+
+## Traps
+
+- Do not touch `/Users/brian.oconnor/Personal/TimeToExplore`; it is the person's
+  open editor and takes merges only.
+- The station split's numbers are current: do not re-baseline them. Only the
+  pre-split **planet** anchors move.
+- Do not rewrite old `Docs/log.md` entries or ADR-019.
+- The stale-row bug is a HUD state bug, not a station bug: a planet with more
+  rows followed by any body with fewer reproduces it. The test should not
+  depend on a station specifically, though the station case is the visible one.
+- `HANDOFF.md` is cleared to the no-active-handoff stub only after both steps
+  and the full gate.
