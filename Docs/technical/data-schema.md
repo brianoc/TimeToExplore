@@ -58,6 +58,12 @@ format is below.
   "poleDecDeg": 90.0,
   "color": [0.2, 0.42, 0.72],
   "description": "Home world…",
+  "albedoTexture": "Planets/earth_albedo",
+  "atmosphere": {
+    "heightM": 100000.0,
+    "color": [0.35, 0.56, 1.0],
+    "intensity": 1.1
+  },
   "orbit": {
     "aM": 149598487062.6,
     "e": 0.016699,
@@ -86,8 +92,50 @@ format is below.
 | `poleDecDeg` | number | ° | IAU north pole declination (J2000) |
 | `color` | array of 3 numbers | 0–1 | Placeholder RGB |
 | `description` | string | — | One-line catalogue note |
+| `albedoTexture` | string or null | — | Resources key of the albedo map; null when the body has none |
+| `atmosphere` | object or null | — | Visible-atmosphere tint; null for an airless body |
 | `orbit` | object or null | — | Keplerian elements; null for the Sun and stations |
 | `lagrange` | object or null | — | Station configuration; null for everything else |
+
+# Appearance
+
+Two optional fields carry the first art pass. Both are emitted for every body,
+with `null` where they do not apply, so a reader never has to tell a missing key
+from an absent feature.
+
+* `albedoTexture` is a Unity **Resources** key under
+  `Assets/Resources`, not an asset path. The convention is
+  `Planets/<id>_albedo`, and the file on disk is either
+  `Assets/Resources/Planets/<id>_albedo.jpg` or `.png`. The eight planets and
+  Earth's Moon have one; the Sun, the other 21 moons, the asteroids and the
+  stations have `null`.
+* `atmosphere` is the visible-atmosphere shell the renderer will draw in a later
+  step, or `null` for an airless body. `heightM` is the real height above the
+  surface in metres, `color` is the authored **sRGB** tint (three numbers in
+  [0, 1]), and `intensity` scales the rim in (0, 2]. Heights are real, not
+  inflated for looks: Earth is 100 km, and `heightM` must stay below 6% of
+  `radiusM` so the shell never swallows the body.
+
+```json
+"albedoTexture": "Planets/mars_albedo",
+"atmosphere": { "heightM": 120000.0, "color": [0.88, 0.62, 0.45], "intensity": 0.8 }
+```
+
+The catalogue colour stays the flat marker tint. The albedo map replaces it only
+when the renderer's detail gate is open, so a distant body is still a cheap
+coloured marker. The maps are equirectangular, sRGB-imported colour textures;
+the import settings are pinned by `Assets/Editor/PlanetTextureImporter.cs`. See
+[Planet appearance](/technical/planet-appearance.md) for the pipeline and the
+attribution.
+
+The two fields are data only at this point: the textured body shader and the
+atmosphere shell are later steps.
+
+`JsonUtility` does not keep a null nested object. In the runtime model
+`atmosphere` is never null: a `null` in the file arrives as a default
+`AtmosphereData` with `heightM` 0. Ask `BodyData.HasAtmosphere`, which tests the
+height, rather than testing the object for null.
+
 
 # Orbit
 
@@ -198,6 +246,12 @@ Before committing a regenerated catalogue:
 * The Sun is the only body with `parent: null`.
 * `gm > 0` for every gravitating body; stations may be zero.
 * A body with `orbit` has a positive `aM`, `0 ≤ e < 1`, and a finite epoch.
+* `albedoTexture` is null or matches `Planets/[a-z0-9_]+`, and a `.jpg` or
+  `.png` exists under `Assets/Resources` for every key that is set.
+* The eight planets and the Moon have an albedo texture; no asteroid or station
+  does.
+* `atmosphere` is null or has `heightM` in (0, 6% of `radiusM`), a `color` of
+  exactly three numbers in [0, 1], and `intensity` in (0, 2].
 * A moon's `aM` is inside its parent's Hill sphere.
 * A station's `primary` and `secondary` both exist.
 * `startJulianDate` equals the epoch used by the elements.

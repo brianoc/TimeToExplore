@@ -1,15 +1,112 @@
 # Handoff
 
-**No active handoff (2026-11-26).** The departure climb split and the linear
-colour-space switch are complete and merged. The departure split's close-out is
-in [the log](Docs/log.md), its design is
-[ADR-022](Docs/decisions/adr-022-departure-split.md), and its two follow-ups —
-the station departure split and the reverse-route plot cost — are in
-[the roadmap](Docs/production/roadmap.md). The colour-space reasoning is
-[ADR-021](Docs/decisions/adr-021-linear-colour-space.md).
+**Active plan (2026-11-26): planet appearance — albedo textures and rim-shell
+atmospheres.** Branch `work/planet-look`. The project is now in Linear colour
+space ([ADR-021](Docs/decisions/adr-021-linear-colour-space.md)), so this is the
+first art pass written for linear light. Scope agreed with the person testing:
+**eight planets plus the Moon, 2K/1K albedo maps, and the cheap rim-glow
+atmosphere shell. Ray-marched single scattering and maps for the other moons are
+follow-ups.**
 
-Start from [the design bundle](Docs/index.md),
-[the roadmap](Docs/production/roadmap.md), and
-[the working agreement](Docs/working-agreement.md). When a multi-step plan
-starts, replace this file with a live handoff; when that plan finishes, clear it
-back to this stub.
+The earlier discussion is in the session "Planet Atmosphere and Sun Glow"
+(2026-11-26). Its key points, kept here so the plan does not depend on session
+history:
+
+* A body has two regimes. Below a few tens of pixels it is a marker: flat
+  catalogue colour, no texture fetch, no shell. At arrival it earns albedo and
+  an atmosphere. Gate on the **true angular radius**, not the inflated marker.
+* Textures are equirectangular albedo maps, loaded through a key in the
+  catalogue so the loader stays data-driven. Do not bake colour into the map;
+  the catalogue colour remains the marker tint.
+* Atmosphere tier 1 is a second sphere at `1 + height/R`, additive, rim
+  `pow(1 - dot(N,V), k)`, multiplied by a soft sun term. Tier 2 is a
+  ray-marched Rayleigh/Mie shell; defer it.
+* Earth's visible atmosphere is 100 km on a 6,371 km sphere; keep real heights,
+  do not inflate for looks.
+* The Sun's own bloom halo is separate work, not in this plan.
+
+## Steps
+
+### Step 1 — appearance data and textures (done, committed)
+
+* Catalogue gains optional `albedoTexture` and `atmosphere { heightM, color,
+  intensity }`; the generator emits them, the validator checks them, and
+  `BodyData` reads them. Nine 2K maps are committed under
+  `Assets/Resources/Planets/` with the Solar System Scope CC BY 4.0
+  attribution.
+* `tools/fetch_planet_textures.py` downloads the maps and has a no-network
+  `--check` used by `tools/check.sh --fast`.
+* `Assets/Editor/PlanetTextureImporter.cs` pins sRGB, Repeat, mipmaps, 2048 px
+  and high-quality compression.
+* Tests: `PlanetAppearanceTests` (presentation), `test_validate_catalogue.py`,
+  `test_fetch_planet_textures.py`.
+* Design: [Planet appearance](Docs/technical/planet-appearance.md) and the
+  appearance section of [Data schema](Docs/technical/data-schema.md).
+
+Step 1 left no renderer change: `BodyLit` is still flat, and nothing builds an
+atmosphere shell.
+
+### Step 2 — textured body shader and detail gate (next)
+
+* `BodyLit` gains `_MainTex` and `_HasAlbedo`; the texture replaces `_Color`
+  only when the gate is open, so markers stay flat and cheap.
+* `BodyView` loads the map lazily on the first close pass and toggles the gate
+  from the true angular radius. A small pure `BodyAppearance` type holds the
+  thresholds and is unit-tested.
+* Add the LOD rule to [Planet appearance](Docs/technical/planet-appearance.md);
+  update [rendering-scale](Docs/technical/rendering-scale.md), index, log,
+  handoff.
+* Tests: EditMode gate/shader tests, `tools/check.sh --tests
+  core,presentation`, `--fast`.
+
+### Step 3 — atmosphere shell
+
+* `TimeToExplore/BodyAtmosphere`: additive, front-face, depth-write-off rim
+  glow with a soft sun term. `BodyView` builds one shell per atmospheric body,
+  scaled by `1 + height/R`, hidden below the atmosphere gate and when the
+  camera is inside it.
+* ADR-023 records rim-shell now, scattering later, and the detail gate.
+* Tests: atmosphere scale and visibility maths, shader compile/property tests,
+  `tools/check.sh --tests presentation`, `--fast`.
+
+### Step 4 — verification and evidence
+
+* Full `tools/check.sh` (EditMode + PlayMode) green.
+* Capture Earth, Mars and Jupiter close up with the PlayMode capture suite,
+  write them under `Screenshots/after/`, and report the paths and measurements.
+* Clear this handoff to the no-active-handoff stub in the final commit, then
+  merge `work/planet-look` into `main`; do not push until the person testing
+  confirms the look.
+
+## Verification commands
+
+```bash
+tools/check.sh --fast                 # docs, data, generators, tooling tests
+tools/check.sh --tests core,presentation
+tools/check.sh --tests presentation   # once the shader work lands
+tools/check.sh                        # full gate before the merge
+```
+
+Captures need a graphics device; follow
+[Testing and verification](Docs/technical/testing.md) for the PlayMode capture
+command (no `-nographics`, `BODY_CAPTURE_DIR` set).
+
+## Traps
+
+* The worktree has no `.venv` of its own; it is symlinked to the main checkout.
+* Unity writes `.meta` files for new textures and scripts on its first import.
+  Run an EditMode gate before committing so the metas are in the tree.
+* `tools/check.sh` compares a fresh offline catalogue byte for byte. Regenerate
+  `TimeToExplore/Assets/Resources/solar_system.json` after touching the
+  generator; never hand-edit it.
+* Do not convert catalogue colours or texture colours in C#. Unity converts
+  material colours; imported sRGB textures arrive linear. The albedo maps import
+  sRGB through `PlanetTextureImporter`, so a second conversion darkens them.
+* **`JsonUtility` does not keep a null nested object.** `"atmosphere": null`
+  deserialises as a default `AtmosphereData` with `heightM` 0, so a runtime null
+  test never fires. Use `BodyData.HasAtmosphere`. The validator checks the
+  catalogue's nulls; the C# test checks the height.
+* The nine maps are committed, not fetched at build time. `fetch_planet_textures.py
+  --check` reads JPEG frame headers only, so it is fast and needs no network.
+* The capture camera eases marker size at 8/s; wait two seconds after a
+  teleport before shooting.

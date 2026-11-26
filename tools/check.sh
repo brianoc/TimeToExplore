@@ -103,6 +103,10 @@ step "Design bundle (OKF v0.2)"
 step "Catalogue schema and epoch maths"
 "$PYTHON" tools/validate_catalogue.py || fail "catalogue validation"
 
+# 2b. Planet textures --------------------------------------------------------
+step "Planet albedo textures"
+"$PYTHON" tools/fetch_planet_textures.py --check || fail "planet texture check"
+
 # 3. Trade catalogue ---------------------------------------------------------
 step "Trade catalogue schema and markets"
 "$PYTHON" tools/validate_trade.py || fail "trade validation"

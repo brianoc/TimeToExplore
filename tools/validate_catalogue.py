@@ -25,6 +25,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PATH = ROOT / "TimeToExplore" / "Assets" / "Resources" / "solar_system.json"
+RESOURCES_DIR = ROOT / "TimeToExplore" / "Assets" / "Resources"
+TEXTURE_EXTENSIONS = (".jpg", ".png")
 
 AU_M = 149_597_870_700.0
 DAY_S = 86_400.0
@@ -36,6 +38,7 @@ EXPECTED_COUNTS = {"star": 1, "planet": 8, "moon": 22, "asteroid": 100, "station
 POINTS = {"L1", "L2", "L4", "L5"}
 PLANES = {"ecliptic", "parentEquator"}
 ID_RE = re.compile(r"^[a-z0-9_]+$")
+ALBEDO_RE = re.compile(r"^Planets/[a-z0-9_]+$")
 
 # Independent reference values at the epoch, from JPL mean elements.
 EARTH_RADIUS_AU = 0.989277
@@ -198,6 +201,62 @@ def finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def check_appearance(body: dict, resources_dir: Path | None = None) -> list[str]:
+    """Check one body's optional albedo texture and atmosphere.
+
+    Returns one message per problem. The texture file lookup is skipped when
+    `resources_dir` is None, so the record's own rules can be tested without
+    the shipped assets.
+    """
+    errors: list[str] = []
+    where = body.get("id", "body")
+    kind = body.get("kind")
+
+    albedo = body.get("albedoTexture")
+    if albedo is not None:
+        if not isinstance(albedo, str) or not ALBEDO_RE.match(albedo):
+            errors.append(
+                f"{where}: albedoTexture must be null or 'Planets/<id>_albedo'")
+        elif resources_dir is not None and not any(
+                (Path(resources_dir) / (albedo + extension)).is_file()
+                for extension in TEXTURE_EXTENSIONS):
+            errors.append(
+                f"{where}: albedoTexture {albedo!r} has no .jpg or .png "
+                f"under {resources_dir}")
+
+    needs_albedo = kind == "planet" or where == "moon"
+    if needs_albedo and not albedo:
+        errors.append(f"{where}: needs an albedoTexture")
+    if kind in {"asteroid", "station"} and albedo is not None:
+        errors.append(f"{where}: a {kind} must not have an albedoTexture")
+
+    atmosphere = body.get("atmosphere")
+    if atmosphere is not None:
+        if not isinstance(atmosphere, dict):
+            errors.append(f"{where}: atmosphere must be null or an object")
+            return errors
+
+        height = atmosphere.get("heightM")
+        radius = body.get("radiusM")
+        if not finite(height) or height <= 0:
+            errors.append(f"{where}: atmosphere.heightM must be positive")
+        elif finite(radius) and height >= 0.06 * radius:
+            errors.append(
+                f"{where}: atmosphere.heightM must be below 6% of radiusM")
+
+        color = atmosphere.get("color")
+        if (not isinstance(color, list) or len(color) != 3
+                or not all(finite(c) and 0 <= c <= 1 for c in color)):
+            errors.append(
+                f"{where}: atmosphere.color must be three numbers in [0, 1]")
+
+        intensity = atmosphere.get("intensity")
+        if not finite(intensity) or not 0 < intensity <= 2:
+            errors.append(f"{where}: atmosphere.intensity must be in (0, 2]")
+
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", type=Path, default=DEFAULT_PATH,
@@ -300,6 +359,9 @@ def main() -> int:
 
         if not isinstance(body.get("description"), str) or not body["description"].strip():
             fail(f"{where}: description must be a non-empty string")
+
+        for message in check_appearance(body, RESOURCES_DIR):
+            fail(message)
 
         parent = body.get("parent")
         if parent is not None and (not isinstance(parent, str) or not parent):

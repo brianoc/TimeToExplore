@@ -55,6 +55,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Testing and verification](/technical/testing.md) — the one-command check suite, the EditMode and PlayMode test matrices, and numerical reference values.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
+* [Planet appearance](/technical/planet-appearance.md) — the albedo maps, their import settings and attribution, and the appearance fields the renderer will consume.
 * [Rendering at solar scale](/technical/rendering-scale.md) — ship-relative rendering, camera range, and marker sizing.
 * [The sky](/technical/sky.md) — the baked Milky Way band, the procedural stars, the real bright stars behind the constellations, and the galactic frame.
 
