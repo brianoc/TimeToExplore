@@ -4074,6 +4074,41 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
+        /// Diagnostic only: the **full** candidate cost for a station target —
+        /// a fast station build with its own pin loop at one forced excess
+        /// speed, plus the break's integrated delta-v. It is the station twin of
+        /// <see cref="MeasureFullSplitCandidateCost"/>; the planner never calls
+        /// it and the station split test does. A station plan ends on the hold
+        /// state and has no capture chain, so the build's own total is the whole
+        /// terminal cost, and its velocity match may add speed rather than only
+        /// shed it.
+        /// </summary>
+        internal (double CostMps, double Milliseconds) MeasureFullStationSplitCandidateCost(
+            ShipState ship, string targetId, double totalSeconds, double vInfinityMps,
+            int passes = 12)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            BuildResult candidate = BuildStationTrip(ship, target, totalSeconds,
+                fast: true, outerPassesLimit: passes,
+                forcedVInfinityMps: vInfinityMps);
+            double cost = double.PositiveInfinity;
+            if (string.IsNullOrEmpty(candidate.Plan.InfeasibleReason))
+            {
+                cost = candidate.Plan.DeltaVMps;
+                foreach (PlanArc arc in candidate.Plan.Arcs)
+                {
+                    if (arc.Phase != FlightPhase.Departure || arc.IsFiniteBurn) continue;
+                    cost += BreakDeltaVCentralBodyAlongPath(arc.Path,
+                        arc.StartJulianDate, departureBody);
+                }
+            }
+
+            return (cost, clock.Elapsed.TotalMilliseconds);
+        }
+
+        /// <summary>
         /// Diagnostic only: one rank-only candidate cost, as the shipping chooser
         /// measures it. The split test grids it and proves its winner matches the
         /// full <see cref="MeasureFullSplitCandidateCost"/> search. Returns
@@ -4095,8 +4130,36 @@ namespace TimeToExplore.Simulation
             double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
             TransferConic chain = BuildCaptureShape(ship, target, arrivalRadius, arrivalJd);
             if (!chain.IsValid) return double.PositiveInfinity;
-            var cost = new DepartureSplitCost(this, ship, target, departureBody,
-                departureBand, chain, totalSeconds, arrivalJd);
+            DepartureSplitCost cost = DepartureSplitCost.ForCaptureChain(this, ship,
+                target, departureBody, departureBand, chain, totalSeconds, arrivalJd);
+            return cost.Cost(vInfinityMps);
+        }
+
+        /// <summary>
+        /// Diagnostic only: one rank-only candidate cost for a **station**
+        /// target, as the split would measure it. The entry state is the hold
+        /// state at the arrival date — the station's own state, 500 m astern
+        /// along its velocity — so there is no capture chain to build and no
+        /// chain duration to take off the trip. Everything else is the planet
+        /// cost: the same climb solve, the same 600 s burn and brake seeds, and
+        /// the same three terms, with the brake a magnitude because a rendezvous
+        /// may add speed. Returns <see cref="double.PositiveInfinity"/> when the
+        /// ship has no departure body — a heliocentric start has no climb, which
+        /// is the no-climb control — or when a candidate does not fit.
+        /// </summary>
+        internal double MeasureStationSplitCandidate(ShipState ship, string targetId,
+            double totalSeconds, double vInfinityMps)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            if (!target.Data.IsStation) return double.PositiveInfinity;
+            BodyRuntime departureBody = FindDepartureBody(ship, target, ship.JulianDate);
+            if (departureBody == null) return double.PositiveInfinity;
+            HandoverBand departureBand = HandoverBand.For(departureBody,
+                FixedBurnAccelerationMps2);
+            if (!departureBand.IsValid) return double.PositiveInfinity;
+            double arrivalJd = ship.JulianDate + totalSeconds / SecondsPerDay;
+            DepartureSplitCost cost = DepartureSplitCost.AtStationHold(this, ship,
+                target, departureBody, departureBand, totalSeconds, arrivalJd);
             return cost.Cost(vInfinityMps);
         }
 
@@ -4125,9 +4188,14 @@ namespace TimeToExplore.Simulation
         private const int DepartureSplitRefinements = 1;
 
         /// <summary>The rank-only candidate cost. It is built once per search
-        /// from the geometry every candidate shares — the target's capture
-        /// chain, its entry state, the departure body and the bands — and then
-        /// costs each excess speed with one climb solve and one Lambert solve.
+        /// from the geometry every candidate shares — the terminal's entry state,
+        /// the departure body and the bands — and then costs each excess speed
+        /// with one climb solve and one Lambert solve.
+        ///
+        /// The entry state comes from the target type. A planet's is the capture
+        /// chain's own entry state, and the chain's duration is time the climb
+        /// and coast do not get. A station has no chain: its entry is the hold
+        /// state at the arrival date, so nothing is taken off the trip.
         ///
         /// The cost keeps the profile's three terms separate, which is what the
         /// reference skeleton cannot do:
@@ -4138,13 +4206,14 @@ namespace TimeToExplore.Simulation
         /// <item>the **departure burn**'s change from the escape conic's ceiling
         /// state to the Lambert coast's departure velocity;</item>
         /// <item>the **brake**'s change from the coast's arrival velocity to the
-        /// chain's entry velocity.</item>
+        /// entry velocity. It is a magnitude, not a retrograde brake: a station
+        /// rendezvous may add speed as well as shed it.</item>
         /// </list>
-        /// The capture chain's own cost is the same for every candidate (the
-        /// arrival date is fixed), so it is left out. This is a cost model, not a
-        /// plan: no arcs are measured, the fixed burns are velocity changes at
-        /// their endpoints rather than integrated arcs, and the seed's burn and
-        /// brake duration is common to the grid.
+        /// The terminal's own cost is the same for every candidate (the arrival
+        /// date is fixed), so it is left out. This is a cost model, not a plan:
+        /// no arcs are measured, the fixed burns are velocity changes at their
+        /// endpoints rather than integrated arcs, and the seed's burn and brake
+        /// duration is common to the grid.
         /// </summary>
         private sealed class DepartureSplitCost
         {
@@ -4153,36 +4222,67 @@ namespace TimeToExplore.Simulation
             private readonly BodyRuntime _target;
             private readonly BodyRuntime _departureBody;
             private readonly HandoverBand _departureBand;
-            private readonly TransferConic _chain;
+            private readonly double _chainSeconds;
             private readonly double _totalSeconds;
             private readonly double _entryJulianDate;
             private readonly Vector3d _entryPositionM;
             private readonly Vector3d _entryVelocityMps;
-            private readonly double _arrivalJulianDate;
 
-            public DepartureSplitCost(TripPlanner planner, ShipState ship,
+            private DepartureSplitCost(TripPlanner planner, ShipState ship,
                 BodyRuntime target, BodyRuntime departureBody,
-                HandoverBand departureBand, TransferConic chain,
-                double totalSeconds, double arrivalJulianDate)
+                HandoverBand departureBand, double chainSeconds,
+                double totalSeconds, double entryJulianDate,
+                Vector3d entryPositionM, Vector3d entryVelocityMps)
             {
                 _planner = planner;
                 _ship = ship;
                 _target = target;
                 _departureBody = departureBody;
                 _departureBand = departureBand;
-                _chain = chain;
+                _chainSeconds = chainSeconds;
                 _totalSeconds = totalSeconds;
-                _arrivalJulianDate = arrivalJulianDate;
-                _entryJulianDate = arrivalJulianDate - chain.TotalSeconds / SecondsPerDay;
-                planner._model.ComputeState(target, _entryJulianDate,
+                _entryJulianDate = entryJulianDate;
+                _entryPositionM = entryPositionM;
+                _entryVelocityMps = entryVelocityMps;
+            }
+
+            /// <summary>A planet's cost: the entry is the capture chain's own
+            /// entry state, so the chain's duration is subtracted from the time
+            /// the climb and coast share.</summary>
+            public static DepartureSplitCost ForCaptureChain(TripPlanner planner,
+                ShipState ship, BodyRuntime target, BodyRuntime departureBody,
+                HandoverBand departureBand, TransferConic chain,
+                double totalSeconds, double arrivalJulianDate)
+            {
+                double entryJulianDate = arrivalJulianDate
+                                         - chain.TotalSeconds / SecondsPerDay;
+                planner._model.ComputeState(target, entryJulianDate,
                     out Vector3d targetPosition, out Vector3d targetVelocity);
-                _entryPositionM = targetPosition + chain.EntryLocalPositionM;
-                _entryVelocityMps = targetVelocity + chain.EntryLocalVelocityMps;
+                return new DepartureSplitCost(planner, ship, target, departureBody,
+                    departureBand, chain.TotalSeconds, totalSeconds,
+                    entryJulianDate,
+                    targetPosition + chain.EntryLocalPositionM,
+                    targetVelocity + chain.EntryLocalVelocityMps);
+            }
+
+            /// <summary>A station's cost: the entry is the hold state at the
+            /// arrival date, so there is no chain and no chain duration to
+            /// subtract.</summary>
+            public static DepartureSplitCost AtStationHold(TripPlanner planner,
+                ShipState ship, BodyRuntime station, BodyRuntime departureBody,
+                HandoverBand departureBand, double totalSeconds,
+                double arrivalJulianDate)
+            {
+                planner.StationHoldState(station, arrivalJulianDate,
+                    out Vector3d holdPositionM, out Vector3d holdVelocityMps);
+                return new DepartureSplitCost(planner, ship, station, departureBody,
+                    departureBand, 0.0, totalSeconds, arrivalJulianDate,
+                    holdPositionM, holdVelocityMps);
             }
 
             public double Cost(double vInfinityMps)
             {
-                double available = _totalSeconds - _chain.TotalSeconds
+                double available = _totalSeconds - _chainSeconds
                                    - DepartureSplitSeedBurnSeconds
                                    - DepartureSplitSeedBurnSeconds;
                 if (!(available > MinimumArcSeconds))
@@ -4300,8 +4400,8 @@ namespace TimeToExplore.Simulation
             // The geometry every candidate shares: the capture chain, its entry
             // state, the bands and the departure body. Only the climb and the
             // Lambert coast move with the excess speed.
-            var cost = new DepartureSplitCost(this, ship, target, departureBody,
-                departureBand, chain, totalSeconds, arrivalJd);
+            var cost = DepartureSplitCost.ForCaptureChain(this, ship, target,
+                departureBody, departureBand, chain, totalSeconds, arrivalJd);
 
             double Cost(double vInfinity)
             {
