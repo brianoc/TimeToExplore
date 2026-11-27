@@ -37,7 +37,7 @@ GALACTIC_CENTRE_DEC = -28.93617
 # Obliquity of the ecliptic, degrees (J2000.0).
 OBLIQUITY = 23.4392911
 
-# The opening camera looks along azimuth -90 degrees (yaw 0, pitch 14). Spin the
+# The opening camera looks along azimuth -90 degrees (yaw 0, pitch 20). Spin the
 # whole sky about the ecliptic pole so the galactic centre sits there: the game
 # has no sidereal time, so this azimuth is a composition choice. The band's
 # 60-degree tilt to the ecliptic is the part that comes from the real sky.

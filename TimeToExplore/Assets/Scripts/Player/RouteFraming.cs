@@ -124,7 +124,7 @@ namespace TimeToExplore.Player
             float yaw = Mathf.Atan2(offset.x, offset.z) * Mathf.Rad2Deg;
 
             double distanceM = ProjectedDistance(routePointsM, targetArrivalM, centre,
-                yaw, pitch, fieldOfViewDegrees, aspect);
+                yaw, pitch, fieldOfViewDegrees, aspect, FitMargin);
             if (!(distanceM > 0.0) || !double.IsFinite(distanceM)) return default;
 
             double distanceUnits = distanceM * unitsPerMeter;
@@ -136,6 +136,44 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
+        /// Build a frame for a set of points seen from an explicit orbit angle,
+        /// instead of the plane the points lie in. The opening Earth–Moon shot
+        /// uses this: its 20° tilt is a composition choice, not a property of
+        /// the pair, so it cannot take the route normal's angle. The centre and
+        /// projected fit are the same ones the route overview uses; the caller
+        /// may pass a wider margin than <see cref="FitMargin"/>.
+        /// </summary>
+        public static Frame ComputeForAngles(IReadOnlyList<Vector3d> pointsM,
+            Vector3d? extra, Vector3d shipPositionM, float unitsPerMeter,
+            float fieldOfViewDegrees, float aspect, float yawDegrees,
+            float pitchDegrees, float maxDistanceUnits,
+            float fitMargin = FitMargin)
+        {
+            if (pointsM == null || pointsM.Count == 0) return default;
+            if (!(unitsPerMeter > 0f) || !(fieldOfViewDegrees > 0f) ||
+                !(maxDistanceUnits > 0f) || !(fitMargin > 0f))
+                return default;
+
+            if (!TryBounds(pointsM, extra, out Vector3d min, out Vector3d max))
+                return default;
+
+            Vector3d centre = (min + max) * 0.5;
+            double radiusM = RadiusAround(pointsM, extra, centre);
+            if (!(radiusM > 0.0) || !double.IsFinite(radiusM)) return default;
+
+            double distanceM = ProjectedDistance(pointsM, extra, centre, yawDegrees,
+                pitchDegrees, fieldOfViewDegrees, aspect, fitMargin);
+            if (!(distanceM > 0.0) || !double.IsFinite(distanceM)) return default;
+
+            double distanceUnits = distanceM * unitsPerMeter;
+            float clampedDistance = (float)Math.Min(
+                Math.Max(distanceUnits, OrbitCamera.MinDistanceUnits), maxDistanceUnits);
+
+            return new Frame(centre, radiusM, centre - shipPositionM, yawDegrees,
+                pitchDegrees, clampedDistance);
+        }
+
+        /// <summary>
         /// The distance that keeps every route point inside the tighter field of
         /// view with <see cref="FitMargin"/> to spare. Unlike a bounding-sphere
         /// fit, this measures the route projected onto the screen, so a long
@@ -143,14 +181,14 @@ namespace TimeToExplore.Player
         /// </summary>
         private static double ProjectedDistance(IReadOnlyList<Vector3d> points,
             Vector3d? extra, Vector3d centre, float yawDegrees, float pitchDegrees,
-            float fieldOfViewDegrees, float aspect)
+            float fieldOfViewDegrees, float aspect, float fitMargin)
         {
             double halfVertical = 0.5 * fieldOfViewDegrees * Math.PI / 180.0;
             double tanVertical = Math.Tan(halfVertical);
             double tanHorizontal = tanVertical * Math.Max(aspect, 0f);
             if (!(tanVertical > 0.0) || !(tanHorizontal > 0.0)) return 0.0;
 
-            double limit = 1.0 / FitMargin;
+            double limit = 1.0 / fitMargin;
             Quaternion rotation = Quaternion.LookRotation(
                 -OrbitCamera.Direction(yawDegrees, pitchDegrees), Vector3.up);
             Vector3d offset = Vector3d.FromUnity(

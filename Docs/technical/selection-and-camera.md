@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: Selection and camera focus
-description: How clicking a body opens its details screen and how the one orbit camera flies to it, zooms toward the pointer, frames a plotted route, and takes the flight chase pose.
+description: How the game opens on an Earth–Moon shot, how clicking a body opens its details screen, and how the one orbit camera flies to it, zooms toward the pointer, frames a plotted route, and takes the flight chase pose.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
 ---
 
 # Why selection exists
@@ -136,8 +136,19 @@ system. The player's yaw and pitch are the only angles, at every distance.
 `ShipCameraRig` reads the input and places the camera. It owns the auto-framing,
 the cursor anchor, the route transition, and `Space` home.
 
-**Framing a body.** A jump or a reset turns the view toward its destination and
-eases the orbit distance to `clamp(0.6 × ship→target, 3 × radius, 3.3 AU)`. The
+**The opening view.** The game opens on a wide shot of Earth and the Moon,
+with Gateway Station between them. `OpeningFraming` puts the camera on the
+perpendicular to the Earth–Moon line, 20° above the ecliptic, on the sunward
+side so both discs are lit; the look-at is the midpoint of the pair and the
+distance is the nearest that keeps both inside the frame with a 25% margin,
+wider than a route fit so the discs sit clear of the HUD's side panels and the
+frame edge. The pose is placed, not eased, and it is the player's
+from the first frame: no body follow is left running, so nothing pulls the
+view off the composition. `R` returns to the same shot. The angle is a
+composition choice, not a model of a real observer.
+
+**Framing a body.** A jump frames its destination and eases the orbit distance
+to `clamp(0.6 × ship→target, 3 × radius, 3.3 AU)`. The
 aim and the distance follow separately, so a manual zoom keeps the destination
 centred; only a drag stops the aiming. The framing distance is captured **once**
 when the framing starts, not recomputed from the moving ship every frame: during
@@ -304,14 +315,20 @@ arrival handbacks.
 fallback, the transition endpoints, the rig's eased arrival, the cancels, and a
 degenerate route.
 
+`OpeningFramingTests` covers the opening pose: the 20° downward angle from
+above the ecliptic, both bodies inside the fitted margin, the midpoint look-at,
+the sunward side, the station in shot, a coincident pair leaving the view
+alone, and the rig handing the pose back to the player after a frame.
+
 `DrawingRulesTests` covers the 4.5 px marker minimum and true-scale override,
 the label thresholds, the 3 px line rule at every zoom, the 2 px distance floor
 and near cap on both real renderers, the camera-plane clip, and the planet
 palette.
 
 `BootstrapSmokeTests` and `SceneFlightTests` run the real composition root:
-the opening frame, the single-range zoom through the frame loop and back to the
-exact angle, and the Gateway→Mars acceptance flight to the parking orbit.
+the opening frame holding through the frame loop, the single-range zoom and
+back to the exact angle, and the Gateway→Mars acceptance flight to the parking
+orbit.
 
 What the suite cannot cover is the human check: wheel feel at a few pointer
 positions, the perceived smoothness of the arrival re-frame, and a real pointer

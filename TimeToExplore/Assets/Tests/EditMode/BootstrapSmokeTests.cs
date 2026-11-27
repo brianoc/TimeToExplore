@@ -74,8 +74,34 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.False);
             Assert.That(_bootstrap.Selected?.Id, Is.EqualTo("earth"));
-            Assert.That(_bootstrap.Rig.AutoTarget?.Id, Is.EqualTo("earth"),
-                "the opening shot frames Earth");
+            Assert.That(_bootstrap.Rig.Orbit.PitchDegrees,
+                Is.EqualTo(OpeningFraming.PitchDegrees).Within(1e-3f),
+                "the opening shot looks 20° down from above the ecliptic");
+            Assert.That(_bootstrap.Rig.AutoTarget, Is.Null,
+                "the opening composition is the player's view, not a body follow");
+            Vector3d openingCentre = (_bootstrap.Model.Get("earth").PositionM
+                                      + _bootstrap.Model.Get("moon").PositionM) * 0.5;
+            Assert.That(Vector3d.Distance(_bootstrap.Rig.LookAtOffsetM,
+                openingCentre - _bootstrap.ShipPositionM), Is.LessThan(1.0),
+                "the opening looks at the midpoint of Earth and the Moon");
+        }
+
+        [Test]
+        public void TheOpeningFrameHoldsThroughTheRealFrameLoop()
+        {
+            Build();
+
+            float yaw = _bootstrap.Rig.Orbit.YawDegrees;
+            float pitch = _bootstrap.Rig.Orbit.PitchDegrees;
+
+            for (int frame = 0; frame < 6; frame++)
+            {
+                Invoke("Update");
+                Invoke("LateUpdate");
+            }
+
+            Assert.That(_bootstrap.Rig.Orbit.YawDegrees, Is.EqualTo(yaw).Within(1e-3f));
+            Assert.That(_bootstrap.Rig.Orbit.PitchDegrees, Is.EqualTo(pitch).Within(1e-3f));
         }
 
         [Test]
@@ -538,8 +564,8 @@ namespace TimeToExplore.Tests.EditMode
             Build();
             _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
 
-            // The wheel takes the camera, so the opening auto-framing stops,
-            // exactly as a real notch clears AutoDistance in the rig's input.
+            // The wheel takes the camera; the opening pose leaves no
+            // auto-framing running, so this only clears the follow flags.
             _bootstrap.Rig.ClearAuto();
             _bootstrap.Rig.Orbit.YawDegrees = 123.5f;
             _bootstrap.Rig.Orbit.PitchDegrees = -22.25f;
@@ -551,6 +577,7 @@ namespace TimeToExplore.Tests.EditMode
             float yaw = _bootstrap.Rig.Orbit.YawDegrees;
             float pitch = _bootstrap.Rig.Orbit.PitchDegrees;
             Quaternion localRotation = _bootstrap.Rig.PoseRotation;
+            Vector3d lookAt = _bootstrap.Rig.LookAtOffsetM;
 
             RunZoom(ZoomNotches);
 
@@ -568,8 +595,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Rig.Orbit.PitchDegrees, Is.EqualTo(pitch));
             Assert.That(Quaternion.Angle(_bootstrap.Rig.PoseRotation, localRotation),
                 Is.LessThan(1e-3f), "the exact remembered angle is back");
-            Assert.That(_bootstrap.Rig.LookAtUnits.magnitude, Is.LessThan(1e-6f),
-                "a centre zoom looks at the ship again");
+            Assert.That(Vector3d.Distance(_bootstrap.Rig.LookAtOffsetM, lookAt),
+                Is.LessThan(10.0),
+                "a centre zoom holds the look-at point it started on");
         }
 
         /// <summary>

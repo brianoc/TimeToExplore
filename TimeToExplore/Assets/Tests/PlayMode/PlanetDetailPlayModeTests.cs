@@ -159,8 +159,11 @@ namespace TimeToExplore.Tests.PlayMode
 
             // Aim the orbit camera at the body from close to the ship, so the
             // camera distance matches the ship distance the test names. The
-            // detail gates read the camera, not the origin.
+            // detail gates read the camera, not the origin. The ship has moved
+            // under the camera, so the opening shot's look-at point no longer
+            // describes this neighbourhood.
             _bootstrap.Rig.ClearAuto();
+            _bootstrap.Rig.LookAtShip();
             _bootstrap.Rig.Orbit.AimAlong(bodyPosition - shipM);
             _bootstrap.Rig.Orbit.DistanceUnits = OrbitCamera.MinDistanceUnits;
         }
