@@ -76,13 +76,16 @@ target seconds = clamp(20 + 17 · ln(flight days / 6.7), 12, 60)
 | Saturn, slow end | ~60 d | 57 s |
 | Uranus, slow end | 111 d | 60 s (clamped) |
 
-The shape in real time matters as much as the duration. Both ends blend between
-1x and the cruise rate over three real seconds with a smootherstep. The first
-second is close to real time, so the camera can ease into the chase pose before
-the system starts moving; the final seconds are real time for the approach,
-the brake, and the parking orbit. The cruise rate is chosen from the target and
-the ramps' half-area, so integrating the curve over the target duration advances
-the flight by its whole planned length.
+The shape in real time matters as much as the duration. The first and last 40%
+of the target duration hold near 1x and climb along a quartic: the warp is about
+20x after a second, a few hundred after two, and only crosses into five figures
+around the fourth. That keeps the local departure, escape, brake, capture, and
+parking on screen, because those are the parts worth watching, while the middle
+crosses at a much higher rate. The first second is real time, so the camera can
+ease into the chase pose before the system starts moving; the final seconds are
+real time for the approach. The cruise rate is chosen from the target and the
+quartic ramps' fifth-area, so integrating the curve over the target duration
+still advances the flight by its whole planned length.
 
 The manual ladder remains for the player: number keys 1–7 set `1x` to
 `1,000,000x`, and `P` pauses. A number key takes the warp off the curve for the

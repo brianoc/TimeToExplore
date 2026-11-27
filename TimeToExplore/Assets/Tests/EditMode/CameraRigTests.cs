@@ -707,6 +707,42 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheFlightDistanceGrowsWithTheFrameTravel()
+        {
+            Assert.That(FlightFraming.FollowDistanceUnits(0.0, 1e-6f),
+                Is.EqualTo(FlightFraming.DistanceUnits));
+
+            // 10,000 km in a frame at an 8% motion budget needs 125,000 km,
+            // which is 125 render units.
+            Assert.That(FlightFraming.FollowDistanceUnits(1.0e7, 1e-6f),
+                Is.EqualTo(125f).Within(1e-3f));
+
+            // A million kilometres in a frame would need 12.5 million km; the
+            // ceiling holds.
+            Assert.That(FlightFraming.FollowDistanceUnits(1.0e9, 1e-6f),
+                Is.EqualTo(FlightFraming.MaxFollowDistanceUnits));
+        }
+
+        [Test]
+        public void FollowFlightEasesTheChaseDistanceAndAWheelEndsIt()
+        {
+            Vector3d shipM = _model.Get("earth").PositionM;
+            _rig.FrameFlight(new Vector3d(1.0, 0.0, 0.0));
+            _rig.FollowFlight(50f);
+
+            for (int i = 0; i < 480
+                            && Mathf.Abs(_rig.Orbit.DistanceUnits - 50f) > 5e-3f; i++)
+                _rig.Apply(shipM, 1f / 60f);
+
+            Assert.That(_rig.Orbit.DistanceUnits, Is.EqualTo(50f).Within(5e-3f));
+            Assert.That(_rig.IsFollowingFlight, Is.True);
+
+            _rig.ApplyWheelSteps(1f);
+            Assert.That(_rig.IsFollowingFlight, Is.False,
+                "a wheel takes the distance back from the flight");
+        }
+
+        [Test]
         public void ADragOrAnArrivalTakesTheCameraBackFromTheChasePose()
         {
             Vector3d shipM = _model.Get("earth").PositionM;

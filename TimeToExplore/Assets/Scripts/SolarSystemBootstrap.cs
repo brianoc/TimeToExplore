@@ -341,6 +341,16 @@ namespace TimeToExplore
             bool focused = Rig != null && Rig.IsFocused;
             Vector3d originM = RenderOriginM;
 
+            if (Rig != null && Flight != null && Flight.IsFlying && Rig.IsFollowingFlight)
+            {
+                // A frame covers `scale / 60` simulated seconds; at high warp
+                // that can be more than the close chase view, so the camera
+                // pulls back to keep the route's slide smooth.
+                double stepM = Flight.State.VelocityMps.Magnitude
+                               * (Clock.Scale / FlightFraming.ReferenceFrameRate);
+                Rig.FollowFlight(FlightFraming.FollowDistanceUnits(stepM, UnitsPerMeter));
+            }
+
             if (Rig != null) Rig.Apply(originM, FrameDeltaSeconds());
 
             if (ShipMarker != null)
@@ -356,6 +366,8 @@ namespace TimeToExplore
 
                 if (!focused)
                 {
+                    ShipMarker.SetFlightView(Flight != null && Flight.IsFlying
+                                             && Rig != null && Rig.IsFollowingFlight);
                     ShipMarker.Refresh(ViewCamera,
                         Flight != null ? Flight.CurrentThrust : ThrustCommand.None,
                         ShipVelocityMps);

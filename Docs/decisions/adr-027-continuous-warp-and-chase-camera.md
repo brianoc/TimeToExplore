@@ -39,24 +39,30 @@ the planner.
 2. **A flight follows `FlightWarp`.** The target real duration is
    `20 + 17 · ln(days / 6.7)` seconds, clamped to 12–60 s. A one-week crossing
    takes about 20 s, three weeks about 40 s, two months about 57 s, and the
-   outer system tops out at 60 s. The cruise scale is chosen from that target
-   and the two ramps' half-area, so integrating the curve over the target
-   duration flies exactly the planned flight. Both ends blend over three real
-   seconds from 1x to cruise with a smootherstep: the first second is close to
-   real time, and the last few seconds are real time again.
+   outer system tops out at 60 s. The first and last 40% of that duration hold
+   near 1x and climb along a quartic, so the local departure and capture read
+   while the middle crosses faster; the cruise is chosen from the quartic
+   ramps' fifth-area, so integrating the curve over the target duration flies
+   the planned trip. A second of real time covers about 20x, two about 300x,
+   and the warp is only in five figures around the fourth second.
 3. **The proximity caps are removed.** `WarpPolicy` is deleted. The only limit
    left is the flight's substep budget: if the integrator cannot cover a frame,
    the clock is clamped to the state the ship actually reached, as before. There
    is no separate clearance, orbital-timescale, event, or station-hold rule.
 4. **A flight takes the chase pose.** On Begin, `FlightFraming` derives the
    orbit angles from the direction to the destination: the camera sits behind
-   the ship, 20° above the route and 30° to one side, at a fixed 20,000 km.
+   the ship, 20° above the route and 30° to one side, starting at 20,000 km.
    `ShipCameraRig.FrameFlight` eases yaw, pitch, distance, and the look-at
    offset to that pose over 1.2 s. The angle is chosen once, not tracked as the
    route curves: the ship is the render origin, so holding the pose is enough
-   to follow it, and a right-drag or wheel hands the view back. On arrival the
-   view hands over to the existing destination framing, so the shot settles on
-   the parking orbit instead of holding the cruise pose.
+   to follow it, and a right-drag or wheel hands the view back. The distance
+   then grows with the simulated distance one frame covers, until that travel
+   is at most 8% of the view; a fixed close view at high warp was crossed many
+   times per frame and read as the route line jumping. The marker keeps its
+   flight size so the ship does not shrink to a speck; a drag keeps the distance
+   follow, and a wheel ends it. On arrival the view hands over to the existing
+   destination framing, so the shot settles on the parking orbit instead of
+   holding the cruise pose.
 
 # Consequences
 
@@ -71,11 +77,11 @@ the planner.
 * A manual warp choice lasts for one flight. That is deliberate: the curve is
   the default feel, and an override is a debugging tool rather than a setting
   the next flight inherits.
-* The chase distance is fixed because the ship marker has a fixed apparent
-  size. It is a composition choice, not a physical one; the marker grows from
-  10 px to 56 px as the camera closes inside 100,000 km, so the chase shot has a
-  subject, and the thrust arrow grows with it. The art pass can replace both
-  with a real ship model.
+* The chase distance grows with the per-frame travel (up to 5 million km), so
+  the route slides smoothly rather than jumping at high warp. The marker is
+  held at 56 px while the flight owns the view, so the ship stays a subject even
+  when the camera pulls back; the art pass can replace it with a real ship
+  model. The ordinary orrery marker still grows from 10 px only inside 100 km.
 * A route that curves hard may leave the destination off-centre during cruise.
   The user asked for a fixed angle and a manual orbit; tracking the heading
   would be a second camera mode and was rejected for now.
@@ -106,6 +112,7 @@ finish, the cruise plateau, and the integrated duration at 6.67, 21.5, 60, and
 111 days. `SceneFlightTests` flies the Gateway → Mars acceptance trip through
 the scene's frame order and checks the real duration and the high peak warp.
 `CameraRigTests` checks the chase pose's elevation, side angle, and distance,
-the eased arrival, and the drag and arrival handbacks. `BootstrapSmokeTests`
+the distance rule's growth and ceiling, the follow's easing and the wheel's
+handback, the eased arrival, and the drag and arrival handbacks. `BootstrapSmokeTests`
 checks that Begin takes the camera and the warp curve, and that a preview never
 does. `tools/check.sh` is the gate.

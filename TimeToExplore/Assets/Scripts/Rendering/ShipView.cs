@@ -27,15 +27,15 @@ namespace TimeToExplore.Rendering
         public const float MarkerPixels = 10f;
 
         /// <summary>
-        /// Apparent height when the camera is close enough that the ship is the
-        /// subject of the shot, as in the flight chase view. The marker is a
-        /// placeholder with a fixed apparent size; at the orrery's distances
-        /// 10 px is right, while a 20,000 km chase would leave a speck.
+        /// Apparent height while the flight owns the view. The marker is a
+        /// placeholder with a fixed apparent size, so it stays this size as the
+        /// chase pulls back with the warp; at the orrery's distances 10 px is
+        /// right.
         /// </summary>
         public const float CloseMarkerPixels = 56f;
 
-        /// <summary>At or beyond this orbit distance the marker keeps its
-        /// 10 px orrery size.</summary>
+        /// <summary>At or beyond this orbit distance (100 km) the marker keeps
+        /// its 10 px orrery size.</summary>
         public const float CloseMarkerDistanceUnits = 0.1f;
 
         /// <summary>Apparent length of the thrust arrow, in pixels.</summary>
@@ -59,6 +59,7 @@ namespace TimeToExplore.Rendering
         private Transform _arrow;
         private bool _thrusting;
         private bool _globallyVisible = true;
+        private bool _flightView;
 
         /// <summary>Whether the thrust arrow is currently drawn, for tests.</summary>
         public bool ThrustArrowVisible => _arrow != null && _arrow.gameObject.activeSelf;
@@ -211,6 +212,17 @@ namespace TimeToExplore.Rendering
         /// <summary>The marker's current world scale, for tests.</summary>
         public float MarkerScaleUnits => _visual != null ? _visual.lossyScale.y : 0f;
 
+        /// <summary>The marker's apparent height on the last refresh, for tests.</summary>
+        public float CurrentMarkerPixels { get; private set; } = MarkerPixels;
+
+        /// <summary>
+        /// Keep the marker at its flight size while a chase owns the view, even
+        /// though the chase pulls back with the warp. The marker is a
+        /// placeholder with a fixed apparent size, so this keeps the ship well
+        /// framed instead of shrinking it to a speck in the cruise shot.
+        /// </summary>
+        public void SetFlightView(bool flightView) => _flightView = flightView;
+
         public void Refresh(Camera camera, ThrustCommand thrust, Vector3d velocityMps)
         {
             if (_visual == null || camera == null) return;
@@ -218,7 +230,8 @@ namespace TimeToExplore.Rendering
             // The ship is the render origin, so the camera distance is the
             // length of its position.
             float distance = camera.transform.position.magnitude;
-            float pixels = MarkerPixelsAt(distance);
+            float pixels = _flightView ? CloseMarkerPixels : MarkerPixelsAt(distance);
+            CurrentMarkerPixels = pixels;
             float viewportHeight = camera.pixelHeight > 0 ? camera.pixelHeight : Screen.height;
             float angular = camera.fieldOfView * Mathf.Deg2Rad * pixels
                             / Mathf.Max(viewportHeight, 1);
@@ -234,14 +247,15 @@ namespace TimeToExplore.Rendering
             Vector3 direction = forward.Normalized.ToUnity();
             _visual.localRotation = Quaternion.FromToRotation(Vector3.up, direction);
 
-            RefreshArrow(camera, direction, distance);
+            RefreshArrow(camera, direction, distance, pixels);
         }
 
         /// <summary>The marker's current up axis, for tests: the capsule's long
         /// axis follows the thrust or the direction of travel.</summary>
         public Vector3 MarkerDirection => _visual != null ? _visual.up : Vector3.zero;
 
-        private void RefreshArrow(Camera camera, Vector3 direction, float distance)
+        private void RefreshArrow(Camera camera, Vector3 direction, float distance,
+            float markerPixels)
         {
             if (_arrow == null) return;
 
@@ -257,8 +271,7 @@ namespace TimeToExplore.Rendering
             float viewportHeight = camera != null && camera.pixelHeight > 0
                 ? camera.pixelHeight
                 : Screen.height;
-            float arrowPixels = Mathf.Max(ArrowPixels,
-                MarkerPixelsAt(distance) * 1.8f);
+            float arrowPixels = Mathf.Max(ArrowPixels, markerPixels * 1.8f);
             float length = LineWidth.WorldWidth(distance, camera != null ? camera.fieldOfView : 60f,
                 viewportHeight, arrowPixels);
             length = Mathf.Max(length, 1e-7f);

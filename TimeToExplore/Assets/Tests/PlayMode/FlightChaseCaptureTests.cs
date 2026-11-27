@@ -60,11 +60,16 @@ namespace TimeToExplore.Tests.PlayMode
 
             Assert.That(bootstrap.Rig.IsFramingFlight, Is.False,
                 "the chase pose has landed");
+            Assert.That(bootstrap.Rig.IsFollowingFlight, Is.True,
+                "the flight owns the chase distance");
             Assert.That(bootstrap.Rig.Orbit.DistanceUnits,
-                Is.EqualTo(FlightFraming.DistanceUnits).Within(1e-4f));
+                Is.GreaterThanOrEqualTo(FlightFraming.DistanceUnits),
+                "the distance grows with the frame's travel");
             Assert.That(bootstrap.Flight.IsFlying, Is.True);
             Debug.Log($"chase capture at {bootstrap.Clock.Label}, " +
                       $"flight {bootstrap.Flight.Plan.FlightTimeDays:F2} d, " +
+                      $"distance {bootstrap.Rig.Orbit.DistanceUnits:F3} units, " +
+                      $"speed {bootstrap.ShipVelocityMps.Magnitude / 1000.0:F0} km/s, " +
                       $"clock {JulianDate.Format(bootstrap.Clock.JulianDate)}");
             Capture(bootstrap.ViewCamera, Path.Combine(dir, "flight-chase.png"));
 
