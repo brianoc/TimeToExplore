@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: route families, camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
 ---
 
 # Glossary
@@ -307,7 +307,7 @@ timing, or Δv. Say "reaches the same final orbit" when that is what is meant.
 
 ## See also
 
-* [Selection and camera focus](/technical/selection-and-camera.md) — the camera as built, and the debug jump.
+* [Selection and camera focus](/technical/selection-and-camera.md) — the camera as built, the camera focus on a selected body, and the debug jump.
 * [ADR-008](/decisions/adr-008-orbit-camera.md), [ADR-017](/decisions/adr-017-cursor-zoom-and-home.md), and [ADR-018](/decisions/adr-018-one-orbit-camera.md) — why the camera is an orbit, the pointer zoom, Space home, and the removal of the system map.
 * [Navigation and arrival](/simulation/navigation-and-arrival.md) — the capture geometry, parking orbit, and arrival styles as built.
 * [The flight model](/simulation/flight-model.md) — the drive, throttle, and the two travel regimes.

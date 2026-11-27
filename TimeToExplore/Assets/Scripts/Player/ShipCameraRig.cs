@@ -51,6 +51,13 @@ namespace TimeToExplore.Player
         public float HomeDurationSeconds = HomeTransition.DefaultDurationSeconds;
 
         /// <summary>
+        /// How long the move to the selected body takes, in seconds. F starts
+        /// it; the aim, the distance, and the look-at point follow one
+        /// smoothstep, like Space's return home in the other direction.
+        /// </summary>
+        public float BodyFocusDurationSeconds = 1f;
+
+        /// <summary>
         /// How long the move to a plotted route's overview takes, in seconds.
         /// The aim, the distance, and the look-at point follow one smoothstep.
         /// </summary>
@@ -71,11 +78,21 @@ namespace TimeToExplore.Player
         /// <summary>The eased move to a plotted route's overview.</summary>
         public RouteViewTransition RouteView { get; } = new RouteViewTransition();
 
+        /// <summary>
+        /// The eased move to the selected body. It reuses the route-view pose
+        /// transition, because the maths is the same: shortest yaw, linear
+        /// pitch and look-at, geometric distance, one smoothstep.
+        /// </summary>
+        public RouteViewTransition BodyFocus { get; } = new RouteViewTransition();
+
         /// <summary>True while Space's home transition is easing the view back.</summary>
         public bool IsHoming => Home.IsActive;
 
         /// <summary>True while the view is easing to a plotted route.</summary>
         public bool IsFramingRoute => RouteView.IsActive;
+
+        /// <summary>True while F's move to the selected body is easing.</summary>
+        public bool IsFocusingBody => BodyFocus.IsActive;
 
         /// <summary>Render units per metre.</summary>
         public float UnitsPerMeter { get; set; } = 1e-6f;
@@ -130,6 +147,7 @@ namespace TimeToExplore.Player
         private float _zoomAnchorFieldOfViewDegrees = 60f;
         private bool _uiOverLastFrame;
         private bool _cursorCaptured;
+        private BodyRuntime _focusBodyTarget;
 
         public void Initialise(Camera camera, SolarSystemModel model, float unitsPerMeter)
         {
@@ -152,8 +170,10 @@ namespace TimeToExplore.Player
         public void Frame(BodyRuntime body)
         {
             // A new framing target takes the view over from the player's
-            // cursor-anchored zoom, the route overview, or home transition.
+            // cursor-anchored zoom, the route overview, the body focus, or
+            // home transition.
             _zoomAnchorActive = false;
+            CancelBodyFocus();
             RouteView.Cancel();
             Home.Cancel();
 
@@ -181,6 +201,7 @@ namespace TimeToExplore.Player
         public void ClearAuto()
         {
             _zoomAnchorActive = false;
+            CancelBodyFocus();
             RouteView.Cancel();
             Home.Cancel();
 
@@ -196,6 +217,7 @@ namespace TimeToExplore.Player
             Frame(body);
             _zoomPending = false;
             _zoomAnchorActive = false;
+            CancelBodyFocus();
             RouteView.Cancel();
             Home.Cancel();
             if (body != null)
@@ -226,12 +248,57 @@ namespace TimeToExplore.Player
             AutoDistance = false;
             _zoomPending = false;
             _zoomAnchorActive = false;
+            CancelBodyFocus();
             RouteView.Cancel();
 
             Home.DurationSeconds = Mathf.Max(0f, HomeDurationSeconds);
             Home.Begin(Orbit.DistanceUnits,
                 HomeDistanceUnits(LocalRadiusM(shipPositionM)),
                 LookAtOffsetM);
+        }
+
+        /// <summary>
+        /// Ease the view to the selected body, without moving the ship. F calls
+        /// this. The camera turns to put the body at the centre and zooms to
+        /// the same distance the jump and arrival framing use, then hands the
+        /// view to the existing follow so a moving body stays centred. Space
+        /// unwinds the focus and returns home; a drag or a new framing target
+        /// takes the view back.
+        ///
+        /// This is a camera move, not a jump: the render frame is ship-relative,
+        /// and a body at interplanetary distance is far below float precision at
+        /// the ship. The debug jump still exists for close inspection.
+        /// </summary>
+        public void FocusBody(BodyRuntime body, Vector3d shipPositionM)
+        {
+            if (body == null) return;
+
+            OrbitCamera.AnglesForLookDirection(body.PositionM - shipPositionM,
+                out float targetYaw, out float targetPitch);
+            float targetDistance = AutoDistanceUnits(shipPositionM, body);
+
+            // The focus owns the whole pose until it lands. Drop the cursor
+            // anchor, any wheel request, a route overview, and the home move.
+            _zoomPending = false;
+            _zoomAnchorActive = false;
+            Home.Cancel();
+            RouteView.Cancel();
+            AutoAim = false;
+            AutoDistance = false;
+            AutoTarget = null;
+            _autoDistancePending = false;
+            _focusBodyTarget = body;
+
+            BodyFocus.DurationSeconds = Mathf.Max(0f, BodyFocusDurationSeconds);
+            BodyFocus.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, Orbit.DistanceUnits,
+                LookAtOffsetM, targetYaw, targetPitch, targetDistance, Vector3d.Zero);
+        }
+
+        /// <summary>Stop the body-focus move and forget its target.</summary>
+        private void CancelBodyFocus()
+        {
+            BodyFocus.Cancel();
+            _focusBodyTarget = null;
         }
 
         /// <summary>
@@ -258,6 +325,7 @@ namespace TimeToExplore.Player
             AutoAim = false;
             AutoDistance = false;
             AutoTarget = null;
+            CancelBodyFocus();
             Home.Cancel();
             _zoomPending = false;
             _zoomAnchorActive = false;
@@ -301,6 +369,35 @@ namespace TimeToExplore.Player
                 {
                     Orbit.SnapDistance(Home.TargetDistanceUnits);
                     LookAtOffsetM = Vector3d.Zero;
+                }
+            }
+            else if (BodyFocus.IsActive)
+            {
+                // F's move to the selected body owns the pose together, then
+                // hands the view to the ordinary follow so the body stays
+                // centred as it moves.
+                bool arrived = BodyFocus.Advance(deltaTime);
+                Orbit.YawDegrees = BodyFocus.YawDegreesAt;
+                Orbit.PitchDegrees = BodyFocus.PitchDegreesAt;
+                Orbit.SnapDistance(BodyFocus.DistanceUnitsAt);
+                SetLookAtOffsetM(BodyFocus.LookAtOffsetMAt);
+
+                if (arrived)
+                {
+                    Orbit.YawDegrees = BodyFocus.TargetYawDegrees;
+                    Orbit.PitchDegrees = BodyFocus.TargetPitchDegrees;
+                    Orbit.SnapDistance(BodyFocus.TargetDistanceUnits);
+                    SetLookAtOffsetM(BodyFocus.TargetLookAtOffsetM);
+
+                    if (_focusBodyTarget != null)
+                    {
+                        AutoTarget = _focusBodyTarget;
+                        AutoAim = true;
+                        AutoDistance = true;
+                        AutoDistanceTargetUnits = BodyFocus.TargetDistanceUnits;
+                        _autoDistancePending = false;
+                        _focusBodyTarget = null;
+                    }
                 }
             }
             else if (RouteView.IsActive)
@@ -419,6 +516,7 @@ namespace TimeToExplore.Player
             {
                 Orbit.Turn(x * OrbitDegreesPerMouseUnit, -y * OrbitDegreesPerMouseUnit);
                 AutoAim = false;
+                CancelBodyFocus();
                 Home.Cancel();
                 RouteView.Cancel();
                 _zoomAnchorActive = false;

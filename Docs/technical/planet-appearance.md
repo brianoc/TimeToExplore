@@ -4,7 +4,7 @@ title: Planet appearance
 description: The albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere, and the appearance fields the body shaders consume.
 tags: [technical, rendering, textures, planets, atmosphere, attribution]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T17:05:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
 ---
 
 # What exists now
@@ -114,9 +114,11 @@ Nine 2048x1024 equirectangular JPEG albedo maps live in
 
 The maps come from [Solar System Scope](https://www.solarsystemscope.com/textures/)
 under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and are based
-on NASA data. The attribution travels with the files in
-`Assets/Resources/Planets/ATTRIBUTION.md`; keep it if the maps are copied or
-republished.
+on NASA data. `Assets/Resources/Planets/ATTRIBUTION.md` carries the full
+attribution: the work and creator, the source link, the licence link, the fact
+that the files are used unmodified apart from Unity's import compression, and a
+statement that the licensors do not endorse the game. Keep it with the maps if
+they are copied or republished.
 
 Venus uses the atmosphere map rather than a surface map: the surface is hidden,
 and the visible planet is the cloud deck.

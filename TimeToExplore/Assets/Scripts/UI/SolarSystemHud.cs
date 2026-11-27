@@ -702,7 +702,7 @@ namespace TimeToExplore.UI
 
         private void OnJumpClicked()
         {
-            _owner?.FocusSelected();
+            _owner?.JumpToSelected();
         }
 
         // --- Trade panel --------------------------------------------------------

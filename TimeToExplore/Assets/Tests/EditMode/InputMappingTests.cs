@@ -82,6 +82,11 @@ namespace TimeToExplore.Tests.EditMode
 
             PlayerControls.Hotkeys focus = PlayerControls.ReadHotkeys(Held(Key.F));
             Assert.That(focus.FocusSelected, Is.True);
+            Assert.That(focus.JumpSelected, Is.False, "F focuses the camera, not the ship");
+
+            PlayerControls.Hotkeys jump = PlayerControls.ReadHotkeys(Held(Key.J));
+            Assert.That(jump.JumpSelected, Is.True);
+            Assert.That(jump.FocusSelected, Is.False, "J jumps the ship, not the camera");
 
             PlayerControls.Hotkeys escape = PlayerControls.ReadHotkeys(Held(Key.Escape));
             Assert.That(escape.CancelFocus, Is.True);
@@ -118,6 +123,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(keys.Pause, Is.False);
             Assert.That(keys.CycleTarget, Is.False);
             Assert.That(keys.FocusSelected, Is.False);
+            Assert.That(keys.JumpSelected, Is.False);
             Assert.That(keys.CancelFocus, Is.False);
             Assert.That(keys.Reset, Is.False);
             Assert.That(keys.CancelFlight, Is.False);

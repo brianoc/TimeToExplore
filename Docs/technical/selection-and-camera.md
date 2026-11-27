@@ -4,7 +4,7 @@ title: Selection and camera focus
 description: How clicking a body opens its details screen and how the one orbit camera flies to it, zooms toward the pointer, and frames a plotted route.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T22:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
 ---
 
 # Why selection exists
@@ -202,6 +202,17 @@ framing target is kept, so an active flight's follow does not re-claim the
 camera and cancel the transition. A wheel notch or a moving drag cancels it.
 `P` pauses.
 
+**F focuses the selected body, camera only.** A one-second smoothstep eases the
+aim, the distance and any look-at offset to the framing the jump uses: the body
+at the centre, the camera `0.6 ×` the ship-to-body distance back and never
+inside three radii. The ship does not move. After the move the existing follow
+keeps the body centred as it travels, until a drag, a wheel, a new framing
+target or `Space` takes the view back. A running flight owns the camera, so `F`
+is refused while it flies. This is a camera transition, not a jump: the render
+frame is ship-relative, so a planet at interplanetary distance is far below
+float precision at the ship and stays a marker. The debug jump moved to `J` for
+close inspection.
+
 **Near and far planes.** The near plane is `clamp(0.02 × distance, 200 m,
 50 km)`, so it scales with the orbit and still lets a moon be inspected at the
 closest zoom. The far plane is 20 billion km (about 133 AU), which covers the
@@ -219,7 +230,8 @@ second mapping.
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
 | **Plot route …** button | Adopt the warmed plan and draw it in the same frame, then ease the camera to the whole route; a warm-up still building is continued. A retimed or stale preview is replanned at its fastest trip |
 | **Begin flight** button | Replan from the current state and fly it |
-| **Jump (debug)** button, `F` | Three-second eased debug teleport to the selected body |
+| `F` | Ease the camera to the selected body in one second, without moving the ship |
+| **Jump (debug)** button, `J` | Three-second eased debug teleport of the ship to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
 | Right mouse drag | Orbit the camera around the ship, unless the press began on a panel |
 | Mouse wheel | Zoom toward the pointer (2,000 km to 12 billion km), eased to the requested distance |

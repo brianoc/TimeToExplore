@@ -61,7 +61,10 @@ namespace TimeToExplore.Player
             public bool Pause;
             public int ScaleIndex; // -1 when no number key was pressed
             public bool CycleTarget;
+            /// <summary>F: ease the camera to the selected body.</summary>
             public bool FocusSelected;
+            /// <summary>J: debug teleport the ship beside the selected body.</summary>
+            public bool JumpSelected;
             public bool CancelFocus;
             public bool Reset;
             public bool CancelFlight;
@@ -224,6 +227,7 @@ namespace TimeToExplore.Player
 
             hotkeys.CycleTarget = pressed(Key.Tab);
             hotkeys.FocusSelected = pressed(Key.F);
+            hotkeys.JumpSelected = pressed(Key.J);
             hotkeys.CancelFocus = pressed(Key.Escape);
             hotkeys.Reset = pressed(Key.R);
             hotkeys.CancelFlight = pressed(Key.X);
