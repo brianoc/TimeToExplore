@@ -1,28 +1,14 @@
 # Handoff
 
-**In progress (2026-11-27): follow-cam polish.** Branch
-`work/follow-cam-polish`, cut from `main` after the warp/camera tuning.
+**No active handoff (2026-11-27).** `main` carries the reverse-route window probe
+([ADR-026](Docs/decisions/adr-026-window-probes-the-coast-profile.md), pushed),
+the continuous flight warp with the chase camera
+([ADR-027](Docs/decisions/adr-027-continuous-warp-and-chase-camera.md)), and the
+follow-cam polish: a wheel keeps the ship centred, the destination framing starts
+ten planet radii out, and the HUD shows one warp line. The warp and camera work
+is local, waiting for human testing; `main` is not pushed past the reverse-route
+commit until the flight feel is confirmed.
 
-Done:
-
-* A wheel in the flight chase keeps the ship centred: the flight view stays
-  active, the look-at stays the ship, and only the automatic distance follow is
-  handed over. A drag keeps the distance follow as before.
-* The destination framing starts at **ten planet radii**, so the fixed chase
-  angle cannot point back at Mars and park the camera on the surface. Measured:
-  camera–Mars went from 3.56 units at the same point (radius 3.39) to 19.24.
-* The status clock drops the warp while the flight panel is open, so there is
-  one warp line.
-
-Next:
-
-1. Show the capture pair (`Screenshots/polish/`) and merge to `main` on
-   confirmation.
-
-Traps:
-
-* The early handover uses `target.RadiusM > 100_000` so stations and small
-  bodies keep the chase; do not lower it without checking the station arrival.
-* `1 unit = 1,000 km`; the arrival camera is 19.24 units (19,240 km) from Mars.
-
-Start from [ADR-027](Docs/decisions/adr-027-continuous-warp-and-chase-camera.md).
+Start from [the design bundle](Docs/index.md),
+[the roadmap](Docs/production/roadmap.md), and
+[the working agreement](Docs/working-agreement.md).
