@@ -474,15 +474,24 @@ cargo mass in flight, docking, persistence, and ship selection.
 The split is [ADR-022](../decisions/adr-022-departure-split.md). These were
 found while landing it and are deliberately left out of that plan. The station
 departure split shipped on 2026-11-26 as
-[ADR-023](../decisions/adr-023-station-departure-split.md), and the full-blast
+[ADR-023](../decisions/adr-023-station-departure-split.md), the full-blast
 minimum-time route shipped on 2026-11-27 as
-[ADR-025](../decisions/adr-025-full-blast-route.md).
+[ADR-025](../decisions/adr-025-full-blast-route.md), and the reverse-route plot
+cost shipped on 2026-11-27 as
+[ADR-026](../decisions/adr-026-window-probes-the-coast-profile.md).
 
-* **The reverse-route plot cost.** Venus → Earth now plots in about **10.2 s**
-  and Uranus → Earth in about **39.0 s**, against the **0.4–0.5 s** refusals
-  they returned before the split. Both are new capability, not regressions — the
-  routes build where they used to be refused — but the first plot is slow and
-  needs its own investigation before the reverse routes feel usable.
+* **The reverse-route plot cost — shipped 2026-11-27 as
+  [ADR-026](../decisions/adr-026-window-probes-the-coast-profile.md).** The
+  window's cap and bisection probes now ask the coast profile directly
+  (`PlanCoastAtDuration`), so a refused probe no longer runs the short-coast
+  rescue's burn-only moving-target solve. The window values are unchanged —
+  Venus → Earth 2.04971–22.31016 d, Uranus → Earth 64.15472–176.42547 d — and a
+  refused probe falls from seconds to a fraction of a second. On the same tree,
+  Venus → Earth's first plot falls from **53,840 ms to 11,194 ms**; Uranus →
+  Earth falls to **10,577 ms** from 36,600 ms in the recorded baseline.
+  `PlanAtDuration`
+  keeps the rescue, so the gap below the floor and player-requested durations
+  behave as before.
 * **The full-blast minimum-time route — shipped 2026-11-27 as
   [ADR-025](../decisions/adr-025-full-blast-route.md).** The burn-only crossing
   now takes the time-optimal escape excess from a five-point grid scaled by

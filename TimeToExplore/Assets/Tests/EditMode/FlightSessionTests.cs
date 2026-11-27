@@ -291,6 +291,53 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
+        /// The trip-time window asks the coast profile for its slow end. Every
+        /// probe starts at the coast floor and moves slower, so the short-coast
+        /// gap is behind it and the rescue has nothing to fill. Venus → Earth is
+        /// the case that exposed the cost: its 41.99559-day cap is refused, the
+        /// slow end sits at 22.31016 d, and before this rule each refused probe
+        /// also paid the rescue's burn-only moving-target solve.
+        /// </summary>
+        [Test]
+        public void TheWindowProbesTheCoastProfileWithoutTheShortCoastRescue()
+        {
+            _planner.BurnLevelG = 1.0;
+            _session.Place(VenusConicParkingOrbit());
+
+            TrajectoryPlan preview = _planner.PlanFastest(_session.State, "earth",
+                out TrajectoryPlan coastFloor);
+            Assert.That(preview.IsFeasible, Is.True, preview.InfeasibleReason);
+            Assert.That(coastFloor.IsFeasible, Is.True, coastFloor.InfeasibleReason);
+
+            var metrics = new PlanMetrics();
+            _planner.Metrics = metrics;
+            metrics.Reset();
+            double maximum;
+            try
+            {
+                maximum = _session.MaximumPreviewSeconds("earth",
+                    coastFloor.FlightTimeSeconds, _planner, _session.State);
+            }
+            finally
+            {
+                _planner.Metrics = null;
+            }
+
+            double maximumDays = maximum / JulianDate.SecondsPerDay;
+            TestContext.WriteLine($"venus → earth window max {maximumDays:F5} d, " +
+                                  $"{metrics.BuildsCertified} certified builds, " +
+                                  $"{metrics.BurnOnlyBuilds} burn-only builds");
+
+            Assert.That(maximumDays, Is.EqualTo(22.31016).Within(0.05),
+                "the slow end is the coast profile's own limit");
+            Assert.That(metrics.BuildsCertified,
+                Is.EqualTo(1 + FlightSession.WindowProbes),
+                "the refused cap and the six bisection probes are coast builds");
+            Assert.That(metrics.BurnOnlyBuilds, Is.Zero,
+                "the window probe never enters the short-coast rescue");
+        }
+
+        /// <summary>
         /// Begin a station trip and fly it through <see cref="FlightSession.Advance"/>.
         /// Ares Junction to Gateway is the measured 54.16210-day, three-arc
         /// rendezvous, and the session reaches the hold state with no parking
@@ -1809,6 +1856,25 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThanOrEqualTo((prefetchBuild + oneBuild) * 1.5 + 300.0),
                 "the ask waits for the in-flight prefetch plus its own build, not a third; " +
                 "the window's first step is the slow short coast");
+        }
+
+        /// <summary>The benchmark's Venus departure: the conic parking orbit's
+        /// radius with a circular speed in the ecliptic plane.</summary>
+        private ShipState VenusConicParkingOrbit()
+        {
+            BodyRuntime venus = _model.Get("venus");
+            _model.ComputeState(venus, _epoch, out Vector3d position,
+                out Vector3d velocity);
+            double radius = ParkingOrbit.ConicRadiusM(venus);
+            double speed = TwoBody.CircularSpeedMps(venus.Gm, radius);
+            Vector3d planeVelocity = velocity
+                - venus.PoleEcliptic * Vector3d.Dot(velocity, venus.PoleEcliptic);
+            Vector3d tangent = planeVelocity.SqrMagnitude > 1.0
+                ? planeVelocity.Normalized
+                : venus.EquatorY;
+            Vector3d radial = Vector3d.Cross(tangent, venus.PoleEcliptic).Normalized;
+            return new ShipState(_epoch, position + radial * radius,
+                velocity + tangent * speed);
         }
 
         private static void WaitUntil(Func<bool> condition, string message)
