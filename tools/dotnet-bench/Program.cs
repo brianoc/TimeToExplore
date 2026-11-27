@@ -103,15 +103,58 @@ namespace TimeToExplore.DotnetBench
             string dataPath = Path.GetFullPath(Path.Combine(root,
                 "TimeToExplore", "Assets", "Resources", "solar_system.json"));
             string outputPath = null;
+            string markdownPath = null;
             bool micro = false;
+            bool matrix = false;
+            int measuredRuns = MeasuredRuns;
+            string matrixFrom = null;
+            string matrixTo = null;
+            string probeFrom = null;
+            string probeTo = null;
+            double probeDays = double.NaN;
+            double probeLevel = 0.3;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--data" && i + 1 < args.Length)
                     dataPath = Path.GetFullPath(args[++i]);
                 else if (args[i] == "--out" && i + 1 < args.Length)
                     outputPath = Path.GetFullPath(args[++i]);
+                else if (args[i] == "--markdown" && i + 1 < args.Length)
+                    markdownPath = Path.GetFullPath(args[++i]);
+                else if (args[i] == "--runs" && i + 1 < args.Length)
+                    measuredRuns = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                else if (args[i] == "--matrix-from" && i + 1 < args.Length)
+                    matrixFrom = args[++i];
+                else if (args[i] == "--matrix-to" && i + 1 < args.Length)
+                    matrixTo = args[++i];
+                else if (args[i] == "--probe-from" && i + 1 < args.Length)
+                    probeFrom = args[++i];
+                else if (args[i] == "--probe-to" && i + 1 < args.Length)
+                    probeTo = args[++i];
+                else if (args[i] == "--probe-days" && i + 1 < args.Length)
+                    probeDays = double.Parse(args[++i], CultureInfo.InvariantCulture);
+                else if (args[i] == "--probe-level" && i + 1 < args.Length)
+                    probeLevel = double.Parse(args[++i], CultureInfo.InvariantCulture);
                 else if (args[i] == "--micro")
                     micro = true;
+                else if (args[i] == "--matrix")
+                    matrix = true;
+            }
+
+            if (!string.IsNullOrEmpty(probeFrom) || !string.IsNullOrEmpty(probeTo))
+            {
+                if (string.IsNullOrEmpty(probeFrom) || string.IsNullOrEmpty(probeTo))
+                    throw new ArgumentException("--probe needs both --probe-from and --probe-to.");
+                return MatrixBench.Probe(dataPath, probeFrom, probeTo, probeDays,
+                    probeLevel);
+            }
+
+            if (matrix)
+            {
+                outputPath = outputPath ?? Path.Combine(root, "build", "plot-matrix.json");
+                markdownPath = markdownPath ?? Path.Combine(root, "build", "plot-matrix.md");
+                return MatrixBench.Run(dataPath, outputPath, markdownPath, measuredRuns,
+                    matrixFrom, matrixTo);
             }
 
             if (micro)

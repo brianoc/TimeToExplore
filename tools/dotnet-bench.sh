@@ -9,10 +9,14 @@
 #   tools/dotnet-bench.sh
 #   tools/dotnet-bench.sh -c Debug --out build/dotnet-bench-debug.json
 #   tools/dotnet-bench.sh --micro
+#   tools/dotnet-bench.sh --matrix
 #
 # The configuration defaults to Release. Debug builds the same sources with
 # optimisation disabled, to compare against the Editor's debug-built
 # assemblies. --micro runs the small numeric probe instead of the routes.
+# --matrix plots every major planet from every other one and writes
+# build/plot-matrix.json and build/plot-matrix.md; --runs sets the measured
+# repeats (default 3) and --markdown sets the table path.
 #
 # Environment overrides:
 #   DOTNET          dotnet executable (default: dotnet)
@@ -26,24 +30,36 @@ cd "$ROOT"
 
 DOTNET="${DOTNET:-dotnet}"
 OUT="build/dotnet-bench.json"
+OUT_SET=""
+MARKDOWN="build/plot-matrix.md"
 CONFIG="Release"
-MICRO=""
+MODE=""
+RUNS="3"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --out)
             OUT="${2:?--out needs a path}"
+            OUT_SET="1"
+            shift 2
+            ;;
+        --markdown)
+            MARKDOWN="${2:?--markdown needs a path}"
+            shift 2
+            ;;
+        --runs)
+            RUNS="${2:?--runs needs a count}"
             shift 2
             ;;
         -c|--configuration)
             CONFIG="${2:?--configuration needs Debug or Release}"
             shift 2
             ;;
-        --micro)
-            MICRO="--micro"
+        --micro|--matrix)
+            MODE="$1"
             shift
             ;;
         -h|--help)
-            sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -58,13 +74,23 @@ case "$CONFIG" in
     *) echo "configuration must be Debug or Release, got $CONFIG" >&2; exit 2 ;;
 esac
 
+if [[ "$MODE" == "--matrix" && -z "$OUT_SET" ]]; then
+    OUT="build/plot-matrix.json"
+fi
+
 "$DOTNET" build tools/dotnet-bench/DotnetBench.csproj -c "$CONFIG" >/dev/null
-if [[ -n "$MICRO" ]]; then
+if [[ "$MODE" == "--micro" ]]; then
     "$DOTNET" run --project tools/dotnet-bench/DotnetBench.csproj -c "$CONFIG" \
         --no-build -- --micro
+elif [[ "$MODE" == "--matrix" ]]; then
+    "$DOTNET" run --project tools/dotnet-bench/DotnetBench.csproj -c "$CONFIG" \
+        --no-build -- --matrix --out "$OUT" --markdown "$MARKDOWN" --runs "$RUNS"
 else
     "$DOTNET" run --project tools/dotnet-bench/DotnetBench.csproj -c "$CONFIG" \
         --no-build -- --out "$OUT"
 fi
 
 printf '\nRun JSON: %s\n' "$OUT"
+if [[ "$MODE" == "--matrix" ]]; then
+    printf 'Table: %s\n' "$MARKDOWN"
+fi
