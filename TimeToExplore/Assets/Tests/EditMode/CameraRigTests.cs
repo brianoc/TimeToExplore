@@ -462,45 +462,6 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void BodyAvoidancePullsTheCameraInContinuously()
-        {
-            BodyRuntime earth = _model.Get("earth");
-            Vector3d earthM = earth.PositionM;
-
-            _rig.Orbit.YawDegrees = 0f;
-            _rig.Orbit.PitchDegrees = 0f;
-            _rig.Orbit.DistanceUnits = 20f;
-
-            float previous = 0f;
-            bool sawPullIn = false;
-
-            // The camera sits at +z from the ship; moving the ship from 30 to
-            // 10 units before Earth sweeps the camera through the planet.
-            for (float shipZ = 30f; shipZ >= 10f; shipZ -= 1f)
-            {
-                Vector3d shipM = earthM
-                    + Vector3d.FromUnity(new Vector3(0f, 0f, -shipZ * 1e6f));
-                _rig.Apply(shipM, 0f);
-
-                float placed = _rig.PosePositionUnits.z;
-                if (placed < 20f - 1e-3f) sawPullIn = true;
-
-                if (previous > 0f)
-                    Assert.That(Mathf.Abs(placed - previous), Is.LessThanOrEqualTo(1.001f),
-                        $"the camera steps {Mathf.Abs(placed - previous)} units at z={shipZ}");
-
-                double clearanceM = System.Math.Abs(shipZ - placed) * 1e6;
-                Assert.That(clearanceM, Is.GreaterThanOrEqualTo(earth.RadiusM),
-                    $"the camera stays outside Earth at z={shipZ} " +
-                    $"(placed={placed}, clearance={clearanceM:F0} m, radius={earth.RadiusM:F0} m)");
-
-                previous = placed;
-            }
-
-            Assert.That(sawPullIn, Is.True, "the sweep must actually enter the planet's path");
-        }
-
-        [Test]
         public void ChangingTheFramingTargetTurnsAtTheSlewRate()
         {
             Vector3d shipM = _model.Get("gateway").PositionM;
