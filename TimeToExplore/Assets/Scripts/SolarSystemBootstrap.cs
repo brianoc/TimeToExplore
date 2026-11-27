@@ -326,6 +326,7 @@ namespace TimeToExplore
 
             if (keys.CycleTarget) CycleTarget(1);
             if (keys.FocusSelected) FocusSelected();
+            if (keys.JumpSelected) JumpToSelected();
             if (keys.CancelFocus) Focus?.Cancel();
             if (keys.Reset) ResetToGateway();
             if (keys.CancelFlight) CancelFlight();
@@ -741,7 +742,26 @@ namespace TimeToExplore
             Rig?.ClearAuto();
         }
 
+        /// <summary>
+        /// F: ease the camera to the selected body and leave the ship where it
+        /// is. The view follows the body until the player drags or presses
+        /// Space; a running flight owns the camera, so the key is refused
+        /// while it does.
+        /// </summary>
         public void FocusSelected()
+        {
+            if (Flight != null && Flight.IsFlying) return;
+            if (Selected == null || Rig == null) return;
+
+            Rig.FocusBody(Selected, ShipPositionM);
+        }
+
+        /// <summary>
+        /// J: the debug jump. Ease the ship to eight radii from the selected
+        /// body and frame it there. This moves the ship, so a running flight
+        /// refuses it.
+        /// </summary>
+        public void JumpToSelected()
         {
             // A running flight owns the ship; a teleport would destroy it.
             if (Flight != null && Flight.IsFlying) return;

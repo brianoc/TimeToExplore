@@ -153,16 +153,42 @@ namespace TimeToExplore.Player
                 MinDistanceUnits, MaxDistanceUnits);
         }
 
+        /// <summary>
+        /// The yaw and pitch that put a direction from the ship at the centre of
+        /// the view. The camera sits opposite the direction, looking past the
+        /// ship at it. Pure, so a caller can plan a pose without moving the
+        /// camera, and so the aim, the slew, and the body focus all use one
+        /// definition of "look along this direction".
+        /// </summary>
+        public static void AnglesForLookDirection(Vector3d lookDirection,
+            out float yawDegrees, out float pitchDegrees)
+        {
+            if (lookDirection.SqrMagnitude < 1e-12)
+            {
+                yawDegrees = 0f;
+                pitchDegrees = DefaultPitchDegrees;
+                return;
+            }
+
+            // The method takes an ecliptic direction, like every caller's
+            // simulation vector, and the orbit angles are Unity angles. Convert
+            // once, here: ecliptic z is Unity up and ecliptic y is Unity -z.
+            Vector3 direction = lookDirection.ToUnity();
+            Vector3 offset = -direction.normalized;
+            pitchDegrees = Mathf.Clamp(
+                Mathf.Asin(Mathf.Clamp(offset.y, -1f, 1f)) * Mathf.Rad2Deg,
+                MinPitchDegrees, MaxPitchDegrees);
+            yawDegrees = WrapDegrees(Mathf.Atan2(offset.x, offset.z) * Mathf.Rad2Deg);
+        }
+
         /// <summary>Point the camera so it looks along a direction from the ship.</summary>
         public void AimAlong(Vector3d lookDirection)
         {
             if (lookDirection.SqrMagnitude < 1e-12) return;
 
-            Vector3d offset = -lookDirection.Normalized;
-            PitchDegrees = Mathf.Clamp(
-                (float)(Math.Asin(Math.Clamp(offset.y, -1.0, 1.0)) * Mathf.Rad2Deg),
-                MinPitchDegrees, MaxPitchDegrees);
-            YawDegrees = WrapDegrees((float)(Math.Atan2(offset.x, offset.z) * Mathf.Rad2Deg));
+            AnglesForLookDirection(lookDirection, out float yaw, out float pitch);
+            YawDegrees = yaw;
+            PitchDegrees = pitch;
         }
 
         /// <summary>
@@ -174,13 +200,7 @@ namespace TimeToExplore.Player
         {
             if (lookDirection.SqrMagnitude < 1e-12) return 0f;
 
-            Vector3d offset = -lookDirection.Normalized;
-            float targetPitch = Mathf.Clamp(
-                (float)(Math.Asin(Math.Clamp(offset.y, -1.0, 1.0)) * Mathf.Rad2Deg),
-                MinPitchDegrees, MaxPitchDegrees);
-            float targetYaw = WrapDegrees(
-                (float)(Math.Atan2(offset.x, offset.z) * Mathf.Rad2Deg));
-
+            AnglesForLookDirection(lookDirection, out float targetYaw, out float targetPitch);
             return SlewTo(targetYaw, targetPitch, degreesPerSecond, deltaTime);
         }
 

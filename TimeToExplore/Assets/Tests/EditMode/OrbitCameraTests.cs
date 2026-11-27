@@ -132,13 +132,24 @@ namespace TimeToExplore.Tests.EditMode
         {
             var orbit = new OrbitCamera();
 
-            orbit.AimAlong(new Vector3d(0.0, 0.0, 1.0));
+            // Ecliptic +x is Unity +x, so the camera sits at -x and looks +x.
+            orbit.AimAlong(new Vector3d(1.0, 0.0, 0.0));
 
             Assert.That(orbit.PitchDegrees, Is.EqualTo(0f).Within(1e-3f));
-            Assert.That(orbit.OffsetUnits.z, Is.LessThan(0f),
-                "looking toward +z means sitting at -z");
-            Assert.That(Vector3.Dot(orbit.OffsetUnits.normalized, new Vector3(0f, 0f, 1f)),
+            Assert.That(orbit.OffsetUnits.x, Is.LessThan(0f),
+                "looking toward +x means sitting at -x");
+            Assert.That(Vector3.Dot(orbit.OffsetUnits.normalized, new Vector3(1f, 0f, 0f)),
                 Is.EqualTo(-1f).Within(1e-4f));
+
+            // Ecliptic north is +z, which becomes Unity +y. The camera sits
+            // below the ship and looks up at the pitch clamp.
+            var north = new OrbitCamera();
+            north.AimAlong(Vector3d.Up);
+
+            Assert.That(north.PitchDegrees, Is.EqualTo(OrbitCamera.MinPitchDegrees));
+            Assert.That(north.OffsetUnits.y, Is.LessThan(0f));
+            Assert.That(Vector3.Dot(north.OffsetUnits.normalized, new Vector3(0f, 1f, 0f)),
+                Is.LessThan(-0.99f), "the pitch clamp stops just short of straight up");
         }
 
         [Test]
@@ -208,7 +219,7 @@ namespace TimeToExplore.Tests.EditMode
             var orbit = new OrbitCamera { DistanceUnits = 0.2f };
             var ship = new Vector3d(1.0e11, 0.0, 0.0);
 
-            orbit.Frame(ship, ship + new Vector3d(0.0, 1.0e10, 0.0));
+            orbit.Frame(ship, ship + Vector3d.Up * 1.0e10);
 
             Assert.That(orbit.DistanceUnits, Is.EqualTo(0.2f).Within(1e-6f));
             Assert.That(orbit.PitchDegrees, Is.LessThan(0f), "look up at the target");

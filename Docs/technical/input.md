@@ -4,7 +4,7 @@ title: Input
 description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, the legacy mouse dispatcher, and the mouse and wheel rules.
 tags: [technical, input, unity, controls, ui]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
 ---
 
 # Two readers, one contract
@@ -144,7 +144,8 @@ neither reads a device for it.
 | `P` | pause / resume | `SolarSystemBootstrap` |
 | `1`–`7` | requested time warp 1× to 1,000,000× | `SolarSystemBootstrap` |
 | `Tab` | cycle planet/station target | `SolarSystemBootstrap` |
-| `F` | focus the selected body (debug jump) | `SolarSystemBootstrap` |
+| `F` | ease the camera to the selected body, without moving the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
+| `J` | debug jump: ease the ship beside the selected body | `SolarSystemBootstrap` |
 | `Esc` | cancel a debug jump; close the details screen | `SolarSystemBootstrap`, `SolarSystemHud` |
 | `R` | reset to Gateway and 1× | `SolarSystemBootstrap` |
 | `X` | cancel the flight | `SolarSystemBootstrap` |
@@ -161,8 +162,14 @@ neither reads a device for it.
 | Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 
+`F` and `J` are different tools. `F` moves the **camera** to the selected body
+with the same one-second eased pose change as `Space` home, and leaves the ship
+where it is; the view then follows the body until a drag or `Space` takes it
+back. `J` is the debug jump that moves the **ship** to eight radii from the
+body. A running flight owns the camera, so both are refused while it flies.
+
 `Esc` keeps its old order: the bootstrap (execution order −100) cancels the
-focus transition first, then the HUD closes the details screen. Both actions run
+debug jump first, then the HUD closes the details screen. Both actions run
 in the same frame. uGUI navigation events are off, so `Escape` reaches only the
 seam's edge and cannot also be consumed as a UI Cancel action.
 

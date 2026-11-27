@@ -519,6 +519,93 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Mathf.Abs(_rig.Orbit.PitchDegrees), Is.LessThanOrEqualTo(expected + 1e-3f));
         }
 
+        [Test]
+        public void TheLookDirectionAnglesAgreeWithAiming()
+        {
+            var direction = new Vector3d(1.0, 2.0, -3.0).Normalized;
+
+            OrbitCamera.AnglesForLookDirection(direction, out float yaw, out float pitch);
+            var orbit = new OrbitCamera();
+            orbit.AimAlong(direction);
+
+            Assert.That(orbit.YawDegrees, Is.EqualTo(yaw).Within(1e-4f));
+            Assert.That(orbit.PitchDegrees, Is.EqualTo(pitch).Within(1e-4f));
+
+            Quaternion rotation = Quaternion.LookRotation(
+                -OrbitCamera.Direction(yaw, pitch), Vector3.up);
+            Assert.That(Vector3.Angle(rotation * Vector3.forward, direction.ToUnity()),
+                Is.LessThan(1e-3f), "the camera looks along the requested direction");
+        }
+
+        [Test]
+        public void FocusingABodyEasesTheCameraAndThenFollowsIt()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Vector3d shipM = earth.PositionM + new Vector3d(7.5e10, 0.0, 0.0);
+            float expectedDistance = _rig.AutoDistanceUnits(shipM, earth);
+
+            _rig.Orbit.YawDegrees = 0f;
+            _rig.Orbit.PitchDegrees = 0f;
+            _rig.Orbit.DistanceUnits = 1_000f;
+            _rig.Apply(shipM, 0f);
+
+            _rig.FocusBody(earth, shipM);
+            Assert.That(_rig.IsFocusingBody, Is.True);
+            Assert.That(_rig.Auto, Is.False, "the focus owns the pose until it lands");
+
+            int frames = 0;
+            while (_rig.IsFocusingBody && frames < 180)
+            {
+                _rig.Apply(shipM, 1f / 60f);
+                frames++;
+            }
+
+            Assert.That(frames, Is.InRange(59, 62), "about a second of frames, not a snap");
+            Assert.That(_rig.AutoTarget, Is.SameAs(earth));
+            Assert.That(_rig.AutoAim, Is.True);
+            Assert.That(_rig.AutoDistance, Is.True);
+            Assert.That(_rig.Orbit.DistanceUnits,
+                Is.EqualTo(expectedDistance).Within(expectedDistance * 1e-4f));
+            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "the camera still looks past the ship at the body");
+
+            OrbitCamera.AnglesForLookDirection(earth.PositionM - shipM,
+                out float expectedYaw, out float expectedPitch);
+            Assert.That(OrbitCamera.WrapDegrees(_rig.Orbit.YawDegrees - expectedYaw),
+                Is.EqualTo(0f).Within(1e-3f));
+            Assert.That(_rig.Orbit.PitchDegrees,
+                Is.EqualTo(expectedPitch).Within(1e-3f));
+        }
+
+        [Test]
+        public void SpaceOrADragTakesTheViewBackFromABodyFocus()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Vector3d shipM = earth.PositionM + new Vector3d(7.5e10, 0.0, 0.0);
+
+            _rig.FocusBody(earth, shipM);
+            for (int i = 0; i < 5; i++) _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.IsFocusingBody, Is.True);
+
+            _rig.HomeToShip(shipM);
+            Assert.That(_rig.IsFocusingBody, Is.False, "Space cancels the focus");
+            Assert.That(_rig.IsHoming, Is.True);
+
+            for (int i = 0; i < 60; i++) _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6));
+
+            _rig.FocusBody(earth, shipM);
+            for (int i = 0; i < 5; i++) _rig.Apply(shipM, 1f / 60f);
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput
+            {
+                RightPressed = true,
+                Delta = new Vector2(2f, 0f)
+            });
+
+            Assert.That(_rig.IsFocusingBody, Is.False, "a drag takes the view back");
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput { RightReleased = true });
+        }
+
         /// <summary>The pointer-side NDC a point projects to from a given pose.</summary>
         private static Vector2 NdcOf(Vector3 pointUnits, Vector3 cameraUnits,
             Quaternion rotation, float fieldOfViewDegrees, float aspect)

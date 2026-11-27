@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T19:10:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
 ---
 
 # Shape of the prototype
@@ -450,7 +450,8 @@ The controller is an inspection tool now, not a flight model:
 | Left click a body | Select it and warm its route plan in the background; nothing is drawn until Plot route |
 | **Plot route** / **Replot route** on the details screen | Adopt the warmed plan and draw it in the click's frame (or frame the fresh fastest preview), without flying; frames the route. A warm-up still building is continued |
 | **Begin flight** | Replan and fly from the current state and date |
-| **Jump (debug)**, `F` | Three-second eased debug teleport to the selected body |
+| `F` | Ease the camera to the selected body, without moving the ship |
+| **Jump (debug)**, `J` | Three-second eased debug teleport of the ship to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |
 | Right mouse drag | orbit the camera around the ship, at every zoom |

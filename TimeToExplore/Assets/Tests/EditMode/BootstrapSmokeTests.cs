@@ -166,7 +166,7 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.BeginGoTo(_bootstrap.Model.Get("mars"));
             Vector3d before = _bootstrap.ShipPositionM;
 
-            _bootstrap.FocusSelected();
+            _bootstrap.JumpToSelected();
 
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.LessThan(1e-6));
             Assert.That(_bootstrap.Flight.IsFlying, Is.True);
