@@ -529,9 +529,13 @@ namespace TimeToExplore.EditorTools
             out double maximumSeconds)
         {
             long started = Stopwatch.GetTimestamp();
-            plan = planner.PlanFastest(departure, target);
-            maximumSeconds = session.MaximumPreviewSeconds(target,
-                plan.FlightTimeSeconds, planner, departure);
+            plan = planner.PlanFastest(departure, target, out TrajectoryPlan coastFloor);
+            double floor = coastFloor != null && coastFloor.IsFeasible
+                           && coastFloor.FlightTimeSeconds > 0.0
+                ? coastFloor.FlightTimeSeconds
+                : plan.FlightTimeSeconds;
+            maximumSeconds = session.MaximumPreviewSeconds(target, floor,
+                planner, departure);
             return Milliseconds(started);
         }
 

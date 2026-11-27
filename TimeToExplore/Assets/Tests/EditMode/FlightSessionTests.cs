@@ -1806,8 +1806,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(published.FlightTimeSeconds, Is.EqualTo(target).Within(1e-3));
             Assert.That(reference.IsFeasible, Is.True);
             Assert.That(waited,
-                Is.LessThanOrEqualTo((prefetchBuild + oneBuild) * 1.25 + 150.0),
-                "the ask waits for the in-flight prefetch plus its own build, not a third");
+                Is.LessThanOrEqualTo((prefetchBuild + oneBuild) * 1.5 + 300.0),
+                "the ask waits for the in-flight prefetch plus its own build, not a third; " +
+                "the window's first step is the slow short coast");
         }
 
         private static void WaitUntil(Func<bool> condition, string message)

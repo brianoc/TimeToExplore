@@ -49,8 +49,13 @@ shorter than the coast floor at most measured routes.
    climb is too long for a duration just above the minimum — Mercury 1 g needs
    0.64 d of climb and a 3.45-day request leaves less — the branch retries the
    full-blast grid's excesses and takes the first shorter climb that fits; the
-   coast absorbs the slack. At Mercury 1 g, Mars 0.3 g and Jupiter 0.3 g every
-   slider duration from the minimum to the coast floor builds.
+   coast absorbs the slack. A Lambert geometry refusal is tried too, but only a
+   **feasible** short coast replaces that answer; otherwise the coast's own
+   reason stands. At Mercury 1 g, Mars 0.3 g and Jupiter 0.3 g every slider
+   duration from the minimum to the coast floor builds. The extreme reverse
+   routes keep a patchy gap — Venus → Earth's 2.05-day minimum against a
+   13.99853-day coast floor has durations the short seam cannot build — which is
+   the reverse-route follow-up's territory, not a fake plan.
 
 # Consequences
 

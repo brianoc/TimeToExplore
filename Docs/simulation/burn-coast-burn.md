@@ -515,17 +515,18 @@ duration, and the brake's direction (two angles) — against the six seam
 components. At `c = 0` the conic is a point and the system is the burn-only seam
 again, so the family is continuous by construction.
 
-`PlanAtDuration` hands a coast refusal to this branch only when the refusal is
-the trip time squeezing the coast path — the departure burn cannot be placed or
-the chain does not close — or when the break is over-thrust. A refusal from the
-coast's own geometry (no prograde short-way transfer) is a different answer and
-keeps its Lambert reason: the slow end is still the coast. `Plan()`, its floor
-search, and every fixed-duration anchor never take this branch, and a request
-below the full-blast minimum keeps the coast path's refusal. At the minimum
-itself the branch returns the **burn-only plan**: the coast is zero, and the
-moving-target loop's own two-second date tolerance is enough to leave a rebuilt
-brake marginally outside the chain gate, so the advertised minimum is returned
-as the plan it is.
+`PlanAtDuration` hands a coast refusal to this branch when the trip time
+squeezes the coast path — the departure burn cannot be placed or the chain does
+not close — or when the break is over-thrust, and it also tries the branch on a
+Lambert geometry refusal. Only a **feasible** short coast replaces the coast's
+answer: a refusal the branch cannot build keeps the coast's own reason (no
+prograde short-way transfer), so the slow end is still the coast. `Plan()`, its
+floor search, and every fixed-duration anchor never take this branch, and a
+request below the full-blast minimum keeps the coast path's refusal. At the
+minimum itself the branch returns the **burn-only plan**: the coast is zero, and
+the moving-target loop's own two-second date tolerance is enough to leave a
+rebuilt brake marginally outside the chain gate, so the advertised minimum is
+returned as the plan it is.
 
 The branch is **active** at the current epoch: Mars 0.3 g's 6.67–7.17 d range is
 built as a short coast, and so are the equivalent ranges at Mercury and Jupiter.

@@ -961,9 +961,9 @@ namespace TimeToExplore.Simulation
         /// **short coast**: when the coast path refuses it for being squeezed,
         /// the plan is the burn-only seam with a heliocentric conic coast of the
         /// slack time. The total stays an input. At the minimum the plan is the
-        /// burn-only crossing itself; a refusal from the coast's own geometry (no
-        /// prograde short-way transfer) keeps its reason rather than becoming a
-        /// short coast. See <see cref="BuildShortCoast"/>.
+        /// burn-only crossing itself. A Lambert geometry refusal is tried too,
+        /// but only a feasible short coast replaces it; otherwise the coast's own
+        /// reason stands. See <see cref="BuildShortCoast"/>.
         /// </summary>
         public TrajectoryPlan PlanAtDuration(ShipState ship, string targetId,
             double durationSeconds, PinSeed seed = default)
@@ -975,18 +975,19 @@ namespace TimeToExplore.Simulation
 
             BuildResult result = Build(ship, target, durationSeconds, seed: seed);
 
-            // The coast path cannot fit a duration between the burn-only
+            // The coast path cannot fit a duration between the full-blast
             // minimum and its own floor: the break or the departure burn is
-            // squeezed. That is the gap the short coast fills. A refusal from the
-            // coast's own geometry (no prograde short-way transfer) is a
-            // different answer and keeps its reason.
+            // squeezed. That is the gap the short coast fills. The short coast is
+            // also tried on a geometry refusal, but only a **feasible** short
+            // coast replaces that answer; otherwise the coast's own reason (no
+            // prograde short-way transfer) is kept rather than masked.
             string reason = result.Plan.InfeasibleReason ?? string.Empty;
-            bool coastGeometryRefusal = reason.Contains("short-way")
-                                        || reason.Contains("Lambert");
-            if (!result.Plan.IsFeasible && !coastGeometryRefusal
+            if (!result.Plan.IsFeasible
                 && (result.ShortCoastWorthy
                     || result.Plan.PeakThrustMps2
-                    > MaxAccelerationMps2 * ThrustMargin))
+                    > MaxAccelerationMps2 * ThrustMargin
+                    || reason.Contains("short-way")
+                    || reason.Contains("Lambert")))
             {
                 BuildResult? shortCoast = BuildShortCoast(ship, target, durationSeconds);
                 if (shortCoast.HasValue)
@@ -996,7 +997,7 @@ namespace TimeToExplore.Simulation
                         ? $"short coast at {durationSeconds / SecondsPerDay:F5} d: built"
                         : $"short coast at {durationSeconds / SecondsPerDay:F5} d: " +
                           built.Plan.InfeasibleReason);
-                    result = built;
+                    if (built.Plan.IsFeasible) result = built;
                 }
             }
 
@@ -6978,10 +6979,10 @@ namespace TimeToExplore.Simulation
             /// <summary>True when the refusal is the coast path being squeezed by
             /// the trip time — the departure burn cannot be placed or the chain
             /// does not close — rather than the coast's own geometry. This is the
-            /// gap between the burn-only minimum and the coast floor, and it is
-            /// the only refusal <see cref="PlanAtDuration"/> hands to the
-            /// short-coast build. A coast that has no prograde short-way transfer
-            /// is a different refusal and is never retried as a short coast.</summary>
+            /// gap between the burn-only minimum and the coast floor.
+            /// <see cref="PlanAtDuration"/> hands this refusal to the short-coast
+            /// build, and also tries that build on a Lambert geometry refusal;
+            /// only a feasible short coast replaces either answer.</summary>
             public bool ShortCoastWorthy { get; }
         }
 

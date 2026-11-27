@@ -1545,24 +1545,29 @@ at 32/64 samples and a 50 km / 50 m/s gate, and only the winner is rebuilt with
 the summed field and the 1 km / 1 m/s gate. The grid therefore costs five probes
 plus one or two certified builds, not five certified crossings.
 
-**Release harness, same machine and epoch, median of three.** The comparison is
-the plain .NET 10 column in [the Unity 7
-upgrade](/technical/unity-7-coreclr.md), because the committed
-`planning-benchmark-baseline.json` is the Unity run.
+**Unity 7 Editor, same machine and epoch, median of three.** This is the
+re-recorded `planning-benchmark-baseline.json`; the player is about 3.7× faster
+than the Editor on the same plans.
 
-| Route | Plot before | Plot after | Change |
-|---|---:|---:|---:|
-| Earth → Mars | 536 ms | 936 ms | +75% |
-| Earth → Venus | 425 ms | 813 ms | +91% |
-| Venus → Earth | 1,640 ms | 11,472 ms | basin change |
-| Uranus → Earth | 616 ms | 1,399 ms | basin change |
+| Route | Plot | Window | Note |
+|---|---:|---|---|
+| Earth → Mars | 3,132 ms | 6.66965–21.50253 d | the clean case; 2,007 ms before the route |
+| Earth → Venus | 2,766 ms | 3.93440–12.62702 d | 1,645 ms before the route |
+| Earth → Uranus | 4,748 ms | 37.00540–111.01619 d | the fallback; 2,369 ms before |
+| Venus → Earth | 38,628 ms | 2.04971–22.31016 d | the 22.31-day cap build dominates |
+| Uranus → Earth | 36,600 ms | 64.15472–176.42547 d | 23,681 ms before the route |
 
-The extra ~400 ms on the clean routes is the coast floor's own build (about
-500 ms, unchanged) plus the grid's five probes and the confirmed winner. The
-two reverse routes are not like-for-like: the harness now certifies a 13.99853-day
-Venus floor where the earlier table found 6.62749, and a 63.06636-day Uranus
-floor against 64.15472; the near-floor basin is scatter, and the full-blast
-search runs on the floor it is given. The Editor pays its usual ~4× difference;
-the first plot of a route is still the dominant cost, and a repeat plot at the
-same date is a cache hit. The full `tools/bench.sh` re-record is the close-out
-step.
+The grid adds about **1.1–2.5 s** to a clean first plot in the Editor: the coast
+floor's own build (about 2 s, unchanged), five cheap probes, and the certified
+winner. The two reverse routes are the [reverse-route plot
+cost](/production/roadmap.md) follow-up, not the grid: their window caps are
+multi-week coast builds (Venus → Earth's 22.31 d, Uranus → Earth's 176.43 d), and
+the cap probe alone dominates the plot. The first plot of a route is still the
+dominant cost, and a repeat plot at the same date is a cache hit; the drag
+median stays 267–304 ms because the prefetch fills the neighbours and the cache
+answers the steps.
+
+The **window probe now anchors to the coast floor**, so the plot pays the cap
+build the player's slider will use. Before that fix the benchmark anchored to the
+full-blast minimum, and Venus → Earth's cap was refused at the minimum's 3×, which
+made its plot look smaller and its slider a single point.
