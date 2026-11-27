@@ -1689,20 +1689,22 @@ namespace TimeToExplore.Simulation
         /// pinned departure state. The minimum is the planner's
         /// <see cref="TripPlanner.PlanFastest"/> — the time-optimal full-blast
         /// crossing when it is shorter, otherwise the coast floor — and the upper
-        /// end is **three times the coast floor**, probed with
-        /// <see cref="TripPlanner.PlanAtDuration"/>, so the slow end does not move
-        /// when the full-blast left end does. Runs on the caller's thread: the
-        /// session's synchronous <see cref="Plot"/> and the background worker's
-        /// <see cref="BuildPlotWindow"/> and <see cref="BuildRebuild"/>. The cache
-        /// is shared between threads, so every access is under
-        /// <see cref="_retimeLock"/>; the slow planner calls run outside it, on
-        /// the worker for async builds.
+        /// end is **three times the coast floor**, probed with the coast profile's
+        /// own answer (<see cref="TripPlanner.PlanCoastAtDuration"/>), so the slow
+        /// end does not move when the full-blast left end does. Runs on the
+        /// caller's thread: the session's synchronous <see cref="Plot"/> and the
+        /// background worker's <see cref="BuildPlotWindow"/> and
+        /// <see cref="BuildRebuild"/>. The cache is shared between threads, so
+        /// every access is under <see cref="_retimeLock"/>; the slow planner calls
+        /// run outside it, on the worker for async builds.
         ///
         /// The range between the two is built by
         /// <see cref="TripPlanner.PlanAtDuration"/>: from the first feasible
         /// short coast up to the floor it is a short-coast crossing, and above
-        /// the floor it is the coast profile. The window does not fake a plan for
-        /// a duration the planner refuses.
+        /// the floor it is the coast profile. The window's own probes start at the
+        /// floor and move slower, so they ask the coast profile directly: the
+        /// short-coast rescue has nothing to fill there, and running it made each
+        /// refused probe pay a burn-only moving-target solve.
         /// </summary>
         private PreviewWindow WindowFor(string targetId, ShipState departure,
             TripPlanner planner, double burnLevelG, CaptureStyle arrival)
@@ -1963,8 +1965,9 @@ namespace TimeToExplore.Simulation
 
         /// <summary>How many bisection probes find the profile's slowest
         /// accepted trip. Six puts the right-hand end within a few percent of
-        /// the planner's actual limit, which is finer than the slider needs.</summary>
-        private const int WindowProbes = 6;
+        /// the planner's actual limit, which is finer than the slider needs.
+        /// The window's own builds are this many plus the cap.</summary>
+        internal const int WindowProbes = 6;
 
         /// <summary>
         /// The slowest trip the trip-time control may offer. The profile has a
@@ -2008,7 +2011,10 @@ namespace TimeToExplore.Simulation
             TripPlanner planner, ShipState departure)
         {
             if (!(seconds > 0.0) || !double.IsFinite(seconds)) return false;
-            return planner.PlanAtDuration(departure, targetId, seconds).IsFeasible;
+            // Every probe starts at the coast floor, so the short-coast gap is
+            // already behind it: the window is the coast profile's range. Asking
+            // the rescue too would add a burn-only solve to each refused probe.
+            return planner.PlanCoastAtDuration(departure, targetId, seconds).IsFeasible;
         }
 
         /// <summary>

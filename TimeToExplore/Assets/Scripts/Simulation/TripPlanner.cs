@@ -968,10 +968,7 @@ namespace TimeToExplore.Simulation
         public TrajectoryPlan PlanAtDuration(ShipState ship, string targetId,
             double durationSeconds, PinSeed seed = default)
         {
-            BodyRuntime target = RequireTarget(targetId);
-            if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
-                throw new ArgumentOutOfRangeException(nameof(durationSeconds),
-                    "A pinned flight time must be finite and positive.");
+            BodyRuntime target = RequireDurationTarget(targetId, durationSeconds);
 
             BuildResult result = Build(ship, target, durationSeconds, seed: seed);
 
@@ -1002,6 +999,33 @@ namespace TimeToExplore.Simulation
             }
 
             return Reported(result.Plan);
+        }
+
+        /// <summary>
+        /// The **coast profile's** answer at an explicit flight time, without the
+        /// short-coast rescue. The rescue's range is the gap between the
+        /// full-blast minimum and the coast floor; above the floor the coast's own
+        /// answer is the profile's, and running the rescue as well costs a
+        /// burn-only moving-target solve on every refused probe. The trip-time
+        /// window's upper-end search runs here, because every probe starts at the
+        /// coast floor and moves slower. A caller that needs the short-coast gap,
+        /// or a duration the player asked for, uses <see cref="PlanAtDuration"/>.
+        /// </summary>
+        internal TrajectoryPlan PlanCoastAtDuration(ShipState ship, string targetId,
+            double durationSeconds, PinSeed seed = default)
+        {
+            BodyRuntime target = RequireDurationTarget(targetId, durationSeconds);
+            return Reported(Build(ship, target, durationSeconds, seed: seed).Plan);
+        }
+
+        private BodyRuntime RequireDurationTarget(string targetId,
+            double durationSeconds)
+        {
+            BodyRuntime target = RequireTarget(targetId);
+            if (!(durationSeconds > 0.0) || !double.IsFinite(durationSeconds))
+                throw new ArgumentOutOfRangeException(nameof(durationSeconds),
+                    "A pinned flight time must be finite and positive.");
+            return target;
         }
 
         /// <summary>

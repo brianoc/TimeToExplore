@@ -1,12 +1,11 @@
 # Handoff
 
-**No active handoff (2026-11-27).** `main` carries the full-blast route and the
-body render-origin focus, both merged and pushed. [ADR-025](Docs/decisions/adr-025-full-blast-route.md)
-makes the time-optimal zero-coast crossing the nav minimum; the trip window
-keeps its slow end at three times the **coast** floor, and the short coast fills
-the range between. The evidence is `full-blast.png`, and
-`tools/planning-benchmark-baseline.json` is recorded for the new floors and
-windows. The work branch and its worktree are gone.
+**No active handoff (2026-11-27).** The reverse-route plot cost shipped on
+`work/reverse-route-plot-cost`:
+[ADR-026](Docs/decisions/adr-026-window-probes-the-coast-profile.md) makes the
+trip window probe the coast profile and removes the short-coast rescue from its
+refused probes. Both reverse windows are unchanged; Venus → Earth's first plot
+falls from 53,840 to 11,194 ms on the same tree.
 
 Start from [the design bundle](Docs/index.md),
 [the roadmap](Docs/production/roadmap.md), and

@@ -1554,15 +1554,15 @@ than the Editor on the same plans.
 | Earth → Mars | 3,132 ms | 6.66965–21.50253 d | the clean case; 2,007 ms before the route |
 | Earth → Venus | 2,766 ms | 3.93440–12.62702 d | 1,645 ms before the route |
 | Earth → Uranus | 4,748 ms | 37.00540–111.01619 d | the fallback; 2,369 ms before |
-| Venus → Earth | 38,628 ms | 2.04971–22.31016 d | the 22.31-day cap build dominates |
-| Uranus → Earth | 36,600 ms | 64.15472–176.42547 d | 23,681 ms before the route |
+| Venus → Earth | 38,628 ms | 2.04971–22.31016 d | the cap build dominated before ADR-026 |
+| Uranus → Earth | 36,600 ms | 64.15472–176.42547 d | 23,681 ms before the route; the cap build dominated before ADR-026 |
 
 The grid adds about **1.1–2.5 s** to a clean first plot in the Editor: the coast
 floor's own build (about 2 s, unchanged), five cheap probes, and the certified
-winner. The two reverse routes are the [reverse-route plot
-cost](/production/roadmap.md) follow-up, not the grid: their window caps are
-multi-week coast builds (Venus → Earth's 22.31 d, Uranus → Earth's 176.43 d), and
-the cap probe alone dominates the plot. The first plot of a route is still the
+winner. The two reverse routes paid a multi-week cap build and were the
+[reverse-route plot cost](/production/roadmap.md) follow-up, not the grid;
+[ADR-026](/decisions/adr-026-window-probes-the-coast-profile.md) removed that
+cost on 2026-11-27 (below). The first plot of a route is still the
 dominant cost, and a repeat plot at the same date is a cache hit; the drag
 median stays 267–304 ms because the prefetch fills the neighbours and the cache
 answers the steps.
@@ -1571,3 +1571,45 @@ The **window probe now anchors to the coast floor**, so the plot pays the cap
 build the player's slider will use. Before that fix the benchmark anchored to the
 full-blast minimum, and Venus → Earth's cap was refused at the minimum's 3×, which
 made its plot look smaller and its slider a single point.
+
+## The reverse-route window probe (2026-11-27)
+
+The last follow-up from the departure split was the reverse-route first plot.
+The window, not the floor search, was the cost: the cap is three times the coast
+floor and is refused, so the bisection adds six more builds. Each build called
+`PlanAtDuration`, which on a refused coast tries the **short-coast rescue** — a
+burn-only moving-target solve at the probe's date. Above the coast floor the
+rescue has no gap to fill, so a refused probe spent seconds answering a question
+it had already answered.
+
+Measured on Venus → Earth at the epoch, 1 g, conic capture, Release harness:
+the 41.99559-day cap cost **5.92 s** with the rescue and **0.18 s** without; the
+three refused bisection probes cost **2.2–2.5 s** each, while the accepted
+probes, where the rescue never ran, already cost **0.17–0.18 s**. The window
+reproduced the Editor's 22.31016-day slow end exactly, so the mechanism was the
+cause, not a runtime difference.
+
+The window now probes the coast profile directly
+(`TripPlanner.PlanCoastAtDuration`, [ADR-026](/decisions/adr-026-window-probes-the-coast-profile.md)).
+`PlanAtDuration` keeps the rescue for player-requested durations, so the
+short-coast gap below the floor still fills. The window ends are unchanged:
+Venus → Earth **2.04971–22.31016 d**, Uranus → Earth **64.15472–176.42547 d**.
+
+**Unity 7 Editor, same machine and epoch, median of three:**
+
+| Route | Plot before | Plot on the unmodified tree | Plot after | Window |
+|---|---:|---:|---:|---|
+| Venus → Earth | 38,628 ms | 53,840 ms | **11,194 ms** (−79.2%) | 2.04971–22.31016 d |
+| Uranus → Earth | 36,600 ms | — | **10,577 ms** (−71.1%) | 64.15472–176.42547 d |
+
+The committed baseline was recorded when this machine ran about 39% faster: the
+unmodified tree plots Venus → Earth in 53,840 ms, and every unchanged retime and
+Begin phase moves by the same factor, which is why they read as regressions. The
+same-tree comparison is the controlled one. Both window ends are exactly the
+values the baseline recorded, so the fix removed work rather than choices. The
+remaining plot is `PlanFastest`: the coast floor search and the full-blast grid,
+untouched by this change.
+
+The mid-retime refusal is untouched: Venus → Earth at 12.18 d is below the
+floor, so the rescue still runs and costs about 1.9 s in the harness to refuse.
+That is a player request where the short coast belongs, not a window probe.
