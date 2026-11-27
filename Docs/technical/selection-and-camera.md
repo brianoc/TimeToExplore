@@ -4,7 +4,7 @@ title: Selection and camera focus
 description: How clicking a body opens its details screen and how the one orbit camera flies to it, zooms toward the pointer, and frames a plotted route.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # Why selection exists
@@ -202,16 +202,20 @@ framing target is kept, so an active flight's follow does not re-claim the
 camera and cancel the transition. A wheel notch or a moving drag cancels it.
 `P` pauses.
 
-**F focuses the selected body, camera only.** A one-second smoothstep eases the
-aim, the distance and any look-at offset to the framing the jump uses: the body
-at the centre, the camera `0.6 ×` the ship-to-body distance back and never
-inside three radii. The ship does not move. After the move the existing follow
-keeps the body centred as it travels, until a drag, a wheel, a new framing
-target or `Space` takes the view back. A running flight owns the camera, so `F`
-is refused while it flies. This is a camera transition, not a jump: the render
-frame is ship-relative, so a planet at interplanetary distance is far below
-float precision at the ship and stays a marker. The debug jump moved to `J` for
-close inspection.
+**F frames the selected body in its own render frame.** The ship does not move;
+the **render origin** does. While focused, the selected body's position becomes
+the origin, so the body sits at `(0,0,0)` at its true size and the camera orbits
+it at four radii. That is the difference between pointing at a planet and
+framing it: at interplanetary distance a body's true radius on a 1,000 km-unit
+grid is far below the float precision available at the ship origin, so no zoom
+can resolve its surface from there. The origin switch is a cut; the camera
+starts at the wider of the current orbit distance and four radii, then eases to
+the four-radius frame. The player's yaw and pitch are kept, so the body is
+centred and the camera can be orbited and zoomed around it. `Space` leaves the
+focus and lands on the ship's home view; a jump, route frame or reset also
+leaves it. The ship marker, route line and orbit lines are hidden while focused.
+A running flight owns the camera, so `F` is refused while it flies; `J` is still
+the debug jump that moves the ship.
 
 **Near and far planes.** The near plane is `clamp(0.02 × distance, 200 m,
 50 km)`, so it scales with the orbit and still lets a moon be inspected at the

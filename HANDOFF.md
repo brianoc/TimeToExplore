@@ -1,12 +1,14 @@
 # Handoff
 
-**No active handoff (2026-11-27).** The Unity 7 CoreCLR upgrade is merged and
-pushed. The project opens on Unity `7000.0.0a22` with user code on .NET 10 /
-C# 14; the upgrade record, the Editor and player benchmarks, and the reason the
-Editor is slower than a player are in
-[the Unity 7 upgrade](Docs/technical/unity-7-coreclr.md). The planet appearance
-pass and the camera focus key are recorded in [the log](Docs/log.md) and their
-concepts.
+**No active handoff (2026-11-27).** `F` now frames the selected body by moving
+the **render origin** to it, so the planet is seen at its true size instead of
+as a marker at interplanetary distance; `J` remains the debug jump that moves
+the ship. The camera rules are in
+[Selection and camera focus](Docs/technical/selection-and-camera.md), the
+reasoning about float precision and the focused frame is in
+[Rendering at solar scale](Docs/technical/rendering-scale.md), and the render
+origin change is in [Architecture](Docs/technical/architecture.md). `main` is
+merged but not pushed until the person testing confirms the look.
 
 Start from [the design bundle](Docs/index.md),
 [the roadmap](Docs/production/roadmap.md), and

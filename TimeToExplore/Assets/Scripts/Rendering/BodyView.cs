@@ -145,39 +145,49 @@ namespace TimeToExplore.Rendering
             return new Color(data.color[0], data.color[1], data.color[2]);
         }
 
-        public void Refresh(Camera camera, Vector3d shipPositionM, double julianDate,
+        public void Refresh(Camera camera, Vector3d originM, double julianDate,
             bool trueScale, float minAngularSize)
         {
-            Vector3 relative = ((Body.PositionM - shipPositionM) * _unitsPerMeter).ToUnity();
+            Vector3 relative = ((Body.PositionM - originM) * _unitsPerMeter).ToUnity();
             transform.localPosition = relative;
 
             double displayRadius = Body.RadiusM * _unitsPerMeter;
             float distance = relative.magnitude;
-            float angularSize = (float)(displayRadius / Mathf.Max(distance, 1e-6f));
+            float cameraDistance = camera != null
+                ? (relative - camera.transform.position).magnitude
+                : distance;
+
+            // The marker aid reads the body's distance from the render origin,
+            // which is the ship in the ordinary frame. The detail gates read
+            // the camera distance: in a focused frame the body *is* the origin,
+            // so its origin distance is zero while the camera sits four radii
+            // away, and the planet must still sample its map and draw its
+            // atmosphere.
+            float markerAngularSize = (float)(displayRadius / Mathf.Max(distance, 1e-6f));
+            float viewAngularSize = (float)(displayRadius / Mathf.Max(cameraDistance, 1e-6f));
 
             // The detail gate reads the true angular radius, not the marker the
             // minimum-size aid may have inflated. Load the map on the first
             // frame the gate opens, and only touch the material when the state
             // changes, so a distant marker costs no material churn.
-            bool wantsAlbedo = BodyAppearance.UsesAlbedo(angularSize) &&
+            bool wantsAlbedo = BodyAppearance.UsesAlbedo(viewAngularSize) &&
                                !string.IsNullOrEmpty(Body.Data.albedoTexture);
             if (wantsAlbedo && !_albedoRequested) LoadAlbedo();
             ApplyAlbedo(wantsAlbedo && _albedoTexture != null);
 
             // The atmosphere gate opens at a much larger disc than the marker
-            // aid ever inflates, so displayRadius is the drawn radius by then.
-            // The shell is also hidden when the camera is inside it: an
-            // additive rim seen from within would fill the view.
+            // aid ever inflates. The shell is also hidden when the camera is
+            // inside it: an additive rim seen from within would fill the view.
             if (AtmosphereRenderer != null)
             {
                 bool showAtmosphere =
-                    BodyAppearance.UsesAtmosphere(angularSize) &&
-                    distance > (float)(displayRadius * _atmosphereShellScale) * 1.001f;
+                    BodyAppearance.UsesAtmosphere(viewAngularSize) &&
+                    cameraDistance > (float)(displayRadius * _atmosphereShellScale) * 1.001f;
                 if (AtmosphereRenderer.enabled != showAtmosphere)
                     AtmosphereRenderer.enabled = showAtmosphere;
             }
 
-            float targetFactor = TargetScaleFactor(angularSize, minAngularSize, trueScale);
+            float targetFactor = TargetScaleFactor(markerAngularSize, minAngularSize, trueScale);
 
             // Smooth the marker-size transition so distant bodies do not pop.
             _scaleFactor = Mathf.Lerp(_scaleFactor, targetFactor, 1f - Mathf.Exp(-8f * Time.deltaTime));

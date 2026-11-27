@@ -11,12 +11,13 @@ using Object = UnityEngine.Object;
 namespace TimeToExplore.Tests.PlayMode
 {
     /// <summary>
-    /// Evidence for the camera-only focus key: the ship sits three radii from
-    /// Mars, the view is turned thirty degrees off the planet, and F eases the
-    /// camera back onto it without moving the ship. Writes
-    /// <c>focus-before.png</c> and <c>focus-after.png</c> into
-    /// <c>BODY_CAPTURE_DIR</c>. It carries only the <c>capture</c> category, so
-    /// no gate starts it, and it needs a graphics device.
+    /// Evidence for F framing the selected body. The before frame is the ship
+    /// view at Gateway with Mars selected and the camera aimed at it; the after
+    /// frame is the focused render frame, with Mars at the origin and the
+    /// camera four radii away. Writes <c>focus-before.png</c> and
+    /// <c>focus-after.png</c> into <c>BODY_CAPTURE_DIR</c>. It carries only the
+    /// <c>capture</c> category, so no gate starts it, and it needs a graphics
+    /// device.
     /// </summary>
     [Category("capture")]
     public class BodyFocusCaptureTests
@@ -26,7 +27,7 @@ namespace TimeToExplore.Tests.PlayMode
         private const float FrameSeconds = 1f / 60f;
 
         [UnityTest]
-        public IEnumerator FocusEasesTheCameraOntoTheSelectedBody()
+        public IEnumerator FocusFramesTheSelectedBodyInItsOwnOrigin()
         {
             yield return null;
 
@@ -50,28 +51,14 @@ namespace TimeToExplore.Tests.PlayMode
             Assert.That(mars, Is.Not.Null);
             bootstrap.Select(mars);
 
-            // Park three radii from Mars on its sunward side, then let the
-            // marker-size aid settle so the planet is drawn at true scale.
-            Vector3d toSun = (bootstrap.Model.Get("sun").PositionM - mars.PositionM).Normalized;
-            Vector3d shipM = mars.PositionM + toSun * (3.0 * mars.RadiusM);
-            bootstrap.Flight.Teleport(shipM, bootstrap.Clock.JulianDate);
-
-            // The marker-size aid eases at 8/s on real time, not the
-            // bootstrap's fixed step. Two seconds leaves exp(-16) of it.
-            yield return new WaitForSeconds(2f);
-
             // The opening view is still auto-framing the old target. Take the
-            // camera back before setting the off-centre pose, or the follow
-            // will slew and zoom under the test.
+            // camera back before setting the ship-view pose.
             bootstrap.Rig.ClearAuto();
-
-            // Aim thirty degrees away so the before frame has Mars off-centre.
             OrbitCamera.AnglesForLookDirection(mars.PositionM - bootstrap.ShipPositionM,
                 out float yaw, out float pitch);
-            bootstrap.Rig.Orbit.YawDegrees = yaw + 30f;
+            bootstrap.Rig.Orbit.YawDegrees = yaw;
             bootstrap.Rig.Orbit.PitchDegrees = pitch;
-            bootstrap.Rig.Orbit.DistanceUnits =
-                bootstrap.Rig.AutoDistanceUnits(bootstrap.ShipPositionM, mars);
+            bootstrap.Rig.Orbit.DistanceUnits = 100f;
             yield return null;
             yield return null;
 
@@ -83,13 +70,19 @@ namespace TimeToExplore.Tests.PlayMode
             Capture(bootstrap.ViewCamera, Path.Combine(dir, "focus-before.png"));
 
             bootstrap.FocusSelected();
-            for (int i = 0; i < 90; i++) yield return null;
+
+            // The focus transition uses the bootstrap's fixed step; two real
+            // seconds also let the marker-size aid settle at true scale.
+            yield return new WaitForSeconds(2f);
             Capture(bootstrap.ViewCamera, Path.Combine(dir, "focus-after.png"));
 
             Assert.That(Vector3d.Distance(before, bootstrap.ShipPositionM),
                 Is.LessThan(1e-6), "the focus must not move the ship");
             Assert.That(bootstrap.Rig.IsFocusingBody, Is.False);
-            Assert.That(bootstrap.Rig.AutoTarget, Is.SameAs(mars));
+            Assert.That(bootstrap.Rig.IsFocused, Is.True);
+            Assert.That(bootstrap.Rig.FocusTarget, Is.SameAs(mars));
+            Assert.That(Vector3d.Distance(bootstrap.RenderOriginM, mars.PositionM),
+                Is.LessThan(1e-6), "Mars is the render origin");
             Debug.Log("focus captures written to " + dir);
         }
 

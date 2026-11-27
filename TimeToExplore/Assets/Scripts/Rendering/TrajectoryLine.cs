@@ -46,8 +46,14 @@ namespace TimeToExplore.Rendering
         private Vector3d _arrivalPositionM;
         private Vector3d _ghostPositionM;
         private bool _hasGhost;
+        private bool _visible = true;
 
         public bool IsShowing => _plan != null;
+
+        /// <summary>Whether the route is allowed to draw. A focused body frame
+        /// hides it without discarding the plan, so leaving the focus brings
+        /// the same route back.</summary>
+        public bool IsVisible => _visible;
 
         /// <summary>Number of coloured arc lines on the current plan.</summary>
         public int ArcCount => _activeLines.Count;
@@ -248,6 +254,8 @@ namespace TimeToExplore.Rendering
             // until it does so a stale path is never drawn.
             for (int i = 0; i < _activeLines.Count; i++)
                 _activeLines[i].Renderer.enabled = false;
+
+            if (!_visible) HideVisuals();
         }
 
         /// <summary>Reuse a pooled line, or create one the first time the plan
@@ -322,6 +330,46 @@ namespace TimeToExplore.Rendering
             _burnPositionsM.Clear();
             _hasGhost = false;
 
+            HideVisuals();
+        }
+
+        /// <summary>
+        /// Suspend or restore the route without discarding it. The render frame
+        /// moves to a focused body and the ship-frame route would cross the
+        /// view, so it is hidden until the focus ends.
+        /// </summary>
+        public void SetVisible(bool visible)
+        {
+            if (_visible == visible) return;
+
+            _visible = visible;
+            if (!visible)
+            {
+                HideVisuals();
+                return;
+            }
+
+            // The arc lines stay off until Refresh fills them for the current
+            // origin; the markers can follow the plan immediately.
+            for (int i = 0; i < _activeLines.Count; i++)
+                if (_activeLines[i].Renderer != null)
+                    _activeLines[i].Renderer.enabled = false;
+
+            if (_plan == null) return;
+            if (_arrivalMarker != null) _arrivalMarker.gameObject.SetActive(true);
+            if (_ghostMarker != null) _ghostMarker.gameObject.SetActive(_hasGhost);
+            if (_burnMarkers != null)
+                for (int i = 0; i < _burnMarkers.Length; i++)
+                    if (_burnMarkers[i] != null)
+                        _burnMarkers[i].gameObject.SetActive(i < _burnPositionsM.Count);
+        }
+
+        private void HideVisuals()
+        {
+            for (int i = 0; i < _activeLines.Count; i++)
+                if (_activeLines[i].Renderer != null)
+                    _activeLines[i].Renderer.enabled = false;
+
             if (_arrivalMarker != null) _arrivalMarker.gameObject.SetActive(false);
             if (_ghostMarker != null) _ghostMarker.gameObject.SetActive(false);
             if (_burnMarkers != null)
@@ -341,9 +389,9 @@ namespace TimeToExplore.Rendering
             _activeLines.Clear();
         }
 
-        public void Refresh(Vector3d shipPositionM, Camera camera)
+        public void Refresh(Vector3d originM, Camera camera)
         {
-            if (_plan == null) return;
+            if (!_visible || _plan == null) return;
 
             // Width is apparent, not world-scaled: the same pixel rule as the
             // orbit lines. The base depth is the camera's distance to the ship
@@ -365,17 +413,17 @@ namespace TimeToExplore.Rendering
             for (int i = 0; i < _activeLines.Count; i++)
             {
                 ArcLine arcLine = _activeLines[i];
-                SetPositions(arcLine, shipPositionM, camera, baseWidth, baseDepth);
+                SetPositions(arcLine, originM, camera, baseWidth, baseDepth);
 
                 if (arcLine.Dashed)
                     UpdateDashScale(arcLine.Material, DashPeriodUnits(baseWidth));
             }
 
-            UpdateMarker(_arrivalMarker, _arrivalPositionM, shipPositionM, camera);
-            UpdateMarker(_ghostMarker, _ghostPositionM, shipPositionM, camera, 0.65f);
+            UpdateMarker(_arrivalMarker, _arrivalPositionM, originM, camera);
+            UpdateMarker(_ghostMarker, _ghostPositionM, originM, camera, 0.65f);
 
             for (int i = 0; i < BurnMarkerCount; i++)
-                UpdateMarker(_burnMarkers[i], _burnPositionsM[i], shipPositionM, camera, 1.6f);
+                UpdateMarker(_burnMarkers[i], _burnPositionsM[i], originM, camera, 1.6f);
         }
 
         /// <summary>
@@ -404,12 +452,12 @@ namespace TimeToExplore.Rendering
             material.mainTextureScale = new Vector2(1f / Mathf.Max(periodUnits, 1e-6f), 1f);
         }
 
-        private void UpdateMarker(Transform marker, Vector3d positionM, Vector3d shipPositionM,
+        private void UpdateMarker(Transform marker, Vector3d positionM, Vector3d originM,
             Camera camera, float scale = 1f)
         {
             if (marker == null || !marker.gameObject.activeSelf) return;
 
-            Vector3 relative = ((positionM - shipPositionM) * _unitsPerMeter).ToUnity();
+            Vector3 relative = ((positionM - originM) * _unitsPerMeter).ToUnity();
             marker.position = relative;
 
             // Size from the camera, not the ship, so a marker stays a marker
@@ -424,7 +472,7 @@ namespace TimeToExplore.Rendering
             marker.localScale = Vector3.one * size;
         }
 
-        private void SetPositions(ArcLine arcLine, Vector3d shipPositionM, Camera camera,
+        private void SetPositions(ArcLine arcLine, Vector3d originM, Camera camera,
             float baseWidth, float baseDepth)
         {
             LineRenderer line = arcLine.Renderer;
@@ -433,7 +481,7 @@ namespace TimeToExplore.Rendering
             List<Vector3d> points = arcLine.Points;
             arcLine.RelativePoints.Clear();
             for (int i = 0; i < points.Count; i++)
-                arcLine.RelativePoints.Add(((points[i] - shipPositionM) * _unitsPerMeter).ToUnity());
+                arcLine.RelativePoints.Add(((points[i] - originM) * _unitsPerMeter).ToUnity());
 
             // Drop the part of the route behind the camera. A line that crosses
             // the camera plane cannot be billboarded consistently, and Unity's

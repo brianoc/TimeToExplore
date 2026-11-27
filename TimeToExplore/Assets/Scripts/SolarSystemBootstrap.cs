@@ -61,6 +61,16 @@ namespace TimeToExplore
         public System.Func<float> DeltaTimeSeconds { get; set; } = () => Time.deltaTime;
 
         public Vector3d ShipPositionM => Flight != null ? Flight.State.PositionM : Vector3d.Zero;
+
+        /// <summary>
+        /// The point the renderer draws everything relative to. It is the ship
+        /// in the ordinary frame and the focused body while F is inspecting
+        /// one, so the body sits at the origin at its true size.
+        /// </summary>
+        public Vector3d RenderOriginM =>
+            Rig != null && Rig.FocusTarget != null
+                ? Rig.FocusTarget.PositionM
+                : ShipPositionM;
         public Vector3d ShipVelocityMps => Flight != null ? Flight.State.VelocityMps : Vector3d.Zero;
 
         private readonly List<BodyRuntime> _targets = new List<BodyRuntime>();
@@ -68,6 +78,7 @@ namespace TimeToExplore
         private GravityField _gravity;
         private TripPlanner _planner;
         private bool _wasFlying;
+        private bool _shipMarkerHiddenByFocus;
 
         /// <summary>The body whose finished plan should be drawn and framed, or
         /// null. Only an explicit Plot route click sets it, so reading a body's
@@ -301,18 +312,39 @@ namespace TimeToExplore
                 _wasFlying = flying;
             }
 
-            if (Rig != null) Rig.Apply(ShipPositionM, FrameDeltaSeconds());
+            bool focused = Rig != null && Rig.IsFocused;
+            Vector3d originM = RenderOriginM;
+
+            if (Rig != null) Rig.Apply(originM, FrameDeltaSeconds());
 
             if (ShipMarker != null)
             {
-                ShipMarker.Refresh(ViewCamera,
-                    Flight != null ? Flight.CurrentThrust : ThrustCommand.None,
-                    ShipVelocityMps);
+                // Only the focus owns the marker's visibility. A capture or a
+                // debug tool that hid it before the focus stays hidden when the
+                // focus ends.
+                if (focused != _shipMarkerHiddenByFocus)
+                {
+                    _shipMarkerHiddenByFocus = focused;
+                    ShipMarker.SetVisible(!focused);
+                }
+
+                if (!focused)
+                {
+                    ShipMarker.Refresh(ViewCamera,
+                        Flight != null ? Flight.CurrentThrust : ThrustCommand.None,
+                        ShipVelocityMps);
+                }
             }
 
-            Renderer.Refresh(ShipPositionM, Clock.JulianDate,
+            if (Renderer != null) Renderer.FocusMode = focused;
+            Renderer.Refresh(originM, Clock.JulianDate,
                 Rig != null ? Rig.Orbit.DistanceUnits : 0f);
-            if (Trajectory != null) Trajectory.Refresh(ShipPositionM, ViewCamera);
+
+            if (Trajectory != null)
+            {
+                Trajectory.SetVisible(!focused);
+                Trajectory.Refresh(originM, ViewCamera);
+            }
         }
 
         private void HandleHotkeys()
@@ -743,17 +775,17 @@ namespace TimeToExplore
         }
 
         /// <summary>
-        /// F: ease the camera to the selected body and leave the ship where it
-        /// is. The view follows the body until the player drags or presses
-        /// Space; a running flight owns the camera, so the key is refused
-        /// while it does.
+        /// F: frame the selected body by making it the render origin, and leave
+        /// the ship where it is. The camera orbits the body at four radii; Space
+        /// returns to the ship's local view. A running flight owns the camera,
+        /// so the key is refused while it does.
         /// </summary>
         public void FocusSelected()
         {
             if (Flight != null && Flight.IsFlying) return;
             if (Selected == null || Rig == null) return;
 
-            Rig.FocusBody(Selected, ShipPositionM);
+            Rig.FocusBody(Selected);
         }
 
         /// <summary>

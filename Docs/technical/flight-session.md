@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -505,7 +505,7 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
 | **Begin flight** | Fly the drawn plan from its own departure while the preview is fresh; replan at the current state and date once it is stale; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |
-| `F` | Ease the camera to the selected body in one second; the ship does not move, and a flight refuses it |
+| `F` | Frame the selected body by making it the render origin, at four radii; the ship does not move, and a flight refuses it |
 | **Jump (debug)** / `J` | Three-second eased debug teleport of the ship to the selected body; disabled in flight |
 | `X` | Cancel the flight and discard any preview; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight and preview |

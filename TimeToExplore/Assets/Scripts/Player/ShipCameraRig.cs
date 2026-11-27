@@ -94,6 +94,16 @@ namespace TimeToExplore.Player
         /// <summary>True while F's move to the selected body is easing.</summary>
         public bool IsFocusingBody => BodyFocus.IsActive;
 
+        /// <summary>
+        /// The body whose position is the render origin while focused, or null
+        /// in the ordinary ship-relative frame. The origin is not the camera
+        /// target: the body itself is at zero and the camera orbits it.
+        /// </summary>
+        public BodyRuntime FocusTarget { get; private set; }
+
+        /// <summary>True while the render frame is centred on a body.</summary>
+        public bool IsFocused => FocusTarget != null;
+
         /// <summary>Render units per metre.</summary>
         public float UnitsPerMeter { get; set; } = 1e-6f;
 
@@ -147,7 +157,6 @@ namespace TimeToExplore.Player
         private float _zoomAnchorFieldOfViewDegrees = 60f;
         private bool _uiOverLastFrame;
         private bool _cursorCaptured;
-        private BodyRuntime _focusBodyTarget;
 
         public void Initialise(Camera camera, SolarSystemModel model, float unitsPerMeter)
         {
@@ -173,7 +182,7 @@ namespace TimeToExplore.Player
             // cursor-anchored zoom, the route overview, the body focus, or
             // home transition.
             _zoomAnchorActive = false;
-            CancelBodyFocus();
+            ExitFocus();
             RouteView.Cancel();
             Home.Cancel();
 
@@ -201,7 +210,7 @@ namespace TimeToExplore.Player
         public void ClearAuto()
         {
             _zoomAnchorActive = false;
-            CancelBodyFocus();
+            ExitFocus();
             RouteView.Cancel();
             Home.Cancel();
 
@@ -241,6 +250,23 @@ namespace TimeToExplore.Player
         /// </summary>
         public void HomeToShip(Vector3d shipPositionM)
         {
+            // Leaving a focused body also changes the render origin, so there
+            // is no continuous camera path back to the ship. Land on the home
+            // view directly; the content cut is the cost of the origin move.
+            if (FocusTarget != null)
+            {
+                ExitFocus();
+                AutoAim = false;
+                AutoDistance = false;
+                _zoomPending = false;
+                _zoomAnchorActive = false;
+                RouteView.Cancel();
+                Home.Cancel();
+                LookAtOffsetM = Vector3d.Zero;
+                Orbit.SnapDistance(HomeDistanceUnits(LocalRadiusM(shipPositionM)));
+                return;
+            }
+
             // Take the view from the framing exactly as a drag does: clear the
             // follow flags but keep AutoTarget, so an active flight's next
             // frame does not re-claim the camera and cancel the transition.
@@ -258,24 +284,22 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
-        /// Ease the view to the selected body, without moving the ship. F calls
-        /// this. The camera turns to put the body at the centre and zooms to
-        /// the same distance the jump and arrival framing use, then hands the
-        /// view to the existing follow so a moving body stays centred. Space
-        /// unwinds the focus and returns home; a drag or a new framing target
-        /// takes the view back.
+        /// Frame the selected body by making it the render origin, without
+        /// moving the ship. F calls this. The body is at zero, the camera keeps
+        /// the player's yaw and pitch, and the distance eases to
+        /// <see cref="FocusDistanceUnits"/>; if the old ship-frame distance was
+        /// already wider, it starts there and zooms in. Space leaves the focus
+        /// and returns to the ship's local view.
         ///
-        /// This is a camera move, not a jump: the render frame is ship-relative,
-        /// and a body at interplanetary distance is far below float precision at
-        /// the ship. The debug jump still exists for close inspection.
+        /// The origin switch is the point: a body at interplanetary distance is
+        /// far below float precision when the ship is the origin, so no amount
+        /// of camera zoom can show its surface. The simulation ship stays put;
+        /// only the render frame moves. The debug jump (`J`) still moves the
+        /// ship when the player wants to be there physically.
         /// </summary>
-        public void FocusBody(BodyRuntime body, Vector3d shipPositionM)
+        public void FocusBody(BodyRuntime body)
         {
             if (body == null) return;
-
-            OrbitCamera.AnglesForLookDirection(body.PositionM - shipPositionM,
-                out float targetYaw, out float targetPitch);
-            float targetDistance = AutoDistanceUnits(shipPositionM, body);
 
             // The focus owns the whole pose until it lands. Drop the cursor
             // anchor, any wheel request, a route overview, and the home move.
@@ -283,22 +307,40 @@ namespace TimeToExplore.Player
             _zoomAnchorActive = false;
             Home.Cancel();
             RouteView.Cancel();
+            BodyFocus.Cancel();
             AutoAim = false;
             AutoDistance = false;
             AutoTarget = null;
             _autoDistancePending = false;
-            _focusBodyTarget = body;
+
+            FocusTarget = body;
+            SetLookAtOffsetM(Vector3d.Zero);
+
+            float focusDistance = FocusDistanceUnits(body);
+            float startDistance = Mathf.Max(Orbit.DistanceUnits, focusDistance);
+            Orbit.SnapDistance(startDistance);
 
             BodyFocus.DurationSeconds = Mathf.Max(0f, BodyFocusDurationSeconds);
-            BodyFocus.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, Orbit.DistanceUnits,
-                LookAtOffsetM, targetYaw, targetPitch, targetDistance, Vector3d.Zero);
+            BodyFocus.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, startDistance,
+                Vector3d.Zero, Orbit.YawDegrees, Orbit.PitchDegrees, focusDistance,
+                Vector3d.Zero);
         }
 
-        /// <summary>Stop the body-focus move and forget its target.</summary>
+        /// <summary>
+        /// Leave the focused body and return the render origin to the ship. The
+        /// caller should use <see cref="HomeToShip"/> when the camera should
+        /// also land at the ship's local view.
+        /// </summary>
+        public void ExitFocus()
+        {
+            FocusTarget = null;
+            BodyFocus.Cancel();
+        }
+
+        /// <summary>Stop the body-focus move but keep the focused origin.</summary>
         private void CancelBodyFocus()
         {
             BodyFocus.Cancel();
-            _focusBodyTarget = null;
         }
 
         /// <summary>
@@ -314,6 +356,7 @@ namespace TimeToExplore.Player
         {
             if (routePointsM == null || routePointsM.Count < 2) return false;
 
+            ExitFocus();
             Vector2 screen = ScreenPixels();
             RouteFraming.Frame frame = RouteFraming.Compute(routePointsM, shipPositionM,
                 targetArrivalM, UnitsPerMeter, FieldOfViewDegrees, Aspect(screen),
@@ -373,9 +416,9 @@ namespace TimeToExplore.Player
             }
             else if (BodyFocus.IsActive)
             {
-                // F's move to the selected body owns the pose together, then
-                // hands the view to the ordinary follow so the body stays
-                // centred as it moves.
+                // F's move to the focused body owns the pose until it lands.
+                // The body stays at the origin, so no follow target is needed;
+                // the bootstrap keeps the origin on the body each frame.
                 bool arrived = BodyFocus.Advance(deltaTime);
                 Orbit.YawDegrees = BodyFocus.YawDegreesAt;
                 Orbit.PitchDegrees = BodyFocus.PitchDegreesAt;
@@ -388,16 +431,6 @@ namespace TimeToExplore.Player
                     Orbit.PitchDegrees = BodyFocus.TargetPitchDegrees;
                     Orbit.SnapDistance(BodyFocus.TargetDistanceUnits);
                     SetLookAtOffsetM(BodyFocus.TargetLookAtOffsetM);
-
-                    if (_focusBodyTarget != null)
-                    {
-                        AutoTarget = _focusBodyTarget;
-                        AutoAim = true;
-                        AutoDistance = true;
-                        AutoDistanceTargetUnits = BodyFocus.TargetDistanceUnits;
-                        _autoDistancePending = false;
-                        _focusBodyTarget = null;
-                    }
                 }
             }
             else if (RouteView.IsActive)
@@ -470,6 +503,21 @@ namespace TimeToExplore.Player
                 3.0 * System.Math.Max(target.RadiusM, 1.0),
                 5.0e11); // 3.3 AU, enough to see a whole inner-system plan
             return (float)(distanceM * UnitsPerMeter);
+        }
+
+        /// <summary>
+        /// How far the camera sits from a focused body: four radii, so the disc
+        /// fills about half the view and the atmosphere has room at the limb.
+        /// The orbit range still bounds it, so a tiny asteroid is not framed
+        /// from inside the near plane.
+        /// </summary>
+        public float FocusDistanceUnits(BodyRuntime body)
+        {
+            if (body == null) return OrbitCamera.DefaultDistanceUnits;
+
+            double distanceM = 4.0 * System.Math.Max(body.RadiusM, 1.0);
+            return Mathf.Clamp((float)(distanceM * UnitsPerMeter),
+                OrbitCamera.MinDistanceUnits, OrbitCamera.MaxDistanceUnits);
         }
 
         /// <summary>

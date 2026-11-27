@@ -4,7 +4,7 @@ title: Input
 description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, the legacy mouse dispatcher, and the mouse and wheel rules.
 tags: [technical, input, unity, controls, ui]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # Two readers, one contract
@@ -144,7 +144,7 @@ neither reads a device for it.
 | `P` | pause / resume | `SolarSystemBootstrap` |
 | `1`–`7` | requested time warp 1× to 1,000,000× | `SolarSystemBootstrap` |
 | `Tab` | cycle planet/station target | `SolarSystemBootstrap` |
-| `F` | ease the camera to the selected body, without moving the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
+| `F` | frame the selected body by moving the render origin to it, without moving the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
 | `J` | debug jump: ease the ship beside the selected body | `SolarSystemBootstrap` |
 | `Esc` | cancel a debug jump; close the details screen | `SolarSystemBootstrap`, `SolarSystemHud` |
 | `R` | reset to Gateway and 1× | `SolarSystemBootstrap` |
@@ -162,11 +162,11 @@ neither reads a device for it.
 | Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 
-`F` and `J` are different tools. `F` moves the **camera** to the selected body
-with the same one-second eased pose change as `Space` home, and leaves the ship
-where it is; the view then follows the body until a drag or `Space` takes it
-back. `J` is the debug jump that moves the **ship** to eight radii from the
-body. A running flight owns the camera, so both are refused while it flies.
+`F` and `J` are different tools. `F` makes the selected body the **render
+origin** and frames it at four radii, so the planet is seen at its true size;
+the ship stays where it is, and `Space` returns to the ship's local view. `J`
+is the debug jump that moves the **ship** to eight radii from the body. A
+running flight owns the camera, so both are refused while it flies.
 
 `Esc` keeps its old order: the bootstrap (execution order −100) cancels the
 debug jump first, then the HUD closes the details screen. Both actions run

@@ -4,7 +4,7 @@ title: Rendering at solar scale
 description: How to draw a 10¹³-metre system with float transforms, one camera, and a few thousand triangles.
 tags: [technical, rendering, scale, floating-origin]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T20:10:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # The problem
@@ -169,6 +169,29 @@ along `ThrustCommand.Direction` whenever the commanded acceleration is above
   and a cone head, emitted double-sided because the shared unlit shader culls
   back faces. Direction comes from the transform's rotation, so the mesh is
   independent of the camera pose.
+
+# The focused render frame
+
+The render origin is normally the ship. **`F` moves it to the selected body**,
+so the camera can frame a planet at its true size without moving the simulated
+ship. The reason is float precision: Mars is 3,390 km across, or 3.39 render
+units, but at 1 AU its centre is 150,000 units from a ship-relative origin. A
+32-bit float at that magnitude has an ULP around 0.015 units, so the true
+sphere is smaller than one representable step and collapses. No amount of
+camera zoom can fix that.
+
+While focused, every body position is computed relative to the focused body,
+which sits at `(0,0,0)`. The camera keeps the player's yaw and pitch and orbits
+that origin at **four radii** (clamped to the orbit range), so the disc fills
+about half the view and the atmosphere has room at the limb. The ship marker,
+the route line, and the orbit lines belong to the ship frame; they are hidden
+until the focus ends. `Space` returns the origin to the ship and lands on its
+home view. The switch is a cut rather than a continuous camera move, because
+there is no continuous path across the precision gap.
+
+The albedo and atmosphere gates read the **camera** distance, not the origin
+distance. In a focused frame the body's origin distance is zero while the
+camera is four radii away; the gates must still see the planet as close.
 
 # Orbit lines
 
