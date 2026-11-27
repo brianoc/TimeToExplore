@@ -235,7 +235,7 @@ cap. The scene flow is described in [The flight session](/technical/flight-sessi
 | `OrbitCamera` | `Scripts/Player/OrbitCamera.cs` | Plain-C# orbit state: yaw, pitch, distance, slew, zoom |
 | `CursorZoom` | `Scripts/Player/CursorZoom.cs` | Plain-C# pointer anchor: pointer-to-NDC, the look-at-plane point, the anchored look-at, and the 60 AU offset cap |
 | `LocalScale` | `Scripts/Player/LocalScale.cs` | Plain-C# dominant-body choice and local radius, used by `Space` home |
-| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit, wheel zoom toward the pointer, the one-second home transition, destination and route framing, camera placement, continuous body avoidance |
+| `ShipCameraRig` | `Scripts/Player/ShipCameraRig.cs` | Right-drag orbit, wheel zoom toward the pointer, the one-second home transition, destination and route framing, camera placement |
 | `CameraFocusDirector` | `Scripts/Player/CameraFocusDirector.cs` | Runs the debug "Jump (debug)" ship move |
 | `FocusTransition` | `Scripts/Player/FocusTransition.cs` | Plain-C# eased ship move |
 | `BodyPicker` | `Scripts/UI/BodyPicker.cs` | Screen-space pick against drawn markers: importance-ordered hits and the repeated-click cycle |
@@ -584,7 +584,7 @@ solver, orbital-element state and conservation laws, Lagrange points, the
 catalogue invariants, parent-first propagation, epoch distances and speeds, the
 Moon's parent-equator frame, station updates, orbit sampling, the clock, body
 details and picking, the focus-transition easing, the orbit camera and its
-single-range zoom, the cursor anchor, continuous body avoidance, the drawing
+single-range zoom, the cursor anchor, the drawing
 rules, the URP pipeline and shader wiring, the sky's texture and shader, the
 flight core (including the Lambert solver and both coast profiles), the input
 seam's key table and mouse

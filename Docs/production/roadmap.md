@@ -180,8 +180,6 @@ distance.
 * the framing distance is captured once when a plan, jump, or reset starts and
   re-captured on arrival, so a moving target does not re-target the zoom every
   frame;
-* body avoidance stops the camera at a body's clearance sphere continuously, so
-  a body drifting past the orbit slides the camera instead of stepping it;
 * `Space` still eases home in one second; the 60 AU look-at cap still bounds an
   off-centre zoom.
 

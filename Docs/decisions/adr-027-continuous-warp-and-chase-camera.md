@@ -63,9 +63,8 @@ the planner.
    follow, and a wheel takes the distance while the flight keeps the view; the
    zoom stays centred on the ship, so it cannot slide aside. When the ship comes
    within ten radii of a planet, the destination framing takes over, before the
-   fixed chase angle can point back at the planet and the avoidance parks the
-   camera on its surface. A station or a small body keeps the chase until the
-   arrival.
+   fixed chase angle can point back at the planet and put the camera on its
+   surface. A station or a small body keeps the chase until the arrival.
 
 # Consequences
 

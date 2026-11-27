@@ -181,11 +181,10 @@ arrival ends the flight view. The ordinary orrery view still uses the 10 px
 marker.
 
 The destination framing takes over when the ship comes within **ten radii** of a
-planet, not only on the arrival date. The chase angle is fixed at departure, and
-on the last leg it can point back at the planet; the avoidance then parks the
-camera on the surface for the final seconds. Framing from ten radii turns that
-into the arrival shot and leaves the camera well clear: at Mars the capture sits
-19 Mars radii from the centre instead of on the deck. A station or a small body
+planet, not only on the arrival date. The chase angle is fixed at departure and
+can point back at the planet on the last leg, so the framing starts before the
+camera can sit on the surface. At Mars the capture sits 19 Mars radii from the
+centre. A station or a small body
 keeps its chase until the arrival, because it has no surface to wipe.
 
 
@@ -315,7 +314,7 @@ frame of a real off-centre zoom, the anchor surviving after the tween, Space's
 one-second home with the remembered angle, a wheel or drag cancelling it, the
 button routing (right-drag orbits; a press on a panel starts nothing; a world
 press keeps its gesture across a panel), the slew-rate turn when the framing
-target changes, the near plane, continuous body avoidance, and the flight chase
+target changes, the near plane, and the flight chase
 pose: its 20° elevation and 30° side angle, the eased arrival, and the drag and
 arrival handbacks.
 

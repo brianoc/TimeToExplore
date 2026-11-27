@@ -338,9 +338,8 @@ namespace TimeToExplore
                 }
                 // Hand the chase to the destination framing before the ship
                 // reaches the planet. A fixed chase angle can point back at the
-                // body on the last leg, and the avoidance then parks the camera
-                // on its surface; framing from ten radii turns that into the
-                // arrival shot instead of a surface wipe.
+                // body on the last leg; framing from ten radii turns that into
+                // the arrival shot instead of a surface wipe.
                 if (Flight.IsFlying && Rig != null && Rig.IsFlightView
                     && Flight.TargetId != null)
                 {

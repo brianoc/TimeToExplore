@@ -318,7 +318,7 @@ namespace TimeToExplore.Player
             }
 
             LookAtOffsetM = Vector3d.Zero;
-            ApplyToCamera(shipPositionM);
+            ApplyToCamera();
         }
 
         /// <summary>
@@ -343,7 +343,7 @@ namespace TimeToExplore.Player
             Orbit.PitchDegrees = frame.PitchDegrees;
             Orbit.SnapDistance(frame.DistanceUnits);
             SetLookAtOffsetM(frame.LookAtOffsetM);
-            ApplyToCamera(shipPositionM);
+            ApplyToCamera();
             return true;
         }
 
@@ -642,7 +642,7 @@ namespace TimeToExplore.Player
             // so the point stays pinned through the frame.
             ApplyZoomAnchor();
 
-            ApplyToCamera(shipPositionM);
+            ApplyToCamera();
         }
 
         /// <summary>
@@ -881,22 +881,17 @@ namespace TimeToExplore.Player
                 : LocalScale.DeepSpaceRadiusM;
         }
 
-        private void ApplyToCamera(Vector3d shipPositionM)
+        private void ApplyToCamera()
         {
             float distanceUnits = Mathf.Max(Orbit.DistanceUnits, OrbitCamera.MinDistanceUnits);
             Vector3 offset = Orbit.OffsetDirection * distanceUnits;
 
             Vector3 offsetUnits = LookAtOffsetUnits;
-            Vector3d lookAtM = shipPositionM + LookAtOffsetM;
-
-            // Avoidance is measured from the look-at point, so the camera
-            // pulls toward the viewed centre rather than always toward the ship.
-            Vector3 placed = AvoidBodies(offset, lookAtM);
 
             LookAtUnits = offsetUnits;
-            PosePositionUnits = offsetUnits + placed;
+            PosePositionUnits = offsetUnits + offset;
             PoseRotation = Orbit.Rotation;
-            PoseNearClipUnits = OrbitCamera.NearClipUnits(placed.magnitude);
+            PoseNearClipUnits = OrbitCamera.NearClipUnits(offset.magnitude);
 
             if (_camera == null) return;
 
@@ -904,61 +899,6 @@ namespace TimeToExplore.Player
             _camera.transform.rotation = PoseRotation;
             _camera.nearClipPlane = PoseNearClipUnits;
             _camera.farClipPlane = OrbitCamera.FarClipUnits;
-        }
-
-        /// <summary>
-        /// Pull the camera in if the orbit would put it inside a body. The ray
-        /// from the look-at point along the camera offset is tested against each
-        /// body's sphere in metres, and the camera stops just in front of the
-        /// first one it would enter. The result is a continuous function of the
-        /// orbit: grazing a body slides the camera along the ray instead of
-        /// stepping it inward by a fixed fraction, which is what made the view
-        /// jump as a body drifted past the camera.
-        /// </summary>
-        private Vector3 AvoidBodies(Vector3 offset, Vector3d lookAtPositionM)
-        {
-            if (_model == null || !(UnitsPerMeter > 0f)) return offset;
-
-            Vector3 direction = offset.normalized;
-            double distanceM = offset.magnitude / UnitsPerMeter;
-            if (!(distanceM > 0.0)) return offset;
-
-            Vector3d ray = Vector3d.FromUnity(direction);
-            if (ray.SqrMagnitude < 1e-12) return offset;
-            ray = ray.Normalized;
-
-            // Keep a margin outside the surface, so a body does not clip the
-            // near plane as the camera grazes it.
-            const double ClearanceFraction = 1.05;
-
-            foreach (BodyRuntime body in _model.Ordered)
-            {
-                double radiusM = body.RadiusM;
-                if (!(radiusM > 0.0) || !double.IsFinite(radiusM)) continue;
-
-                double clearanceM = radiusM * ClearanceFraction;
-                Vector3d toBody = body.PositionM - lookAtPositionM;
-                double alongM = Vector3d.Dot(toBody, ray);
-
-                // Only bodies in front of the look-at point along the camera
-                // ray can be entered by a camera beyond them.
-                if (alongM <= 0.0) continue;
-
-                double perpendicularSq = toBody.SqrMagnitude - alongM * alongM;
-                double clearanceSq = clearanceM * clearanceM;
-                if (perpendicularSq >= clearanceSq) continue;
-
-                // The near intersection of the ray with the body's clearance
-                // sphere. It moves continuously with the orbit, so no step.
-                double halfChordM = System.Math.Sqrt(clearanceSq - perpendicularSq);
-                double nearM = alongM - halfChordM;
-                if (nearM > 0.0 && nearM < distanceM) distanceM = nearM;
-            }
-
-            double minimumM = OrbitCamera.MinDistanceUnits / UnitsPerMeter;
-            distanceM = System.Math.Max(distanceM, minimumM);
-
-            return direction * (float)(distanceM * UnitsPerMeter);
         }
     }
 }
