@@ -53,7 +53,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Unity 7 CoreCLR upgrade](/technical/unity-7-coreclr.md) — the alpha 22 upgrade, what it broke, and how the route planner runs on Mono, the CoreCLR Editor, a CoreCLR player, and a plain .NET 10 Release harness.
 * [Selection and camera focus](/technical/selection-and-camera.md) — click a body for its details, then plot a route or jump to it, and how the one orbit camera zooms, frames, and returns home.
 * [The system map (removed)](/technical/system-map.md) — a historical record of the top-down comparison layer removed on 2026-11-21; the current camera is in Selection and camera focus.
-* [Testing and verification](/technical/testing.md) — the one-command check suite, the EditMode and PlayMode test matrices, and numerical reference values.
+* [Testing and verification](/technical/testing.md) — the check suite, how to pick the narrowest gate, the EditMode and PlayMode test matrices, and numerical reference values.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Planet appearance](/technical/planet-appearance.md) — the albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere shell, and why scattering waits.

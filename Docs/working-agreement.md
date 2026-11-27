@@ -4,7 +4,7 @@ title: Working agreement
 description: The rules that apply in every session, and where work happens.
 tags: [process, agents, git, worktrees, documentation, testing, handoff]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:09:23Z }
 ---
 
 # Working agreement
@@ -21,8 +21,9 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
    `Docs/log.md` current. Do not record a test count in the bundle: it drifts,
    so report the command and its result instead.
 3. **Add tests for every new feature or piece of work.** Extend the Unity
-   EditMode or PlayMode suite (or `tools/validate_catalogue.py`), then run
-   `tools/check.sh`.
+   EditMode or PlayMode suite (or `tools/validate_catalogue.py`), then run the
+   narrowest gate that covers the change (`tools/check.sh --changed`). Run the
+   full `tools/check.sh` before a merge, not for every small tweak.
 4. **Keep the handoff live while a plan is in progress, and clear it when the
    plan is done.** The repository-root `HANDOFF.md` is a session handoff, not a
    historic log and not a source of design truth:

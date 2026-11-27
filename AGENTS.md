@@ -102,14 +102,24 @@ stays in the concepts and ADRs.
   the HUD is uGUI, not IMGUI, and the legacy backend has no consumer.
 - A change to orbital maths or catalogue data should be checked numerically
   against known values at the epoch (2026-11-15, JD 2461359.5).
-- Run `tools/check.sh --fast` while iterating on docs, Python tools, or data.
-  It validates the OKF bundle, the catalogue schema, both generators'
-  reproducibility, and the guard's unit tests in a few seconds.
-- Run `tools/check.sh` before finishing any C# change. Its Unity suites run in
-  `.cache/test-project` with `Assets` symlinked to the real folder and their own
-  warm `Library`, so the open editor is untouched and the import is paid once.
-  `--tests core|flight|presentation|smoke` narrows the EditMode run;
-  `--tests playmode` runs the PlayMode suite; `--reset` rebuilds the cache.
+- Check in proportion to the change, and name the gate you ran:
+  - Docs, Python tools, or catalogue data: `tools/check.sh --fast` (a few
+    seconds). It validates the OKF bundle, the catalogue schema, both
+    generators' reproducibility, and the tooling tests.
+  - One C# area: `tools/check.sh --changed`, which reads the changed files and
+    runs only the matching EditMode category (about two minutes). It stops
+    after the fast gates for a docs-only change, and it refuses a path it has
+    no rule for rather than running everything.
+  - Planner maths or the scene: `tools/check.sh --changed --deep` (about
+    thirteen minutes).
+  - Before a merge: a bare `tools/check.sh` (about sixteen minutes). A small
+    tweak does not need the merge gate.
+  - One fixture: add `--filter <ClassName>` to narrow the run further.
+- The Unity suites run in `.cache/test-project` with `Assets` symlinked to the
+  real folder and their own warm `Library`, so the open editor is untouched and
+  the import is paid once. `--tests core|flight|presentation|smoke` still works
+  when the mapping is not obvious; `--tests playmode` runs the PlayMode suite;
+  `--reset` rebuilds the cache.
 - Do not force-close a Unity editor that has the project open. Use a temporary
   copy of the project for other batch-mode work; `check.sh` already isolates its
   own runs.
