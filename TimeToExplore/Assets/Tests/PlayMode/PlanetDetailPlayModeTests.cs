@@ -36,7 +36,7 @@ namespace TimeToExplore.Tests.PlayMode
         {
             yield return null;
 
-            _bootstrap = Object.FindFirstObjectByType<SolarSystemBootstrap>();
+            _bootstrap = Object.FindAnyObjectByType<SolarSystemBootstrap>();
             Assert.That(_bootstrap, Is.Not.Null,
                 "RuntimeInitializeOnLoad must create the bootstrap in a bare play session");
 

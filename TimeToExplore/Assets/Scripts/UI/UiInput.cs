@@ -34,7 +34,7 @@ namespace TimeToExplore.UI
         {
             created = false;
 
-            EventSystem existing = Object.FindFirstObjectByType<EventSystem>(
+            EventSystem existing = Object.FindAnyObjectByType<EventSystem>(
                 FindObjectsInactive.Include);
             if (existing != null)
             {

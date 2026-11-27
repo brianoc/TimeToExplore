@@ -14,7 +14,7 @@ namespace TimeToExplore.Tests.PlayMode
     internal sealed class FrameOrderProbe : MonoBehaviour
     {
         public SolarSystemBootstrap Bootstrap;
-        public BodyRuntime Body;
+        [System.NonSerialized] public BodyRuntime Body;
 
         public int Frames { get; private set; }
         public bool ClockHeldBetweenPhases { get; private set; }

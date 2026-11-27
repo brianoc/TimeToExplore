@@ -1075,8 +1075,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         private static EventSystem[] EventSystems() =>
-            Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
+            Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Exclude);
 
         private GameObject Child(string name)
         {
