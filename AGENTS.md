@@ -12,9 +12,10 @@ or a short video when motion or interaction is what changed, in the chat.
 
 - `Docs/` is the design knowledge base. It is an **OKF v0.2 bundle**: Markdown
   files with YAML frontmatter, a root `index.md`, and a root `log.md`.
-- `TimeToExplore/` is the Unity 6000.3.28f1 project (Universal Render Pipeline
-  17.3.0, Input System 1.20.1 with Active Input Handling **New** only, and uGUI
-  2.0.0 for the runtime HUD). Code is split into `TimeToExplore.Core`,
+- `TimeToExplore/` is the Unity 7000.0.0a22 project (CoreCLR Editor, user code
+  on .NET 10 / C# 14; Universal Render Pipeline 17.7.0, Input System 7.0.0 with
+  Active Input Handling **New** only, and uGUI 7.0.0 for the runtime HUD). Code
+  is split into `TimeToExplore.Core`,
   `TimeToExplore.Simulation`, `TimeToExplore.Presentation`, and
   `TimeToExplore.Editor` assemblies; the rule is Core ← Simulation ←
   Presentation ← Editor/Tests ([ADR-012](Docs/decisions/adr-012-assembly-layout.md)).

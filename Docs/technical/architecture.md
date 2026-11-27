@@ -611,10 +611,10 @@ values:
 Unity, and `tools/check.sh` regenerates the catalogue and the sky offline to
 prove the committed files are reproducible.
 
-The C# runtime and editor scripts compile against Unity 6.3's assemblies. The
-project is intended to be opened in Unity 6.3 (6000.3.28f1) with the Universal
-Render Pipeline, the Input System package, uGUI, and Active Input Handling set to
-**Input System Package (New)**.
+The C# runtime and editor scripts compile against Unity 7's assemblies. The
+project is intended to be opened in Unity 7.0 alpha 22 (`7000.0.0a22`) with the
+CoreCLR Editor, the Universal Render Pipeline, the Input System package, uGUI,
+and Active Input Handling set to **Input System Package (New)**.
 
 # Known limitations
 

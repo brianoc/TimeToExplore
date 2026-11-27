@@ -1,17 +1,18 @@
 ---
 type: Reference
-title: Unity 7 CoreCLR experiment
-description: What Unity 7000.0.0a22 changed, what the upgrade broke, and how the route planner runs on Mono, the CoreCLR Editor, and a plain .NET 10 host.
+title: Unity 7 CoreCLR upgrade
+description: What Unity 7000.0.0a22 changed, what the upgrade broke, and how the route planner runs on Mono, the CoreCLR Editor, a CoreCLR player, and a plain .NET 10 host.
 tags: [technical, unity, coreclr, dotnet, performance, benchmark, alpha]
-status: draft
+status: active
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T15:30:00Z }
 ---
 
 # Unity 7 alpha 22
 
-**This is an experiment on `work/unity-7-coreclr`, not the project's editor.**
-`main` stays on Unity 6000.3.28f1 until the person testing approves the
-comparison and the upgrade. The branch changes `ProjectVersion.txt`, the package
+**The project's editor is Unity 7000.0.0a22 on CoreCLR.** It replaced Unity
+6000.3.28f1 on 2026-11-27. The comparison below was measured on the upgrade
+branch before the merge; the branch is history, and `main` now carries the
+version. The upgrade changes `ProjectVersion.txt`, the package
 lock, and the URP settings that Unity 7 migrated; nothing in the planner's
 source or its answers.
 
