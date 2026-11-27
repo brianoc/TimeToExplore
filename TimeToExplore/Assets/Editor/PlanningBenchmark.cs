@@ -445,8 +445,8 @@ namespace TimeToExplore.EditorTools
                 return null;
             }
 
-            // The plot's own ±2 neighbours: a drag that starts as soon as the
-            // route appears must not race them or time them.
+            // The plot's own six steps each side: a drag that starts as soon
+            // as the route appears must not race them or time them.
             WaitForPrefetchIdle(session);
 
             double minimum = session.PreviewMinimumSeconds;
@@ -458,6 +458,11 @@ namespace TimeToExplore.EditorTools
                 return null;
             }
 
+            // The plot opens eight steps above the minimum, so the drag starts
+            // where the handle is, not at the window's fastest trip.
+            int startIndex = (int)Math.Round(
+                (session.PreviewStartSeconds - minimum) / step);
+
             int builds = session.RetimeBuilds;
             int cacheHits = session.RetimeCacheHits;
             int prefetched = session.PrefetchBuilds;
@@ -465,7 +470,8 @@ namespace TimeToExplore.EditorTools
             var latencies = new double[DragSteps];
             for (int i = 1; i <= DragSteps; i++)
             {
-                double seconds = minimum + step * i;
+                int index = Math.Min(startIndex + i, FlightSession.SliderStepCount - 1);
+                double seconds = minimum + step * index;
                 long started = Stopwatch.GetTimestamp();
                 if (!session.RequestPreviewDuration(seconds) || !WaitForRetime(session))
                 {

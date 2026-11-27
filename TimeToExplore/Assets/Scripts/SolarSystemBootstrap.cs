@@ -536,7 +536,7 @@ namespace TimeToExplore
         /// The one plot path. The selection's prime is adopted when it is ready,
         /// which shows the route in the same frame as the click; a prime still
         /// building is continued and revealed when it lands. A fresh preview
-        /// that is still at the planner's fastest trip is framed instead of
+        /// that is still at the plot's start trip is framed instead of
         /// rebuilt, while a retimed or stale one is replotted — that is how the
         /// panel's Replot resets the trip time.
         /// </summary>
@@ -560,7 +560,7 @@ namespace TimeToExplore
             }
 
             bool hasPreview = Flight.HasPreview && Flight.Preview.TargetId == body.Id;
-            if (hasPreview && IsPreviewAtFastestTrip()
+            if (hasPreview && IsPreviewAtStartTrip()
                            && !Flight.IsPreviewStale(Clock.JulianDate))
             {
                 _frameOnPreviewTargetId = null;
@@ -580,18 +580,23 @@ namespace TimeToExplore
             && (body.Gm > 0.0 || body.Data.IsStation)
             && !Flight.IsFlying;
 
-        /// <summary>Whether the published preview is still the planner's own
-        /// fastest trip, rather than a duration the player chose on the
-        /// slider.</summary>
-        private bool IsPreviewAtFastestTrip()
+        /// <summary>Whether the published preview is still at the trip a fresh
+        /// plot chooses, rather than a duration the player picked on the
+        /// slider. Half a step is the handle's own resolution, so a plan that
+        /// lands a microsecond off its step still counts.</summary>
+        private bool IsPreviewAtStartTrip()
         {
             if (Flight == null || !Flight.HasPreview) return false;
 
-            double fastest = Flight.PreviewMinimumSeconds;
+            double minimum = Flight.PreviewMinimumSeconds;
+            double maximum = Flight.PreviewMaximumSeconds;
+            double step = (maximum - minimum)
+                          / (SolarSystemHud.TimeSliderSteps - 1);
+            double start = Flight.PreviewStartSeconds;
             double shown = Flight.PreviewDurationSeconds;
-            return double.IsFinite(fastest) && double.IsFinite(shown)
-                   && System.Math.Abs(shown - fastest)
-                   <= 1e-9 * System.Math.Max(1.0, System.Math.Abs(fastest));
+            return double.IsFinite(step) && step > 0.0
+                   && double.IsFinite(start) && double.IsFinite(shown)
+                   && System.Math.Abs(shown - start) <= 0.5 * step;
         }
 
         /// <summary>Begin the plotted route. While the preview is fresh the drawn

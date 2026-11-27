@@ -73,9 +73,10 @@ namespace TimeToExplore.Tests.EditMode
                        }))
             {
                 session.PlaceAt("gateway", ship.JulianDate);
-                floorPlan = session.Plot(targetId, ship.JulianDate);
+                session.Plot(targetId, ship.JulianDate);
                 minimum = session.PreviewMinimumSeconds;
                 maximum = session.PreviewMaximumSeconds;
+                floorPlan = session.SetPreviewDuration(minimum);
             }
         }
 

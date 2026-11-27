@@ -102,8 +102,9 @@ namespace TimeToExplore.Tests.EditMode
         public void BeginningAtTheFullBlastMinimumFliesThePreviewedPlan()
         {
             _session.BurnLevelG = 1.0;
-            TrajectoryPlan preview = _session.Plot("mercury", _epoch);
+            _session.Plot("mercury", _epoch);
             double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan preview = _session.SetPreviewDuration(minimum);
 
             TestContext.WriteLine($"preview minimum {minimum / JulianDate.SecondsPerDay:F6} d");
 
@@ -272,8 +273,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(preview.IsFeasible, Is.True, preview.InfeasibleReason);
             Assert.That(preview.TargetId, Is.EqualTo("gateway"));
             Assert.That(preview.FlightTimeSeconds,
-                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1e-6),
-                "the plotted preview is the window's own floor plan");
+                Is.EqualTo(_session.PreviewStartSeconds)
+                    .Within(0.5 * (maximumDays - minimumDays)
+                        / (SolarSystemHud.TimeSliderSteps - 1)
+                        * JulianDate.SecondsPerDay),
+                "the plotted preview is the plot's start trip");
             Assert.That(minimumDays, Is.EqualTo(54.36495).Within(0.01),
                 "a station's nav minimum is the split-aware coast floor");
             Assert.That(maximumDays, Is.EqualTo(163.09485).Within(0.03),
@@ -422,8 +426,9 @@ namespace TimeToExplore.Tests.EditMode
             ShipState departure = _session.State.WithJulianDate(_epoch);
             TrajectoryPlan coastFloor = _planner.Plan(departure, "uranus");
 
-            TrajectoryPlan preview = _session.Plot("uranus", _epoch);
+            _session.Plot("uranus", _epoch);
             double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan preview = _session.SetPreviewDuration(minimum);
 
             TestContext.WriteLine($"uranus coast floor {coastFloor.FlightTimeDays:F5} d, " +
                                   $"preview minimum {minimum / JulianDate.SecondsPerDay:F5} d");
@@ -458,6 +463,7 @@ namespace TimeToExplore.Tests.EditMode
         public void ChangingTheArrivalStyleRebuildsThePreviewAndLeavesTheShipStill()
         {
             TrajectoryPlan conic = _session.Plot("mars", _epoch);
+            double conicTrip = _session.PreviewDurationSeconds;
             ShipState before = _session.State;
 
             _session.SetArrivalStyle(CaptureStyle.FiniteBurn);
@@ -474,9 +480,12 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_session.PreviewMinimumSeconds,
                 Is.LessThanOrEqualTo(_session.PreviewDurationSeconds + 1e-3),
                 "the trip-time window is the new style's fastest plan");
+            double rebuildStep = (_session.PreviewMaximumSeconds
+                                  - _session.PreviewMinimumSeconds)
+                                 / (SolarSystemHud.TimeSliderSteps - 1);
             Assert.That(_session.PreviewDurationSeconds,
-                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1.0),
-                "the trip-time window resets to the new style's fastest plan");
+                Is.EqualTo(conicTrip).Within(0.5 * rebuildStep),
+                "the rebuild keeps the player's trip time inside the new window");
             Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Idle));
             Assert.That(_session.State.JulianDate, Is.EqualTo(before.JulianDate));
@@ -487,8 +496,8 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan back = WaitForPublishedPreview();
 
             Assert.That(_session.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(back.Arcs.Count, Is.EqualTo(7),
-                "the conic capture is back, on the full-blast crossing");
+            Assert.That(back.Arcs.Count, Is.EqualTo(8),
+                "the conic capture is back, at the player's kept trip time");
             Assert.That(back.Arcs[back.Arcs.Count - 1].Phase,
                 Is.EqualTo(FlightPhase.Parking));
         }
@@ -532,12 +541,18 @@ namespace TimeToExplore.Tests.EditMode
                 Is.LessThan(coastFloor.FlightTimeSeconds),
                 "the full-blast crossing beats the coast floor");
             Assert.That(preview.FlightTimeSeconds,
-                Is.EqualTo(_session.PreviewMinimumSeconds).Within(1e-6));
+                Is.EqualTo(_session.PreviewStartSeconds)
+                    .Within(0.5 * (_session.PreviewMaximumSeconds
+                                   - _session.PreviewMinimumSeconds)
+                        / (SolarSystemHud.TimeSliderSteps - 1)),
+                "the plot publishes its start trip, eight steps above the minimum");
+            Assert.That(_session.PreviewStartSeconds,
+                Is.GreaterThan(_session.PreviewMinimumSeconds),
+                "the start trip leaves the handle room to drag faster");
 
-            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.False, "the preview minimum is the no-coast crossing");
-            Assert.That(preview.Arcs[2].IsFiniteBurn, Is.True);
-            Assert.That(preview.Arcs[3].IsFiniteBurn, Is.True);
+            Assert.That(preview.Arcs.Count(arc => arc.IsFiniteBurn),
+                Is.GreaterThanOrEqualTo(2),
+                "the start trip still carries the departure burn and the brake");
 
             // A duration above the floor still builds the coast path, and a
             // retime anywhere in the window is feasible.
@@ -586,7 +601,7 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void APlotAsyncPublishesTheFastestFeasiblePlan()
+        public void APlotAsyncPublishesTheStartTrip()
         {
             Assert.That(_session.PlotAsync("mars", _epoch), Is.True,
                 "a plot is queued, not built");
@@ -597,7 +612,15 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(published.IsFeasible, Is.True);
             Assert.That(_session.Preview, Is.SameAs(published));
             Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
-            Assert.That(_session.PreviewMinimumSeconds, Is.EqualTo(published.FlightTimeSeconds));
+            Assert.That(_session.PreviewMinimumSeconds,
+                Is.LessThan(published.FlightTimeSeconds),
+                "the window keeps the fastest trip as its lower bound");
+            double step = (_session.PreviewMaximumSeconds
+                           - _session.PreviewMinimumSeconds)
+                          / (SolarSystemHud.TimeSliderSteps - 1);
+            Assert.That(published.FlightTimeSeconds,
+                Is.EqualTo(_session.PreviewStartSeconds).Within(0.5 * step),
+                "the plot publishes eight steps above the fastest trip");
             Assert.That(_session.PreviewDurationSeconds, Is.EqualTo(published.FlightTimeSeconds));
             Assert.That(_session.PreviewMaximumSeconds,
                 Is.GreaterThan(_session.PreviewMinimumSeconds),
@@ -682,8 +705,9 @@ namespace TimeToExplore.Tests.EditMode
                 Is.True);
             Assert.That(_session.Preview, Is.SameAs(adopted));
             Assert.That(_session.PreviewJulianDate, Is.EqualTo(_epoch));
-            Assert.That(_session.PreviewMinimumSeconds,
-                Is.EqualTo(adopted.FlightTimeSeconds));
+            Assert.That(_session.PreviewStartSeconds,
+                Is.EqualTo(adopted.FlightTimeSeconds).Within(1.0),
+                "the warmed plan is the plot's start trip");
 
             Assert.That(_session.TryAdoptPrimedPreview("mars", out _), Is.False,
                 "a warm-up is adopted once");
@@ -1039,8 +1063,9 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void BeginningAtTheMinimumInsideTheWindowFliesTheDrawnMinimum()
         {
-            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            _session.Plot("mars", _epoch);
             double previewMinimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan preview = _session.SetPreviewDuration(previewMinimum);
             double later = _epoch + 0.5 * _session.PreviewStaleAfterDays;
 
             TrajectoryPlan plan = _session.Begin("mars", later);
@@ -1056,8 +1081,9 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void BeginningAtTheMinimumBeyondTheWindowFliesTheReplannedMinimum()
         {
-            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            _session.Plot("mars", _epoch);
             double previewMinimum = _session.PreviewMinimumSeconds;
+            _session.SetPreviewDuration(previewMinimum);
             double later = _epoch + 1.2 * _session.PreviewStaleAfterDays;
             TrajectoryPlan replanned = _planner.PlanFastest(
                 _session.State.WithJulianDate(later), "mars");
@@ -1189,8 +1215,9 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void RetimingBackToTheFloorReusesTheCachedFloorPlan()
         {
-            TrajectoryPlan floor = _session.Plot("mars", _epoch);
+            _session.Plot("mars", _epoch);
             double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan floor = _session.SetPreviewDuration(minimum);
 
             TrajectoryPlan slower = _session.SetPreviewDuration(2.0 * minimum);
             Assert.That(slower, Is.Not.SameAs(floor), "a longer trip is a new build");
@@ -1214,8 +1241,9 @@ namespace TimeToExplore.Tests.EditMode
         [Test]
         public void ABackgroundRetimeToTheFloorReusesTheCachedFloorPlan()
         {
-            TrajectoryPlan floor = _session.Plot("mars", _epoch);
+            _session.Plot("mars", _epoch);
             double minimum = _session.PreviewMinimumSeconds;
+            TrajectoryPlan floor = _session.SetPreviewDuration(minimum);
             _session.SetPreviewDuration(2.0 * minimum);
 
             Assert.That(_session.RequestPreviewDuration(minimum), Is.True);
@@ -1678,12 +1706,41 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// A published plot queues the two neighbours above its duration. The
-        /// preview starts at the window minimum, so the two below clamp away and
-        /// nothing is faked below it.
+        /// A fresh plot publishes eight of the control's 63 intervals above
+        /// the window minimum, so the handle starts with room to drag faster
+        /// and clear of the two unseeded steps.
         /// </summary>
         [Test]
-        public void APlotPrefetchesTheTwoStepsAboveIt()
+        public void APlotPublishesEightStepsAboveTheFastestTrip()
+        {
+            TrajectoryPlan plotted = _session.Plot("mars", _epoch);
+
+            double minimum = _session.PreviewMinimumSeconds;
+            double maximum = _session.PreviewMaximumSeconds;
+            double step = (maximum - minimum) / (SolarSystemHud.TimeSliderSteps - 1);
+
+            TestContext.WriteLine(
+                $"plot {plotted.FlightTimeSeconds / JulianDate.SecondsPerDay:F5} d, " +
+                $"step {step / JulianDate.SecondsPerDay:F5} d, " +
+                $"minimum {minimum / JulianDate.SecondsPerDay:F5} d");
+
+            Assert.That((plotted.FlightTimeSeconds - minimum) / step,
+                Is.EqualTo(8.0).Within(1e-6),
+                "the plotted trip is eight slider steps above the fastest");
+            Assert.That(_session.PreviewStartSeconds,
+                Is.EqualTo(plotted.FlightTimeSeconds).Within(0.5 * step));
+            Assert.That(_session.HasCachedPlanAt(plotted.FlightTimeSeconds), Is.True,
+                "the start plan is cached, so returning to it is free");
+        }
+
+        /// <summary>
+        /// A published plot queues six neighbours each side of its start trip.
+        /// The plot starts eight steps above the window minimum, so the lower
+        /// six reach step 2 and step 1 clamps away; nothing is invented below
+        /// the minimum.
+        /// </summary>
+        [Test]
+        public void APlotPrefetchesSixStepsEachSideOfItsStart()
         {
             _session.PlotAsync("mars", _epoch);
             TrajectoryPlan plotted = WaitForPublishedPreview();
@@ -1691,25 +1748,61 @@ namespace TimeToExplore.Tests.EditMode
 
             double minimum = _session.PreviewMinimumSeconds;
             double maximum = _session.PreviewMaximumSeconds;
-            double first = StepSeconds(minimum, maximum, 1);
-            double second = StepSeconds(minimum, maximum, 2);
 
             TestContext.WriteLine($"plot {plotted.FlightTimeDays:F5} d: " +
                 $"{_session.PrefetchBuilds} neighbours prefetched from " +
                 $"{minimum / JulianDate.SecondsPerDay:F5} d over " +
                 $"{(maximum - minimum) / JulianDate.SecondsPerDay:F5} d");
 
-            Assert.That(_session.PrefetchBuilds, Is.GreaterThanOrEqualTo(2),
-                "the plot built its two upper neighbours");
-            Assert.That(_session.HasCachedPlanAt(first), Is.True,
-                "step 1 is in the cache");
-            Assert.That(_session.HasCachedPlanAt(second), Is.True,
-                "step 2 is in the cache");
-            Assert.That(_session.HasCachedPlanAt(minimum -
-                    (maximum - minimum) / (SolarSystemHud.TimeSliderSteps - 1)),
-                Is.False, "no plan is invented below the window minimum");
+            Assert.That(_session.PrefetchBuilds, Is.GreaterThanOrEqualTo(12),
+                "the plot built six neighbours each side");
+            for (int step = 2; step <= 14; step++)
+            {
+                Assert.That(_session.HasCachedPlanAt(
+                        StepSeconds(minimum, maximum, step)), Is.True,
+                    $"step {step} is in the cache");
+            }
+
+            Assert.That(_session.HasCachedPlanAt(StepSeconds(minimum, maximum, 1)),
+                Is.False, "the plot's six lower steps stop above step 1");
+            Assert.That(_session.HasCachedPlanAt(StepSeconds(minimum, maximum, 15)),
+                Is.False, "the plot's six upper steps stop below step 15");
             Assert.That(_session.Preview, Is.SameAs(plotted),
                 "prefetching never republishes the preview");
+        }
+
+        /// <summary>
+        /// A drag queues twelve steps ahead of the ask in the direction the
+        /// handle travelled. The direction comes from the step index against
+        /// the last accepted ask, so the queue is a window ahead of the handle,
+        /// not a symmetric pair.
+        /// </summary>
+        [Test]
+        public void ADragPrefetchesTwelveStepsInTheDirectionOfTravel()
+        {
+            _session.PlotAsync("mars", _epoch);
+            WaitForPublishedPreview();
+            WaitForPrefetchIdle();
+
+            double minimum = _session.PreviewMinimumSeconds;
+            double maximum = _session.PreviewMaximumSeconds;
+            double step = (maximum - minimum) / (SolarSystemHud.TimeSliderSteps - 1);
+            double target = StepSeconds(minimum, maximum, 20);
+
+            Assert.That(_session.RequestPreviewDuration(target), Is.True);
+            double[] queued = _session.QueuedPrefetchSeconds();
+
+            TestContext.WriteLine($"{queued.Length} neighbours queued above step 20");
+
+            Assert.That(queued, Has.Length.EqualTo(12),
+                "a drag queues twelve steps, all in the direction of travel");
+            for (int i = 1; i <= 12; i++)
+            {
+                double expected = target + i * step;
+                Assert.That(queued.Any(seconds =>
+                        Math.Abs(seconds - expected) <= 1e-6), Is.True,
+                    $"step {20 + i} is queued");
+            }
         }
 
         /// <summary>
@@ -1723,20 +1816,20 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan plotted = WaitForPublishedPreview();
             WaitForPrefetchIdle();
 
-            double step = StepSeconds(_session.PreviewMinimumSeconds,
-                _session.PreviewMaximumSeconds, 1);
+            double target = StepSeconds(_session.PreviewMinimumSeconds,
+                _session.PreviewMaximumSeconds, 14);
             int builds = _session.RetimeBuilds;
             int hits = _session.RetimeCacheHits;
 
-            Assert.That(_session.RequestPreviewDuration(step), Is.True);
+            Assert.That(_session.RequestPreviewDuration(target), Is.True);
             TrajectoryPlan published = WaitForPublishedRetime();
 
-            TestContext.WriteLine($"drag to step 1 at " +
+            TestContext.WriteLine($"drag to step 14 at " +
                 $"{published.FlightTimeDays:F5} d: builds " +
                 $"{_session.RetimeBuilds - builds}, cache hits " +
                 $"{_session.RetimeCacheHits - hits}");
 
-            Assert.That(published.FlightTimeSeconds, Is.EqualTo(step).Within(1e-3));
+            Assert.That(published.FlightTimeSeconds, Is.EqualTo(target).Within(1e-3));
             Assert.That(published, Is.Not.SameAs(plotted));
             Assert.That(_session.RetimeBuilds, Is.EqualTo(builds),
                 "the prefetched neighbour needed no build");
@@ -1798,9 +1891,9 @@ namespace TimeToExplore.Tests.EditMode
         /// A real retime that arrives while a neighbour is building waits for
         /// that one build and no more: an in-flight build cannot be cancelled,
         /// so one build is the prefetch's latency tail. That build is a build's
-        /// own cost, not the warm retime's — the first step above the floor at
-        /// Mars takes about 0.9 s against a mid-window build's 0.44 s. The
-        /// queued neighbours are replaced by the ask's own direction at once.
+        /// own cost, not the warm retime's — the plot queues its lower
+        /// neighbours first, and those sit near the floor at Mars. The queued
+        /// neighbours are replaced by the ask's own direction at once.
         /// </summary>
         [Test]
         public void ARetimeArrivingMidPrefetchWaitsAtMostOneBuild()
@@ -1835,7 +1928,7 @@ namespace TimeToExplore.Tests.EditMode
             // in-flight prefetch plus this ask's own build.
             ShipState departure = _session.State.WithJulianDate(_epoch);
             double neighbour = StepSeconds(_session.PreviewMinimumSeconds,
-                _session.PreviewMaximumSeconds, 1);
+                _session.PreviewMaximumSeconds, 7);
 
             var watch = Stopwatch.StartNew();
             TrajectoryPlan reference = _planner.PlanAtDuration(departure, "mars", target);

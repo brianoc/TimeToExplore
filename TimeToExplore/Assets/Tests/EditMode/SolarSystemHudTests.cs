@@ -583,14 +583,16 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(slider.maxValue,
                 Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
                 "64 distinct trips, endpoints included");
-            Assert.That(slider.value, Is.EqualTo(0f).Within(1e-6),
-                "a fresh preview sits on its minimum");
+            Assert.That(slider.value, Is.EqualTo(StepFor(slider,
+                    _bootstrap.Flight.PreviewStartSeconds, minimum, maximum)).Within(1e-6),
+                "a fresh preview sits on the plot's start trip");
             Assert.That(TextNamed("TimeSliderLabel").text, Does.StartWith("TRIP TIME"));
             Assert.That(TextNamed("TimeSliderValue").text,
-                Does.StartWith(SolarSystemHud.FormatDuration(minimum)));
+                Does.StartWith(SolarSystemHud.FormatDuration(
+                    _bootstrap.Flight.PreviewStartSeconds)));
             Assert.That(TextNamed("TimeSliderValue").text,
-                Does.Contain("0.3 g burns · no coast"),
-                "the full-blast minimum has no cruise coast, and the label says so");
+                Does.Contain("burns · coast"),
+                "the start trip is above the floor, so the profile coasts");
 
             float step = StepFor(slider, 2.0 * minimum, minimum, maximum);
             double chosen = SecondsFor(slider, step, minimum, maximum);
@@ -651,8 +653,8 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color),
                 "the active style is marked");
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
-                "the default is the conic capture on the full-blast crossing");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(8),
+                "the default is the conic capture on the plot's coasting start trip");
 
             // The zero-coast minimum carries the conic capture chain whichever
             // arrival style is chosen, so retime above the floor first: there the
@@ -790,14 +792,17 @@ namespace TimeToExplore.Tests.EditMode
             TrajectoryPlan plan = _bootstrap.Flight.Preview;
             Assert.That(plan.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
                 "the profile flies its departure burn and brake");
-            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.False,
-                "the full-blast minimum is the no-coast crossing");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
+            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
+            Assert.That(plan.FlightTimeSeconds,
+                Is.EqualTo(_bootstrap.Flight.PreviewStartSeconds)
+                    .Within(0.5 * (maximum - minimum)
+                        / (SolarSystemHud.TimeSliderSteps - 1)),
+                "the plot opens on its start trip, eight steps above the fastest");
+
             Assert.That(minimum / JulianDate.SecondsPerDay, Is.EqualTo(6.66965).Within(0.02),
                 "the window starts at the full-blast crossing");
-            double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
                 $"{minimum / JulianDate.SecondsPerDay:F2} d to " +
                 $"{maximum / JulianDate.SecondsPerDay:F2} d");
@@ -813,8 +818,9 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(timeSlider.maxValue,
                 Is.EqualTo(SolarSystemHud.TimeSliderSteps - 1f).Within(1e-6),
                 "64 distinct trips across the profile's window");
-            Assert.That(timeSlider.value, Is.EqualTo(0f).Within(1e-6),
-                "the preview opens on its fastest trip");
+            Assert.That(timeSlider.value, Is.EqualTo(StepFor(timeSlider,
+                    _bootstrap.Flight.PreviewStartSeconds, minimum, maximum)).Within(1e-6),
+                "the preview opens on the plot's start trip");
 
             List<DetailRow> report = FlightReport.Build(_bootstrap.Flight,
                 _bootstrap.Model, "x1");

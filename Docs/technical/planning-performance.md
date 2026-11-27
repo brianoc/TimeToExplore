@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, Begin flying the fresh preview, and the planet-to-planet plot matrix.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:05:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T21:20:22Z }
 ---
 
 # The problem
@@ -1198,6 +1198,11 @@ is correct.
 
 ## Step 4: prefetching the slider's neighbours (2026-11-25)
 
+*(The measurements below belong to the original two-and-three-step policy. The
+current policy opens the plot eight steps above the minimum and prefetches six
+each side, with twelve ahead of a drag: see
+[the start trip and the wider prefetch](#step-8-the-plots-start-trip-and-the-wider-prefetch-2026-11-27).)*
+
 The cache made a step the player had already waited for free, and the warm start
 made the next step's build cheaper, but a **new** step was still one build away.
 This step fills the slots the player is about to ask for, on the same worker, so
@@ -1703,3 +1708,46 @@ probe read **200 ms** for the vector loop against the documented **184**, about
 *shares* are the stable part, and the Editor's own numbers are about 3.7× these
 — which is why a plot reads as several seconds while flying in the Editor and
 one to three in the player.
+
+## Step 8: the plot's start trip and the wider prefetch (2026-11-27)
+
+**The start trip.** A plot used to publish the window's minimum, so the handle
+opened on the left edge and the first drag towards a slower trip was always a
+build. It now publishes the **start trip**: `PlotStartSteps = 8` of the
+control's 63 intervals above `PreviewMinimumSeconds`, about **12.7%** of the
+window. The handle has room to move either way from the first frame, and the
+route no longer sits on the window's boundary. The start trip is also clear of
+the two lowest steps, which are never seeded.
+
+The build sits inside the plot, after the window solve: one warm
+`PlanAtDuration` at `minimum + 8·(maximum − minimum)/63`, seeded from the floor
+plan and cached like a retime. The route therefore appears one warm build after
+the window alone — about **0.34–0.45 s** at Mars from the Step 4 table — and a
+repeat plot or a prime adoption reuses the cached plan.
+`FlightSession.PreviewStartSeconds` is the duration the Plot click treats as
+the default; Replot replans only when the published trip is more than half a
+slider step away from it.
+
+**The wider prefetch.** After a plot the session queues **six steps each side**
+of the start trip, so steps 2–14 are filled on a default plot and step 1 clamps
+away at the minimum. During a drag it queues **twelve steps in the direction of
+travel**, not three. The direction is still inferred from the step index
+against the last accepted ask, and the worker's priority rule, the seeding, the
+cache key, and the **64-slot** bound are unchanged.
+
+**The cost is background work.** At about 0.35 s a warm step, a plot now leaves
+about **4 s of prefetch** on the worker after the route appears, against the old
+policy's two upper steps (about 0.7 s). A drag leaves up to about **4 s** behind
+the handle when it stops. None of it blocks a frame: a real retime clears the
+unstarted queue and waits at most for the one item already building. The table
+in [Step 4](#step-4-prefetching-the-sliders-neighbours-2026-11-25) measured the
+two-and-three-step policy, so its timings describe that queue, not this one.
+`PlanningBenchmark` now starts its drag at the plot's start step rather than the
+window minimum; its live numbers should be read against the same policy.
+
+**Verification.** `FlightSessionTests` pins the eight-step start trip, the six
+neighbours each side of it, the twelve-step drag queue, and a drag that
+publishes a prefetched neighbour with no build. `SolarSystemHudTests` and
+`BootstrapSmokeTests` pin the handle's opening position and the start trip
+through the real HUD. `tools/check.sh --changed` passed the fast gates and both
+Unity suites with 0 failed and 0 skipped.
