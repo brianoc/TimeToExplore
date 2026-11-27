@@ -32,6 +32,18 @@ namespace TimeToExplore.Simulation
         public double MaxAccelerationMps2 { get; }
         public IReadOnlyList<PlanArc> Arcs => _arcs;
 
+        /// <summary>
+        /// Bind every finite burn to the field of the code that will fly the
+        /// plan. The planner's background worker owns one gravity field and the
+        /// flight owns another; a published plan must not keep preparing the
+        /// worker's field on the main thread.
+        /// </summary>
+        internal void RebindGravity(IGravityField gravity)
+        {
+            foreach (PlanArc arc in _arcs)
+                if (arc.Path is FiniteBurnArc burn) burn.RebindGravity(gravity);
+        }
+
         /// <summary>Reference state at the start of the plan.</summary>
         public ShipState DepartureState { get; }
 

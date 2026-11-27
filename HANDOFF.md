@@ -1,15 +1,12 @@
 # Handoff
 
-**No active handoff (2026-11-27).** The planet appearance pass and the
-camera-only focus key are complete and merged. `F` eases the camera to the
-selected body; `J` is the debug jump that moves the ship. The art pass is
-[ADR-024](Docs/decisions/adr-024-planet-appearance.md) and
-[Planet appearance](Docs/technical/planet-appearance.md); the focus,
-`Space` home and the camera rules are in
-[Selection and camera focus](Docs/technical/selection-and-camera.md). The
-texture attribution, including the CC BY 4.0 creator, licence and changes
-statement, is `TimeToExplore/Assets/Resources/Planets/ATTRIBUTION.md`. `main`
-stays unpushed until the person testing confirms the look.
+**No active handoff (2026-11-27).** The Unity 7 CoreCLR upgrade is merged and
+pushed. The project opens on Unity `7000.0.0a22` with user code on .NET 10 /
+C# 14; the upgrade record, the Editor and player benchmarks, and the reason the
+Editor is slower than a player are in
+[the Unity 7 upgrade](Docs/technical/unity-7-coreclr.md). The planet appearance
+pass and the camera focus key are recorded in [the log](Docs/log.md) and their
+concepts.
 
 Start from [the design bundle](Docs/index.md),
 [the roadmap](Docs/production/roadmap.md), and

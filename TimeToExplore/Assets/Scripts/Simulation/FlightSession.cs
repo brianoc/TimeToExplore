@@ -609,6 +609,8 @@ namespace TimeToExplore.Simulation
             if (!IsWithinFreshnessWindow(primed)) return false;
 
             Preview = fastest;
+            fastest.RebindGravity(_gravity);
+            primed.WindowPlan.RebindGravity(_gravity);
             PreviewJulianDate = primed.DepartureJulianDate;
             PreviewMinimumSeconds = primed.WindowPlan.FlightTimeSeconds;
             PreviewMaximumSeconds = primed.MaximumSeconds;
@@ -869,6 +871,7 @@ namespace TimeToExplore.Simulation
 
             if (Preview == null || Preview.TargetId != plan.TargetId) return false;
 
+            plan.RebindGravity(_gravity);
             Preview = plan;
             _requestedPreviewSeconds = plan.FlightTimeSeconds;
             return true;
@@ -1088,6 +1091,8 @@ namespace TimeToExplore.Simulation
             }
 
             Preview = completed.FinalPlan;
+            completed.FinalPlan.RebindGravity(_gravity);
+            completed.WindowPlan.RebindGravity(_gravity);
             PreviewJulianDate = completed.DepartureJulianDate;
             PreviewMinimumSeconds = completed.WindowPlan.FlightTimeSeconds;
             PreviewMaximumSeconds = completed.MaximumSeconds;
@@ -1965,11 +1970,11 @@ namespace TimeToExplore.Simulation
         /// found by probing; the slider can never ask for a plan the planner
         /// refuses.
         ///
-        /// Internal so the route benchmark can time the exact pair
+        /// Public so the route benchmark can time the exact pair
         /// <see cref="WindowFor"/> runs, instead of timing a copy that can drift
         /// from the real probe count. It reads no session state.
         /// </summary>
-        internal double MaximumPreviewSeconds(string targetId, double minimum,
+        public double MaximumPreviewSeconds(string targetId, double minimum,
             TripPlanner planner, ShipState departure)
         {
             if (!(minimum > 0.0) || !double.IsFinite(minimum))

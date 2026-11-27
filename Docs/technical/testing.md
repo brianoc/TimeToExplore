@@ -109,6 +109,10 @@ Unity suites are the gate for any C# change.
 
 # How long the gates take
 
+The table below was recorded on Unity 6000.3.28f1 before the Unity 7 upgrade.
+The Unity 7 gate passes with the same commands; its measured full run is in
+[the Unity 7 upgrade](/technical/unity-7-coreclr.md).
+
 Measured on an M4 Max with a warm `.cache/test-project`, Unity 6000.3.28f1, at
 the epoch. Wall times include Unity's start-up and the fast gates; the test
 counts are EditMode unless the row says otherwise.

@@ -78,6 +78,12 @@ namespace TimeToExplore.Rendering
         public string ArcLabel(int index) =>
             index >= 0 && index < _activeLines.Count ? _activeLines[index].Label : null;
 
+        /// <summary>The line object's transform, for tests and diagnostics.</summary>
+        public Transform ArcLineTransform(int index) =>
+            index >= 0 && index < _activeLines.Count
+                ? _activeLines[index].Renderer.transform
+                : null;
+
         /// <summary>Render-space position of the arrival marker, for a screen label.</summary>
         public Vector3 ArrivalMarkerPosition => _arrivalMarker != null ? _arrivalMarker.position : Vector3.zero;
 
@@ -167,6 +173,28 @@ namespace TimeToExplore.Rendering
         public void Show(TrajectoryPlan plan) =>
             Show(plan, default, false);
 
+        /// <summary>The pooled arc lines are roots, so their owner releases
+        /// them; the markers are children and Unity releases them with this
+        /// object.</summary>
+        private void OnDestroy()
+        {
+            foreach (ArcLine line in _lines)
+            {
+                if (line == null) continue;
+                if (line.Material != null)
+                {
+                    if (Application.isPlaying) Destroy(line.Material);
+                    else DestroyImmediate(line.Material);
+                }
+
+                if (line.Renderer == null) continue;
+                if (Application.isPlaying) Destroy(line.Renderer.gameObject);
+                else DestroyImmediate(line.Renderer.gameObject);
+            }
+
+            _lines.Clear();
+        }
+
         /// <summary>
         /// Sample a plan and mark where the target body will be on the arrival
         /// date. The ghost is the planet, not the ship's parking position, so
@@ -235,8 +263,12 @@ namespace TimeToExplore.Rendering
 
         private ArcLine CreateLine(int index)
         {
+            // A plan line is world-space geometry, and it stays at the scene
+            // root on purpose. Unity 7's alpha asserts when a child is parented
+            // into a hierarchy that holds entities from two Entities worlds,
+            // which the editor creates around the play session; a root line
+            // never enters that hierarchy. OnDestroy releases them.
             GameObject lineObject = new GameObject("Plan Arc " + (index + 1) + " Line");
-            lineObject.transform.SetParent(transform, false);
 
             var line = lineObject.AddComponent<LineRenderer>();
             line.useWorldSpace = true;
