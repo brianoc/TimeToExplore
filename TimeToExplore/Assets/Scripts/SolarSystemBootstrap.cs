@@ -78,7 +78,7 @@ namespace TimeToExplore
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
-            if (Object.FindFirstObjectByType<SolarSystemBootstrap>() != null) return;
+            if (Object.FindAnyObjectByType<SolarSystemBootstrap>() != null) return;
             GameObject root = new GameObject("Time to Explore");
             root.AddComponent<SolarSystemBootstrap>();
         }

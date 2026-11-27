@@ -16,7 +16,7 @@ namespace TimeToExplore.Player
     {
         public float DurationSeconds = FocusTransition.DefaultDurationSeconds;
         public ShipController Ship;
-        public SolarSystemModel Model;
+        [System.NonSerialized] public SolarSystemModel Model;
         public ShipCameraRig Rig;
 
         public FocusTransition Transition { get; } = new FocusTransition();
