@@ -4,7 +4,7 @@ title: Unity 7 CoreCLR upgrade
 description: What Unity 7000.0.0a22 changed, what the upgrade broke, and how the route planner runs on Mono, the CoreCLR Editor, a CoreCLR player, and a plain .NET 10 host.
 tags: [technical, unity, coreclr, dotnet, performance, benchmark, alpha]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T15:30:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:05:00Z }
 ---
 
 # Unity 7 alpha 22
@@ -99,6 +99,9 @@ tools/dotnet-bench.sh --out build/dotnet-bench.json
 tools/dotnet-bench.sh -c Debug --out build/dotnet-bench-debug.json
 tools/dotnet-bench.sh --micro
 
+# Every major planet to every other one, as a dated table
+tools/dotnet-bench.sh --matrix
+
 # The CoreCLR player build and its in-player route benchmark
 tools/player-bench.sh --out build/player-bench.json
 
@@ -106,6 +109,11 @@ tools/player-bench.sh --out build/player-bench.json
 tools/compare_runtimes.py --mono <mono.json> --coreclr <coreclr.json> \
     --dotnet build/dotnet-bench.json
 ```
+
+`--matrix` is the wide diagnostic rather than the six-route baseline: it plots
+every major planet from every other one at the same epoch and writes a dated
+Markdown table beside its JSON. [Planning performance](/technical/planning-performance.md#the-planet-to-planet-plot-matrix-2026-11-27)
+carries the first run.
 
 The committed baseline was recorded on Unity 6000.3.28f1. This session's Mono
 run lands about 3.5% above it across every phase, which is the machine, not the

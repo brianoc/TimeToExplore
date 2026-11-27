@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: Planning performance
-description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, and Begin flying the fresh preview.
+description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, Begin flying the fresh preview, and the planet-to-planet plot matrix.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:05:00Z }
 ---
 
 # The problem
@@ -1613,3 +1613,93 @@ untouched by this change.
 The mid-retime refusal is untouched: Venus → Earth at 12.18 d is below the
 floor, so the rescue still runs and costs about 1.9 s in the harness to refuse.
 That is a player request where the short coast belongs, not a window probe.
+
+## The planet-to-planet plot matrix (2026-11-27)
+
+The six-route benchmark measures Earth departures and three reverses, so a
+report of refused routes and long plots while flying between the other planets
+had no instrument. `tools/dotnet-bench.sh --matrix` is that instrument. It plots
+every major planet from every other one on the **plain .NET host** — the same
+Core and Simulation sources, no Editor in the loop — and writes a dated table
+beside its JSON.
+
+**Method.** Eight planets and 56 ordered pairs at JD 2461359.5 with conic
+capture. A cell is the pair the session's **first preview** runs:
+`PlanFastest` plus the cold window build (`MaximumPreviewSeconds`). Earth leaves
+from the **Gateway** station, the anchor the six-route benchmark uses; the other
+seven leave from the conic parking orbit a capture parks in, with the orbit's
+phase prograde to the planet's own flight. The level is the player's **0.3 g**
+default, and a refusal is retried at **1 g**, the level the existing reverses
+already use where 0.3 g cannot lift out of the well. Each cell is the median of
+three after one untimed call. The JSON keeps every cell's floor, window, refusal
+reason, `PlanMetrics` phase split, build counts and pin passes.
+
+Recorded **2026-11-27 18:56 UTC**, plain .NET 10.0.14 Release on the M4 Max,
+median of three. Milliseconds; `*` is a 1 g plot after the 0.3 g attempt
+refused; a dash is the same planet.
+
+| From \ To | Mercury | Venus | Earth | Mars | Jupiter | Saturn | Uranus | Neptune |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **Mercury** | — | refused | refused | 753 ms | 1,270 ms | refused | refused | refused |
+| **Venus** | 861 ms* | — | 2,227 ms* | 868 ms* | 1,518 ms* | refused | refused | refused |
+| **Earth** | 765 ms | 799 ms | — | 928 ms | 1,161 ms | refused | 1,393 ms | refused |
+| **Mars** | 853 ms | 1,410 ms | refused | — | 3,272 ms | refused | refused | refused |
+| **Jupiter** | refused | refused | refused | refused | — | refused | refused | refused |
+| **Saturn** | 2,424 ms* | 2,886 ms* | 3,626 ms* | 2,248 ms* | 1,031 ms* | — | 2,293 ms* | refused |
+| **Uranus** | 2,714 ms* | 1,932 ms* | 1,391 ms* | 1,139 ms* | 955 ms* | refused | — | refused |
+| **Neptune** | 2,532 ms* | refused | 3,136 ms* | 2,039 ms* | 794 ms* | 1,290 ms* | 1,235 ms* | — |
+
+**Ten pairs plot at the default 0.3 g, 21 more at 1 g, and 25 refuse at both.**
+The matrix is therefore a map of where the planner fails as much as of what a
+plot costs. The refusals fall into two messages:
+
+* **Seven Jupiter departures** refuse because the **escape climb or the brake
+  alone wants the whole trip** at the 9.7 m/s² level: Jupiter → Earth at 200 d
+  needs 234.0 d for the climb, and at 400 d the brake still wants all 399.9 d.
+  That is a thrust limit, not a search setting: the fix is a stronger torch or a
+  different departure scheme, not a longer seed.
+* **Eighteen coast refusals** report *no prograde short-way Lambert transfer*
+  with a transfer angle between 6.9° and 111.3°, all under the 180° the message
+  says the coast needs. **Mars → Earth** is the documented growth-cap case: a
+  fixed **90 d** build plots at 46,827 m/s, the feasibility the roadmap records,
+  so the floor search's twelve 20% steps never reach a feasible trip. The rest do
+  **not** follow that story: Earth → Saturn still refuses at a fixed **400 d**
+  (37.1°), and Earth → Neptune at 400 d (58.0°), at both 0.3 g and 1 g. The
+  seed is not the whole cause there, and the refusal needs its own
+  investigation.
+
+### Where the time goes
+
+Over the 31 plots that succeed, the median is **1,044 ms**, the coast floor is
+**57%** of the wall time and the full-blast crossing is **36%**; the window
+build and the seam arithmetic are the remaining **7%**. The split follows the
+route family:
+
+* **Inner departures are coast-floor bound.** Mars → Jupiter is the slowest
+  clean cell at **3,272 ms**, and the coast floor alone is **2,911 ms** (89%);
+  the full-blast search adds 273 ms. Earth → Jupiter (1,161 ms) and Earth →
+  Uranus (1,393 ms) are the same shape.
+* **Outer departures are burn-only bound.** Venus → Earth, Saturn → Mercury and
+  Uranus → Mercury spend most of their time in the full-blast seam and search —
+  1,036 ms of Venus → Earth's 2,227, 1,613 of Saturn → Mercury's 2,424 — because
+  their coast floor is short (279–320 ms) and the 1 g crossing is the expensive
+  part.
+
+**Credited work.** Mars → Jupiter's 3,272 ms carries **301 pin passes** (6
+certified builds, 17 fast probes, 10 certified burn arcs over 5,120 samples).
+Earth → Mars is the lightest clean cell at **928 ms** with 166 pin passes, and
+Venus → Earth's 1 g plot pays **10 certified builds** and a 913 ms seam solve
+for a 319 ms coast floor. A cost cut has to pick the family it is cutting.
+
+So there is no single hot spot to fix. A first plot pays a coast floor *and* a
+full-blast search, and which one dominates depends on where the ship starts.
+The refusal classes above are a bigger problem than the milliseconds: 25 of 56
+pairs never reach the window at all.
+
+**Caveat.** The Editor was open and a parallel Unity suite was running on other
+cores, so the load average sat between 7 and 13. The same session's `--micro`
+probe read **200 ms** for the vector loop against the documented **184**, about
+9% slow, so the table is close to a quiet machine rather than 2× off. The phase
+*shares* are the stable part, and the Editor's own numbers are about 3.7× these
+— which is why a plot reads as several seconds while flying in the Editor and
+one to three in the player.
