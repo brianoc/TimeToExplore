@@ -46,13 +46,24 @@ namespace TimeToExplore.Tests.PlayMode
             Assert.That(mars, Is.Not.Null);
 
             bootstrap.Select(mars);
+            string dir = System.Environment.GetEnvironmentVariable("FLIGHT_CAPTURE_DIR")
+                         ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+            Capture(bootstrap.ViewCamera, Path.Combine(dir, "flight-start.png"));
+
             bootstrap.BeginGoTo(mars);
             Assert.That(bootstrap.Flight.IsFlying, Is.True,
                 bootstrap.Flight.Failure ?? "the flight must begin");
 
-            string dir = System.Environment.GetEnvironmentVariable("FLIGHT_CAPTURE_DIR")
-                         ?? Path.GetTempPath();
-            Directory.CreateDirectory(dir);
+            // The opening ease runs for 1.2 s; sample it so a body that the
+            // camera sweeps through is visible in the evidence.
+            for (int frame = 0; frame < 90; frame++)
+            {
+                yield return null;
+                if (frame % 10 == 0)
+                    Capture(bootstrap.ViewCamera,
+                        Path.Combine(dir, $"flight-start-{frame:000}.png"));
+            }
 
             // About six real seconds: the 1.2 s chase ease is long done and the
             // warp curve is at its cruise rate.
@@ -84,9 +95,18 @@ namespace TimeToExplore.Tests.PlayMode
                 guard++;
             }
 
+            bootstrap.Model.ComputeState(mars, bootstrap.Clock.JulianDate,
+                out Vector3d marsPosition, out _);
+            Vector3 marsRelative = ((marsPosition - bootstrap.ShipPositionM)
+                                    * bootstrap.UnitsPerMeter).ToUnity();
+            float cameraToMars = Vector3.Distance(bootstrap.Rig.PosePositionUnits,
+                marsRelative);
             Debug.Log($"arrival approach at {bootstrap.Clock.Label}, " +
                       $"flight remaining " +
-                      $"{(bootstrap.Flight.Plan.ArrivalJulianDate - bootstrap.Clock.JulianDate) * JulianDate.SecondsPerDay:F1} s");
+                      $"{(bootstrap.Flight.Plan.ArrivalJulianDate - bootstrap.Clock.JulianDate) * JulianDate.SecondsPerDay:F1} s, " +
+                      $"camera {bootstrap.Rig.Orbit.DistanceUnits:F1} units, " +
+                      $"camera-Mars {cameraToMars:F2} units " +
+                      $"(Mars radius {mars.RadiusM * bootstrap.UnitsPerMeter:F2})");
             Capture(bootstrap.ViewCamera, Path.Combine(dir, "flight-arrival.png"));
             Debug.Log("flight captures written to " + dir);
         }

@@ -158,7 +158,7 @@ neither reads a device for it.
 | `Shift` / `Ctrl` | free flight: ×10 / ×0.1 speed | `ShipController` |
 | `,` / `.` | free flight: decrease / increase speed | `ShipController` |
 | Right mouse drag | orbit the camera at every zoom, unless the press began on a panel | `ShipCameraRig` |
-| Mouse wheel | zoom the camera toward the pointer | `ShipCameraRig` |
+| Mouse wheel | zoom the camera toward the pointer; the flight chase stays centred on the ship | `ShipCameraRig` |
 | Left click | select the hovered body on release | `SolarSystemHud` |
 | Panel buttons | plot/replan, begin, jump, close | `SolarSystemHud` → `SolarSystemBootstrap` |
 

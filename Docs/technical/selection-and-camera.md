@@ -163,11 +163,19 @@ frame's travel is at most 8% of the view, up to 5 million km. The marker is
 56 px whenever the flight owns the view, so pulling back still leaves the ship
 well framed; its long axis follows the thrust or the direction of travel, and
 the thrust arrow scales with it. A right-drag takes the angle and keeps the
-distance follow; a wheel takes both, and a home press or the arrival ends the
-follow. The ordinary orrery view still uses the 10 px marker.
+distance follow; a wheel takes the distance but keeps the flight view, and the
+zoom stays centred on the ship rather than anchoring the point under the
+pointer, so the ship never slides aside. A home press, a new frame, or the
+arrival ends the flight view. The ordinary orrery view still uses the 10 px
+marker.
 
-On arrival the destination framing takes over, so the shot settles on the
-parking orbit instead of holding the cruise pose.
+The destination framing takes over when the ship comes within **ten radii** of a
+planet, not only on the arrival date. The chase angle is fixed at departure, and
+on the last leg it can point back at the planet; the avoidance then parks the
+camera on the surface for the final seconds. Framing from ten radii turns that
+into the arrival shot and leaves the camera well clear: at Mars the capture sits
+19 Mars radii from the centre instead of on the deck. A station or a small body
+keeps its chase until the arrival, because it has no surface to wipe.
 
 
 **Plotting a route frames the route.** A finished preview hands the view to

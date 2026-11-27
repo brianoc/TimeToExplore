@@ -466,7 +466,11 @@ namespace TimeToExplore.UI
             BodyRuntime nearest = _owner.Model.FindNearest(shipPosition);
             BodyRuntime selected = _owner.Selected;
 
-            _statusClock.text = JulianDate.Format(_owner.Clock.JulianDate) + "     " + _owner.Clock.Label;
+            // The flight panel carries the warp while it is open; the status
+            // line adds it only when there is no flight panel, so the HUD never
+            // shows the same scale twice.
+            _statusClock.text = JulianDate.Format(_owner.Clock.JulianDate)
+                                + (HasFlightPanel ? "" : "     " + _owner.Clock.Label);
             _statusDistance.text =
                 $"Heliocentric distance {FormatDistance(sunDistance)}     {ShipStatusText()}";
             _statusNearest.text = nearest != null

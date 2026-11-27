@@ -108,6 +108,10 @@ namespace TimeToExplore.Player
         /// it; a wheel, a home press, or the arrival ends it.</summary>
         public bool IsFollowingFlight => _flightDistanceFollow;
 
+        /// <summary>True while the flight owns the view's composition. A wheel
+        /// keeps it (the ship stays centred) but takes the distance.</summary>
+        public bool IsFlightView => _flightViewActive;
+
         /// <summary>True while F's move to the selected body is easing.</summary>
         public bool IsFocusingBody => BodyFocus.IsActive;
 
@@ -169,6 +173,7 @@ namespace TimeToExplore.Player
         private bool _zoomAnchorActive;
         private bool _autoDistancePending;
         private bool _flightDistanceFollow;
+        private bool _flightViewActive;
         private float _flightDistanceTarget = FlightFraming.DistanceUnits;
         private Vector3 _zoomAnchorUnits;
         private Vector2 _zoomAnchorNdc;
@@ -205,6 +210,7 @@ namespace TimeToExplore.Player
             RouteView.Cancel();
             FlightView.Cancel();
             _flightDistanceFollow = false;
+            _flightViewActive = false;
             Home.Cancel();
 
             AutoTarget = body;
@@ -254,6 +260,7 @@ namespace TimeToExplore.Player
             BodyFocus.Cancel();
 
             FlightView.DurationSeconds = Mathf.Max(0f, FlightViewDurationSeconds);
+            _flightViewActive = true;
             _flightDistanceFollow = true;
             _flightDistanceTarget = FlightFraming.DistanceUnits;
             FlightView.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, Orbit.DistanceUnits,
@@ -281,6 +288,7 @@ namespace TimeToExplore.Player
             RouteView.Cancel();
             FlightView.Cancel();
             _flightDistanceFollow = false;
+            _flightViewActive = false;
             Home.Cancel();
 
             AutoAim = false;
@@ -299,6 +307,7 @@ namespace TimeToExplore.Player
             RouteView.Cancel();
             FlightView.Cancel();
             _flightDistanceFollow = false;
+            _flightViewActive = false;
             Home.Cancel();
             if (body != null)
             {
@@ -334,6 +343,7 @@ namespace TimeToExplore.Player
                 RouteView.Cancel();
                 FlightView.Cancel();
                 _flightDistanceFollow = false;
+                _flightViewActive = false;
                 Home.Cancel();
                 LookAtOffsetM = Vector3d.Zero;
                 Orbit.SnapDistance(HomeDistanceUnits(LocalRadiusM(shipPositionM)));
@@ -351,6 +361,7 @@ namespace TimeToExplore.Player
             RouteView.Cancel();
             FlightView.Cancel();
             _flightDistanceFollow = false;
+            _flightViewActive = false;
 
             Home.DurationSeconds = Mathf.Max(0f, HomeDurationSeconds);
             Home.Begin(Orbit.DistanceUnits,
@@ -384,6 +395,7 @@ namespace TimeToExplore.Player
             RouteView.Cancel();
             FlightView.Cancel();
             _flightDistanceFollow = false;
+            _flightViewActive = false;
             BodyFocus.Cancel();
             AutoAim = false;
             AutoDistance = false;
@@ -446,6 +458,9 @@ namespace TimeToExplore.Player
             AutoDistance = false;
             AutoTarget = null;
             CancelBodyFocus();
+            FlightView.Cancel();
+            _flightDistanceFollow = false;
+            _flightViewActive = false;
             Home.Cancel();
             _zoomPending = false;
             _zoomAnchorActive = false;
@@ -728,11 +743,12 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
-        /// Route one wheel gesture, request its distance, and anchor the point
-        /// under <paramref name="pointerPixels"/> so it stays under the pointer
-        /// through the tween. Pointer and screen are in the Input System's
-        /// bottom-left screen pixels. Exposed so the anchor is testable without
-        /// a device.
+        /// Route one wheel gesture and request its distance. Outside a flight
+        /// the point under <paramref name="pointerPixels"/> is anchored so it
+        /// stays under the pointer through the tween; in the flight's chase the
+        /// zoom stays centred on the ship. Pointer and screen are in the Input
+        /// System's bottom-left screen pixels. Exposed so the anchor is testable
+        /// without a device.
         /// </summary>
         public void ApplyWheelSteps(float steps, Vector2 pointerPixels, Vector2 screenPixels)
         {
@@ -748,17 +764,28 @@ namespace TimeToExplore.Player
             // tween has settled. Never compound on a stale auto-framing target.
             float from = _zoomPending ? Orbit.TargetDistanceUnits : Orbit.DistanceUnits;
 
-            // Take the anchor from the pose on screen now, not from the
-            // distance being requested: that is the point the player is
-            // looking at. The look-at is solved from it every frame.
-            _zoomAnchorNdc = CursorZoom.PointerNdc(pointerPixels, screenPixels);
-            _zoomAnchorFieldOfViewDegrees = FieldOfViewDegrees;
-            _zoomAnchorAspect = Aspect(screenPixels);
-            _zoomAnchorUnits = CursorZoom.CursorPointOnLookAtPlane(LookAtOffsetUnits,
-                Orbit.Rotation,
-                Mathf.Max(Orbit.DistanceUnits, OrbitCamera.MinDistanceUnits),
-                _zoomAnchorNdc, _zoomAnchorFieldOfViewDegrees, _zoomAnchorAspect);
-            _zoomAnchorActive = true;
+            if (_flightViewActive)
+            {
+                // The chase always looks at the ship. A pointer anchor would
+                // slide the look-at aside as the distance changes, so the zoom
+                // stays centred and the ship stays framed.
+                _zoomAnchorActive = false;
+                SetLookAtOffsetM(Vector3d.Zero);
+            }
+            else
+            {
+                // Take the anchor from the pose on screen now, not from the
+                // distance being requested: that is the point the player is
+                // looking at. The look-at is solved from it every frame.
+                _zoomAnchorNdc = CursorZoom.PointerNdc(pointerPixels, screenPixels);
+                _zoomAnchorFieldOfViewDegrees = FieldOfViewDegrees;
+                _zoomAnchorAspect = Aspect(screenPixels);
+                _zoomAnchorUnits = CursorZoom.CursorPointOnLookAtPlane(LookAtOffsetUnits,
+                    Orbit.Rotation,
+                    Mathf.Max(Orbit.DistanceUnits, OrbitCamera.MinDistanceUnits),
+                    _zoomAnchorNdc, _zoomAnchorFieldOfViewDegrees, _zoomAnchorAspect);
+                _zoomAnchorActive = true;
+            }
 
             Orbit.RequestDistance(OrbitCamera.ZoomDistanceUnits(from, steps,
                 ZoomFactorPerStep));
