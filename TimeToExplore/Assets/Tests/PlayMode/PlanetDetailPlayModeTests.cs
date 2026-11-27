@@ -1,6 +1,7 @@
 using System.Collections;
 using NUnit.Framework;
 using TimeToExplore.Core;
+using TimeToExplore.Player;
 using TimeToExplore.Rendering;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -153,9 +154,15 @@ namespace TimeToExplore.Tests.PlayMode
             Vector3d awayFromSun = bodyPosition - sunPosition;
             Vector3d side = Vector3d.Cross(awayFromSun.Normalized, new Vector3d(0, 1, 0)).Normalized;
 
-            _bootstrap.Flight.Teleport(
-                bodyPosition + side * (body.RadiusM / angularRadius),
-                _bootstrap.Clock.JulianDate);
+            Vector3d shipM = bodyPosition + side * (body.RadiusM / angularRadius);
+            _bootstrap.Flight.Teleport(shipM, _bootstrap.Clock.JulianDate);
+
+            // Aim the orbit camera at the body from close to the ship, so the
+            // camera distance matches the ship distance the test names. The
+            // detail gates read the camera, not the origin.
+            _bootstrap.Rig.ClearAuto();
+            _bootstrap.Rig.Orbit.AimAlong(bodyPosition - shipM);
+            _bootstrap.Rig.Orbit.DistanceUnits = OrbitCamera.MinDistanceUnits;
         }
     }
 }

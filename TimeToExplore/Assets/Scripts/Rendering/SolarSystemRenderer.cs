@@ -5,9 +5,12 @@ using TimeToExplore.Core;
 namespace TimeToExplore.Rendering
 {
     /// <summary>
-    /// Builds one view per body and keeps every view in the ship-relative
-    /// render frame. 1 Unity unit = 1 / UnitsPerMeter metres; the default
-    /// 1e-6 means one unit is 1,000 km.
+    /// Builds one view per body and keeps every view in a render frame whose
+    /// origin is normally the ship. A focused body can take the origin instead,
+    /// so the camera can inspect it at its true size without fighting the float
+    /// precision of a ship-relative frame at interplanetary distance.
+    /// 1 Unity unit = 1 / UnitsPerMeter metres; the default 1e-6 means one unit
+    /// is 1,000 km.
     /// </summary>
     public class SolarSystemRenderer : MonoBehaviour
     {
@@ -15,6 +18,12 @@ namespace TimeToExplore.Rendering
         public bool TrueScale;
         public bool ShowOrbits = true;
         public bool ShowMoonOrbits = true;
+
+        /// <summary>
+        /// True while the camera is inspecting a body. Orbit lines belong to
+        /// the ship frame and would cross the focused view, so they stay off.
+        /// </summary>
+        public bool FocusMode;
 
         private readonly Dictionary<string, BodyView> _views = new Dictionary<string, BodyView>();
         private readonly List<OrbitLine> _planetOrbits = new List<OrbitLine>();
@@ -85,7 +94,7 @@ namespace TimeToExplore.Rendering
         /// <paramref name="cameraDistanceUnits"/> is the orbit distance, which
         /// sets the apparent line width.
         /// </summary>
-        public void Refresh(Vector3d shipPositionM, double julianDate,
+        public void Refresh(Vector3d originM, double julianDate,
             float cameraDistanceUnits = 0f)
         {
             if (_model == null) return;
@@ -111,7 +120,7 @@ namespace TimeToExplore.Rendering
                 // throwing out of the frame loop.
                 if (view == null) continue;
 
-                view.Refresh(_camera, shipPositionM, julianDate, TrueScale, baseMinAngularSize);
+                view.Refresh(_camera, originM, julianDate, TrueScale, baseMinAngularSize);
             }
 
             if (_sunView != null)
@@ -128,15 +137,15 @@ namespace TimeToExplore.Rendering
             foreach (OrbitLine orbit in _planetOrbits)
             {
                 if (orbit == null) continue;
-                orbit.Refresh(shipPositionM, _camera, UnitsPerMeter, ShowOrbits,
+                orbit.Refresh(originM, _camera, UnitsPerMeter, ShowOrbits && !FocusMode,
                     lineWidth, LineWidth.Pixels, lineDepth);
             }
 
             foreach (OrbitLine orbit in _moonOrbits)
             {
                 if (orbit == null) continue;
-                orbit.Refresh(shipPositionM, _camera, UnitsPerMeter,
-                    ShowOrbits && ShowMoonOrbits, lineWidth, LineWidth.Pixels, lineDepth);
+                orbit.Refresh(originM, _camera, UnitsPerMeter,
+                    ShowOrbits && ShowMoonOrbits && !FocusMode, lineWidth, LineWidth.Pixels, lineDepth);
             }
         }
     }

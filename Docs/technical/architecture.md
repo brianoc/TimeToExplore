@@ -4,7 +4,7 @@ title: Architecture
 description: How the Unity prototype is structured, from catalogue load to render frame.
 tags: [technical, unity, architecture]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # Shape of the prototype
@@ -388,7 +388,8 @@ Unity's own skybox path rather than a forward pass; the full design is in
 
 `BodyView.Refresh` handles:
 
-* ship-relative position,
+* position relative to the render origin (normally the ship; the focused body
+  while `F` is inspecting one),
 * true physical radius,
 * minimum apparent size (unless true scale is on), from the 4.5 px rule,
 * axial tilt and spin,
@@ -396,7 +397,8 @@ Unity's own skybox path rather than a forward pass; the full design is in
 
 Orbit lines sample the Kepler ellipse once per frame in the body's element frame,
 transform to the parent's frame, add the parent's current position, and then
-convert to ship-relative render coordinates. Every orbit line takes its width
+convert to render-origin-relative coordinates; the origin is the ship, except
+while `F` frames a body, when the orbit lines are hidden. Every orbit line takes its width
 from `LineWidth`, which converts the shared 3 px apparent width to render units
 at the camera distance and the viewport's FOV and height. Each vertex then gets
 its own width bounded to the 2 px distance floor at the far end and to the
@@ -450,7 +452,7 @@ The controller is an inspection tool now, not a flight model:
 | Left click a body | Select it and warm its route plan in the background; nothing is drawn until Plot route |
 | **Plot route** / **Replot route** on the details screen | Adopt the warmed plan and draw it in the click's frame (or frame the fresh fastest preview), without flying; frames the route. A warm-up still building is continued |
 | **Begin flight** | Replan and fly from the current state and date |
-| `F` | Ease the camera to the selected body, without moving the ship |
+| `F` | Frame the selected body by making it the render origin, without moving the ship |
 | **Jump (debug)**, `J` | Three-second eased debug teleport of the ship to the selected body |
 | `X` | Cancel the flight; the ship keeps its state |
 | `` ` `` | Toggle debug free flight; cancels the flight |

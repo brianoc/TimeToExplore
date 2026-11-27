@@ -4,7 +4,7 @@ title: Planet appearance
 description: The albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere, and the appearance fields the body shaders consume.
 tags: [technical, rendering, textures, planets, atmosphere, attribution]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
 ---
 
 # What exists now
@@ -29,10 +29,13 @@ AlbedoMinAngularRadius = 0.025 rad
 UsesAlbedo(angularRadius) => angularRadius >= 0.025
 ```
 
-The input is the body's **true angular radius**, `radius / distance` in the
-render frame, before the minimum-apparent-size aid. The aid inflates a distant
-body to a click target; it must not earn that body a texture. A planet scaled up
-a hundredfold by the aid therefore stays a flat marker, and only real proximity
+The input is the body's **true angular radius**, `radius / camera distance` in
+the render frame, before the minimum-apparent-size aid. In the ordinary ship
+frame the camera sits near the ship, so this is close to the ship-to-body
+distance; in a focused frame the body is the render origin, so the camera
+distance is the one that keeps the map on. The aid inflates a distant body to a
+click target; it must not earn that body a texture. A planet scaled up a
+hundredfold by the aid therefore stays a flat marker, and only real proximity
 opens the gate.
 
 The threshold is deliberately low. At 1600x900 with the 60° field of view,

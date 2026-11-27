@@ -538,72 +538,98 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
-        public void FocusingABodyEasesTheCameraAndThenFollowsIt()
+        public void FocusDistanceIsFourRadiiClampedToTheOrbitRange()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Assert.That(_rig.FocusDistanceUnits(earth),
+                Is.EqualTo(4.0 * earth.RadiusM * _rig.UnitsPerMeter).Within(1e-4f));
+
+            var tiny = new BodyRuntime(new BodyData
+                { id = "tiny", kind = "asteroid", radiusM = 1.0 });
+            Assert.That(_rig.FocusDistanceUnits(tiny),
+                Is.EqualTo(OrbitCamera.MinDistanceUnits).Within(1e-6f),
+                "a tiny body is framed from the closest orbit, not from inside it");
+
+            var giant = new BodyRuntime(new BodyData
+                { id = "giant", kind = "star", radiusM = 1.0e13 });
+            Assert.That(_rig.FocusDistanceUnits(giant),
+                Is.EqualTo(OrbitCamera.MaxDistanceUnits).Within(1e-3f));
+        }
+
+        [Test]
+        public void FocusingABodyEasesTheCameraAndFramesItAtFourRadii()
         {
             BodyRuntime earth = _model.Get("earth");
             Vector3d shipM = earth.PositionM + new Vector3d(7.5e10, 0.0, 0.0);
-            float expectedDistance = _rig.AutoDistanceUnits(shipM, earth);
+            float expectedDistance = _rig.FocusDistanceUnits(earth);
 
-            _rig.Orbit.YawDegrees = 0f;
-            _rig.Orbit.PitchDegrees = 0f;
+            _rig.Orbit.YawDegrees = 37f;
+            _rig.Orbit.PitchDegrees = 10f;
             _rig.Orbit.DistanceUnits = 1_000f;
             _rig.Apply(shipM, 0f);
 
-            _rig.FocusBody(earth, shipM);
+            _rig.FocusBody(earth);
             Assert.That(_rig.IsFocusingBody, Is.True);
+            Assert.That(_rig.IsFocused, Is.True);
+            Assert.That(_rig.FocusTarget, Is.SameAs(earth));
             Assert.That(_rig.Auto, Is.False, "the focus owns the pose until it lands");
+            Assert.That(_rig.Orbit.DistanceUnits, Is.EqualTo(1_000f),
+                "the focused frame starts at the wider of the old distance and four radii");
+            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6));
 
             int frames = 0;
             while (_rig.IsFocusingBody && frames < 180)
             {
-                _rig.Apply(shipM, 1f / 60f);
+                _rig.Apply(earth.PositionM, 1f / 60f);
                 frames++;
             }
 
             Assert.That(frames, Is.InRange(59, 62), "about a second of frames, not a snap");
-            Assert.That(_rig.AutoTarget, Is.SameAs(earth));
-            Assert.That(_rig.AutoAim, Is.True);
-            Assert.That(_rig.AutoDistance, Is.True);
+            Assert.That(_rig.IsFocused, Is.True);
+            Assert.That(_rig.FocusTarget, Is.SameAs(earth));
+            Assert.That(_rig.AutoTarget, Is.Null, "the body is the origin; nothing follows");
             Assert.That(_rig.Orbit.DistanceUnits,
                 Is.EqualTo(expectedDistance).Within(expectedDistance * 1e-4f));
-            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
-                "the camera still looks past the ship at the body");
-
-            OrbitCamera.AnglesForLookDirection(earth.PositionM - shipM,
-                out float expectedYaw, out float expectedPitch);
-            Assert.That(OrbitCamera.WrapDegrees(_rig.Orbit.YawDegrees - expectedYaw),
-                Is.EqualTo(0f).Within(1e-3f));
-            Assert.That(_rig.Orbit.PitchDegrees,
-                Is.EqualTo(expectedPitch).Within(1e-3f));
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(37f).Within(1e-4f));
+            Assert.That(_rig.Orbit.PitchDegrees, Is.EqualTo(10f).Within(1e-4f));
+            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6));
         }
 
         [Test]
-        public void SpaceOrADragTakesTheViewBackFromABodyFocus()
+        public void SpaceLeavesAFocusAndADragKeepsIt()
         {
             BodyRuntime earth = _model.Get("earth");
             Vector3d shipM = earth.PositionM + new Vector3d(7.5e10, 0.0, 0.0);
 
-            _rig.FocusBody(earth, shipM);
-            for (int i = 0; i < 5; i++) _rig.Apply(shipM, 1f / 60f);
+            _rig.FocusBody(earth);
+            for (int i = 0; i < 5; i++) _rig.Apply(earth.PositionM, 1f / 60f);
             Assert.That(_rig.IsFocusingBody, Is.True);
 
             _rig.HomeToShip(shipM);
-            Assert.That(_rig.IsFocusingBody, Is.False, "Space cancels the focus");
-            Assert.That(_rig.IsHoming, Is.True);
-
-            for (int i = 0; i < 60; i++) _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.IsFocusingBody, Is.False, "Space stops the focus move");
+            Assert.That(_rig.IsFocused, Is.False, "Space leaves the focused origin");
+            Assert.That(_rig.IsHoming, Is.False,
+                "the origin cut lands on the home view without a cross-system zoom");
+            Assert.That(_rig.Orbit.DistanceUnits,
+                Is.EqualTo(_rig.HomeDistanceUnits(LocalScale.RadiusM(_model, shipM)))
+                    .Within(1e-6f));
             Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6));
 
-            _rig.FocusBody(earth, shipM);
-            for (int i = 0; i < 5; i++) _rig.Apply(shipM, 1f / 60f);
+            _rig.FocusBody(earth);
+            for (int i = 0; i < 5; i++) _rig.Apply(earth.PositionM, 1f / 60f);
             _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput
             {
                 RightPressed = true,
                 Delta = new Vector2(2f, 0f)
             });
 
-            Assert.That(_rig.IsFocusingBody, Is.False, "a drag takes the view back");
+            Assert.That(_rig.IsFocusingBody, Is.False, "a drag stops the focus move");
+            Assert.That(_rig.IsFocused, Is.True,
+                "a drag around the focused body keeps the focused origin");
             _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput { RightReleased = true });
+
+            _rig.ExitFocus();
+            Assert.That(_rig.IsFocused, Is.False);
         }
 
         /// <summary>The pointer-side NDC a point projects to from a given pose.</summary>
