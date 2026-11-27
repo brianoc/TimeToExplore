@@ -4,7 +4,7 @@ title: Working agreement
 description: The rules that apply in every session, and where work happens.
 tags: [process, agents, git, worktrees, documentation, testing, handoff]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:19:21Z }
 ---
 
 # Working agreement
@@ -14,15 +14,18 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-22T21:26:25Z }
    `work/<slug>` branch before the first edit. The main checkout is what the
    person testing the game has open, so it takes merges of finished work and
    nothing else: no direct commits, no imports, no batch runs, no generated
-   artefacts. A branch is finished when its step commit is in,
-   `tools/check.sh` is green, and it has merged; then remove its worktree.
-   Resolving a merge is the one job done on `main`.
+   artefacts. A branch is finished when its step commit is in, the gate that
+   covers it is green, and it has merged; then remove its worktree. Resolving a
+   merge is the one job done on `main`.
 2. **Update the docs as changes happen.** Keep the affected concepts and
    `Docs/log.md` current. Do not record a test count in the bundle: it drifts,
    so report the command and its result instead.
 3. **Add tests for every new feature or piece of work.** Extend the Unity
-   EditMode or PlayMode suite (or `tools/validate_catalogue.py`), then run
-   `tools/check.sh`.
+   EditMode or PlayMode suite (or `tools/validate_catalogue.py`), then run the
+   narrowest gate that covers the change (`tools/check.sh --changed`). A small
+   branch merges on that gate. A bare `tools/check.sh` is for a substantial
+   merge — planner maths, the scene, the assembly layout, or a change across
+   areas — not for every merge.
 4. **Keep the handoff live while a plan is in progress, and clear it when the
    plan is done.** The repository-root `HANDOFF.md` is a session handoff, not a
    historic log and not a source of design truth:

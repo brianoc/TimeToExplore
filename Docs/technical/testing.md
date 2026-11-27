@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:19:21Z }
 ---
 
 # One command
@@ -12,9 +12,12 @@ generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ```bash
 tools/check.sh                    # everything, including both Unity suites
 tools/check.sh --fast             # docs, generators, and tooling (a few seconds)
+tools/check.sh --changed          # fast gates plus the categories the change touches
+tools/check.sh --changed --deep   # add the planner sweeps to the change
 tools/check.sh --tests flight     # the fast gates plus one test category
 tools/check.sh --tests playmode   # the PlayMode suite only
 tools/check.sh --tests core,smoke # any comma-separated categories
+tools/check.sh --filter RouteColourTests  # one fixture, through -testFilter
 tools/check.sh --reset            # drop the warm test project first
 ```
 
@@ -47,22 +50,24 @@ for the numbers and the warm-up rule.
 The EditMode tests carry one category each: `core`, `flight`, `deep`,
 `presentation`, or `smoke`; the PlayMode suite carries `playmode`. `--tests`
 narrows the Unity gate to the categories named; the fast gates still run.
+`--changed` chooses for you, and [Picking the narrowest
+gate](#picking-the-narrowest-gate) lists the mapping.
 
 `flight` holds the cheap flight checks, a few seconds per test at most.
 `deep` holds the sweeps that build a whole plan per sample: the slider
 duration and burn-level ranges, the coast-gap families, the worst-case windows,
 and the session, report, path-sampling and warm-start tests that plot a real
 route. Splitting them kept every assertion; it moved the expensive ones off the
-inner loop. Use `--tests flight` while editing simulation code, `--tests
-flight-full` (both categories) before a merge, and a bare `tools/check.sh` for
-the full gate. A `core` or `presentation` run is a few seconds. The
-burn–coast–burn plan is the expensive part — its fixed burns integrate the
-summed field — but a certified build is no longer fifteen seconds in the
-editor. The PlayMode suite is separate and takes about **half a minute** on the
-warm project. A bare `tools/check.sh` runs both
-platforms; the PlayMode invocation still names the `playmode` category, so a
-file in that assembly with another category alone does not join a bare run.
-`--tests` with only EditMode categories skips the PlayMode launch.
+inner loop. Use `--changed` for a normal tweak, `--tests flight` when editing
+simulation code, `--changed --deep` when the change reaches the planner maths,
+and a bare `tools/check.sh` for a substantial merge. A `core` or `presentation` run is a few seconds. The burn–coast–burn
+plan is the expensive part — its fixed burns integrate the summed field — but a
+certified build is no longer fifteen seconds in the editor. The PlayMode suite
+is separate and takes about **half a minute** on the warm project. A bare
+`tools/check.sh` runs both platforms; the PlayMode invocation still names the
+`playmode` category, so a file in that assembly with another category alone does
+not join a bare run. `--tests` with only EditMode categories skips the PlayMode
+launch.
 
 It picks the editor named in `ProjectVersion.txt`; override with `UNITY_BIN`.
 Python defaults to `.venv/bin/python`, then `python3`; override with `PYTHON`.
@@ -83,8 +88,8 @@ reads the results that were written, so a hang at the end does not throw away a
 completed run. Logs are `.cache/test-project/unity-editmode.log` and
 `unity-playmode.log`. The EditMode stall window is **thirty minutes** because
 Unity writes no per-test progress to the log: the whole run is one silent
-stretch, and the deep sweeps alone are about 1,300 s. The PlayMode window is
-**fifteen minutes**. Their time budgets are forty and twenty minutes. The
+stretch, and the deep sweeps alone take about eleven minutes. The PlayMode
+window is **fifteen minutes**. Their time budgets are forty and twenty minutes. The
 windows are deliberately generous rather than tight; the budget still stops a
 real hang.
 
@@ -104,30 +109,73 @@ With the warm project, `--tests flight` is the fast Unity loop: the cheap
 flight checks without the planner sweeps. `--tests deep` runs only the sweeps,
 and the PlayMode suite is the other half of a bare run. Measured durations for
 each tier are in [How long the gates take](#how-long-the-gates-take). `--fast`
-is the loop to use while editing docs, Python tools, or catalogue data. The
-Unity suites are the gate for any C# change.
+is the loop to use while editing docs, Python tools, or catalogue data.
+`--changed` is the default for a C# tweak: it picks the category from the files
+you touched. Add `--deep` when the change reaches the planner maths.
+
+# Picking the narrowest gate
+
+An agent should not run the merge gate for a one-line tweak. `--changed` reads
+the branch's commits against `main` (`git diff main...HEAD`) plus the working
+tree and untracked files, then selects the categories below. It prints the
+files and the choice before Unity starts.
+
+| Changed path | Categories |
+|---|---|
+| `Docs/`, `tools/`, any `.md` | none: the fast gates only |
+| `Assets/Scripts/Core/` | `core,flight` |
+| `Assets/Scripts/Simulation/` | `flight`; add `--deep` for the planner maths |
+| `Assets/Scripts/Presentation/`, `Rendering/`, `Shaders/` | `presentation` |
+| `Assets/Scripts/UI/` | `presentation,smoke` |
+| `Assets/Scripts/Player/` | `core,presentation` |
+| `Assets/Scripts/Editor/` | `core` |
+| `Assets/Resources/` | `core,presentation` |
+| `Assets/Scenes/` | `smoke` |
+| `Assets/Settings/`, `ProjectSettings/`, `Packages/` | `presentation,smoke` or `core,smoke` |
+| any `.asmdef` | `core` |
+| `Assets/Tests/EditMode/<fixture>` | the fixture's `[Category]` |
+| `Assets/Tests/PlayMode/` | `playmode` |
+| any other `Assets/` path | `presentation,smoke` |
+
+The mapping lives in `tools/check_plan.py`; its tests are in
+`tools/test_check_plan.py` and run in `--fast`. A path with no rule fails the
+run rather than defaulting to the whole suite. Unity rewrites
+`UniversalRenderPipelineGlobalSettings.asset` on every batch import, so that
+file is ignored as generated noise.
+
+`--changed` is path-shaped, not semantic. A change that reaches across areas,
+or a refactor of the planner's certifying path, still needs `--deep` or a bare
+run. `--filter <ClassName>` is the last level: it passes `-testFilter` to Unity
+and runs one fixture inside the selected category.
+
+`main` is where the person tests, and a feature branch can merge several times
+while it is tweaked. A small branch therefore merges on its `--changed` gate; a
+bare run is reserved for a substantial merge — planner maths, the scene, the
+assembly layout, or a change across areas.
 
 # How long the gates take
 
-The table below was recorded on Unity 6000.3.28f1 before the Unity 7 upgrade.
-The Unity 7 gate passes with the same commands; its measured full run is in
-[the Unity 7 upgrade](/technical/unity-7-coreclr.md).
+Measured on an M4 Max with a warm `.cache/test-project` on Unity 7000.0.0a22 at
+the epoch, on 2026-11-27. Wall times include Unity's start-up and the fast
+gates.
 
-Measured on an M4 Max with a warm `.cache/test-project`, Unity 6000.3.28f1, at
-the epoch. Wall times include Unity's start-up and the fast gates; the test
-counts are EditMode unless the row says otherwise.
+| Command | Time |
+|---|---|
+| `--fast` | 6 s |
+| `--tests core` | 14 s |
+| `--tests presentation` | about 90 s |
+| `--tests flight` | about 100 s |
+| `--tests smoke` | about 115 s |
+| `--tests deep` | about 11.5 min |
+| `--changed --deep` | about 13 min |
+| bare `tools/check.sh` (substantial merge) | about 16 min |
 
-| Command | Tests | Time |
-|---|---|---|
-| `--fast` | — | 6 s |
-| `--tests flight` | 199 | 2 min 20 s |
-| `--tests flight-full` | 323 | 23 min 44 s |
-| bare `tools/check.sh` | 673 + 6 PlayMode | 28 min 48 s |
-
-The `deep` category is **1,294 s** of the bare run and the cheap `flight` tests
-are **126 s**; `core` is under a second, and `presentation` and `smoke` take
-99 s and 165 s. When a gate feels slow, look at those two flight numbers before
-suspecting a regression.
+The `deep` category is about **11.5 minutes** of the bare run:
+`FlightSessionTests` and `BurnCoastBurnTripPlannerTests` are most of it. The
+cheap `flight` tests are about **100 s**, `presentation` and `smoke` about 90
+and 115 s, and `core` under a second. Unity's own start-up is about 8 s, so a
+targeted run is dominated by the tests it selects. When a gate feels slow, check
+the category before suspecting a regression.
 
 # Unity EditMode suite
 

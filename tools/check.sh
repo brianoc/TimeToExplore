@@ -4,12 +4,22 @@
 #
 #   tools/check.sh                       # docs, data, and both Unity suites
 #   tools/check.sh --fast                # everything except Unity (a few seconds)
+#   tools/check.sh --changed             # fast gates plus the categories the change touches
+#   tools/check.sh --changed --deep      # add the planner sweeps to the change
+#   tools/check.sh --changed=origin/main # compare against another base
 #   tools/check.sh --tests flight        # the fast gates plus one test category
 #   tools/check.sh --tests core,smoke    # any comma-separated categories
 #   tools/check.sh --tests flight-full   # cheap and deep flight checks together
 #   tools/check.sh --tests playmode      # the PlayMode suite only
+#   tools/check.sh --filter RouteColourTests  # one fixture, through -testFilter
 #   tools/check.sh --reset               # drop the warm test project first
 #   tools/check.sh --keep                # keep the generator temp directory
+#
+# `--changed` reads the files changed against main (committed on the branch and
+# uncommitted in the tree) and runs only the categories they imply. It refuses
+# a path it has no rule for rather than running everything; see
+# tools/check_plan.py for the mapping. A docs or tools change stops after the
+# fast gates. Add --deep when the change is to the planner maths.
 #
 # Test categories: core, flight, deep, presentation, smoke are EditMode;
 # playmode is the PlayMode suite. `flight` is the cheap half, seconds per test;
@@ -39,29 +49,47 @@ cd "$ROOT"
 FAST=0
 KEEP=0
 RESET=0
+DEEP=0
+CHANGED=0
+BASE="main"
+FILTER=""
 TESTS=""
+PENDING=""
 for arg in "$@"; do
+    if [[ -n "$PENDING" ]]; then
+        case "$PENDING" in
+            tests) TESTS="$arg" ;;
+            filter) FILTER="$arg" ;;
+        esac
+        PENDING=""
+        continue
+    fi
     case "$arg" in
         --fast) FAST=1 ;;
         --keep) KEEP=1 ;;
         --reset) RESET=1 ;;
+        --deep) DEEP=1 ;;
+        --changed) CHANGED=1 ;;
+        --changed=*) CHANGED=1; BASE="${arg#*=}" ;;
         --tests=*) TESTS="${arg#*=}" ;;
-        --tests) TESTS="__NEXT__" ;;
+        --tests) PENDING=tests ;;
+        --filter=*) FILTER="${arg#*=}" ;;
+        --filter) PENDING=filter ;;
         -h|--help)
-            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+            awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
             exit 0
             ;;
         *)
-            if [[ "$TESTS" == "__NEXT__" ]]; then
-                TESTS="$arg"
-            else
-                echo "unknown option: $arg (try --help)" >&2
-                exit 2
-            fi
+            echo "unknown option: $arg (try --help)" >&2
+            exit 2
             ;;
     esac
 done
-[[ "$TESTS" == "__NEXT__" ]] && { echo "--tests needs a value" >&2; exit 2; }
+[[ -n "$PENDING" ]] && { echo "--$PENDING needs a value" >&2; exit 2; }
+if (( CHANGED )) && [[ -n "$TESTS" ]]; then
+    echo "--changed selects the categories itself; do not combine it with --tests" >&2
+    exit 2
+fi
 
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 if [[ ! -x "$PYTHON" ]]; then
@@ -179,6 +207,18 @@ if (( FAST )); then
 fi
 
 # 7. Unity EditMode and PlayMode tests --------------------------------------
+if (( CHANGED )); then
+    TESTS="$("$PYTHON" tools/check_plan.py --root "$ROOT" --base "$BASE")" \
+        || fail "changed-file planning"
+    if [[ -z "$TESTS" ]]; then
+        printf '\nChanged files need no Unity run; fast checks passed in %d s.\n' "$SECONDS"
+        exit 0
+    fi
+fi
+if (( DEEP )); then
+    TESTS="${TESTS:+$TESTS,}deep"
+fi
+
 CATEGORIES=""
 RUN_EDITMODE=1
 RUN_PLAYMODE=1
@@ -198,9 +238,13 @@ if [[ -n "$TESTS" ]]; then
         CATEGORIES="${CATEGORIES:+$CATEGORIES;}$category"
     done
     [[ -z "$CATEGORIES" ]] && fail "--tests needs at least one category"
+elif [[ -n "$FILTER" ]]; then
+    # A filter on its own is an EditMode run of one fixture.
+    RUN_EDITMODE=1
+    RUN_PLAYMODE=0
 fi
 
-step "Unity tests${CATEGORIES:+ ($CATEGORIES)}"
+step "Unity tests${CATEGORIES:+ ($CATEGORIES)}${FILTER:+ [filter: $FILTER]}"
 
 UNITY_BIN="${UNITY_BIN:-}"
 if [[ -z "$UNITY_BIN" ]]; then
@@ -249,7 +293,7 @@ run_unity_suite() {
     local UNITY_LOG="$CACHE/unity-$slug.log"
     local RESULTS="$CACHE/results-$slug.xml"
 
-    step "$label${CATEGORIES:+ ($CATEGORIES)}"
+    step "$label${CATEGORIES:+ ($CATEGORIES)}${FILTER:+ [filter: $FILTER]}"
     rm -f "$RESULTS" "$UNITY_LOG"
 
     local UNITY_ARGS=(
@@ -262,6 +306,7 @@ run_unity_suite() {
         -logFile "$UNITY_LOG"
     )
     [[ -n "$filter" ]] && UNITY_ARGS+=(-testCategory "$filter")
+    [[ -n "$FILTER" ]] && UNITY_ARGS+=(-testFilter "$FILTER")
 
     set +e
     "$PYTHON" tools/unity_guard.py \
