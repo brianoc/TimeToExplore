@@ -32,7 +32,7 @@ namespace TimeToExplore.Tests.PlayMode
             yield return null;
 
             SolarSystemBootstrap bootstrap =
-                Object.FindFirstObjectByType<SolarSystemBootstrap>();
+                Object.FindAnyObjectByType<SolarSystemBootstrap>();
             Assert.That(bootstrap, Is.Not.Null);
 
             bootstrap.CancelFlight();

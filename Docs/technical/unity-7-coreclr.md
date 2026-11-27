@@ -51,6 +51,19 @@ automatic.
   finite burn at the flight's field when the worker's plan is published, and
   `APublishedPlanBindsItsFiniteBurnsToTheFlightsField` holds the invariant. This
   is a real latent bug, not a Unity 7 behaviour change.
+- **Clear of our own compile warnings.** Unity 7 deprecates
+  `FindFirstObjectByType<T>` because it sorts by instance ID, and the
+  `FindObjectsByType` overload that takes `FindObjectsSortMode`. The HUD's seam,
+  the bootstrap and the PlayMode tests now call `FindAnyObjectByType<T>` (with
+  the same `FindObjectsInactive` argument), and `SolarSystemHudTests` uses the
+  overload without a sort mode; `InputSeamTests` checks for the new call. The new
+  serialization analyzer also reports **UAC1001** for a public field whose type
+  is not `[Serializable]`; `CameraFocusDirector.Model` and
+  `FrameOrderProbe.Body` are runtime references set from code, so they carry
+  `[System.NonSerialized]`. The remaining warnings in the console come from
+  packages — `RNGCryptoServiceProvider` in `com.unity.pipeline`, a `bool?` field
+  in URP's buffer-capture CLI, and URP shader variants the project does not
+  use — and are not ours to change.
 - **Plan lines stay at the scene root.** Unity 7's alpha asserts that a
   transform hierarchy holds entities from two Entities worlds when a new child
   is parented into the editor's play hierarchy, although the project has no

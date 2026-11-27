@@ -109,7 +109,7 @@ namespace TimeToExplore.Tests.EditMode
             string source = File.ReadAllText(file);
             Assert.That(source, Does.Contain("InputSystemUIInputModule"));
             Assert.That(source, Does.Contain("AssignDefaultActions"));
-            Assert.That(source, Does.Contain("FindFirstObjectByType<EventSystem>"),
+            Assert.That(source, Does.Contain("FindAnyObjectByType<EventSystem>"),
                 "an authored EventSystem must not be double-equipped");
         }
 
