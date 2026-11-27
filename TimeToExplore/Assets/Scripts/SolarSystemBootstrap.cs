@@ -321,9 +321,10 @@ namespace TimeToExplore
                 }
 
                 // Follow the destination until the player takes the camera.
-                // A live flight owns the chase pose set when it began; only the
-                // arrival hands the view to the destination, so the camera
-                // settles on the parking orbit rather than the cruise shot.
+                // A live flight owns the chase pose set when it began; the
+                // approach and the arrival hand the view to the destination,
+                // so the camera settles on the planet rather than the cruise
+                // shot.
                 bool flying = Flight.IsFlying;
                 if (_wasFlying && !flying && Flight.Status == FlightStatus.Arrived
                     && Flight.TargetId != null && Rig != null)
@@ -335,6 +336,24 @@ namespace TimeToExplore
                         Rig.RecalculateFramingDistance(ShipPositionM);
                     }
                 }
+                // Hand the chase to the destination framing before the ship
+                // reaches the planet. A fixed chase angle can point back at the
+                // body on the last leg, and the avoidance then parks the camera
+                // on its surface; framing from ten radii turns that into the
+                // arrival shot instead of a surface wipe.
+                if (Flight.IsFlying && Rig != null && Rig.IsFlightView
+                    && Flight.TargetId != null)
+                {
+                    BodyRuntime target = Model.Get(Flight.TargetId);
+                    if (target != null && target.RadiusM > 100_000.0
+                        && Vector3d.Distance(ShipPositionM, target.PositionM)
+                           < 10.0 * target.RadiusM)
+                    {
+                        Rig.Frame(target);
+                        Rig.RecalculateFramingDistance(ShipPositionM);
+                    }
+                }
+
                 _wasFlying = flying;
             }
 
@@ -367,7 +386,7 @@ namespace TimeToExplore
                 if (!focused)
                 {
                     ShipMarker.SetFlightView(Flight != null && Flight.IsFlying
-                                             && Rig != null && Rig.IsFollowingFlight);
+                                             && Rig != null && Rig.IsFlightView);
                     ShipMarker.Refresh(ViewCamera,
                         Flight != null ? Flight.CurrentThrust : ThrustCommand.None,
                         ShipVelocityMps);

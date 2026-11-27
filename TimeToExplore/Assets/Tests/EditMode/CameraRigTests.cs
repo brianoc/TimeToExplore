@@ -743,6 +743,32 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void AFlightZoomKeepsTheShipCentred()
+        {
+            Vector3d shipM = _model.Get("earth").PositionM;
+            _rig.FrameFlight(new Vector3d(1.0, 0.0, 0.0));
+            _rig.FollowFlight(50f);
+            for (int i = 0; i < 480; i++) _rig.Apply(shipM, 1f / 60f);
+
+            Assert.That(_rig.LookAtOffsetUnits.magnitude, Is.LessThan(1e-5f),
+                "the chase looks at the ship");
+
+            // A wheel at a corner would normally anchor that point and slide
+            // the look-at aside. In the chase it must stay centred.
+            _rig.ApplyWheelSteps(-4f, new Vector2(120f, 120f), new Vector2(1600f, 900f));
+            Assert.That(_rig.IsFlightView, Is.True,
+                "zooming does not leave the flight view");
+            Assert.That(_rig.IsFollowingFlight, Is.False,
+                "the wheel takes the automatic distance");
+            Assert.That(_rig.LookAtOffsetUnits.magnitude, Is.LessThan(1e-5f),
+                "the ship stays at the centre of the zoom");
+
+            for (int i = 0; i < 30; i++) _rig.Apply(shipM, 1f / 60f);
+            Assert.That(_rig.LookAtOffsetUnits.magnitude, Is.LessThan(1e-5f),
+                "and stays centred through the tween");
+        }
+
+        [Test]
         public void ADragOrAnArrivalTakesTheCameraBackFromTheChasePose()
         {
             Vector3d shipM = _model.Get("earth").PositionM;

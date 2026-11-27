@@ -89,6 +89,20 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheStatusClockDropsTheWarpWhenTheFlightPanelHasIt()
+        {
+            Build();
+            _bootstrap.PlotRoute(_bootstrap.Model.Get("mars"));
+            WaitForPreview();
+            Assert.That(_bootstrap.Flight.HasPreview, Is.True);
+
+            Text clock = TextNamed("StatusClock");
+            Assert.That(clock.text,
+                Is.EqualTo(JulianDate.Format(_bootstrap.Clock.JulianDate)),
+                "the flight panel's Warp row is the only scale on screen");
+        }
+
+        [Test]
         public void TheStatusPanelTracksTheClockTheShipAndTheSelection()
         {
             Build();

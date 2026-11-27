@@ -699,13 +699,26 @@ namespace TimeToExplore.Tests.EditMode
 
             TrajectoryPlan plan = _bootstrap.Flight.Plan;
             int frames = 0;
+            bool framedApproach = false;
             while (_bootstrap.Flight.IsFlying && frames < MaxFrames)
             {
                 Invoke("Update");
                 Invoke("LateUpdate");
                 frames++;
+
+                if (_bootstrap.Flight.IsFlying)
+                {
+                    double toMars = Vector3d.Distance(_bootstrap.ShipPositionM,
+                        mars.PositionM);
+                    if (toMars < 10.0 * mars.RadiusM && toMars > 2.0 * mars.RadiusM
+                        && _bootstrap.Rig.AutoTarget == mars
+                        && !_bootstrap.Rig.IsFlightView)
+                        framedApproach = true;
+                }
             }
 
+            Assert.That(framedApproach, Is.True,
+                "the destination framing takes over before the surface");
             TestContext.WriteLine(
                 $"bootstrap map flight: arrived {JulianDate.Format(_bootstrap.Flight.ArrivedJulianDate)} " +
                 $"in {frames:N0} frames ({frames * FrameSeconds:F1} s real), " +
