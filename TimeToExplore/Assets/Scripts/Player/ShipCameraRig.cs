@@ -322,6 +322,43 @@ namespace TimeToExplore.Player
         }
 
         /// <summary>
+        /// Place the opening view without a transition: Earth and the Moon
+        /// framed together from 20° above the ecliptic
+        /// ([OpeningFraming](/technical/selection-and-camera.md)). The pose is
+        /// the player's from this frame on — no auto-framing and no transition
+        /// is left running — so the first rendered frame is the composition
+        /// rather than a body-aimed view easing away from it.
+        /// </summary>
+        public bool ShowOpeningPose(Vector3d shipPositionM, Vector3d earthPositionM,
+            Vector3d moonPositionM, Vector3d sunPositionM)
+        {
+            RouteFraming.Frame frame = OpeningFraming.Compute(shipPositionM,
+                earthPositionM, moonPositionM, sunPositionM, UnitsPerMeter,
+                FieldOfViewDegrees, Aspect(ScreenPixels()), Orbit.YawDegrees,
+                OrbitCamera.MaxDistanceUnits);
+            if (!frame.IsValid) return false;
+
+            ClearAuto();
+            Orbit.YawDegrees = frame.YawDegrees;
+            Orbit.PitchDegrees = frame.PitchDegrees;
+            Orbit.SnapDistance(frame.DistanceUnits);
+            SetLookAtOffsetM(frame.LookAtOffsetM);
+            ApplyToCamera(shipPositionM);
+            return true;
+        }
+
+        /// <summary>
+        /// Look at the ship again without easing. A caller that moves the ship
+        /// under the camera — a teleport, for instance — uses this so a
+        /// look-at point measured from the old position does not drag the view
+        /// away from the ship's new neighbourhood.
+        /// </summary>
+        public void LookAtShip()
+        {
+            LookAtOffsetM = Vector3d.Zero;
+        }
+
+        /// <summary>
         /// Start the eased return to the ship: drop any framing, forget the
         /// cursor anchor, then ease the distance to a local view while the
         /// look-at offset unwinds. Space calls this. The player's yaw and pitch

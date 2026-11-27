@@ -874,8 +874,24 @@ namespace TimeToExplore
             Trajectory?.Hide();
             Flight.PlaceAt("gateway", Clock.JulianDate);
 
+            // The opening shot is a wide Earth–Moon composition, not a
+            // body-aimed view: both bodies in one frame, seen from above the
+            // ecliptic. It is also what R returns the player to.
             BodyRuntime earth = Model.Get("earth");
-            if (earth != null) Rig?.SnapTo(ShipPositionM, earth);
+            BodyRuntime moon = Model.Get("moon");
+            if (earth != null && moon != null)
+            {
+                Model.ComputeState(earth, Clock.JulianDate, out Vector3d earthM, out _);
+                Model.ComputeState(moon, Clock.JulianDate, out Vector3d moonM, out _);
+                Model.ComputeState(Model.Sun, Clock.JulianDate, out Vector3d sunM, out _);
+
+                if (Rig == null || !Rig.ShowOpeningPose(ShipPositionM, earthM, moonM, sunM))
+                    Rig?.SnapTo(ShipPositionM, earth);
+            }
+            else if (earth != null)
+            {
+                Rig?.SnapTo(ShipPositionM, earth);
+            }
 
             WarpOverridden = false;
             ManualScale = 1.0;

@@ -255,8 +255,14 @@ namespace TimeToExplore.Tests.EditMode
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             BodyView marsView = _bootstrap.Renderer.Views.First(view => view.Body == mars);
-            _cameraObject.transform.position = Vector3.zero;
-            _cameraObject.transform.LookAt(marsView.transform.position);
+
+            // Frame it through the camera the HUD actually reads. In EditMode
+            // the bootstrap may create its own camera when Camera.main is not
+            // registered yet, so the test's object is not necessarily the view.
+            Camera viewCamera = _bootstrap.ViewCamera;
+            Assert.That(viewCamera, Is.Not.Null);
+            viewCamera.transform.position = Vector3.zero;
+            viewCamera.transform.LookAt(marsView.transform.position);
             Update();
 
             Assert.That(LabelTexts().Any(text => text.text.StartsWith("Mars")), Is.True,

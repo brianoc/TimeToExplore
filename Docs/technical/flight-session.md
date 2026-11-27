@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
 ---
 
 # What this adds to the orrery
@@ -502,9 +502,10 @@ looks at `ship + look-at offset` — the ship whenever the offset is zero
 * right-drag turns yaw and pitch, clamped to ±85°;
 * the wheel zooms 1.25× per notch toward the pointer, from 2,000 km out to
   12 billion km;
-* a plan, a debug jump, or a reset frames its destination automatically, and the
+* a plan or a debug jump frames its destination automatically, and the
   aim and the distance follow separately, so a manual zoom keeps the planet
-  centred and only a drag stops the aiming;
+  centred and only a drag stops the aiming; a reset returns to the opening
+  Earth–Moon shot instead;
 * the framing distance is captured once when framing starts and re-captured on
   arrival, so the moving ship does not re-target the zoom every frame;
 * `Space` eases back to the ship in one second and unwinds the look-at offset;

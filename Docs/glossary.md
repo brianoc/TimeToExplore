@@ -4,7 +4,7 @@ title: Glossary
 description: "The words the design bundle and the code share: route families, camera views, thrust profiles, manoeuvre models, and arrival geometry."
 tags: [reference, glossary, camera, propulsion, navigation, terminology]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
 ---
 
 # Glossary
@@ -28,8 +28,9 @@ The camera's off-centre point, held in double-precision ecliptic metres and
 capped at 60 AU. A wheel notch anchors the point under the pointer and the rig
 solves the offset from it every frame, so the point stays put while the zoom
 eases ([ADR-017](/decisions/adr-017-cursor-zoom-and-home.md)). **Space** unwinds
-it to zero and returns to the ship; a reset clears it. It also becomes the
-route's centre while a plotted route is framed.
+it to zero and returns to the ship; a reset places the opening shot's
+Earth–Moon midpoint. It also becomes the route's centre while a plotted route is
+framed.
 
 ## Dominant body and neighbourhood
 

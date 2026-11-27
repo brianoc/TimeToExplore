@@ -4,7 +4,7 @@ title: Input
 description: The input map, the Input System seam, the uGUI input module, why Active Input Handling is New only, the legacy mouse dispatcher, and the mouse and wheel rules.
 tags: [technical, input, unity, controls, ui]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
 ---
 
 # Two readers, one contract
@@ -147,7 +147,7 @@ neither reads a device for it.
 | `F` | frame the selected body by moving the render origin to it, without moving the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
 | `J` | debug jump: ease the ship beside the selected body | `SolarSystemBootstrap` |
 | `Esc` | cancel a debug jump; close the details screen | `SolarSystemBootstrap`, `SolarSystemHud` |
-| `R` | reset to Gateway and 1× | `SolarSystemBootstrap` |
+| `R` | reset to Gateway and 1×, and return to the opening Earth–Moon shot | `SolarSystemBootstrap` |
 | `X` | cancel the flight | `SolarSystemBootstrap` |
 | `` ` `` | toggle debug free flight | `SolarSystemBootstrap` |
 | `T` | toggle true scale | `SolarSystemBootstrap` |
