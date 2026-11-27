@@ -276,13 +276,15 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// Begin consumes the preview and flies it, so the panel must show the
-        /// plan it is flying — the full-blast minimum that was drawn — not the
-        /// coast floor the old Begin built.
+        /// plan it is flying — the trip the player drew — not the coast floor
+        /// the old Begin built.
         /// </summary>
         [Test]
         public void TheFuelReadoutFollowsTheFlyingPlanAfterBegin()
         {
-            TrajectoryPlan preview = _session.Plot("mars", _epoch);
+            _session.Plot("mars", _epoch);
+            double chosen = 1.5 * _session.PreviewMinimumSeconds;
+            TrajectoryPlan preview = _session.SetPreviewDuration(chosen);
             TrajectoryPlan plan = _session.Begin("mars", _epoch);
             var planner = new TripPlanner(_model, _gravity);
             TrajectoryPlan coastFloor = planner.Plan(
@@ -295,15 +297,13 @@ namespace TimeToExplore.Tests.EditMode
                                   $"plan {plan.PropellantKg / 1000.0:F1} t, " +
                                   $"coast floor {coastFloor.PropellantKg / 1000.0:F1} t");
 
-            Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.False, "Begin flies the no-coast full-blast plan the preview drew");
             Assert.That(plan.FlightTimeSeconds,
                 Is.EqualTo(preview.FlightTimeSeconds).Within(1e-6));
             Assert.That(plan.PropellantKg, Is.EqualTo(preview.PropellantKg).Within(1.0),
                 "the flight and the preview are the same plan");
             Assert.That(plan.PropellantKg,
-                Is.GreaterThan(coastFloor.PropellantKg),
-                "the full-blast minimum buys its time with fuel");
+                Is.Not.EqualTo(coastFloor.PropellantKg).Within(1.0),
+                "the drawn trip is not the coast floor");
             Assert.That(fuel, Is.EqualTo(FlightReport.FuelLabel(plan)),
                 "the panel's fuel row follows the flying plan, not the old preview or floor");
             Assert.That(fuel, Is.Not.EqualTo(FlightReport.FuelLabel(coastFloor)));

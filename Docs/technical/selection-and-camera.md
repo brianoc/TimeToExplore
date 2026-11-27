@@ -4,7 +4,7 @@ title: Selection and camera focus
 description: How the game opens on an Earth–Moon shot, how clicking a body opens its details screen, and how the one orbit camera flies to it, zooms toward the pointer, frames a plotted route, and takes the flight chase pose.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T21:20:22Z }
 ---
 
 # Why selection exists
@@ -272,7 +272,7 @@ second mapping.
 |---|---|
 | Left click a body | Select it, warm its route plan in the background, and open the details screen (release inside the 4 px slop); nothing is drawn until Plot route |
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
-| **Plot route …** button | Adopt the warmed plan and draw it in the same frame, then ease the camera to the whole route; a warm-up still building is continued. A retimed or stale preview is replanned at its fastest trip |
+| **Plot route …** button | Adopt the warmed plan and draw it in the same frame, then ease the camera to the whole route; a warm-up still building is continued. A retimed or stale preview is replanned at the plot's start trip |
 | **Begin flight** button | Replan from the current state, fly it, and ease the camera to the chase pose |
 | `F` | Ease the camera to the selected body in one second, without moving the ship |
 | **Jump (debug)** button, `J` | Three-second eased debug teleport of the ship to the selected body |

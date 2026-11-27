@@ -325,6 +325,12 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.PlotRoute(mars);
             WaitForPreview();
 
+            // The indices below are the no-coast crossing's, and the plot opens
+            // eight steps slower. Retime to the left end so the drawn plan is
+            // the crossing this test describes.
+            _bootstrap.RetimePreview(_bootstrap.Flight.PreviewMinimumSeconds);
+            WaitForRetime();
+
             Assert.That(_bootstrap.Trajectory.ArcCount,
                 Is.EqualTo(_bootstrap.Flight.Preview.Arcs.Count));
             Assert.That(_bootstrap.Trajectory.ArcColour(0),
@@ -498,6 +504,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the handle offers 64 distinct trips");
 
             Vector3d before = _bootstrap.ShipPositionM;
+            double published = _bootstrap.Flight.PreviewDurationSeconds;
             float step = (float)System.Math.Round(
                 (2.0 * minimum - minimum) / (maximum - minimum) * slider.maxValue);
             double chosen = minimum + step / slider.maxValue * (maximum - minimum);
@@ -506,7 +513,7 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.IsRetimePending, Is.True,
                 "the handle requests a retime; it does not block the frame");
             Assert.That(_bootstrap.Flight.PreviewDurationSeconds,
-                Is.EqualTo(minimum).Within(1.0),
+                Is.EqualTo(published).Within(1.0),
                 "the previous preview stays published until the new plan is ready");
 
             WaitForRetime();
@@ -603,7 +610,7 @@ namespace TimeToExplore.Tests.EditMode
         /// <summary>
         /// The burn–coast–burn profile end to end through the composition root:
         /// choose the profile before plotting (so the plot is the profile's own
-        /// fastest plan), fly the plotted route, and arrive on the same conic
+        /// start trip), fly the plotted route, and arrive on the same conic
         /// parking orbit the planner promised. This is the smoke acceptance for
         /// the new profile, not a second planner test.
         /// </summary>
@@ -626,9 +633,11 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(minimum / JulianDate.SecondsPerDay,
                 Is.EqualTo(6.66965).Within(0.02),
                 "the window starts at the full-blast crossing");
-            Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
-                                                && arc.IsCoast),
-                Is.False, "the full-blast minimum has no cruise coast");
+            Assert.That(preview.FlightTimeSeconds,
+                Is.EqualTo(_bootstrap.Flight.PreviewStartSeconds)
+                    .Within(0.5 * (_bootstrap.Flight.PreviewMaximumSeconds - minimum)
+                        / (SolarSystemHud.TimeSliderSteps - 1)),
+                "the plot opens eight steps above the fastest trip");
             Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
                 Is.EqualTo(21.50253 * JulianDate.SecondsPerDay).Within(0.05 * JulianDate.SecondsPerDay),
                 "the slow end stays three times the coast floor");

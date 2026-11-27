@@ -4,7 +4,7 @@ title: The flight session
 description: How pressing Plot route and Begin flies the ship in the scene, how warp is capped, and what the trajectory line and flight panel show.
 tags: [technical, flight, time-warp, rendering, unity]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T12:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T21:20:22Z }
 ---
 
 # What this adds to the orrery
@@ -114,7 +114,7 @@ The details footer splits the old one-press **Go To** into two actions:
    fresh plot built instead, when it no longer fits the controls — another
    target, an infeasible plan, a changed arrival style or drive, or a departure
    the clock has moved past the freshness window. If a fresh preview already
-   sits at the planner's fastest trip, the click frames it without replanning.
+   sits at the plot's start trip, the click frames it without replanning.
 2. **Begin flight** calls `BeginGoTo`. Inside the preview's own freshness
    window it flies the plan that was drawn, from the departure it was certified
    at, so the flight and the arrival date are exactly what the route and the
@@ -141,6 +141,16 @@ and 37.01–111.02 at 0.3 g. The parabolic burn-only crossings remain longer tha
 their floors (16.48669 days to Mars, 13.86287 to Mercury and 22.55555 to
 Jupiter); the full-blast route is the time-optimal shape, not the parabolic one.
 A 90-day Mars build is outside that window and the cap.
+
+A fresh plot publishes the **start trip**, not the minimum: **eight of the
+control's 63 intervals** above `PreviewMinimumSeconds`, about 12.7% of the
+window. The handle therefore opens with room to drag faster, and the plan sits
+clear of the two lowest steps, which are never seeded. Building it costs one
+warm `PlanAtDuration` on the worker after the window solve, seeded from the
+window's floor plan, and the result is cached like any other retime, so a return
+to the start trip is a hit. `PreviewStartSeconds` is the duration the Plot click
+treats as the default; a preview re-timed away from it is replanned at the start
+trip when the player presses Plot again.
 
 The **short-coast branch is active.** It fills the range between the full-blast
 minimum and the coast floor: at Mercury 1 g, Mars 0.3 g and Jupiter 0.3 g every
@@ -179,18 +189,23 @@ duration, with the same plan. The two lowest steps are not seeded, because that
 is where the burn-only crossing and the short coast meet the coast profile
 ([warm-starting the pin](/technical/planning-performance.md#step-3-warm-starting-the-pin-2026-11-24)).
 The session also **fills the neighbouring steps** on the same worker while the
-preview is up: two each side of a published plot and three in the direction the
-handle is travelling. Prefetch is the worker's **lowest priority** — a retime, a
-rebuild, or a plot clears the queue and is taken first — it never publishes and
-never moves the handle, and it is dropped on a discard, a style or burn-level
-change, or a departure-date change. It builds from the preview's frozen departure
-state and the burn level and arrival style captured when the preview was plotted,
-seeded from the nearest cached plan, so a filled slot is the plan the retime
-would have built ([prefetching the neighbours](/technical/planning-performance.md#step-4-prefetching-the-sliders-neighbours-2026-11-25)).
-The first two steps after a plot publish in a frame or two, and the worst step of
-a drag falls from about a second to about 0.4 s; a step the prefetch has not
-reached is still one build, because a build is as long as the handle takes to
-produce the next step.
+preview is up: **six each side** of a published plot and **twelve in the
+direction** the handle is travelling. Prefetch is the worker's **lowest
+priority** — a retime, a rebuild, or a plot clears the queue and is taken first —
+it never publishes and never moves the handle, and it is dropped on a discard, a
+style or burn-level change, or a departure-date change. It builds from the
+preview's frozen departure state and the burn level and arrival style captured
+when the preview was plotted, seeded from the nearest cached plan, so a filled
+slot is the plan the retime would have built
+([prefetching the neighbours](/technical/planning-performance.md#step-8-the-plots-start-trip-and-the-wider-prefetch-2026-11-27)).
+On a fresh plot the six lower steps reach step 2 (step 1 clamps away) and the
+six upper steps reach step 14; a drag's twelve-step queue is a window ahead of
+the handle rather than a symmetric pair. The first six steps after a plot publish
+in a frame or two, and a step the prefetch has not reached is still one build,
+because a build is as long as the handle takes to produce the next step. The
+wider queue costs about a dozen warm builds — roughly four seconds at Mars —
+after the route appears; the work is on the background worker, and a real
+request clears whatever has not started.
 A plan costs about **50 KB** — the departure burn's and brake's 512-sample
 interpolation tables dominate, at 24 bytes a sample — so the bound is about
 3 MB per window. The cache is keyed and dropped with the window, so a changed
@@ -475,8 +490,8 @@ replot or begin anyway**. The header line counts down to the planned arrival.
 | Input | Action |
 |---|---|
 | Left click a body (or `Tab`) | Select it and warm its route plan in the background; nothing is drawn, framed, or listed until the Plot click adopts it, and selecting the same body again keeps it |
-| **Plot route** / **Replot route** on the details screen | Adopt the warmed plan and draw it in the click's frame (or frame the fresh fastest preview); continue a warm-up still building. A retimed or stale preview is replanned at its fastest trip |
-| **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship. The session prefetches the neighbouring steps in the background, lowest priority, so the first moves after a plot publish at once |
+| **Plot route** / **Replot route** on the details screen | Adopt the warmed plan and draw it in the click's frame (or frame the fresh start-trip preview); continue a warm-up still building. A retimed or stale preview is replanned at the start trip |
+| **Trip-time slider** on a preview | Choose one of 64 discrete trips and request a retime at it on the background worker; the handle and its label follow the drag, the previous full-field preview stays until the new plan lands, and the route, arrival, thrust, and delta-v then update without moving the ship. The session prefetches six steps each side of a plot and twelve ahead of a drag, lowest priority, so the steps the handle is about to reach publish at once |
 | **Conic / X g burn** and the burn-level slider on a preview | Switch the arrival style or the burn level, rebuild the preview against it, and reset the trip-time window; the route shows the coast, burn, trim, and parking orbit, and the fixed style steps the throttle instead of blending. The level also drives the profile's two burns and its floor is 0.05 g. A station plan has no arrival style to switch, but its departure burn and velocity match still scale with the level |
 | **Begin flight** | Fly the drawn plan from its own departure while the preview is fresh; replan at the current state and date once it is stale; enabled once a preview exists |
 | **Replan …** (while flying) | Plan and fly a fresh route from the current state, as the old Go To did |

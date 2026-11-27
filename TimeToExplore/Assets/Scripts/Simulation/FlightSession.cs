@@ -126,14 +126,20 @@ namespace TimeToExplore.Simulation
         /// any physical difference in the route.</summary>
         private const double RetimeCacheFraction = 0.002;
 
+        /// <summary>How many slider steps above the window minimum a fresh
+        /// plot publishes. The handle starts with room to drag faster and
+        /// clear of the window's two unseeded steps.</summary>
+        private const int PlotStartSteps = 8;
+
         /// <summary>How many neighbouring slider steps a published plot
-        /// prefetches on each side of its duration. A fresh plot starts at the
-        /// window minimum, so the lower side clamps away.</summary>
-        private const int PlotPrefetchSteps = 2;
+        /// prefetches on each side of its duration. A fresh plot starts eight
+        /// steps above the minimum, so a few lower neighbours clamp away near
+        /// the fastest trip.</summary>
+        private const int PlotPrefetchSteps = 6;
 
         /// <summary>How many steps a drag prefetches in the direction the
         /// handle is travelling.</summary>
-        private const int DragPrefetchSteps = 3;
+        private const int DragPrefetchSteps = 12;
 
         /// <summary>Departure state the preview was solved from. Retiming
         /// rebuilds from this rather than the current (possibly coasted) state,
@@ -287,6 +293,13 @@ namespace TimeToExplore.Simulation
         /// <summary>The preview's current flight time, or NaN.</summary>
         public double PreviewDurationSeconds => Preview?.FlightTimeSeconds ?? double.NaN;
 
+        /// <summary>The trip a fresh plot publishes: eight of the control's
+        /// 63 intervals above <see cref="PreviewMinimumSeconds"/>, or NaN
+        /// before a preview. The Plot click uses it to tell a default preview
+        /// from one the player re-timed.</summary>
+        public double PreviewStartSeconds =>
+            PlotStartDuration(PreviewMinimumSeconds, PreviewMaximumSeconds);
+
         public bool HasPreview => Preview != null;
 
         /// <summary>True while a preview exists and no flight owns the ship.</summary>
@@ -434,12 +447,14 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// Build a route preview from the ship's current state at a date,
-        /// without moving the ship or taking ownership of it. A second plot
-        /// replaces the first: there is only ever one preview. This is the
-        /// synchronous, deterministic reference path; the scene plots through
-        /// <see cref="PlotAsync"/> so the calculation runs off the main
-        /// thread. Prefetch belongs to the background path: this call queues no
-        /// neighbours and disarms any the previous preview left.
+        /// without moving the ship or taking ownership of it. The preview is
+        /// published at <see cref="PreviewStartSeconds"/>, a few steps above
+        /// the window's fastest trip. A second plot replaces the first: there
+        /// is only ever one preview. This is the synchronous, deterministic
+        /// reference path; the scene plots through <see cref="PlotAsync"/> so
+        /// the calculation runs off the main thread. Prefetch belongs to the
+        /// background path: this call queues no neighbours and disarms any the
+        /// previous preview left.
         /// </summary>
         public TrajectoryPlan Plot(string targetId, double julianDate)
         {
@@ -449,11 +464,14 @@ namespace TimeToExplore.Simulation
             BeginPreviewReplacement();
             DisarmPrefetch();
             _previewDeparture = _state.WithJulianDate(julianDate);
+            double burnLevelG = _planner.BurnLevelG;
+            CaptureStyle arrival = _planner.ArrivalStyle;
             PreviewWindow window = WindowFor(targetId, _previewDeparture, _planner,
-                _planner.BurnLevelG, _planner.ArrivalStyle);
-            Preview = window.Plan;
+                burnLevelG, arrival);
+            Preview = PlotStartPlan(targetId, _previewDeparture, _planner, window,
+                burnLevelG, arrival);
             PreviewJulianDate = julianDate;
-            PreviewMinimumSeconds = Preview.FlightTimeSeconds;
+            PreviewMinimumSeconds = window.Plan.FlightTimeSeconds;
             PreviewMaximumSeconds = window.MaximumSeconds;
             _lastPreviewRequestSeconds = Preview.FlightTimeSeconds;
             return Preview;
@@ -462,12 +480,12 @@ namespace TimeToExplore.Simulation
         /// <summary>
         /// Queue a route preview build on the background planner. The worker
         /// solves the fastest feasible plan for the target and the departure
-        /// window with its own planner and gravity field, so the caller's
-        /// thread is free while the plan is being computed — the first plot is
-        /// the call that used to freeze the main thread for a couple of
-        /// seconds. The plan is published with <see cref="TryApplyCompletedPreview"/>,
-        /// which the HUD pumps once per frame; the previous preview, if any,
-        /// stays on screen until then.
+        /// window, then the start trip's plan, with its own planner and gravity
+        /// field, so the caller's thread is free while the plan is being
+        /// computed — the first plot is the call that used to freeze the main
+        /// thread for a couple of seconds. The plan is published with
+        /// <see cref="TryApplyCompletedPreview"/>, which the HUD pumps once per
+        /// frame; the previous preview, if any, stays on screen until then.
         ///
         /// A second plot replaces the first: the newest request wins, and an
         /// outstanding retime is cancelled, matching the synchronous
@@ -1167,11 +1185,55 @@ namespace TimeToExplore.Simulation
         /// comparison, not a player setting: the scene never clears it.</summary>
         internal bool PrefetchEnabled { get; set; } = true;
 
-        /// <summary>Capture the published preview's own inputs and queue two
-        /// steps each side of its duration. The preview starts at the window
-        /// minimum, so a fresh plot's lower two clamp away by design. The
-        /// queued work is speculative and is dropped by the next real
-        /// request.</summary>
+        /// <summary>The trip a fresh plot publishes: <see cref="PlotStartSteps"/>
+        /// of the control's 63 intervals above the window minimum. A window
+        /// with no span has no slower trip to offer, so its minimum is the
+        /// answer.</summary>
+        private static double PlotStartDuration(double minimum, double maximum)
+        {
+            double span = maximum - minimum;
+            if (!double.IsFinite(span) || !(span > 0.0)) return minimum;
+            return minimum + PlotStartSteps * span / (SliderStepCount - 1);
+        }
+
+        /// <summary>The plan a fresh window publishes, or the window's own
+        /// fastest plan when the start trip cannot be built. The plan is
+        /// cached, so the handle's first return to its start is a hit and later
+        /// builds can seed from it. The seed is the nearest cached plan, which
+        /// on a fresh plot is the window floor.</summary>
+        private TrajectoryPlan PlotStartPlan(string targetId, ShipState departure,
+            TripPlanner planner, PreviewWindow window, double burnLevelG,
+            CaptureStyle arrival)
+        {
+            TrajectoryPlan floor = window.Plan;
+            if (floor == null || !floor.IsFeasible) return floor;
+
+            double duration = PlotStartDuration(floor.FlightTimeSeconds,
+                window.MaximumSeconds);
+            if (!(duration > floor.FlightTimeSeconds)) return floor;
+
+            if (TryGetCachedRetime(targetId, departure.JulianDate, burnLevelG,
+                    arrival, duration,
+                    CacheTolerance(floor.FlightTimeSeconds, window.MaximumSeconds),
+                    out TrajectoryPlan cached))
+                return cached;
+
+            PinSeed seed = RetimeSeed(targetId, departure.JulianDate, burnLevelG,
+                arrival, duration, floor.FlightTimeSeconds, window.MaximumSeconds);
+            TrajectoryPlan plan = planner.PlanAtDuration(departure, targetId,
+                duration, seed);
+            if (plan == null || !plan.IsFeasible) return floor;
+
+            CacheRetime(targetId, departure.JulianDate, burnLevelG, arrival,
+                duration, plan);
+            return plan;
+        }
+
+        /// <summary>Capture the published preview's own inputs and queue six
+        /// steps each side of its duration. A fresh plot starts eight steps
+        /// above the window minimum, so the two lowest steps clamp away by
+        /// design. The queued work is speculative and is dropped by the next
+        /// real request.</summary>
         private void ArmPrefetch(CompletedPreview completed)
         {
             if (!PrefetchEnabled) return;
@@ -1191,7 +1253,7 @@ namespace TimeToExplore.Simulation
                 PlotPrefetchSteps);
         }
 
-        /// <summary>Queue three steps in the direction the handle travelled.
+        /// <summary>Queue twelve steps in the direction the handle travelled.
         /// The direction is the sign of this request's step index against the
         /// last accepted ask's; a repeated ask has no direction and queues
         /// nothing.</summary>
@@ -1544,15 +1606,18 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>One background Plot build: the window for the request's
-        /// target at the request's departure, on the worker's own planner. A
-        /// repeat of a window the session already solved returns the cached
-        /// plan without paying for another build.</summary>
+        /// target at the request's departure, then the start trip's plan on the
+        /// worker's own planner. A repeat of a window the session already
+        /// solved returns the cached plan without paying for the window
+        /// again.</summary>
         private CompletedPreview BuildPlotWindow(PreviewRequest request)
         {
             request.ApplyTo(_workerPlanner);
             PreviewWindow window = WindowFor(request.TargetId, request.Departure,
                 _workerPlanner, request.BurnLevelG, request.Arrival);
-            return new CompletedPreview(window.Plan, window.Plan,
+            TrajectoryPlan start = PlotStartPlan(request.TargetId, request.Departure,
+                _workerPlanner, window, request.BurnLevelG, request.Arrival);
+            return new CompletedPreview(start, window.Plan,
                 window.MaximumSeconds, request.Departure, request.BurnLevelG,
                 request.Arrival);
         }

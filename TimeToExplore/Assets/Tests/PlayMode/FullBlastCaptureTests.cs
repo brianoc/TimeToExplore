@@ -84,6 +84,15 @@ namespace TimeToExplore.Tests.PlayMode
 
             double minimum = bootstrap.Flight.PreviewMinimumSeconds;
             double maximum = bootstrap.Flight.PreviewMaximumSeconds;
+
+            // The plot opens eight steps above the window's fastest trip.
+            // Retime to the left end so this capture is the full-blast crossing.
+            bootstrap.RetimePreview(minimum);
+            yield return WaitFor(
+                () => !bootstrap.Flight.IsRetimePending
+                      && System.Math.Abs(bootstrap.Flight.Preview.FlightTimeSeconds
+                                         - minimum) < 1.0,
+                "the minimum must be published for the capture");
             TrajectoryPlan plan = bootstrap.Flight.Preview;
 
             Debug.Log($"Full-blast capture: minimum {minimum / SecondsPerDay:F5} d, " +
