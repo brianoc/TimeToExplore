@@ -85,6 +85,9 @@ tools/dotnet-bench.sh --out build/dotnet-bench.json
 tools/dotnet-bench.sh -c Debug --out build/dotnet-bench-debug.json
 tools/dotnet-bench.sh --micro
 
+# The CoreCLR player build and its in-player route benchmark
+tools/player-bench.sh --out build/player-bench.json
+
 # The table
 tools/compare_runtimes.py --mono <mono.json> --coreclr <coreclr.json> \
     --dotnet build/dotnet-bench.json
@@ -166,6 +169,10 @@ certified needle, as described above.
   not a different runtime or a different planner. The Editor cannot close it
   with a compiler switch; the measurements are in
   [why the Release harness is faster](#why-the-release-harness-is-faster-2026-11-27).
+- **A shipping CoreCLR player gets the Release harness's numbers.** The player
+  runs at 516 ms for the Earth → Mars plot against the Release harness's 536
+  and the Editor's 2,007. The Editor's penalty does not follow the game into a
+  build.
 - **The hope that Unity 7 approaches the harness's speed is half right.**
   Unity 7 closes about a third of the Mono → optimized-.NET gap. It does not
   reach the harness's speed, and the remaining gap is the Editor's debug JIT
@@ -244,6 +251,42 @@ The vector loop is the JIT signal: the Editor tracks Debug. The trigonometry
 row shows a second, smaller difference in the embedded runtime's math, which
 survives `-optimize+`.
 
+## A player build reaches the Release numbers (2026-11-27)
+
+Yes. A macOS player with the CoreCLR backend runs the same route code at the
+Release harness's speed. The player is not a debug build:
+`optimizerDisabled=false`, `isDebugBuild=false`, runtime 10.0.10.
+
+| Route | Unity 7 Editor | CoreCLR player | .NET 10 Release |
+|---|---:|---:|---:|
+| Earth → Mars plot | 2,007 ms | 516 ms | 536 ms |
+| Earth → Mars retime, middle | 330 ms | 94 ms | 92 ms |
+| Earth → Mars Begin | 1,544 ms | 395 ms | 385 ms |
+| Earth → Venus plot | 1,645 ms | 423 ms | 425 ms |
+| Earth → Uranus plot † | 2,369 ms | 613 ms | 592 ms |
+| Venus → Earth plot | 6,154 ms | 1,664 ms | 1,640 ms |
+| Uranus → Earth plot † | 23,681 ms | 6,346 ms | 616 ms |
+
+† The player and the Editor find the same certified Uranus floors
+(37.00540 d and 64.15472 d). The .NET harness finds an easier certified floor
+(32.14971 d and 63.06636 d), so its Uranus times are not like-for-like. The
+player's Uranus → Earth plot is **3.7× faster than the Editor at the same
+floor**.
+
+The player is within **2–5%** of the .NET Release harness on the routes where
+the floors match. The remaining difference is the host and the 10.0.10-dev
+runtime, not the code. So the Editor's 3.7× penalty is **Editor-only**: a build
+does not carry it.
+
+```bash
+tools/player-bench.sh --out build/player-bench.json
+```
+
+The build is `PlayerBenchmarkBuild.Build`, with the CoreCLR backend and .NET API
+level (the editor's standalone defaults). The runtime hook in
+`PlayerRouteBenchmark` only runs with `-tteBench`, so the shipping player is
+unaffected.
+
 ## Caveats
 
 - Alpha 22 is an alpha. It has open CoreCLR crashes and known issues, and it is
@@ -267,5 +310,7 @@ survives `-optimize+`.
 | Runtime pin | `TimeToExplore/Assets/Tests/EditMode/RuntimeProfileTests.cs` |
 | Plain .NET harness | `tools/dotnet-bench/`, `tools/dotnet-bench.sh` |
 | Numeric probe | `TimeToExplore/Assets/Editor/RuntimeMicrobenchmark.cs` |
+| Player benchmark | `TimeToExplore/Assets/Scripts/Player/PlayerRouteBenchmark.cs` |
+| Player build | `TimeToExplore/Assets/Editor/PlayerBenchmarkBuild.cs`, `tools/player-bench.sh` |
 | Comparison table | `tools/compare_runtimes.py` |
 | Drift guard | `tools/test_dotnet_bench.py` |

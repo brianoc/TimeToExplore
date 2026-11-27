@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EDITOR = ROOT / "TimeToExplore/Assets/Editor/PlanningBenchmark.cs"
+ROUTES = ROOT / "TimeToExplore/Assets/Scripts/Simulation/BenchmarkRoutes.cs"
 HARNESS = ROOT / "tools/dotnet-bench/Program.cs"
 SCRIPT = ROOT / "tools/dotnet-bench.sh"
 
@@ -26,9 +26,9 @@ def route_ids(path: Path, constructor: str) -> list[str]:
 
 class DotnetBenchRouteTests(unittest.TestCase):
     def test_routes_match_the_editor_benchmark(self) -> None:
-        editor = route_ids(EDITOR, "BenchmarkRoute")
+        editor = route_ids(ROUTES, "BenchmarkRoute")
         harness = route_ids(HARNESS, "Route")
-        self.assertTrue(editor, "no routes found in the Editor benchmark")
+        self.assertTrue(editor, "no routes found in the shared benchmark routes")
         self.assertEqual(editor, harness)
 
     def test_every_route_has_a_target(self) -> None:

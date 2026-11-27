@@ -24,15 +24,21 @@ reproduces the Editor's number.
   (vector 492–573 ms against Release 184 ms).
 - Tiered PGO is ~26% of the optimized build; the other 3.7× is optimized code.
 - The Editor's trigonometry is ~2× the SDK's, a second, smaller runtime gap.
+- A **macOS CoreCLR player build reaches the Release numbers**:
+  `optimizerDisabled=false`, `isDebugBuild=false`, Earth → Mars plot 516 ms
+  against the Release harness's 536 and the Editor's 2,007. At the same
+  certified Uranus floor, the player's reverse plot is 6,346 ms against the
+  Editor's 23,681 (3.7×). The Editor penalty is Editor-only.
 
 ## State
 
 - [x] Harness `-c Debug|Release`, `--micro`, and metadata in the run JSON.
 - [x] `RuntimeMicrobenchmark` probe and `RuntimeProfileTests` profile logging.
 - [x] `TTE_BENCH_ROUTE` for a one-route diagnostic.
+- [x] Player hook, player build, and `tools/player-bench.sh`; player measured.
 - [x] Docs section and log entry.
 - [x] Full `tools/check.sh` passed with the `csc.rsp` experiment removed:
-      both Unity suites, 0 failed, 0 skipped, in 702 s.
+      both Unity suites, 0 failed, 0 skipped, in 762 s.
 - [x] Committed; still unmerged and unpushed.
 
 ## Verification
@@ -45,13 +51,14 @@ UNITY_BIN=/Applications/Unity/Hub/Editor/7000.0.0a22/Unity.app/Contents/MacOS/Un
 ```
 
 Last result: every gate passed, both Unity suites with 0 failed and 0 skipped,
-in 702 s.
+in 762 s.
 
 ```bash
 tools/dotnet-bench.sh -c Release --out build/dotnet-bench-release.json
 tools/dotnet-bench.sh -c Debug   --out build/dotnet-bench-debug.json
 tools/dotnet-bench.sh --micro
 DOTNET_TieredPGO=0 tools/dotnet-bench.sh -c Release ...
+tools/player-bench.sh --out build/player-bench.json
 ```
 
 The Editor probe:
