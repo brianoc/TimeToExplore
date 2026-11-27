@@ -4,9 +4,15 @@ title: "ADR-022: the departure climb split and the 3×-floor trip window"
 description: The escape conic's hyperbolic excess is chosen once per build by a rank-only Lambert cost, on by default; a little excess buys a longer coast and shrinks both fixed burns. The burn-only crossing keeps the minimum-energy climb and is now dominated, and the trip window stays three times the split-aware floor.
 tags: [decision, simulation, navigation, departure, trajectory, performance, window]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
+> **Superseded in part: decision 3, and the slider's left end.** The burn-only
+> crossing now takes the time-optimal climb and is the nav minimum where it beats
+> the coast floor ([ADR-025](/decisions/adr-025-full-blast-route.md)); the
+> window's slow end stays three times the coast floor. The rest of this record
+> stands as the planet decision of 2026-11-26.
+>
 > **Superseded in part: decision 5.** Stations no longer keep the unforced
 > climb. A station with a departure body now takes the same split, entered at the
 > hold state ([ADR-023](/decisions/adr-023-station-departure-split.md)). The rest
@@ -125,10 +131,12 @@ Mars 0.3 g 10 d, Uranus 1 g 35 d — are now **buildable** at 526.744, 567.752 a
   its old cost and let the cold and seeded builds agree at the fast end. The
   Uranus 0.3 g floor settled at 37.005 d after the second retry (it was 38.378
   before).
-* **The short-coast gap is empty at the current epoch.** The branch filled the
-  range between a shorter burn-only minimum and a later coast floor; the split
+* **The short-coast gap is empty at this epoch.** The branch filled the range
+  between a shorter burn-only minimum and a later coast floor; the split
   inverts that, so `PlanAtDuration` refuses below the floor and builds the coast
   above it. The branch stays for a route whose burn-only crossing still wins.
+  **Superseded by [ADR-025](/decisions/adr-025-full-blast-route.md):** the
+  full-blast minimum is below the floor again and the branch fills the range.
 * **The window no longer reaches the 90-day Mars build.** It is a direct
   `PlanAtDuration` call, as it was before the split with the 3× cap.
 * **The old trade reverses its sign at the fast end:** a faster trip now costs

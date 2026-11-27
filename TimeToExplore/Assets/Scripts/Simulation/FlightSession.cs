@@ -1687,21 +1687,22 @@ namespace TimeToExplore.Simulation
         /// <summary>
         /// The fastest plan and the trip-time window for a target, at the given
         /// pinned departure state. The minimum is the planner's
-        /// <see cref="TripPlanner.PlanFastest"/> — the zero-coast burn-only
-        /// crossing when it is the shorter feasible plan, otherwise the coast
-        /// floor — and the upper end is still probed with
-        /// <see cref="TripPlanner.PlanAtDuration"/>. Runs on the caller's thread:
-        /// the session's synchronous <see cref="Plot"/> and the background
-        /// worker's <see cref="BuildPlotWindow"/> and <see cref="BuildRebuild"/>.
-        /// The cache is shared between threads, so every access is under
+        /// <see cref="TripPlanner.PlanFastest"/> — the time-optimal full-blast
+        /// crossing when it is shorter, otherwise the coast floor — and the upper
+        /// end is **three times the coast floor**, probed with
+        /// <see cref="TripPlanner.PlanAtDuration"/>, so the slow end does not move
+        /// when the full-blast left end does. Runs on the caller's thread: the
+        /// session's synchronous <see cref="Plot"/> and the background worker's
+        /// <see cref="BuildPlotWindow"/> and <see cref="BuildRebuild"/>. The cache
+        /// is shared between threads, so every access is under
         /// <see cref="_retimeLock"/>; the slow planner calls run outside it, on
         /// the worker for async builds.
         ///
-        /// The range between a burn-only minimum and the coast floor is a known
-        /// gap: <see cref="TripPlanner.PlanAtDuration"/> cannot build those
-        /// durations yet, so a retime that lands there comes back stretched or
-        /// infeasible and the panel reports it. The window does not fake a plan
-        /// for the gap.
+        /// The range between the two is built by
+        /// <see cref="TripPlanner.PlanAtDuration"/>: from the first feasible
+        /// short coast up to the floor it is a short-coast crossing, and above
+        /// the floor it is the coast profile. The window does not fake a plan for
+        /// a duration the planner refuses.
         /// </summary>
         private PreviewWindow WindowFor(string targetId, ShipState departure,
             TripPlanner planner, double burnLevelG, CaptureStyle arrival)
@@ -1720,10 +1721,14 @@ namespace TimeToExplore.Simulation
                 if (_windows.TryGetValue(key, out PreviewWindow cached)) return cached;
             }
 
-            TrajectoryPlan plan = planner.PlanFastest(departure, targetId);
+            TrajectoryPlan plan = planner.PlanFastest(departure, targetId,
+                out TrajectoryPlan coastFloor);
+            double windowFloor = coastFloor != null && coastFloor.IsFeasible
+                                 && coastFloor.FlightTimeSeconds > 0.0
+                ? coastFloor.FlightTimeSeconds
+                : plan.FlightTimeSeconds;
             var window = new PreviewWindow(plan,
-                MaximumPreviewSeconds(targetId, plan.FlightTimeSeconds, planner,
-                    departure),
+                MaximumPreviewSeconds(targetId, windowFloor, planner, departure),
                 plan?.PinSeed ?? default);
 
             lock (_retimeLock)
@@ -1966,26 +1971,27 @@ namespace TimeToExplore.Simulation
         /// real upper bound: the short-way Lambert transfer sweeps past 180°, and
         /// a slow coast arrives slower than the target's frame, so the planner
         /// rejects those durations. The end is the largest accepted duration
-        /// inside <see cref="TripPlanner.MaxDurationScale"/> times the minimum,
-        /// found by probing; the slider can never ask for a plan the planner
-        /// refuses.
+        /// inside <see cref="TripPlanner.MaxDurationScale"/> times the **coast
+        /// floor**, found by probing. The floor, not the preview's faster
+        /// full-blast minimum, is the anchor: the window keeps the slow end it
+        /// had before the full-blast route, so only the left end moves.
         ///
         /// Public so the route benchmark can time the exact pair
         /// <see cref="WindowFor"/> runs, instead of timing a copy that can drift
         /// from the real probe count. It reads no session state.
         /// </summary>
-        public double MaximumPreviewSeconds(string targetId, double minimum,
+        public double MaximumPreviewSeconds(string targetId, double floorSeconds,
             TripPlanner planner, ShipState departure)
         {
-            if (!(minimum > 0.0) || !double.IsFinite(minimum))
+            if (!(floorSeconds > 0.0) || !double.IsFinite(floorSeconds))
                 return double.NaN;
 
-            double cap = minimum * TripPlanner.MaxDurationScale;
+            double cap = floorSeconds * TripPlanner.MaxDurationScale;
             if (IsDurationFeasible(targetId, cap, planner, departure)) return cap;
 
-            // The minimum is the plan the planner just found, so it is the
-            // feasible floor; the cap is the infeasible ceiling.
-            double feasible = minimum;
+            // The floor is the plan the planner just built, so it is the
+            // feasible lower bound; the cap is the infeasible ceiling.
+            double feasible = floorSeconds;
             double infeasible = cap;
             for (int probe = 0; probe < WindowProbes; probe++)
             {

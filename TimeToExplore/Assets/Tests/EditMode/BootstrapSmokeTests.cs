@@ -289,28 +289,33 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Trajectory.ArcLabel(2), Is.EqualTo("Fixed burn"));
             Assert.That(_bootstrap.Trajectory.ArcIsDashed(2), Is.False,
                 "the departure burn is solid");
-            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Conic arc"));
-            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.True,
-                "the cruise coast is the conic phase");
-            Assert.That(_bootstrap.Trajectory.ArcLabel(4), Is.EqualTo("Fixed burn"),
-                "the brake follows the coast");
-            Assert.That(_bootstrap.Trajectory.ArcColour(5),
+            Assert.That(_bootstrap.Trajectory.ArcLabel(3), Is.EqualTo("Fixed burn"),
+                "the brake follows the departure burn with no cruise coast");
+            Assert.That(_bootstrap.Trajectory.ArcIsDashed(3), Is.False,
+                "the brake is solid");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(4), Is.EqualTo("Conic arc"),
+                "the capture chain's coast follows the brake");
+            Assert.That(_bootstrap.Trajectory.ArcColour(4),
                 Is.EqualTo(RouteColours.Conic),
-                "the capture chain follows the brake");
+                "the chain's first conic is the base colour");
+            Assert.That(_bootstrap.Trajectory.ArcLabel(5), Is.EqualTo("Conic arc"));
             Assert.That(_bootstrap.Trajectory.ArcColour(5),
+                Is.Not.EqualTo(RouteColours.Conic),
+                "the second conic in the run is shaded darker");
+            Assert.That(_bootstrap.Trajectory.ArcColour(3),
                 Is.Not.EqualTo(_bootstrap.Trajectory.ArcColour(4)),
-                "the transfer is the second conic in the run");
+                "the burn and the conic run are different colours");
 
             TrajectoryPlan conic = _bootstrap.Flight.Preview;
             _bootstrap.SetArrivalStyle(CaptureStyle.FiniteBurn);
             WaitForRebuild(conic);
 
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.FiniteBurn));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(9),
-                "the coast floor keeps its conic capture chain and adds the hybrid's burn");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
+                "the full-blast minimum always ends on the conic capture chain");
             Assert.That(_bootstrap.Flight.Preview.Arcs.Count(arc => arc.IsFiniteBurn),
-                Is.EqualTo(3),
-                "departure burn, brake and the hybrid capture");
+                Is.EqualTo(2),
+                "departure burn and brake; the minimum carries no hybrid capture");
 
             // Above the floor the arrival style is visible: the hybrid capture
             // adds its finite capture burn.
@@ -563,15 +568,15 @@ namespace TimeToExplore.Tests.EditMode
                 "the preview carries the departure burn and the brake");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(8.0),
-                "the window starts at the split-aware coast floor");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.5),
-                "the minimum is a real plan, not the profile being flown faster than it can");
+            Assert.That(minimum / JulianDate.SecondsPerDay,
+                Is.EqualTo(6.66965).Within(0.02),
+                "the window starts at the full-blast crossing");
             Assert.That(preview.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
                                                 && arc.IsCoast),
-                Is.True, "the split-aware minimum cruises");
+                Is.False, "the full-blast minimum has no cruise coast");
             Assert.That(_bootstrap.Flight.PreviewMaximumSeconds,
-                Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6));
+                Is.EqualTo(21.50253 * JulianDate.SecondsPerDay).Within(0.05 * JulianDate.SecondsPerDay),
+                "the slow end stays three times the coast floor");
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
 
             _bootstrap.BeginPlottedFlight();

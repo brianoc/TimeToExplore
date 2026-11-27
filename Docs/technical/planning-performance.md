@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, and Begin flying the fresh preview.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The problem
@@ -1535,3 +1535,39 @@ the newly feasible reverses. The search itself is faster; a phase whose duration
 changed is compared with a different build. The 25% threshold still guards the
 search cost, and the search's own line is the **4–7 ms** rank-only choice, which
 is far inside it.
+
+## Step 7: the full-blast grid (2026-11-27)
+
+The nav minimum now searches five escape excesses and certifies the winner
+([ADR-025](/decisions/adr-025-full-blast-route.md)). The search is cheap by
+construction: each candidate is one fixed-date seam solve on the two-body field
+at 32/64 samples and a 50 km / 50 m/s gate, and only the winner is rebuilt with
+the summed field and the 1 km / 1 m/s gate. The grid therefore costs five probes
+plus one or two certified builds, not five certified crossings.
+
+**Unity 7 Editor, same machine and epoch, median of three.** This is the
+re-recorded `planning-benchmark-baseline.json`; the player is about 3.7× faster
+than the Editor on the same plans.
+
+| Route | Plot | Window | Note |
+|---|---:|---|---|
+| Earth → Mars | 3,132 ms | 6.66965–21.50253 d | the clean case; 2,007 ms before the route |
+| Earth → Venus | 2,766 ms | 3.93440–12.62702 d | 1,645 ms before the route |
+| Earth → Uranus | 4,748 ms | 37.00540–111.01619 d | the fallback; 2,369 ms before |
+| Venus → Earth | 38,628 ms | 2.04971–22.31016 d | the 22.31-day cap build dominates |
+| Uranus → Earth | 36,600 ms | 64.15472–176.42547 d | 23,681 ms before the route |
+
+The grid adds about **1.1–2.5 s** to a clean first plot in the Editor: the coast
+floor's own build (about 2 s, unchanged), five cheap probes, and the certified
+winner. The two reverse routes are the [reverse-route plot
+cost](/production/roadmap.md) follow-up, not the grid: their window caps are
+multi-week coast builds (Venus → Earth's 22.31 d, Uranus → Earth's 176.43 d), and
+the cap probe alone dominates the plot. The first plot of a route is still the
+dominant cost, and a repeat plot at the same date is a cache hit; the drag
+median stays 267–304 ms because the prefetch fills the neighbours and the cache
+answers the steps.
+
+The **window probe now anchors to the coast floor**, so the plot pays the cap
+build the player's slider will use. Before that fix the benchmark anchored to the
+full-blast minimum, and Venus → Earth's cap was refused at the minimum's 3×, which
+made its plot look smaller and its slider a single point.

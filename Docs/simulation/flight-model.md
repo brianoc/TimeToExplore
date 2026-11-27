@@ -4,7 +4,7 @@ title: Flight model
 description: The 10 m/s² torch drive, brachistochrone travel times, delta-v budgets, and the trip profiles.
 tags: [simulation, flight, propulsion, delta-v]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The one big assumption
@@ -253,24 +253,25 @@ burn-level slider's floor is 0.05 g. The
 arrival adds a planetocentric approach leg; on a fast trip, whose brake starts
 outside the target's ceiling, it is absent.
 
-The profile's true floors at the epoch are **3.67616 days** to Mercury at 1 g
-(peak 9.70 m/s², 1,649.4 km/s) and **7.16751 days** to Mars at 0.3 g
-(2.95 m/s², 1,070.1 km/s), each at the 16 km/s grid cap; the Mars trip-time
-window ends at **21.50253 days**, three times the floor, so the 90-day plan above
-is a direct `PlanAtDuration` build outside the nav computer's window. The nav
-minimum is the coast floor ([ADR-022](/decisions/adr-022-departure-split.md)):
-the burn-only crossing is longer — Mercury **13.86287**, Mars **16.48669**,
-Jupiter **22.55555** days — so it is dominated. Jupiter at 0.3 g floors at
-**13.58298 days** (window 13.58–40.75), Uranus at **37.00540 days** at 0.3 g and
-**28.18209 days** at 1 g (windows 37.01–111.02 and 28.18–84.55). Faster crossings
-are limited by the ballistic climb and the burns, not by an over-thrusting
-break. The capture enters at the arrival handover
-floor rather than the sphere of influence, so the inbound fall is minutes. The
-slow end of the slider is three times the floor; the planner itself accepts
-longer trips in synodic bands, and a coast that arrives slower than the
-target's frame would still need an acceleration rather than a brake. A plan
-the drive cannot fly carries an `InfeasibleReason` naming the arc and the peak it
-needs.
+The coast floors at the epoch are **3.67616 days** to Mercury at 1 g (peak
+9.70 m/s², 1,649.4 km/s) and **7.16751 days** to Mars at 0.3 g (2.95 m/s²,
+1,070.1 km/s), each at the 16 km/s grid cap; they remain the fixed-duration
+anchors and the window's slow end, so the 90-day plan above is a direct
+`PlanAtDuration` build outside the nav computer's window. The nav **minimum** is
+the full-blast zero-coast crossing
+([ADR-025](/decisions/adr-025-full-blast-route.md)):
+**3.22822 days** to Mercury at 1 g (2,408.2 km/s) and **6.66965** to Mars at
+0.3 g (1,538.1). Jupiter at 0.3 g floors at **13.58298 days** and the full blast
+is **12.71122** (window 12.71–40.75); Uranus at **37.00540 days** at 0.3 g and
+**28.18209 days** at 1 g keeps the coast floor (windows 37.01–111.02 and
+28.18–84.55) because no crossing is shorter. Faster crossings are limited by the
+ballistic climb and the burns, not by an over-thrusting break. The capture enters
+at the arrival handover floor rather than the sphere of influence, so the inbound
+fall is minutes. The slow end of the slider is three times the **coast** floor;
+the planner itself accepts longer trips in synodic bands, and a coast that
+arrives slower than the target's frame would still need an acceleration rather
+than a brake. A plan the drive cannot fly carries an `InfeasibleReason` naming
+the arc and the peak it needs.
 
 The break's duration search is **two-tier**. It measures the quintic against the
 departure body alone — the break's own central body — and rebuilds and measures
@@ -306,12 +307,12 @@ integer steps** across the window: step 0 is the fastest feasible plan of the
 profile and step 63 the slowest duration the slider offers, so every position
 is a distinct flight time and a fresh solve at that duration. The arcs are
 rebuilt, the arrival date moves, and the target is met where the ephemeris puts
-it on that date. The window is **three times the split-aware floor**. At the
-epoch the Mars window is **7.16751–21.50253 days**
-(3.67616–11.02847 at Mercury 1 g, 4.20901–12.62702 at Venus 0.3 g,
-13.58298–40.74894 at Jupiter 0.3 g, 37.00540–111.01619 at Uranus 0.3 g).
+it on that date. The window runs from the **full-blast minimum** to three times
+the **coast** floor. At the epoch the Mars window is **6.66965–21.50253 days**
+(3.22822–11.02847 at Mercury 1 g, 3.93440–12.62702 at Venus 0.3 g,
+12.71122–40.74894 at Jupiter 0.3 g, 37.00540–111.01619 at Uranus 0.3 g).
 A 90-day Mars plan exists as a direct `PlanAtDuration` build but the slider
-cannot reach it ([ADR-022](/decisions/adr-022-departure-split.md)).
+cannot reach it ([ADR-025](/decisions/adr-025-full-blast-route.md)).
 
 The slider is one honest axis with two costs on it:
 

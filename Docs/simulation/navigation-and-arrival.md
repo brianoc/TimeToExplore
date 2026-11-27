@@ -4,7 +4,7 @@ title: Navigation and arrival
 description: How the player plans a moving-target intercept, arrives in orbit at a planet or at a station's hold point, and why docking is a later phase.
 tags: [simulation, navigation, orbital-insertion, docking]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The problem
@@ -241,10 +241,12 @@ conic, a 77.7-minute departure burn of 13.709 km/s, an 82.158-day coast, a
 0.243-day planetocentric approach, a 108-minute brake of 19.108 km/s, and the
 3.5 km/s conic capture, **38.5411 km/s** in total
 ([ADR-022](/decisions/adr-022-departure-split.md)). The capture enters at
-6,033 km and falls for 13.6 minutes. The profile's true floor at the epoch is
+6,033 km and falls for 13.6 minutes. The coast floor at the epoch is
 **7.16751 days** to Mars at 0.3 g (1,070.1 km/s, a 16 km/s excess) and
-**3.67616 days** to Mercury at 1 g (1,649.4 km/s); the Mars trip-time window
-ends at **21.50253 days**, so the 90-day plan above is a direct
+**3.67616 days** to Mercury at 1 g (1,649.4 km/s); the nav computer's fastest
+plan is the full-blast crossing, **6.66965** and **3.22822 days**
+([ADR-025](/decisions/adr-025-full-blast-route.md)), and the Mars trip-time
+window ends at **21.50253 days**, so the 90-day plan above is a direct
 `PlanAtDuration` build outside the nav computer's window. The fast Mercury
 flight arrives inside the test's 10 m / 0.1 m/s bound and holds the parking
 orbit. The nav computer exposes the crossing as the only route and the existing
@@ -261,27 +263,30 @@ time, peak thrust, and delta-v. It is a **duration** control, not a throttle
 cap, because `MaxAccelerationMps2` also sets the parking-orbit radius; lowering
 it would silently move where the ship parks.
 
-The span starts at the profile's fastest plan — `PlanFastest`: the zero-coast
-burn-only crossing when that is the shorter feasible plan, otherwise the coast
-floor. Since the split the coast floor is much shorter than the burn-only
-crossing (Mars 0.3 g: 7.17 d against 16.49 d), so the minimum is the coast floor
-and the burn-only branch is dominated ([ADR-022](/decisions/adr-022-departure-split.md)).
-The right-hand end is **three times that minimum**, the same 3× rule the window
-always used, now applied to the split-aware floor. The old Mars end (about
-49.5 d) was three times the *old* 16.84-day floor, not a physical limit: the
-planner accepts up to ~295 d, in synodic bands. Growing the window to that limit
-would put a 2,000-day trip on the Uranus slider and take the benchmark's retime
-and drag phases with it, so the window keeps the 3× shape at the new left end.
-The 90-day Mars build above is outside the window and can only be built directly
-with `PlanAtDuration`, as it was before this step.
+The span starts at the profile's fastest plan — `PlanFastest`: the **full-blast**
+zero-coast crossing, whose escape excess is searched on a small grid
+([ADR-025](/decisions/adr-025-full-blast-route.md)), or the coast floor when no
+crossing is shorter. The right-hand end is **three times the coast floor** — the
+same 3× rule the window always used — so the full-blast route moves only the left
+end. Mars 0.3 g is **6.67–21.50 d**: the crossing at 6.66965 d against the
+7.16751 d coast floor. The old Mars end (about 49.5 d) was three times the *old*
+16.84-day floor, not a physical limit: the planner accepts up to ~295 d, in
+synodic bands. Growing the window to that limit would put a 2,000-day trip on
+the Uranus slider and take the benchmark's retime and drag phases with it, so the
+window keeps the 3× shape anchored to the coast floor. The 90-day Mars build
+above is outside the window and can only be built directly with
+`PlanAtDuration`, as it was before this step.
 
-At the epoch the floors and windows are **3.67616–11.02847 days** to Mercury at
-1 g, **6.322–18.966** at 0.3 g, **4.23343–12.70028** to Mars at 1 g,
-**7.16751–21.50253** at 0.3 g, **4.20901–12.62702** to Venus at 0.3 g,
-**9.194–27.582** to Jupiter at 1 g, **13.58298–40.74894** at 0.3 g,
-**28.18209–84.54626** to Uranus at 1 g and **37.00540–111.01619** at 0.3 g. The slider's value
-line says what the drive is doing — `0.3 g burns · coast` — instead of quoting a
-peak throttle for a plan that coasts.
+At the epoch the windows are **3.22822–11.02847 days** to Mercury at
+1 g, **5.928–18.966** at 0.3 g, **3.71822–12.70028** to Mars at 1 g,
+**6.66965–21.50253** at 0.3 g, **3.93440–12.62702** to Venus at 0.3 g,
+**9.194–27.582** to Jupiter at 1 g, **12.71122–40.74894** at 0.3 g,
+**28.18209–84.54626** to Uranus at 1 g and **37.00540–111.01619** at 0.3 g. The
+left end is the full-blast minimum where one wins; Uranus at 0.3 g is the
+measured fallback to the coast floor. The right end is unchanged, three times
+the coast floor. The slider's value line says what the drive is doing —
+`0.3 g burns · coast` — instead of quoting a peak throttle for a plan that
+coasts.
 
 A **station** with a departure body follows the same rule at the epoch: from a
 Mars 300 km orbit to Gateway the split-aware floor is **54.36495 d** (98.4091
