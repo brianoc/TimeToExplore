@@ -1,24 +1,14 @@
 # Handoff
 
-**In progress (2026-11-27): remove the camera's body avoidance.** Branch
-`work/remove-camera-avoidance`.
+**No active handoff (2026-11-27).** `main` carries the reverse-route window probe
+([ADR-026](Docs/decisions/adr-026-window-probes-the-coast-profile.md), pushed),
+the continuous flight warp with the chase camera
+([ADR-027](Docs/decisions/adr-027-continuous-warp-and-chase-camera.md)), the
+follow-cam polish and the removal of the camera's body avoidance, plus the
+Editor CLI concept and the wide Earth–Moon opening view from the parallel work.
+The warp and camera work is local, waiting for human testing; `main` is not
+pushed past the reverse-route commit until the flight feel is confirmed.
 
-Done:
-
-* `ShipCameraRig` places the camera at the orbit offset without testing the
-  ray for bodies, so a body between the camera and the ship no longer pulls the
-  camera forward.
-* The ten-radii arrival framing is kept; it is what stops the chase sitting on
-  a planet near arrival.
-* The avoidance test and the current-state doc references are removed.
-
-Next:
-
-1. Run `tools/check.sh --tests presentation,smoke` and
-   `--tests playmode`.
-2. Merge to `main` and clear this handoff.
-
-Traps:
-
-* `ApplyToCamera` no longer takes the ship position; do not reintroduce a
-  placement path that needs it.
+Start from [the design bundle](Docs/index.md),
+[the roadmap](Docs/production/roadmap.md), and
+[the working agreement](Docs/working-agreement.md).
