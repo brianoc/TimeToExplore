@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:19:21Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:24:00Z }
 ---
 
 # One command
@@ -152,6 +152,12 @@ and runs one fixture inside the selected category.
 while it is tweaked. A small branch therefore merges on its `--changed` gate; a
 bare run is reserved for a substantial merge — planner maths, the scene, the
 assembly layout, or a change across areas.
+
+Every gate above runs a copy of the project. To inspect or iterate on the Editor
+the person already has open, use the `unity` CLI instead; see
+[Driving the Editor from the CLI](/technical/editor-automation.md). It answers a
+live-state question or runs one fixture in seconds, and it does not replace any
+gate here.
 
 # How long the gates take
 
