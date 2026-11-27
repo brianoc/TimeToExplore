@@ -112,8 +112,10 @@ stays in the concepts and ADRs.
     no rule for rather than running everything.
   - Planner maths or the scene: `tools/check.sh --changed --deep` (about
     thirteen minutes).
-  - Before a merge: a bare `tools/check.sh` (about sixteen minutes). A small
-    tweak does not need the merge gate.
+  - A substantial merge — planner maths, the scene, the assembly layout, or
+    more than one area: a bare `tools/check.sh` (about sixteen minutes). A
+    small tweak merges on its `--changed` gate; `main` is tested by hand after
+    each merge, so not every merge needs the full suite.
   - One fixture: add `--filter <ClassName>` to narrow the run further.
 - The Unity suites run in `.cache/test-project` with `Assets` symlinked to the
   real folder and their own warm `Library`, so the open editor is untouched and

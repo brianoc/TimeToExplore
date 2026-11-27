@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:09:23Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:19:21Z }
 ---
 
 # One command
@@ -60,7 +60,7 @@ and the session, report, path-sampling and warm-start tests that plot a real
 route. Splitting them kept every assertion; it moved the expensive ones off the
 inner loop. Use `--changed` for a normal tweak, `--tests flight` when editing
 simulation code, `--changed --deep` when the change reaches the planner maths,
-and a bare `tools/check.sh` before a merge. A `core` or `presentation` run is a few seconds. The burn–coast–burn
+and a bare `tools/check.sh` for a substantial merge. A `core` or `presentation` run is a few seconds. The burn–coast–burn
 plan is the expensive part — its fixed burns integrate the summed field — but a
 certified build is no longer fifteen seconds in the editor. The PlayMode suite
 is separate and takes about **half a minute** on the warm project. A bare
@@ -148,6 +148,11 @@ or a refactor of the planner's certifying path, still needs `--deep` or a bare
 run. `--filter <ClassName>` is the last level: it passes `-testFilter` to Unity
 and runs one fixture inside the selected category.
 
+`main` is where the person tests, and a feature branch can merge several times
+while it is tweaked. A small branch therefore merges on its `--changed` gate; a
+bare run is reserved for a substantial merge — planner maths, the scene, the
+assembly layout, or a change across areas.
+
 # How long the gates take
 
 Measured on an M4 Max with a warm `.cache/test-project` on Unity 7000.0.0a22 at
@@ -163,7 +168,7 @@ gates.
 | `--tests smoke` | about 115 s |
 | `--tests deep` | about 11.5 min |
 | `--changed --deep` | about 13 min |
-| bare `tools/check.sh` | about 16 min |
+| bare `tools/check.sh` (substantial merge) | about 16 min |
 
 The `deep` category is about **11.5 minutes** of the bare run:
 `FlightSessionTests` and `BurnCoastBurnTripPlannerTests` are most of it. The
