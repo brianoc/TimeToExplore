@@ -76,10 +76,13 @@ date.
 The player's 1–7 keys still select a fixed scale, and a digit press takes the
 warp off the curve for the rest of that flight. Otherwise a live flight follows
 `FlightWarp`: the target real duration is
-`clamp(20 + 17 · ln(flight days / 6.7), 12, 60)` seconds, and the scale blends
-from 1x to the cruise rate and back over three real seconds at each end. The
-curve is a function of real elapsed time, so the integrated trip lands on the
-target and the clock is at 1x on the frame the flight ends.
+`clamp(20 + 17 · ln(flight days / 6.7), 12, 60)` seconds. The first and last 40%
+of that duration hold near 1x and climb along a quartic, so the local departure
+and capture are slow and the heliocentric middle is fast. The curve is a
+function of real elapsed time, so the integrated trip lands on the target and
+the clock is at 1x on the frame the flight ends. The left-edge frame integration
+over the falling end makes a long trip land a little early (about 2.5% at
+Uranus), which is within the design's leeway.
 
 The only limit on how much simulated time one frame may span is the
 **integration budget** of 2,000 RK4 substeps. If the budget runs out, step 5

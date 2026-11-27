@@ -17,10 +17,14 @@ namespace TimeToExplore.Simulation
     /// long. The result is clamped to <see cref="MinRealSeconds"/> and
     /// <see cref="MaxRealSeconds"/>.
     ///
-    /// At each end the scale blends between 1x and the cruise rate over
-    /// <see cref="RampSeconds"/> real seconds. Each ramp covers half the area of
-    /// its span, so the cruise rate that makes the whole trip last the target
-    /// time is <c>(flight - target) / (target - ramp) + 1</c>. The curve is
+    /// At each end the scale holds near 1x for a long stretch and then climbs
+    /// along a quartic. The ends are where the ship is near a body and the
+    /// departure, capture, and parking are the parts worth watching; a long,
+    /// slow climb keeps them on screen instead of flashing past in the first
+    /// second. Each end covers <see cref="EndFraction"/> of the target duration,
+    /// and a quartic ramp covers a fifth of its span, so the cruise rate that
+    /// makes the whole trip last the target time is
+    /// <c>(flight - target) / (target - 2·ramp + 2·ramp/5) + 1</c>. The curve is
     /// therefore exact: integrating it over the target duration advances the
     /// flight by its whole duration, and the clock is at 1x at both ends.
     ///
@@ -43,8 +47,15 @@ namespace TimeToExplore.Simulation
         /// <summary>Longest real duration, so an outer-system crossing still ends.</summary>
         public const double MaxRealSeconds = 60.0;
 
-        /// <summary>Real seconds over which the scale leaves and rejoins 1x.</summary>
-        public const double RampSeconds = 3.0;
+        /// <summary>Fraction of the target duration spent easing in and out.</summary>
+        public const double EndFraction = 0.4;
+
+        /// <summary>
+        /// Power of the end ease. A quartic holds close to 1x far longer than a
+        /// smoothstep, then climbs steeply, so the local departure and capture
+        /// have time to read while the middle still crosses quickly.
+        /// </summary>
+        public const double EndExponent = 4.0;
 
         /// <summary>Ceiling on the cruise rate, well above any planned trip.</summary>
         public const double MaxScale = 1.0e7;
@@ -74,7 +85,10 @@ namespace TimeToExplore.Simulation
 
             double target = TargetRealSeconds(flightSeconds);
             double ramp = Ramp(flightSeconds);
-            double cruise = (flightSeconds - target) / (target - ramp) + 1.0;
+            // The plateau is target - 2·ramp long; each ramp adds 1/(k+1) of
+            // its own length instead of all of it.
+            double holding = target - 2.0 * ramp + 2.0 * ramp / (EndExponent + 1.0);
+            double cruise = (flightSeconds - target) / holding + 1.0;
             return Math.Clamp(cruise, 1.0, MaxScale);
         }
 
@@ -91,22 +105,19 @@ namespace TimeToExplore.Simulation
             double ramp = Ramp(flightSeconds);
             double cruise = CruiseScale(flightSeconds);
 
-            double leaving = SmoothStep(realElapsedSeconds / ramp);
-            double arriving = SmoothStep((target - realElapsedSeconds) / ramp);
+            double leaving = EndEase(realElapsedSeconds / ramp);
+            double arriving = EndEase((target - realElapsedSeconds) / ramp);
             return 1.0 + (cruise - 1.0) * Math.Min(leaving, arriving);
         }
 
-        /// <summary>
-        /// The ramp length, shortened for a target so short that the two ramps
-        /// would overlap.
-        /// </summary>
+        /// <summary>The length of one end's slow climb.</summary>
         private static double Ramp(double flightSeconds) =>
-            Math.Min(RampSeconds, 0.5 * TargetRealSeconds(flightSeconds));
+            EndFraction * TargetRealSeconds(flightSeconds);
 
-        private static double SmoothStep(double t)
+        private static double EndEase(double t)
         {
             t = Math.Clamp(t, 0.0, 1.0);
-            return t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+            return Math.Pow(t, EndExponent);
         }
     }
 }

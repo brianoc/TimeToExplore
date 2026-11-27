@@ -36,6 +36,24 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheFlightViewKeepsTheMarkerFramedWhenTheChasePullsBack()
+        {
+            _cameraObject.transform.position = new Vector3(0f, 0f, 5f);
+            var velocity = new Vector3d(1.0, 0.0, 0.0);
+
+            _ship.SetFlightView(true);
+            _ship.Refresh(_camera, ThrustCommand.None, velocity);
+            Assert.That(_ship.CurrentMarkerPixels,
+                Is.EqualTo(ShipView.CloseMarkerPixels),
+                "the chase keeps its subject even when pulled back");
+
+            _ship.SetFlightView(false);
+            _ship.Refresh(_camera, ThrustCommand.None, velocity);
+            Assert.That(_ship.CurrentMarkerPixels, Is.EqualTo(ShipView.MarkerPixels),
+                "the ordinary orrery view returns to the small marker");
+        }
+
+        [Test]
         public void TheMarkerPointsAlongTheDirectionOfTravel()
         {
             var velocity = new Vector3d(1.0, 2.0, -3.0).Normalized;
@@ -55,9 +73,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(ShipView.MarkerPixelsAt(
                     TimeToExplore.Player.OrbitCamera.MinDistanceUnits),
                 Is.EqualTo(ShipView.CloseMarkerPixels));
-            Assert.That(ShipView.MarkerPixelsAt(
-                    TimeToExplore.Player.FlightFraming.DistanceUnits),
-                Is.InRange(40f, 52f), "the chase view makes the ship the subject");
+            Assert.That(ShipView.MarkerPixelsAt(0.02f),
+                Is.InRange(40f, 52f), "a close zoom makes the ship the subject");
         }
 
         [Test]

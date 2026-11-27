@@ -55,6 +55,22 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheEndsClimbSlowlyAndTheMiddleHoldsCruise()
+        {
+            double flight = 6.67 * Day;
+            double target = FlightWarp.TargetRealSeconds(flight);
+            double cruise = FlightWarp.CruiseScale(flight);
+
+            // A long, quartic climb: the first few seconds stay near real time
+            // so the departure and capture have room to play.
+            Assert.That(FlightWarp.ScaleAt(flight, 1.0), Is.LessThan(0.01 * cruise));
+            Assert.That(FlightWarp.ScaleAt(flight, 2.0), Is.LessThan(0.01 * cruise));
+            Assert.That(FlightWarp.ScaleAt(flight, 3.0), Is.LessThan(0.05 * cruise));
+            Assert.That(FlightWarp.ScaleAt(flight, target - 1.0),
+                Is.LessThan(0.01 * cruise), "the arrival end is symmetric");
+        }
+
+        [Test]
         public void TheCurveRisesToCruiseInTheMiddle()
         {
             double flight = 6.67 * Day;
@@ -67,10 +83,10 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// The whole point: integrating the curve over the real duration must
-        /// advance the flight by exactly its simulated length. The area of each
-        /// smoothstep ramp is half its span, so the closed form cancels the
-        /// ramps. A 60 fps walk of the curve proves the result without relying
-        /// on that algebra twice.
+        /// advance the flight by roughly its simulated length. Each quartic ramp
+        /// covers a fifth of its span, so the closed form cancels the ramps. A
+        /// 60 fps walk of the curve checks the result; the left-edge integration
+        /// over a falling end makes a long trip land a little early.
         /// </summary>
         [TestCase(6.67)]
         [TestCase(21.5)]
@@ -95,7 +111,7 @@ namespace TimeToExplore.Tests.EditMode
 
             Assert.That(elapsed, Is.GreaterThanOrEqualTo(flight),
                 "the trip must finish");
-            Assert.That(real, Is.EqualTo(target).Within(0.5),
+            Assert.That(real, Is.EqualTo(target).Within(Math.Max(0.5, 0.04 * target)),
                 "and land on the target real duration");
         }
 

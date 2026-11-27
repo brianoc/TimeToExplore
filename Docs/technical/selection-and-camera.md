@@ -150,18 +150,24 @@ instead of stepping it inward.
 
 **A flight takes the chase pose.** Begin does not frame the destination: it
 eases the camera to `FlightFraming`'s chase view, behind the ship along the
-route, 20° above it and 30° to one side, at a fixed 20,000 km
+route, 20° above it and 30° to one side, starting at 20,000 km
 ([ADR-027](/decisions/adr-027-continuous-warp-and-chase-camera.md)). The angle is
 chosen once from the direction to the destination, not tracked as the route
 curves: the ship is the render origin, so holding the pose is enough to follow
-it. The move takes 1.2 s, matching the warp curve's own rise from real time. A
-right-drag or a wheel hands the view back. The ship marker grows from its 10 px
-orrery size to 56 px as the camera closes inside 100,000 km and its long axis
-follows the thrust or the direction of travel, so the chase shot has a subject
-rather than a vertical speck; the thrust arrow grows with it. On arrival the
-destination framing takes
-over, so the shot settles on the parking orbit instead of holding the cruise
-pose.
+it. The move takes 1.2 s, matching the warp curve's own rise from real time.
+
+The distance then follows the frame's travel. In a frame at high warp the ship
+can cover more than the 20,000 km view, which made the route line appear to jump
+a screen or more every frame. `FollowFlight` grows the chase distance until the
+frame's travel is at most 8% of the view, up to 5 million km. The marker is
+56 px whenever the flight owns the view, so pulling back still leaves the ship
+well framed; its long axis follows the thrust or the direction of travel, and
+the thrust arrow scales with it. A right-drag takes the angle and keeps the
+distance follow; a wheel takes both, and a home press or the arrival ends the
+follow. The ordinary orrery view still uses the 10 px marker.
+
+On arrival the destination framing takes over, so the shot settles on the
+parking orbit instead of holding the cruise pose.
 
 
 **Plotting a route frames the route.** A finished preview hands the view to
