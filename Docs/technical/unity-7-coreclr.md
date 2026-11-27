@@ -81,6 +81,10 @@ UNITY_BIN=/Applications/Unity/Hub/Editor/7000.0.0a22/Unity.app/Contents/MacOS/Un
 # Plain .NET 10 Release
 tools/dotnet-bench.sh --out build/dotnet-bench.json
 
+# The same harness as a Debug build, and the numeric probe
+tools/dotnet-bench.sh -c Debug --out build/dotnet-bench-debug.json
+tools/dotnet-bench.sh --micro
+
 # The table
 tools/compare_runtimes.py --mono <mono.json> --coreclr <coreclr.json> \
     --dotnet build/dotnet-bench.json
@@ -157,18 +161,88 @@ certified needle, as described above.
   within 1%; the earlier, warmer run was about 38%, so treat the exact fraction
   as the machine's state rather than a constant.
 - **The plain .NET 10 Release harness is a further 5–6× faster than the
-  CoreCLR Editor on the clean routes.** That gap is not a runtime difference
-  alone: the Editor's scripting assemblies carry `DebuggableAttribute` and are
-  built for debugging, while the harness is an optimized Release build with
-  tiered PGO. It is the ceiling a Release host can reach, not a promise for the
-  Editor.
+  CoreCLR Editor on the clean routes.** The Debug harness reproduces the
+  Editor's numbers within 2–7%, so this is a build and JIT profile difference,
+  not a different runtime or a different planner. The Editor cannot close it
+  with a compiler switch; the measurements are in
+  [why the Release harness is faster](#why-the-release-harness-is-faster-2026-11-27).
 - **The hope that Unity 7 approaches the harness's speed is half right.**
   Unity 7 closes about a third of the Mono → optimized-.NET gap. It does not
-  reach the harness's speed, and the remaining gap is mostly compilation
-  settings, not CoreCLR.
+  reach the harness's speed, and the remaining gap is the Editor's debug JIT
+  profile, not the CoreCLR runtime itself.
 - **Nothing about the answer changed.** A faster runtime moves the time it takes
   to certify a plan, not the plan. The near-floor basin remains the one place
   where a runtime can select a different certified result.
+
+## Why the Release harness is faster (2026-11-27)
+
+The 5–6× is not a property of the planner or of clean C#. It is a build and JIT
+profile difference, and a Debug build of the same harness reproduces the Editor
+almost exactly.
+
+### The Editor compiles for debugging
+
+Unity's Bee response file for every user assembly ends with:
+
+```text
+/optimize-
+/debug:portable
+```
+
+The metadata agrees. `TimeToExplore.Core.dll` carries
+`DebuggableAttribute(263)`, which sets `DisableOptimizations`; the Release
+harness carries `2`, which does not. The same sources, same epoch, same
+machine:
+
+| Earth → Mars | Unity 7 | .NET Debug | .NET Release |
+|---|---:|---:|---:|
+| Plot | 2,007 ms | 2,040 ms | 536 ms |
+| Retime, window middle | 330 ms | 319 ms | 92 ms |
+| Begin | 1,544 ms | 1,464 ms | 385 ms |
+
+The Debug harness is within 2–7% of the Editor on the clean routes (Earth →
+Venus 1,599 against 1,645; Earth → Uranus 2,222 against 2,369; Venus → Earth
+5,756 against 6,154). Unity runs **10.0.10-dev** and the SDK harness **10.0.14**,
+so that difference is not the cause: the same-SDK Debug build already matches.
+
+### The compiler switch does not recover it
+
+Adding `csc.rsp` with `-optimize+` flips the metadata to
+`DebuggableAttribute(2)` and made the Editor's vector probe 14% faster, but the
+route plot moved only 5% (2,007 → 1,875 ms). The embedded CoreCLR still runs
+the code at Debug speed: its vector loop matches the Debug harness, not the
+Release one, and its trigonometry is about twice the SDK's. The Editor's JIT,
+not the C# compiler, is the limiting profile. Do not ship the switch: it is
+unsupported, it costs managed debugging, and it buys 5%.
+
+### What the Release build adds
+
+| Earth → Mars plot | Time |
+|---|---:|
+| .NET Release, tiered PGO on | 536 ms |
+| .NET Release, PGO off | 725 ms |
+| .NET Release, tiering off | 744 ms |
+| .NET Debug | 2,040 ms |
+| Unity 7 CoreCLR | 2,007 ms |
+
+Tiered PGO is worth about a quarter on the optimized build. The other **3.7×**
+is simply optimized code, and it is the part the Editor does not provide.
+
+### The numeric probe
+
+`RuntimeMicrobenchmark` (`Tools/Time to Explore/Run Runtime Microbenchmark`, or
+`-executeMethod TimeToExplore.EditorTools.RuntimeMicrobenchmark.Run`) runs the
+same loops as `tools/dotnet-bench.sh --micro`: ten million iterations of a
+trigonometric loop and a `Vector3d` loop, after a warm-up. One run each:
+
+| Loop | Unity 7 | Unity 7, `-optimize+` | .NET Debug | .NET Release |
+|---|---:|---:|---:|---:|
+| Trigonometry | 165 ms | 179 ms | 88 ms | 79 ms |
+| `Vector3d` | 573 ms | 492 ms | 504 ms | 184 ms |
+
+The vector loop is the JIT signal: the Editor tracks Debug. The trigonometry
+row shows a second, smaller difference in the embedded runtime's math, which
+survives `-optimize+`.
 
 ## Caveats
 
@@ -192,5 +266,6 @@ certified needle, as described above.
 | URP migration | `TimeToExplore/Assets/Settings`, `TimeToExplore/ProjectSettings/GraphicsSettings.asset` |
 | Runtime pin | `TimeToExplore/Assets/Tests/EditMode/RuntimeProfileTests.cs` |
 | Plain .NET harness | `tools/dotnet-bench/`, `tools/dotnet-bench.sh` |
+| Numeric probe | `TimeToExplore/Assets/Editor/RuntimeMicrobenchmark.cs` |
 | Comparison table | `tools/compare_runtimes.py` |
 | Drift guard | `tools/test_dotnet_bench.py` |

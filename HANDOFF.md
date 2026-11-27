@@ -1,62 +1,77 @@
 # Handoff
 
-**Awaiting review: Unity 7 alpha 22 / CoreCLR / .NET 10 experiment
-(2026-11-26).** Branch `work/unity-7-coreclr`. **Do not merge or publish.** The
-comparison is in [the Unity 7 experiment](/technical/unity-7-coreclr.md); the
-person testing has to approve the editor upgrade before it lands on `main`.
+**Investigation complete; branch awaiting review (2026-11-27).**
+Branch `work/unity-7-coreclr`, still **unmerged**. The comparison and the
+answer are in [the Unity 7 experiment](/technical/unity-7-coreclr.md).
 
-## What is done
+## Question
 
-- Project opened on Unity `7000.0.0a22` in this worktree. `main` still opens on
-  `6000.3.28f1`.
-- Upgrade fixes: removed the deleted `com.unity.modules.vr`; accepted Unity 7's
-  built-in package substitution and the URP settings migration.
-- Latent background-plan gravity race fixed: published plans rebind their finite
-  burns to the flight's field (`TrajectoryPlan.RebindGravity`), guarded by
-  `APublishedPlanBindsItsFiniteBurnsToTheFlightsField`.
-- Plan lines stay at the scene root so Unity 7's Entities-world assert does not
-  fire when a line is parented; `TrajectoryLine.OnDestroy` releases them.
-- Runtime pins: `RuntimeProfileTests` asserts .NET 10 or later and compiles the
-  C# 14 `field` keyword under `UNITY_7000_0_OR_NEWER`.
-- Plain .NET 10 harness in `tools/dotnet-bench`, run by `tools/dotnet-bench.sh`;
-  comparison table by `tools/compare_runtimes.py`; route drift guarded by
-  `tools/test_dotnet_bench.py`.
-- Measurements and method in
-  [the Unity 7 experiment](/technical/unity-7-coreclr.md).
+Unity 7 CoreCLR is 41–45% faster than Mono, but the plain .NET 10 Release
+harness is a further 5–6× faster. Find out how much of that is the build
+configuration, the exact runtime, or the host, and whether a Debug harness
+reproduces the Editor's number.
+
+## Findings
+
+- Unity compiles user assemblies with `/optimize- /debug:portable`; the
+  Release harness has `/optimize+` and `DebuggableAttribute(2)` against the
+  Editor's `263`.
+- A Debug harness matches the Editor within 2–7% on the clean routes
+  (Earth → Mars plot 2,040 against 2,007), so the runtime patch (10.0.10-dev
+  against 10.0.14) is not the cause.
+- `csc.rsp -optimize+` flips the metadata and makes the vector probe 14%
+  faster, but the plot only 5%: the Editor's JIT still runs at Debug speed
+  (vector 492–573 ms against Release 184 ms).
+- Tiered PGO is ~26% of the optimized build; the other 3.7× is optimized code.
+- The Editor's trigonometry is ~2× the SDK's, a second, smaller runtime gap.
+
+## State
+
+- [x] Harness `-c Debug|Release`, `--micro`, and metadata in the run JSON.
+- [x] `RuntimeMicrobenchmark` probe and `RuntimeProfileTests` profile logging.
+- [x] `TTE_BENCH_ROUTE` for a one-route diagnostic.
+- [x] Docs section and log entry.
+- [x] Full `tools/check.sh` passed with the `csc.rsp` experiment removed:
+      both Unity suites, 0 failed, 0 skipped, in 702 s.
+- [x] Committed; still unmerged and unpushed.
 
 ## Verification
 
+The branch gate:
+
 ```bash
-# Unity 7, the branch gate
 UNITY_BIN=/Applications/Unity/Hub/Editor/7000.0.0a22/Unity.app/Contents/MacOS/Unity \
-    TTE_TEST_CACHE=$PWD/.cache/test-project-7000 tools/check.sh
+  TTE_TEST_CACHE=$PWD/.cache/test-project-7000 tools/check.sh
 ```
 
 Last result: every gate passed, both Unity suites with 0 failed and 0 skipped,
-in 724 s. The branch was rebased onto `main`'s station departure split and
-planet appearance work before that run, so the gate includes their tests.
+in 702 s.
 
 ```bash
-tools/dotnet-bench.sh --out build/dotnet-bench.json
-tools/compare_runtimes.py --mono <mono.json> --coreclr <coreclr.json> \
-    --dotnet build/dotnet-bench.json
+tools/dotnet-bench.sh -c Release --out build/dotnet-bench-release.json
+tools/dotnet-bench.sh -c Debug   --out build/dotnet-bench-debug.json
+tools/dotnet-bench.sh --micro
+DOTNET_TieredPGO=0 tools/dotnet-bench.sh -c Release ...
 ```
 
-The Mono reference run is the pre-upgrade tree at `main`; its JSON is
-`build/mono-benchmark-run.json` in this worktree (ignored by git).
+The Editor probe:
 
-## Next
-
-Show the table to the person testing. If they approve the upgrade, merge the
-branch, then update `AGENTS.md`, `Docs/technical/testing.md`, and the project
-shape to name Unity 7. If they want to keep Unity 6, drop this branch; the
-comparison doc can stay as a measurement only if the editor is reverted.
+```bash
+/Applications/Unity/Hub/Editor/7000.0.0a22/Unity.app/Contents/MacOS/Unity \
+  -batchmode -nographics -quit \
+  -projectPath "$PWD/.cache/bench-coreclr/TimeToExplore" \
+  -executeMethod TimeToExplore.EditorTools.RuntimeMicrobenchmark.Run \
+  -logFile "$PWD/build/micro-default.log"
+```
 
 ## Traps
 
-- The committed baseline names Unity 6000.3.28f1, so `bench.sh` on the new editor
-  prints its deltas as not meaningful. Compare the raw milliseconds.
+- The `csc.rsp` experiment has been removed. If it is present, the profile test
+  fails by design.
+- The route benchmark warms each case and reports a median of three. The
+  machine's thermal state moved the CoreCLR number by ~10% between sessions;
+  run matrix entries back to back.
 - The .NET harness lands on a different certified Uranus floor; its Uranus plot
-  is not a like-for-like time.
-- Do not open this branch with Unity 6000: the URP assets and package lock are
-  migrated.
+  is not like-for-like.
+
+

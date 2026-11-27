@@ -23,6 +23,7 @@
 #   PYTHON          Python interpreter (default: .venv/bin/python, then python3)
 #   UNITY_BIN       Unity executable (default: the editor in ProjectVersion.txt)
 #   TTE_TEST_CACHE  warm test project (default: .cache/test-project)
+#   TTE_BENCH_ROUTE run one route by id, for a quick diagnostic
 #
 # The baseline is tools/planning-benchmark-baseline.json. A run on another
 # machine or Unity version says so and its deltas are not meaningful.

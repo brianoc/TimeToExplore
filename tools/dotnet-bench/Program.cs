@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -102,12 +103,26 @@ namespace TimeToExplore.DotnetBench
             string dataPath = Path.GetFullPath(Path.Combine(root,
                 "TimeToExplore", "Assets", "Resources", "solar_system.json"));
             string outputPath = null;
+            bool micro = false;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--data" && i + 1 < args.Length)
                     dataPath = Path.GetFullPath(args[++i]);
                 else if (args[i] == "--out" && i + 1 < args.Length)
                     outputPath = Path.GetFullPath(args[++i]);
+                else if (args[i] == "--micro")
+                    micro = true;
+            }
+
+            if (micro)
+            {
+                Trig(1_000_000);
+                VectorLoop(1_000_000);
+                double ms = 0.0;
+                ms += Measure("trig", Trig);
+                ms += Measure("vector", VectorLoop);
+                Console.Error.WriteLine($"micro total {ms:F1} ms");
+                return 0;
             }
 
             var model = new SolarSystemModel();
@@ -128,6 +143,12 @@ namespace TimeToExplore.DotnetBench
                       + ", " + Environment.ProcessorCount + " cores",
                 operatingSystem = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 recordedAt = DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                configuration = AppContext.BaseDirectory.Contains("/Debug/", StringComparison.Ordinal)
+                    ? "Debug" : "Release",
+                debuggable = DescribeDebuggable(),
+                tieredCompilation = Switch("System.Runtime.TieredCompilation"),
+                tieredPgo = Switch("System.Runtime.TieredPGO"),
+                serverGc = System.Runtime.GCSettings.IsServerGC,
                 routes = new List<RouteRun>()
             };
 
@@ -391,6 +412,67 @@ namespace TimeToExplore.DotnetBench
             return worst;
         }
 
+        /// <summary>The JIT-optimizer flag the build wrote into the assembly.
+        /// A Debug build disables it; the Editor's assemblies do the same.</summary>
+        private static string DescribeDebuggable()
+        {
+            var attribute = typeof(Program).Assembly
+                .GetCustomAttribute<DebuggableAttribute>();
+            if (attribute == null) return "none";
+            return "tracking=" + attribute.IsJITTrackingEnabled
+                + ", optimizerDisabled=" + attribute.IsJITOptimizerDisabled;
+        }
+
+        private static string Switch(string name) =>
+            AppContext.TryGetSwitch(name, out bool value) ? value.ToString() : "(unset)";
+
+        private static double Measure(string name, Func<int, double> body)
+        {
+            var watch = Stopwatch.StartNew();
+            double result = body(10_000_000);
+            watch.Stop();
+            double ms = watch.Elapsed.TotalMilliseconds;
+            Console.Error.WriteLine($"[micro] {name}: {ms:F1} ms, " +
+                                    $"{ms * 1e6 / 10_000_000:F2} ns/op");
+            return result;
+        }
+
+        internal static double Trig(int iterations)
+        {
+            double x = 0.1, y = 0.2, z = 0.3, acc = 0.0;
+            for (int i = 0; i < iterations; i++)
+            {
+                double r = Math.Sqrt(x * x + y * y + z * z);
+                double s = Math.Sin(x) + Math.Cos(y) + Math.Atan2(z, x);
+                acc += r + s;
+                x += 1e-7;
+                y += 2e-7;
+                z += 3e-7;
+                if (x > 1.0)
+                {
+                    x -= 1.0;
+                    y -= 1.0;
+                    z -= 1.0;
+                }
+            }
+
+            return acc;
+        }
+
+        internal static double VectorLoop(int iterations)
+        {
+            var v = new Vector3d(1.0, 2.0, 3.0);
+            var w = new Vector3d(0.1, 0.2, 0.3);
+            Vector3d acc = Vector3d.Zero;
+            for (int i = 0; i < iterations; i++)
+            {
+                v = (v + w).Normalized;
+                acc += Vector3d.Cross(v, w) + v * 0.5;
+            }
+
+            return acc.SqrMagnitude;
+        }
+
         private sealed class DragResult
         {
             internal double[] Milliseconds;
@@ -404,6 +486,11 @@ namespace TimeToExplore.DotnetBench
         public string cpu { get; set; }
         public string operatingSystem { get; set; }
         public string recordedAt { get; set; }
+        public string configuration { get; set; }
+        public string debuggable { get; set; }
+        public string tieredCompilation { get; set; }
+        public string tieredPgo { get; set; }
+        public bool serverGc { get; set; }
         public List<RouteRun> routes { get; set; }
     }
 

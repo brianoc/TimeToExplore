@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using TimeToExplore.Core;
 using TimeToExplore.Simulation;
@@ -234,14 +236,34 @@ namespace TimeToExplore.EditorTools
                        "preview's freshness window it flies the drawn plan, " +
                        "outside it replans; the '@max' phase retimes the " +
                        "preview to the window maximum first.",
-                routes = new BenchmarkRouteRecord[BenchmarkRoutes.All.Length]
+                routes = new BenchmarkRouteRecord[0]
             };
+
+            var selected = new List<BenchmarkRoute>();
+            string onlyRoute = Environment.GetEnvironmentVariable("TTE_BENCH_ROUTE");
+            foreach (BenchmarkRoute candidate in BenchmarkRoutes.All)
+            {
+                if (string.IsNullOrEmpty(onlyRoute) || candidate.Name == onlyRoute)
+                    selected.Add(candidate);
+            }
+
+            if (selected.Count == 0)
+                throw new ArgumentException($"No benchmark route named '{onlyRoute}'.");
+
+            run.routes = new BenchmarkRouteRecord[selected.Count];
+
+            var debug = typeof(TripPlanner).Assembly
+                .GetCustomAttribute<DebuggableAttribute>();
+            Debug.Log($"[bench] runtime {Environment.Version}, " +
+                      $"{RuntimeInformation.FrameworkDescription}, " +
+                      $"optimizerDisabled={debug?.IsJITOptimizerDisabled}, " +
+                      $"routes={selected.Count}");
 
             try
             {
-                for (int i = 0; i < BenchmarkRoutes.All.Length; i++)
+                for (int i = 0; i < selected.Count; i++)
                 {
-                    BenchmarkRoute route = BenchmarkRoutes.All[i];
+                    BenchmarkRoute route = selected[i];
                     planner.BurnLevelG = route.BurnLevelG;
                     run.routes[i] = MeasureRoute(model, planner, session, route,
                         run.machine);

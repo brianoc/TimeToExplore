@@ -14,11 +14,13 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Optimize>true</Optimize>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>TimeToExplore.Editor</AssemblyName>
-    <!-- Match the Editor's release build rather than the SDK's debug defaults. -->
-    <DebugType>none</DebugType>
+    <!-- Release is the optimized comparison; Debug matches the Editor's
+         debug-built assemblies and is selected with -c Debug. -->
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugType Condition="'$(Configuration)' == 'Debug'">portable</DebugType>
     <TieredPGO>true</TieredPGO>
   </PropertyGroup>
 
