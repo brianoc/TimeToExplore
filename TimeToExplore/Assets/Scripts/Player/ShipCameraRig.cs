@@ -63,6 +63,9 @@ namespace TimeToExplore.Player
         /// </summary>
         public float RouteViewDurationSeconds = RouteViewTransition.DefaultDurationSeconds;
 
+        /// <summary>How long the move to the flight's follow pose takes.</summary>
+        public float FlightViewDurationSeconds = 1.2f;
+
         /// <summary>
         /// The home view sits at this fraction of the local radius: close
         /// enough to read the ship's neighbourhood, far enough out not to be
@@ -79,6 +82,13 @@ namespace TimeToExplore.Player
         public RouteViewTransition RouteView { get; } = new RouteViewTransition();
 
         /// <summary>
+        /// The eased move to the flight's chase pose. It reuses the route
+        /// transition's maths: yaw, pitch, distance, and look-at on one
+        /// smoothstep.
+        /// </summary>
+        public RouteViewTransition FlightView { get; } = new RouteViewTransition();
+
+        /// <summary>
         /// The eased move to the selected body. It reuses the route-view pose
         /// transition, because the maths is the same: shortest yaw, linear
         /// pitch and look-at, geometric distance, one smoothstep.
@@ -90,6 +100,9 @@ namespace TimeToExplore.Player
 
         /// <summary>True while the view is easing to a plotted route.</summary>
         public bool IsFramingRoute => RouteView.IsActive;
+
+        /// <summary>True while the view is easing to the flight's chase pose.</summary>
+        public bool IsFramingFlight => FlightView.IsActive;
 
         /// <summary>True while F's move to the selected body is easing.</summary>
         public bool IsFocusingBody => BodyFocus.IsActive;
@@ -184,6 +197,7 @@ namespace TimeToExplore.Player
             _zoomAnchorActive = false;
             ExitFocus();
             RouteView.Cancel();
+            FlightView.Cancel();
             Home.Cancel();
 
             AutoTarget = body;
@@ -206,12 +220,45 @@ namespace TimeToExplore.Player
             _autoDistancePending = false;
         }
 
+        /// <summary>
+        /// Ease the view to the chase pose for a flight. The direction is the
+        /// route ahead of the ship; the pose is
+        /// <see cref="FlightFraming"/>'s: behind, 20° above, and 30° to one
+        /// side, at a close fixed distance. The angle is chosen once, so the
+        /// camera follows the ship without hunting as the route curves. Input,
+        /// a new framing target, the arrival frame, or Space cancels it.
+        /// </summary>
+        public bool FrameFlight(Vector3d flightDirection)
+        {
+            if (!FlightFraming.Pose(flightDirection, out float yaw, out float pitch))
+                return false;
+
+            // The flight owns the view now: no body follow, no wheel request,
+            // and no cursor anchor left over from the previous zoom.
+            AutoAim = false;
+            AutoDistance = false;
+            AutoTarget = null;
+            _autoDistancePending = false;
+            _zoomPending = false;
+            _zoomAnchorActive = false;
+            ExitFocus();
+            Home.Cancel();
+            RouteView.Cancel();
+            BodyFocus.Cancel();
+
+            FlightView.DurationSeconds = Mathf.Max(0f, FlightViewDurationSeconds);
+            FlightView.Begin(Orbit.YawDegrees, Orbit.PitchDegrees, Orbit.DistanceUnits,
+                LookAtOffsetM, yaw, pitch, FlightFraming.DistanceUnits, Vector3d.Zero);
+            return true;
+        }
+
         /// <summary>Stop following; the player owns the view.</summary>
         public void ClearAuto()
         {
             _zoomAnchorActive = false;
             ExitFocus();
             RouteView.Cancel();
+            FlightView.Cancel();
             Home.Cancel();
 
             AutoAim = false;
@@ -228,6 +275,7 @@ namespace TimeToExplore.Player
             _zoomAnchorActive = false;
             CancelBodyFocus();
             RouteView.Cancel();
+            FlightView.Cancel();
             Home.Cancel();
             if (body != null)
             {
@@ -261,6 +309,7 @@ namespace TimeToExplore.Player
                 _zoomPending = false;
                 _zoomAnchorActive = false;
                 RouteView.Cancel();
+                FlightView.Cancel();
                 Home.Cancel();
                 LookAtOffsetM = Vector3d.Zero;
                 Orbit.SnapDistance(HomeDistanceUnits(LocalRadiusM(shipPositionM)));
@@ -276,6 +325,7 @@ namespace TimeToExplore.Player
             _zoomAnchorActive = false;
             CancelBodyFocus();
             RouteView.Cancel();
+            FlightView.Cancel();
 
             Home.DurationSeconds = Mathf.Max(0f, HomeDurationSeconds);
             Home.Begin(Orbit.DistanceUnits,
@@ -307,6 +357,7 @@ namespace TimeToExplore.Player
             _zoomAnchorActive = false;
             Home.Cancel();
             RouteView.Cancel();
+            FlightView.Cancel();
             BodyFocus.Cancel();
             AutoAim = false;
             AutoDistance = false;
@@ -452,6 +503,24 @@ namespace TimeToExplore.Player
                     SetLookAtOffsetM(RouteView.TargetLookAtOffsetM);
                 }
             }
+            else if (FlightView.IsActive)
+            {
+                // The flight's chase pose follows the same transition, so the
+                // camera settles into the angle rather than cutting to it.
+                bool arrived = FlightView.Advance(deltaTime);
+                Orbit.YawDegrees = FlightView.YawDegreesAt;
+                Orbit.PitchDegrees = FlightView.PitchDegreesAt;
+                Orbit.SnapDistance(FlightView.DistanceUnitsAt);
+                SetLookAtOffsetM(FlightView.LookAtOffsetMAt);
+
+                if (arrived)
+                {
+                    Orbit.YawDegrees = FlightView.TargetYawDegrees;
+                    Orbit.PitchDegrees = FlightView.TargetPitchDegrees;
+                    Orbit.SnapDistance(FlightView.TargetDistanceUnits);
+                    SetLookAtOffsetM(FlightView.TargetLookAtOffsetM);
+                }
+            }
             else if (_zoomPending && !Orbit.EaseDistance(deltaTime, ZoomEaseRatePerSecond))
             {
                 // A wheel notch only requests a distance. Ease it before the
@@ -567,6 +636,7 @@ namespace TimeToExplore.Player
                 CancelBodyFocus();
                 Home.Cancel();
                 RouteView.Cancel();
+                FlightView.Cancel();
                 _zoomAnchorActive = false;
             }
         }
@@ -636,6 +706,7 @@ namespace TimeToExplore.Player
 
             Home.Cancel();
             RouteView.Cancel();
+            FlightView.Cancel();
 
             // Compound on a pending request so a continuous gesture keeps its
             // 1.25x per notch; start from the placed distance when the last

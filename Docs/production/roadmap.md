@@ -119,8 +119,9 @@ Done in `Assets/Scripts/` and verified through the scene's frame loop:
   integrator ([ADR-007](../decisions/adr-007-flight-director.md)). The bootstrap
   advances the clock and asks the session to reach the same date.
 * The ship starts at Gateway Station, so the default trip is the tested one.
-* **Go To** on the details screen calls `TripPlanner.Plan`, raises the warp to a
-  ~30-second trip, and flies it.
+* **Go To** on the details screen calls `TripPlanner.Plan`, and the flight's
+  warp curve paces it to a watchable 12–60 real seconds, starting and ending at
+  real time ([ADR-026](../decisions/adr-026-continuous-warp-and-chase-camera.md)).
 * `TrajectoryLine` draws the sampled path as one coloured line per arc by path
   type — gold quintic, blue dashed conic, red fixed burn, shaded within a run of
   one type — with burn markers and an arrival marker.
@@ -128,8 +129,8 @@ Done in `Assets/Scripts/` and verified through the scene's frame loop:
   durations, arrival date, flight time, peak thrust and throttle, delta-v, and
   the fuel readout — plus the live phase, next-event countdown, throttle, and
   warp.
-* `WarpPolicy` drops the warp by clearance, local orbital timescale, and the next
-  plan event, and the status panel says when it is holding the clock.
+* `FlightWarp` walks the clock from 1x up to its cruise rate and back, paced by
+  the plan's own duration; number keys still take a fixed scale.
 * The frame has a 2,000-substep budget; if it runs out the clock is clamped to
   the date the ship reached, so the world never runs ahead of it.
 * After arrival the drive goes off, the ship coasts, and the ship comes back
@@ -145,10 +146,11 @@ substeps in a frame; warp auto-drops to 10× for the last second. No teleport.
 on 2026-11-23 re-baselined the trip times and totals — see
 [Done: station calls and the departure fix](#done-station-calls-and-the-departure-fix-2026-11-24).)
 
-**Known gaps:** the warp drop is in power-of-ten steps; the ship is a marker
-rather than a model; the camera can still be orbited inside a planet (it is
-pulled out, but as a rescue); there is no manual thrust; and a second Go To
-replans from scratch rather than correcting the existing plan.
+**Known gaps:** the ship is a marker rather than a model; the camera can still
+be orbited inside a planet (it is pulled out, but as a rescue); there is no
+manual thrust; and a second Go To replans from scratch rather than correcting
+the existing plan. (The warp drop's power-of-ten steps were replaced by the
+continuous flight curve in [ADR-026](../decisions/adr-026-continuous-warp-and-chase-camera.md).)
 
 # Milestone 2.5 — the route preview and the camera (done)
 
@@ -500,7 +502,7 @@ minimum-time route shipped on 2026-11-27 as
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | The 1 g torch is physically implausible | Certain | Medium | Treat it as the one admitted lie: a mature compact fusion torch whose waste heat leaves with the exhaust; fuel is the balance lever |
-| Time warp makes arrival trivial or chaotic | Medium | High | Implemented: the warp policy caps a frame at 25% of the time to the nearest surface, 2% of the local orbital timescale, and 5% of the time to the next plan event — plus, at a station, 25% of the time to its catalogue surface and 5% of the time to the hold point — and clamps the clock to the ship when the substep budget runs out |
+| Time warp makes arrival trivial or chaotic | Medium | High | Implemented: the flight warp curve returns to real time for the last three seconds, so the brake and capture play at 1x, and the clock is clamped to the ship when the substep budget runs out |
 | True scale is unreadable without UI | High | High | Labels, markers, trajectory lines, target-relative HUD; the flight panel carries the phase table and countdown |
 | Float/depth artefacts on a target platform | Medium | Medium | Ship-relative rendering; reversed-Z; two-camera fallback |
 | Autopilot removes the gameplay | Medium | High | Autopilot handles long burns; the current build is plan-and-watch, and manual override and fuel are the milestone-3 answer |

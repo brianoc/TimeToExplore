@@ -142,7 +142,7 @@ neither reads a device for it.
 |---|---|---|
 | `Space` | ease the camera home to the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
 | `P` | pause / resume | `SolarSystemBootstrap` |
-| `1`–`7` | requested time warp 1× to 1,000,000× | `SolarSystemBootstrap` |
+| `1`–`7` | fixed time warp 1× to 1,000,000×; a digit also takes warp off the flight curve for that flight | `SolarSystemBootstrap` |
 | `Tab` | cycle planet/station target | `SolarSystemBootstrap` |
 | `F` | frame the selected body by moving the render origin to it, without moving the ship | `SolarSystemBootstrap` → `ShipCameraRig` |
 | `J` | debug jump: ease the ship beside the selected body | `SolarSystemBootstrap` |
@@ -174,10 +174,11 @@ in the same frame. uGUI navigation events are off, so `Escape` reaches only the
 seam's edge and cannot also be consumed as a UI Cancel action.
 
 Digits are an **explicit table** in `PlayerControls`, not `Key.Digit1 + index`
-arithmetic: `1`–`9` and `0` map to indices 0–9. The clock currently has seven
+arithmetic: `1`–`9` and `0` map to indices 0–9. The manual ladder has seven
 scales, and the bootstrap ignores an index past the end, so pressing `8`, `9`,
 or `0` does nothing — exactly as before. If two number keys are down in the same
-frame the highest wins, matching the old ascending scale loop.
+frame the highest wins, matching the old ascending scale loop. A flight's own
+warp curve is continuous; a digit overrides it until the next flight begins.
 
 # Mouse feel
 

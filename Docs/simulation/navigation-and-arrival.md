@@ -697,9 +697,11 @@ off, and the departure burn and brake with their own delta-v and durations. The
 brake is reported by what it spends, not described as anti-velocity, because its
 direction is the change the chain needs. The hybrid's long burn is a solid red
 line with a marker at its start, the terminal trim marks the injection point,
-and the `Burns` row reads the fixed and trim delta-v separately. The warp policy
-keeps the final approach visible, and the periapsis and circularisation are plan
-boundaries in every style; the hybrid's burn window is a boundary too.
+and the `Burns` row reads the fixed and trim delta-v separately. The flight warp
+curve starts and ends at real time, so the final approach is at real time
+([ADR-026](/decisions/adr-026-continuous-warp-and-chase-camera.md)), and the
+periapsis and circularisation are plan boundaries in every style; the hybrid's
+burn window is a boundary too.
 
 **Not implemented:** the target's position at arrival as a separate ghost, the
 closest-approach readout, the SOI boundary drawn in the world, delta-v remaining
@@ -715,8 +717,9 @@ The design wants failure to create stories, not reloads:
 * **Fuel exhaustion.** A rescue tug brings propellant, for a price or a favour.
 * **Docking collision.** Damage, not destruction, if the closing rate is low.
   A hard hit is a failure state.
-* **Warp overshoot.** Prevented by automatic warp drop near bodies and burns,
-  and by clamping the clock to the ship when the frame's substep budget runs out.
+* **Warp overshoot.** Prevented by the warp curve returning to real time at the
+  arrival, and by clamping the clock to the ship when the frame's substep budget
+  runs out.
 
 # Open questions
 
@@ -742,11 +745,10 @@ The design wants failure to create stories, not reloads:
 * Is there a "flight assist" that hides the orbital mechanics entirely for
   casual players, or is the orbital mechanics the point?
 * How much time can pass during a close approach before the player notices?
-  **Partly settled:** the warp policy caps a frame at 25% of the time to the
-  nearest surface (and, at a station point target, 25% of the time to its
-  catalogue surface plus 5% of the time to the hold point) and 5% of the time to
-  the next plan event, so the approach is paced rather than skipped. The drop is
-  still in power-of-ten steps.
+  **Settled for now:** the flight warp curve ramps back to real time over the
+  last three real seconds, so the brake, capture, and parking orbit play at 1x.
+  The integration budget still clamps the clock to the ship if a frame's span is
+  too large to integrate.
 * When does a plan need re-solving? The autopilot corrects a few kilometres, but
   a large deviation or a long wait needs a fresh Go To. The scene currently
   re-plans only when the player presses Go To again.

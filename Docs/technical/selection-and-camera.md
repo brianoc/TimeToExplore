@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: Selection and camera focus
-description: How clicking a body opens its details screen and how the one orbit camera flies to it, zooms toward the pointer, and frames a plotted route.
+description: How clicking a body opens its details screen and how the one orbit camera flies to it, zooms toward the pointer, frames a plotted route, and takes the flight chase pose.
 tags: [technical, ui, interaction, camera, unity]
 status: draft
 generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T10:00:00Z }
@@ -136,17 +136,33 @@ system. The player's yaw and pitch are the only angles, at every distance.
 `ShipCameraRig` reads the input and places the camera. It owns the auto-framing,
 the cursor anchor, the route transition, and `Space` home.
 
-**Framing a body.** A plan, a jump, or a reset turns the view toward its
-destination and eases the orbit distance to `clamp(0.6 × ship→target, 3 ×
-radius, 3.3 AU)`. The aim and the distance follow separately, so a manual zoom
-keeps the destination centred; only a drag stops the aiming. The framing
-distance is captured **once** when the framing starts, not recomputed from the
-moving ship every frame: during a flight the view holds a stable distance while
-the target grows, and the distance is re-captured once on arrival so the camera
-settles on the parking orbit. Both moves ease; neither snaps. If the orbit
-would put the camera inside a body, the camera is stopped at the near
-intersection of its ray with that body's clearance sphere, so grazing a planet
-slides the camera along the orbit instead of stepping it inward.
+**Framing a body.** A jump or a reset turns the view toward its destination and
+eases the orbit distance to `clamp(0.6 × ship→target, 3 × radius, 3.3 AU)`. The
+aim and the distance follow separately, so a manual zoom keeps the destination
+centred; only a drag stops the aiming. The framing distance is captured **once**
+when the framing starts, not recomputed from the moving ship every frame: during
+a flight the view holds a stable distance while the target grows, and the
+distance is re-captured once on arrival so the camera settles on the parking
+orbit. Both moves ease; neither snaps. If the orbit would put the camera inside
+a body, the camera is stopped at the near intersection of its ray with that
+body's clearance sphere, so grazing a planet slides the camera along the orbit
+instead of stepping it inward.
+
+**A flight takes the chase pose.** Begin does not frame the destination: it
+eases the camera to `FlightFraming`'s chase view, behind the ship along the
+route, 20° above it and 30° to one side, at a fixed 20,000 km
+([ADR-026](/decisions/adr-026-continuous-warp-and-chase-camera.md)). The angle is
+chosen once from the direction to the destination, not tracked as the route
+curves: the ship is the render origin, so holding the pose is enough to follow
+it. The move takes 1.2 s, matching the warp curve's own rise from real time. A
+right-drag or a wheel hands the view back. The ship marker grows from its 10 px
+orrery size to 56 px as the camera closes inside 100,000 km and its long axis
+follows the thrust or the direction of travel, so the chase shot has a subject
+rather than a vertical speck; the thrust arrow grows with it. On arrival the
+destination framing takes
+over, so the shot settles on the parking orbit instead of holding the cruise
+pose.
+
 
 **Plotting a route frames the route.** A finished preview hands the view to
 `RouteFraming`, which fits the sampled path (plus the target's arrival ghost)
@@ -233,7 +249,7 @@ second mapping.
 | Left click a body | Select it, warm its route plan in the background, and open the details screen (release inside the 4 px slop); nothing is drawn until Plot route |
 | Left click the same spot again | Cycle to the next body in the stack, in importance order, wrapping at the end |
 | **Plot route …** button | Adopt the warmed plan and draw it in the same frame, then ease the camera to the whole route; a warm-up still building is continued. A retimed or stale preview is replanned at its fastest trip |
-| **Begin flight** button | Replan from the current state and fly it |
+| **Begin flight** button | Replan from the current state, fly it, and ease the camera to the chase pose |
 | `F` | Ease the camera to the selected body in one second, without moving the ship |
 | **Jump (debug)** button, `J` | Three-second eased debug teleport of the ship to the selected body |
 | `Close`, `Esc` | Close the details screen and discard a preview; `Esc` also cancels a debug jump |
@@ -274,7 +290,9 @@ frame of a real off-centre zoom, the anchor surviving after the tween, Space's
 one-second home with the remembered angle, a wheel or drag cancelling it, the
 button routing (right-drag orbits; a press on a panel starts nothing; a world
 press keeps its gesture across a panel), the slew-rate turn when the framing
-target changes, the near plane, and continuous body avoidance.
+target changes, the near plane, continuous body avoidance, and the flight chase
+pose: its 20° elevation and 30° side angle, the eased arrival, and the drag and
+arrival handbacks.
 
 `RouteFramingTests` covers the route fit, the plane angle, the straight-route
 fallback, the transition endpoints, the rig's eased arrival, the cancels, and a

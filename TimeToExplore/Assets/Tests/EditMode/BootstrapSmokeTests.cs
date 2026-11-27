@@ -130,8 +130,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Flying));
             Assert.That(_bootstrap.Flight.TargetId, Is.EqualTo("mars"));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
-            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0),
-                "a four-day trip must not start at 1×");
+            Assert.That(_bootstrap.Rig.IsFramingFlight, Is.True,
+                "the flight takes the camera to its chase pose");
+            Assert.That(_bootstrap.WarpOverridden, Is.False,
+                "and the warp curve, not a number key, owns the clock");
 
             // One frame of the real frame order. Time.deltaTime is zero in edit
             // mode, so this checks the wiring rather than the propagation.
@@ -139,6 +141,28 @@ namespace TimeToExplore.Tests.EditMode
             Invoke("LateUpdate");
 
             Assert.That(_bootstrap.Flight.IsFlying, Is.True);
+        }
+
+        [Test]
+        public void ANumberKeyTakesWarpUntilTheNextFlight()
+        {
+            Build();
+            BodyRuntime mars = _bootstrap.Model.Get("mars");
+
+            _bootstrap.BeginGoTo(mars);
+            Assert.That(_bootstrap.WarpOverridden, Is.False,
+                "a new flight starts on its curve");
+
+            _bootstrap.SetScaleIndex(2); // 100x
+            Assert.That(_bootstrap.WarpOverridden, Is.True,
+                "a number key takes the warp off the curve");
+            Assert.That(_bootstrap.Clock.Scale, Is.EqualTo(100.0));
+
+            _bootstrap.CancelFlight();
+            _bootstrap.BeginGoTo(mars);
+            Assert.That(_bootstrap.WarpOverridden, Is.False,
+                "the next flight gives the clock back to the curve");
+            Assert.That(_bootstrap.Clock.Scale, Is.EqualTo(1.0));
         }
 
         [Test]
@@ -155,7 +179,7 @@ namespace TimeToExplore.Tests.EditMode
             _bootstrap.Model.ComputeState(_bootstrap.Model.Get("gateway"),
                 _bootstrap.Clock.JulianDate, out Vector3d gateway, out _);
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, gateway), Is.LessThan(1e-6));
-            Assert.That(_bootstrap.Clock.ScaleIndex, Is.EqualTo(0));
+            Assert.That(_bootstrap.Clock.Scale, Is.EqualTo(1.0));
         }
 
         /// <summary>A flight owns the ship, so the debug jump must refuse.</summary>
@@ -193,8 +217,10 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(Vector3d.Distance(_bootstrap.ShipPositionM, before), Is.Zero,
                 "a preview must not move the ship");
             Assert.That(_bootstrap.Clock.JulianDate, Is.EqualTo(date));
-            Assert.That(_bootstrap.RequestedScaleIndex, Is.EqualTo(0),
-                "a preview must not raise warp");
+            Assert.That(_bootstrap.WarpOverridden, Is.False,
+                "a preview must not take the warp from the clock");
+            Assert.That(_bootstrap.Clock.Scale, Is.EqualTo(1.0),
+                "and it must not raise warp");
 
             Invoke("LateUpdate");
 
@@ -257,8 +283,8 @@ namespace TimeToExplore.Tests.EditMode
                 _bootstrap.Flight.Failure);
             Assert.That(_bootstrap.Flight.TargetId, Is.EqualTo("gateway"));
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
-            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0),
-                "a fifty-day station trip must not start at 1x");
+            Assert.That(_bootstrap.Rig.IsFramingFlight, Is.True,
+                "the station flight takes the camera to its chase pose");
 
             Invoke("Update");
             Invoke("LateUpdate");
@@ -392,7 +418,7 @@ namespace TimeToExplore.Tests.EditMode
                 "and reports the arrival the preview already counted down to");
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
             Assert.That(_bootstrap.Trajectory.HasGhost, Is.True);
-            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0));
+            Assert.That(_bootstrap.Rig.IsFramingFlight, Is.True);
         }
 
         [Test]
@@ -557,6 +583,7 @@ namespace TimeToExplore.Tests.EditMode
         public void AProfileFlightArrivesThroughTheBootstrap()
         {
             Build();
+            _bootstrap.DeltaTimeSeconds = () => FrameSeconds;
             BodyRuntime mars = _bootstrap.Model.Get("mars");
             _bootstrap.Select(mars);
             _bootstrap.PlotRoute(mars);
@@ -588,8 +615,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs.Count(arc => arc.IsFiniteBurn), Is.GreaterThanOrEqualTo(2),
                 "a departure burn and a brake at minimum");
             Assert.That(_bootstrap.Trajectory.IsShowing, Is.True);
-            Assert.That(_bootstrap.RequestedScaleIndex, Is.GreaterThan(0),
-                "a two-month trip must not start at 1x");
+            Assert.That(_bootstrap.Rig.IsFramingFlight, Is.True,
+                "the flight starts in its chase pose");
 
             int frames = 0;
             while (_bootstrap.Flight.IsFlying && frames < MaxFrames)
@@ -603,7 +630,7 @@ namespace TimeToExplore.Tests.EditMode
                 $"bootstrap burn-coast-burn flight: arrived " +
                 $"{JulianDate.Format(_bootstrap.Flight.ArrivedJulianDate)} in " +
                 $"{frames:N0} frames ({frames * FrameSeconds:F1} s real), " +
-                $"warp {SolarSystemBootstrap.ScaleLabel(_bootstrap.RequestedScaleIndex)}, " +
+                $"warp peak {SimulationClock.FormatScale(FlightWarp.CruiseScale(plan.FlightTimeSeconds))}, " +
                 $"{plan.FlightTimeDays:F1} d planned");
 
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Arrived),
@@ -682,7 +709,7 @@ namespace TimeToExplore.Tests.EditMode
             TestContext.WriteLine(
                 $"bootstrap map flight: arrived {JulianDate.Format(_bootstrap.Flight.ArrivedJulianDate)} " +
                 $"in {frames:N0} frames ({frames * FrameSeconds:F1} s real), " +
-                $"warp {SolarSystemBootstrap.ScaleLabel(_bootstrap.RequestedScaleIndex)}");
+                $"warp peak {SimulationClock.FormatScale(FlightWarp.CruiseScale(plan.FlightTimeSeconds))}");
 
             Assert.That(_bootstrap.Flight.Status, Is.EqualTo(FlightStatus.Arrived),
                 "the flight must finish through the frame loop, not a teleport");

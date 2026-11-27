@@ -95,10 +95,10 @@ graph and reads the `.asmdef` files as the source of truth. See
 5. Each frame:
    * `SolarSystemModel.Update` recomputes every body's position and velocity at
      the clock date.
-   * `WarpPolicy` caps the requested time scale from the nearest body's clear-
-     ance, its local orbital timescale, the next plan boundary, and — while a
-     station plan is live — the station's own clearance and its hold point.
-   * `SimulationClock.Advance` adds `deltaTime × cappedScale` to the Julian date.
+   * `FlightWarp` gives the scale for this real second of a live flight: 1x at
+     both ends, the cruise rate in the middle, paced by the plan's duration.
+     A manual digit press or an idle ship runs at a fixed scale instead.
+   * `SimulationClock.Advance` adds `deltaTime × scale` to the Julian date.
    * `FlightSession.Advance` integrates the ship to the clock's date in legs
      split at plan arc boundaries, with a substep budget.
    * If the budget ran out, the clock is clamped back to the date the ship
@@ -172,7 +172,7 @@ Plain C#, double precision, no Unity dependencies beyond `Vector3d`:
 | `TripPlanner` | `Scripts/Simulation/TripPlanner.cs` | The Go To solve (the burn–coast–burn profile with two capture styles for a planet, and a point-target hold-point rendezvous for a station; moving-target loop, thrust check), the burn level, the pinned departure break and forward departure solve, the two-tier break search (central-body-only peak, full-field certification inside 5% of the limit), the coast's Lambert stitching, the reverse-placed brake, the body-clearance gate on every fixed burn, the true floor search with a fast probe mode (128-sample probes, full-field certification, 0.2% retry), and `PlanAtDuration` for the trip-time control |
 | `Autopilot` | `Scripts/Simulation/Autopilot.cs` | Feed-forward plus feedback tracking, the flight loop, and the seam impulses |
 | `FlightSession` | `Scripts/Simulation/FlightSession.cs` | Owns the ship state, plan, preview, and integrator; probes the profile's slowest accepted trip; builds route plans synchronously or on the background worker — `PlotAsync`, style/burn-level rebuilds, the slider's re-time — with its own planner and field, publishing finished plans on the main thread; coasts an idle ship; the scene's flight loop |
-| `WarpPolicy` | `Scripts/Simulation/WarpPolicy.cs` | Caps time warp by clearance, local dynamics, the next plan event, and a station's clearance and hold point while a station plan is live |
+| `FlightWarp` | `Scripts/Simulation/FlightWarp.cs` | The continuous flight warp curve: target real duration from the plan's length, cruise rate, and the 1x ramps at both ends |
 
 The planner crosses on the **burn–coast–burn** profile: a zero-revolution
 prograde Lambert conic chosen by `LambertSolver.SolveShortWay`, bookended by a

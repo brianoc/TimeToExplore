@@ -36,6 +36,31 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         [Test]
+        public void TheMarkerPointsAlongTheDirectionOfTravel()
+        {
+            var velocity = new Vector3d(1.0, 2.0, -3.0).Normalized;
+            _ship.Refresh(_camera, ThrustCommand.None, velocity);
+
+            Assert.That(Vector3.Dot(_ship.MarkerDirection, velocity.ToUnity()),
+                Is.GreaterThan(0.999f),
+                "the capsule's long axis follows the ship, not the screen");
+        }
+
+        [Test]
+        public void TheMarkerGrowsWhenTheCameraIsClose()
+        {
+            Assert.That(ShipView.MarkerPixelsAt(1f), Is.EqualTo(ShipView.MarkerPixels));
+            Assert.That(ShipView.MarkerPixelsAt(ShipView.CloseMarkerDistanceUnits),
+                Is.EqualTo(ShipView.MarkerPixels));
+            Assert.That(ShipView.MarkerPixelsAt(
+                    TimeToExplore.Player.OrbitCamera.MinDistanceUnits),
+                Is.EqualTo(ShipView.CloseMarkerPixels));
+            Assert.That(ShipView.MarkerPixelsAt(
+                    TimeToExplore.Player.FlightFraming.DistanceUnits),
+                Is.InRange(40f, 52f), "the chase view makes the ship the subject");
+        }
+
+        [Test]
         public void TheArrowPointsAlongTheThrustNotTheVelocity()
         {
             // Ecliptic north is Unity +Y; ecliptic +Y is Unity -Z.

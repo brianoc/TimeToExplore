@@ -21,11 +21,31 @@ namespace TimeToExplore.Tests.EditMode
         public void WarpMultipliesTheAdvance()
         {
             var clock = new SimulationClock { JulianDate = 0.0 };
-            clock.SetScaleIndex(3); // 1,000x
+            clock.SetScale(1_000.0);
             clock.Advance(2.0f);
 
             Assert.That(clock.JulianDate,
                 Is.EqualTo(2000.0 / JulianDate.SecondsPerDay).Within(1e-12));
+        }
+
+        [Test]
+        public void TheScaleIsContinuousNotAStepLadder()
+        {
+            var clock = new SimulationClock { JulianDate = 0.0 };
+            clock.SetScale(12_345.6);
+            clock.Advance(1.0f);
+
+            Assert.That(clock.JulianDate,
+                Is.EqualTo(12_345.6 / JulianDate.SecondsPerDay).Within(1e-12));
+            Assert.That(clock.Label, Is.EqualTo("x12,346"));
+        }
+
+        [Test]
+        public void NegativeScalesAreClampedToZero()
+        {
+            var clock = new SimulationClock();
+            clock.SetScale(-5.0);
+            Assert.That(clock.Scale, Is.EqualTo(0.0));
         }
 
         [Test]
@@ -49,20 +69,21 @@ namespace TimeToExplore.Tests.EditMode
         {
             var clock = new SimulationClock();
             clock.SetScaleIndex(999);
-            Assert.That(clock.ScaleIndex, Is.EqualTo(SimulationClock.TimeScales.Length - 1));
+            Assert.That(clock.Scale,
+                Is.EqualTo(SimulationClock.ManualScales[SimulationClock.ManualScales.Length - 1]));
             Assert.That(clock.Paused, Is.False);
 
             clock.Paused = true;
             clock.SetScaleIndex(-10);
-            Assert.That(clock.ScaleIndex, Is.EqualTo(0));
+            Assert.That(clock.Scale, Is.EqualTo(SimulationClock.ManualScales[0]));
             Assert.That(clock.Paused, Is.False);
         }
 
         [Test]
-        public void ScalesArePositiveAndStrictlyIncreasing()
+        public void ManualScalesArePositiveAndStrictlyIncreasing()
         {
             double previous = 0.0;
-            foreach (double scale in SimulationClock.TimeScales)
+            foreach (double scale in SimulationClock.ManualScales)
             {
                 Assert.That(scale, Is.GreaterThan(previous));
                 previous = scale;
