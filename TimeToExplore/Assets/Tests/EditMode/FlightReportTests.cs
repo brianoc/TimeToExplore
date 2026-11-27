@@ -276,7 +276,7 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// Begin consumes the preview and flies it, so the panel must show the
-        /// plan it is flying — the burn-only minimum that was drawn — not the
+        /// plan it is flying — the full-blast minimum that was drawn — not the
         /// coast floor the old Begin built.
         /// </summary>
         [Test]
@@ -296,17 +296,17 @@ namespace TimeToExplore.Tests.EditMode
                                   $"coast floor {coastFloor.PropellantKg / 1000.0:F1} t");
 
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.True, "Begin flies the coast floor the preview drew");
+                Is.False, "Begin flies the no-coast full-blast plan the preview drew");
             Assert.That(plan.FlightTimeSeconds,
                 Is.EqualTo(preview.FlightTimeSeconds).Within(1e-6));
             Assert.That(plan.PropellantKg, Is.EqualTo(preview.PropellantKg).Within(1.0),
                 "the flight and the preview are the same plan");
             Assert.That(plan.PropellantKg,
-                Is.EqualTo(coastFloor.PropellantKg).Within(1.0),
-                "Begin at the minimum flies the coast floor");
+                Is.GreaterThan(coastFloor.PropellantKg),
+                "the full-blast minimum buys its time with fuel");
             Assert.That(fuel, Is.EqualTo(FlightReport.FuelLabel(plan)),
                 "the panel's fuel row follows the flying plan, not the old preview or floor");
-            Assert.That(fuel, Is.EqualTo(FlightReport.FuelLabel(coastFloor)));
+            Assert.That(fuel, Is.Not.EqualTo(FlightReport.FuelLabel(coastFloor)));
         }
 
         [Test]

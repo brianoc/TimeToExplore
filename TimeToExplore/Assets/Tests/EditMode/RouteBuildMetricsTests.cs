@@ -208,8 +208,9 @@ namespace TimeToExplore.Tests.EditMode
                                   $"last {_gcAllocated.LastValue}");
 
             // ---- one retime: a mid-window duration ----
-            // The live Mars window runs from the 7.16751 d coast floor to
-            // 21.5025 d, so 14.0 d is inside it and needs no short coast.
+            // The live Mars window runs from the 6.66965 d full-blast minimum to
+            // 21.5025 d, three times the 7.16751 d coast floor, so 14.0 d is
+            // inside it and needs no short coast.
             const double retimeDays = 14.0;
             double retimeSeconds = retimeDays * JulianDate.SecondsPerDay;
             _planner.PlanAtDuration(ship, "mars", retimeSeconds); // warm-up

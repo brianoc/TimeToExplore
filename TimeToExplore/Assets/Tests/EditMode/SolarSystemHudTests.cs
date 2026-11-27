@@ -569,8 +569,8 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(TextNamed("TimeSliderValue").text,
                 Does.StartWith(SolarSystemHud.FormatDuration(minimum)));
             Assert.That(TextNamed("TimeSliderValue").text,
-                Does.Contain("0.3 g burns · coast"),
-                "the minimum is the coast floor, and the label says so");
+                Does.Contain("0.3 g burns · no coast"),
+                "the full-blast minimum has no cruise coast, and the label says so");
 
             float step = StepFor(slider, 2.0 * minimum, minimum, maximum);
             double chosen = SecondsFor(slider, step, minimum, maximum);
@@ -631,8 +631,8 @@ namespace TimeToExplore.Tests.EditMode
                 Is.Not.EqualTo(ButtonLabel("FixedBurnButton").color),
                 "the active style is marked");
             Assert.That(_bootstrap.ArrivalStyle, Is.EqualTo(CaptureStyle.Conic));
-            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(8),
-                "the default is the conic capture on the coast floor");
+            Assert.That(_bootstrap.Flight.Preview.Arcs.Count, Is.EqualTo(7),
+                "the default is the conic capture on the full-blast crossing");
 
             // The zero-coast minimum carries the conic capture chain whichever
             // arrival style is chosen, so retime above the floor first: there the
@@ -657,7 +657,7 @@ namespace TimeToExplore.Tests.EditMode
                 "the hybrid circularises impulsively");
             Assert.That(_bootstrap.Flight.PreviewMinimumSeconds,
                 Is.EqualTo(conicMinimum).Within(120.0),
-                "the window's minimum is the conic coast floor; the retime carries the style");
+                "the window's minimum is the full-blast crossing; the retime carries the style");
             Assert.That(SliderNamed("TimeSlider").minValue,
                 Is.EqualTo(0f).Within(1e-6));
             Assert.That(SliderNamed("TimeSlider").maxValue,
@@ -771,22 +771,23 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(plan.Arcs.Any(arc => arc.IsFiniteBurn), Is.True,
                 "the profile flies its departure burn and brake");
             Assert.That(plan.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise && arc.IsCoast),
-                Is.True,
-                "the split-aware minimum keeps its cruise coast");
+                Is.False,
+                "the full-blast minimum is the no-coast crossing");
 
             double minimum = _bootstrap.Flight.PreviewMinimumSeconds;
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.LessThan(8.0),
-                "the window starts at the split-aware coast floor");
-            Assert.That(minimum / JulianDate.SecondsPerDay, Is.GreaterThan(6.5),
-                "the floor is the shortest plan the profile can fly, not the torch plan");
+            Assert.That(minimum / JulianDate.SecondsPerDay, Is.EqualTo(6.66965).Within(0.02),
+                "the window starts at the full-blast crossing");
             double maximum = _bootstrap.Flight.PreviewMaximumSeconds;
             TestContext.WriteLine($"burn-coast-burn window: " +
                 $"{minimum / JulianDate.SecondsPerDay:F2} d to " +
                 $"{maximum / JulianDate.SecondsPerDay:F2} d");
             Assert.That(maximum, Is.GreaterThanOrEqualTo(minimum));
+            Assert.That(maximum / JulianDate.SecondsPerDay,
+                Is.EqualTo(21.50253).Within(0.05),
+                "the slow end is still three times the coast floor");
             Assert.That(maximum,
-                Is.LessThanOrEqualTo(minimum * TripPlanner.MaxDurationScale + 1e-6),
-                "the window never reaches past the planner's own span");
+                Is.GreaterThan(minimum * TripPlanner.MaxDurationScale),
+                "the full-blast minimum does not shrink the window");
             Slider timeSlider = SliderNamed("TimeSlider");
             Assert.That(timeSlider.minValue, Is.EqualTo(0f).Within(1e-6));
             Assert.That(timeSlider.maxValue,
@@ -805,9 +806,6 @@ namespace TimeToExplore.Tests.EditMode
             DetailRow brake = report.First(row => row.Label == "Brake");
             Assert.That(brake.Value, Does.Contain("km/s"));
             Assert.That(brake.Value, Does.Contain("0.3 g"));
-            Assert.That(report.Any(row => row.Label == "Coast" &&
-                                          row.Value.StartsWith("drive off")), Is.True,
-                "the coast-floor minimum reports its cruise coast");
             Assert.That(report.Any(row => row.Label == "Capture"), Is.True);
             Assert.That(report.Any(row => row.Label == "Cruise" &&
                                           row.Value.Contains("prograde burn")), Is.True);

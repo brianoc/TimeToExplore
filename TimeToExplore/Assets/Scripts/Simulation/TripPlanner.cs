@@ -237,8 +237,26 @@ namespace TimeToExplore.Simulation
         /// <summary>How far the nav computer lets a player stretch a trip beyond
         /// the fastest feasible plan. Three times the minimum roughly divides
         /// the geometric peak thrust by nine, which is enough to see the
-        /// time/thrust trade without turning the plan into a drift.</summary>
+        /// time/thrust trade without turning the plan into a drift. The window is
+        /// anchored to the **coast** floor, not to a faster full-blast crossing,
+        /// so the slow end does not move when the left end does.</summary>
         public const double MaxDurationScale = 3.0;
+
+        /// <summary>The escape excess the full-blast grid is built around at a
+        /// 0.3 g level. The time-optimal climb trades the escape conic (shorter
+        /// with more excess) against the two fixed burns (longer, because the
+        /// crossing starts faster and must brake harder). The measured optimum
+        /// scales with the square root of the burn level — about 10 km/s at
+        /// 0.05 g, 28 at 0.3 g and 48 at 1 g — so the grid multiplies this value
+        /// by √level and <see cref="FullBlastVInfinityFactors"/>.</summary>
+        private const double FullBlastVInfinityReferenceMps = 48_000.0;
+
+        /// <summary>Multipliers around the full-blast reference excess. A step is
+        /// about 1.3× the last, which puts the best candidate within minutes of a
+        /// finer scan across the measured routes while keeping the grid small:
+        /// five fixed-date builds per plot.</summary>
+        private static readonly double[] FullBlastVInfinityFactors =
+            { 0.6, 0.8, 1.0, 1.25, 1.6 };
 
         /// <summary>How far astern of a station, along the station's own velocity
         /// direction, a station trip holds: the point target's terminal state is
@@ -939,13 +957,13 @@ namespace TimeToExplore.Simulation
         /// minimum are accepted and reported as infeasible rather than silently
         /// stretched: the panel can then explain why the drive cannot fly them.
         ///
-        /// A duration between the burn-only minimum and the coast floor is the
+        /// A duration between the full-blast minimum and the coast floor is the
         /// **short coast**: when the coast path refuses it for being squeezed,
         /// the plan is the burn-only seam with a heliocentric conic coast of the
-        /// slack time. The total stays an input. At the burn-only minimum the
-        /// plan is the burn-only crossing itself; a refusal from the coast's own
-        /// geometry (no prograde short-way transfer) keeps its reason rather than
-        /// becoming a short coast. See <see cref="BuildShortCoast"/>.
+        /// slack time. The total stays an input. At the minimum the plan is the
+        /// burn-only crossing itself; a refusal from the coast's own geometry (no
+        /// prograde short-way transfer) keeps its reason rather than becoming a
+        /// short coast. See <see cref="BuildShortCoast"/>.
         /// </summary>
         public TrajectoryPlan PlanAtDuration(ShipState ship, string targetId,
             double durationSeconds, PinSeed seed = default)
@@ -986,7 +1004,7 @@ namespace TimeToExplore.Simulation
         }
 
         /// <summary>
-        /// Research spike, **fixed date**: a **zero-coast** crossing built from
+        /// **Fixed date**: a **zero-coast** crossing built from
         /// the profile's own finite-burn arcs. The departure is the physical
         /// climb — the short break and the escape conic out to the handover
         /// ceiling — the capture chain is built at the arrival handover floor for
@@ -1036,29 +1054,46 @@ namespace TimeToExplore.Simulation
 
         /// <summary>
         /// The nav computer's **minimum trip time**: the shorter feasible plan of
-        /// the zero-coast crossing and the profile's coast floor. The burn-only
-        /// total is an **output** of the seam solve, not a requested duration.
-        /// Since the split the coast floor is shorter at every measured route
-        /// (Mars at 0.3 g: 7.16751 d against the crossing's 16.48669 d), because
-        /// the crossing keeps the minimum-energy parabolic climb while the floor
-        /// buys a short climb and a longer coast. The two are still compared, not
-        /// assumed: when the zero-coast solve is infeasible, does not settle, or
-        /// comes out longer, the coast floor is returned; on a route where the
-        /// crossing wins it is still returned.
+        /// the **full-blast** zero-coast crossing and the profile's coast floor.
+        /// The full-blast crossing takes the time-optimal escape excess on a
+        /// small grid (<see cref="FullBlastVInfinityFactors"/>) instead of the
+        /// minimum-energy parabolic climb, so its total is an output of the seam
+        /// solve; each candidate is one fixed-date build at the coast floor's
+        /// arrival date, and the shortest one is re-solved through the moving
+        /// target. Measured at the epoch, Gateway → Mars 0.3 g is **6.66965 d at
+        /// a 26.3 km/s excess** against the coast floor's 7.16751 d, and the gain
+        /// is 6–14% across the measured routes. When no candidate beats the
+        /// floor, is infeasible, or does not settle, the coast floor is returned.
+        ///
+        /// The **window maximum stays three times the coast floor**, so
+        /// <paramref name="coastFloor"/> is returned for the caller's anchor;
+        /// only the slider's left end moves.
         ///
         /// This does **not** change <see cref="Plan"/>'s floors or the
         /// fixed-duration delta-v anchors, which still come from the coast path.
-        /// The old range between a shorter burn-only minimum and a later coast
-        /// floor — the **short coast** — is empty at the current epoch, so a
-        /// duration below the coast floor keeps the coast path's refusal. The
-        /// branch stays for a route whose burn-only crossing still wins.
+        /// A duration between the full-blast minimum and the coast floor is the
+        /// **short coast**, built by <see cref="PlanAtDuration"/> across the whole
+        /// range; the branch retries the full-blast excesses when the split's own
+        /// climb does not fit.
         /// </summary>
-        public TrajectoryPlan PlanFastest(ShipState ship, string targetId)
+        public TrajectoryPlan PlanFastest(ShipState ship, string targetId) =>
+            PlanFastest(ship, RequireTarget(targetId), out _);
+
+        /// <summary><see cref="PlanFastest(ShipState, string)"/> with the coast
+        /// floor that anchors the window's slow end. The plan is the same; the
+        /// floor is the build the window would otherwise have to repeat. Public
+        /// because the player benchmark runs the same pair.</summary>
+        public TrajectoryPlan PlanFastest(ShipState ship, string targetId,
+            out TrajectoryPlan coastFloor) =>
+            PlanFastest(ship, RequireTarget(targetId), out coastFloor);
+
+        private TrajectoryPlan PlanFastest(ShipState ship, BodyRuntime target,
+            out TrajectoryPlan coastFloor)
         {
-            BodyRuntime target = RequireTarget(targetId);
             PlanMetrics metrics = Metrics;
             long coastStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             TrajectoryPlan coast = PlanCoastFloor(ship, target);
+            coastFloor = coast;
             if (metrics != null)
                 metrics.AddFastestCoast(PlanMetrics.Timestamp() - coastStart,
                     coast?.FlightTimeSeconds ?? double.NaN);
@@ -1072,37 +1107,94 @@ namespace TimeToExplore.Simulation
                 return coast;
             }
 
+            if (!coast.IsFeasible || !(coast.FlightTimeSeconds > 0.0))
+            {
+                // The full-blast crossing needs a capture chain and a date to
+                // build it at. A refused coast floor is reported as it is; the
+                // grid does not rescue a route the profile cannot plot.
+                Trace?.Invoke($"fastest: coast floor infeasible " +
+                              $"({coast.InfeasibleReason}); no full-blast search");
+                return coast;
+            }
+
             long burnOnlyStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
-            // A burn-only crossing that cannot fit the coast floor's date needs
-            // more time than the coast floor, so it cannot be the faster plan.
-            // One build decides that; the moving-target loop only runs when the
-            // fixed-date crossing already fits. (Since the split, the coast floor
-            // is far below the burn-only crossing's own minimum, so the loop
-            // would otherwise start from a date the crossing cannot fly.)
-            TrajectoryPlan seedCrossing = BuildBurnOnly(ship, target,
-                ship.JulianDate + coast.FlightTimeSeconds / SecondsPerDay,
-                forcedVInfinityMps: 0.0);
-            TrajectoryPlan burnOnly = seedCrossing.IsFeasible
-                ? PlanBurnOnlyMovingTarget(ship, target,
-                    seedCrossing.FlightTimeSeconds, forcedVInfinityMps: 0.0)
-                : seedCrossing;
+            TrajectoryPlan fastest = PlanFullBlast(ship, target, coast,
+                out double chosenVInfinityMps);
             if (metrics != null)
                 metrics.AddFastestBurnOnly(PlanMetrics.Timestamp() - burnOnlyStart,
-                    burnOnly?.FlightTimeSeconds ?? double.NaN);
+                    fastest?.FlightTimeSeconds ?? double.NaN);
 
-            bool useBurnOnly = burnOnly.IsFeasible
-                               && burnOnly.FlightTimeSeconds > 0.0
-                               && (coast.FlightTimeSeconds <= 0.0
-                                   || burnOnly.FlightTimeSeconds
-                                   < coast.FlightTimeSeconds);
-            Trace?.Invoke($"fastest: burn-only " +
-                          $"{burnOnly.FlightTimeSeconds / SecondsPerDay:F5} d " +
-                          $"(feasible {burnOnly.IsFeasible}), coast " +
+            Trace?.Invoke($"fastest: full blast " +
+                          $"{fastest.FlightTimeSeconds / SecondsPerDay:F5} d " +
+                          $"(feasible {fastest.IsFeasible}, v∞ " +
+                          $"{chosenVInfinityMps / 1000.0:F2} km/s), coast " +
                           $"{coast.FlightTimeSeconds / SecondsPerDay:F5} d " +
-                          $"(feasible {coast.IsFeasible}), using " +
-                          $"{(useBurnOnly ? "burn-only" : "coast")}");
+                          $"(feasible {coast.IsFeasible})");
+            return fastest;
+        }
 
-            return useBurnOnly ? burnOnly : coast;
+        /// <summary>
+        /// The full-blast search: one fixed-date crossing per grid excess, all
+        /// built at the coast floor's arrival date so their totals compare, then
+        /// the shortest candidate re-solved through the moving target so its
+        /// capture chain belongs to the date it reaches. Returns the coast floor
+        /// when no candidate is shorter, when the winner does not settle, or
+        /// when every candidate is infeasible.
+        /// </summary>
+        private TrajectoryPlan PlanFullBlast(ShipState ship, BodyRuntime target,
+            TrajectoryPlan coast, out double chosenVInfinityMps)
+        {
+            chosenVInfinityMps = double.NaN;
+            double arrivalJulianDate = ship.JulianDate
+                                       + coast.FlightTimeSeconds / SecondsPerDay;
+            double reference = FullBlastVInfinityReferenceMps * Math.Sqrt(BurnLevelG);
+
+            TrajectoryPlan best = null;
+            double bestVInfinityMps = double.NaN;
+            foreach (double factor in FullBlastVInfinityFactors)
+            {
+                double vInfinityMps = reference * factor;
+                TrajectoryPlan candidate = BuildBurnOnly(ship, target,
+                    arrivalJulianDate, vInfinityMps, probe: true);
+                Trace?.Invoke($"full blast: v∞ {vInfinityMps / 1000.0:F3} km/s " +
+                              $"-> {(string.IsNullOrEmpty(candidate.InfeasibleReason)
+                                  ? $"{candidate.FlightTimeSeconds / SecondsPerDay:F5} d"
+                                  : "infeasible: " + candidate.InfeasibleReason)}");
+                // A probe's coarse arcs can read a peak above the drive; the
+                // ranking only needs a closed crossing and its total. The winner
+                // is rebuilt certified, where the peak is a verdict again.
+                if (!string.IsNullOrEmpty(candidate.InfeasibleReason)
+                    || !(candidate.FlightTimeSeconds > 0.0))
+                    continue;
+                if (best == null || candidate.FlightTimeSeconds < best.FlightTimeSeconds)
+                {
+                    best = candidate;
+                    bestVInfinityMps = vInfinityMps;
+                }
+            }
+
+            if (best == null || best.FlightTimeSeconds >= coast.FlightTimeSeconds)
+            {
+                Trace?.Invoke("full blast: no candidate beats the coast floor");
+                return coast;
+            }
+
+            TrajectoryPlan settled = PlanBurnOnlyMovingTarget(ship, target,
+                best.FlightTimeSeconds, bestVInfinityMps);
+            if (!settled.IsFeasible || !(settled.FlightTimeSeconds > 0.0)
+                || settled.FlightTimeSeconds >= coast.FlightTimeSeconds)
+            {
+                // The fixed-date winner is a valid crossing but its chain was
+                // built at the coast floor's date. A moving-target solve that
+                // does not settle is reported, and the coast floor is flown:
+                // the nav minimum is never a plan the loop refused.
+                Trace?.Invoke("full blast: the winning crossing did not settle; " +
+                              "returning the coast floor");
+                return coast;
+            }
+
+            chosenVInfinityMps = bestVInfinityMps;
+            return settled;
         }
 
         /// <summary>
@@ -1226,16 +1318,18 @@ namespace TimeToExplore.Simulation
         /// capture chain's date, and the handover lands where the solved brake
         /// ends.</summary>
         private TrajectoryPlan BuildBurnOnly(ShipState ship, BodyRuntime target,
-            double arrivalJulianDate, double forcedVInfinityMps)
+            double arrivalJulianDate, double forcedVInfinityMps, bool probe = false)
             => BuildBurnOnly(ship, target, arrivalJulianDate, out _,
-                forcedVInfinityMps);
+                forcedVInfinityMps, probe);
 
         /// <summary>The fixed-date crossing plus the seam solution it settled on.
         /// The short-coast solve seeds from these ray, burn, and brake directions;
-        /// nothing else about the crossing is reused.</summary>
+        /// nothing else about the crossing is reused. A **probe** build ranks a
+        /// candidate at the two-body field and a looser gate; only the winner is
+        /// rebuilt certified.</summary>
         private TrajectoryPlan BuildBurnOnly(ShipState ship, BodyRuntime target,
             double arrivalJulianDate, out BurnOnlyEvaluation solution,
-            double forcedVInfinityMps = -1.0)
+            double forcedVInfinityMps = -1.0, bool probe = false)
         {
             solution = default;
             PlanMetrics metrics = Metrics;
@@ -1303,7 +1397,7 @@ namespace TimeToExplore.Simulation
             // same way BuildBurnCoastBurn seeds its own solve. It is a search
             // input only: this crossing has no coast of its own.
             BuildResult reference = BuildCoastSkeleton(ship, target, totalSeconds,
-                arrivalRadius, fast: false, probe: false,
+                arrivalRadius, fast: probe, probe: false,
                 forcedVInfinityMps: forcedVInfinityMps);
             PlanArc referenceCruise = null;
             if (reference.Plan != null)
@@ -1378,7 +1472,7 @@ namespace TimeToExplore.Simulation
             {
                 if (!TryBuildDepartureClimb(ship, departureBody, departureCeiling,
                         Math.Max(climbAvailable, MinimumArcSeconds),
-                        ClimbSeedSeconds(climbAvailable), cheap: false,
+                        ClimbSeedSeconds(climbAvailable), cheap: probe,
                         out climb, out string climbReason, forcedVInfinityMps))
                 {
                     return Reported(InfeasiblePlan(ship, target, totalSeconds,
@@ -1405,7 +1499,7 @@ namespace TimeToExplore.Simulation
                 : -seedRay;
 
             var geometry = new BurnOnlyGeometry(departureBody, target, chain,
-                acceleration, climb);
+                acceleration, climb, probe, _gravity);
 
             Vector3d straightRay = seedEntryPosition - burnStartPosition;
             straightRay = straightRay.SqrMagnitude > 0.5 ? straightRay.Normalized : seedRay;
@@ -1471,7 +1565,7 @@ namespace TimeToExplore.Simulation
                 solved.BurnStartPositionM - sunAtBurnStart,
                 solved.BurnStartVelocityMps - sunVelocityAtBurnStart, acceleration,
                 retrograde: false, samples: Math.Max(512, ArcSamples),
-                fixedThrustDirection: solved.Ray, gravity: _gravity);
+                fixedThrustDirection: solved.Ray, gravity: geometry.Gravity);
             long departureCreateTicks =
                 metrics != null ? PlanMetrics.Timestamp() - departureCreateStart : 0L;
 
@@ -1510,19 +1604,19 @@ namespace TimeToExplore.Simulation
                 solved.BrakeSeconds, brakeStartPosition - sunPositionAtBrakeStart,
                 brakeStartVelocity - sunVelocityAtBrakeStart, acceleration,
                 retrograde: true, samples: Math.Max(512, ArcSamples),
-                fixedThrustDirection: solved.BrakeDirection, gravity: _gravity);
+                fixedThrustDirection: solved.BrakeDirection, gravity: geometry.Gravity);
             long brakeCreateTicks =
                 metrics != null ? PlanMetrics.Timestamp() - brakeCreateStart : 0L;
 
             var arcs = new List<PlanArc>(8);
-            if (hasClimb) AppendDepartureClimb(arcs, ship, departureBody, climb, fast: false);
+            if (hasClimb) AppendDepartureClimb(arcs, ship, departureBody, climb, fast: probe);
             long departureMeasureStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
             PlanArc departureBurnArc = MakeFiniteBurnArc(FlightPhase.Cruise,
                 _model.Sun.Id, solved.BurnStartJulianDate, brakeStartJd, departureBurn);
             long departureMeasureTicks =
                 metrics != null ? PlanMetrics.Timestamp() - departureMeasureStart : 0L;
             metrics?.AddBurn(Math.Max(512, ArcSamples), departureCreateTicks,
-                departureMeasureTicks, certified: true);
+                departureMeasureTicks, certified: !probe);
             arcs.Add(departureBurnArc);
 
             long brakeMeasureStart = metrics != null ? PlanMetrics.Timestamp() : 0L;
@@ -1531,7 +1625,7 @@ namespace TimeToExplore.Simulation
             long brakeMeasureTicks =
                 metrics != null ? PlanMetrics.Timestamp() - brakeMeasureStart : 0L;
             metrics?.AddBurn(Math.Max(512, ArcSamples), brakeCreateTicks,
-                brakeMeasureTicks, certified: true);
+                brakeMeasureTicks, certified: !probe);
             arcs.Add(brakeArc);
 
             double parkingEndJd;
@@ -1553,7 +1647,8 @@ namespace TimeToExplore.Simulation
                     clearanceReason));
             }
 
-            if (!BurnChainIsClosed(arcs, out string seamReason))
+            if (!BurnChainIsClosed(arcs, probe ? geometry.GatePositionM : 1e3,
+                    probe ? geometry.GateVelocityMps : 1.0, out string seamReason))
             {
                 return Reported(InfeasiblePlan(ship, target, totalSeconds,
                     "burn-only: " + seamReason));
@@ -1581,7 +1676,11 @@ namespace TimeToExplore.Simulation
                           $"{chain.TotalSeconds / SecondsPerDay:F5} d, total " +
                           $"{actualSeconds / SecondsPerDay:F5} d");
 
-            return Reported(plan);
+            // A probe is a ranking build: its coarse arcs can read a peak above
+            // the drive even though the certified rebuild at the same solution
+            // flies at the commanded level. The winner is rebuilt certified before
+            // any plan is returned, so the probe's own peak is not a verdict.
+            return probe ? plan : Reported(plan);
         }
 
         /// <summary>
@@ -1651,6 +1750,36 @@ namespace TimeToExplore.Simulation
             TrajectoryPlan burnOnly = PlanBurnOnlyMovingTarget(ship, target,
                 totalSeconds, out BurnOnlyEvaluation burnOnlySolution,
                 forcedVInfinityMps);
+            if (!burnOnly.IsFeasible || burnOnlySolution.Ray.SqrMagnitude < 0.5
+                || burnOnly.FlightTimeSeconds > totalSeconds + 1.0)
+            {
+                // The split's cost choice can leave too long a climb for a
+                // duration just above the full-blast minimum: at Mercury 1 g the
+                // 16 km/s climb needs 0.64 d and a 3.45-day request leaves less
+                // than that after the burns. The full-blast grid's shorter
+                // climbs fit; the crossing is rebuilt at the requested total with
+                // the first larger excess that does, and the short coast adds the
+                // slack. A request below every candidate's own minimum still
+                // keeps the coast path's refusal.
+                double reference = FullBlastVInfinityReferenceMps * Math.Sqrt(BurnLevelG);
+                foreach (double factor in FullBlastVInfinityFactors)
+                {
+                    double candidateVInfinityMps = reference * factor;
+                    if (candidateVInfinityMps <= forcedVInfinityMps + 1.0) continue;
+                    TrajectoryPlan candidate = BuildBurnOnly(ship, target, arrivalJd,
+                        out BurnOnlyEvaluation candidateSolution, candidateVInfinityMps);
+                    if (!candidate.IsFeasible || !(candidate.FlightTimeSeconds > 0.0)
+                        || candidate.FlightTimeSeconds > totalSeconds + 1.0)
+                        continue;
+                    burnOnly = candidate;
+                    burnOnlySolution = candidateSolution;
+                    forcedVInfinityMps = candidateVInfinityMps;
+                    Trace?.Invoke($"short coast: the split's climb does not fit; " +
+                                  $"using v∞ {candidateVInfinityMps / 1000.0:F2} km/s");
+                    break;
+                }
+            }
+
             if (!burnOnly.IsFeasible || burnOnlySolution.Ray.SqrMagnitude < 0.5)
             {
                 Trace?.Invoke("short coast: the burn-only seed is not available: " +
@@ -1811,7 +1940,7 @@ namespace TimeToExplore.Simulation
                     "short coast: " + clearanceReason);
             }
 
-            if (!BurnChainIsClosed(arcs, out string seamReason))
+            if (!BurnChainIsClosed(arcs, 1e3, 1.0, out string seamReason))
             {
                 return InfeasiblePlan(ship, target, totalSeconds,
                     "short coast: " + seamReason);
@@ -3016,7 +3145,7 @@ namespace TimeToExplore.Simulation
             // over-thrust plan is already rejected for its peak, so keep that
             // cause instead.
             if (worst <= 1.0 / ThrustMargin
-                && !BurnChainIsClosed(arcs, out string seamReason))
+                && !BurnChainIsClosed(arcs, 1e3, 1.0, out string seamReason))
             {
                 // A chain miss after an unsettled pin is a solver artefact, not a
                 // verdict on the trip time: the certified build retries the same
@@ -3492,7 +3621,7 @@ namespace TimeToExplore.Simulation
                 return StretchedPlan(ship, station, totalSeconds, clearanceReason);
             }
 
-            if (!BurnChainIsClosed(arcs, out string seamReason))
+            if (!BurnChainIsClosed(arcs, 1e3, 1.0, out string seamReason))
             {
                 return StretchedPlan(ship, station, totalSeconds,
                     "station: " + seamReason,
@@ -4832,16 +4961,29 @@ namespace TimeToExplore.Simulation
             FiniteBurnArc departureBurn = FiniteBurnArc.Create(_model, _model.Sun,
                 burnStartJd, burnSeconds, burnStartPosition - sunAtBurnStart,
                 burnStartVelocity - sunVelocityAtBurnStart, geometry.AccelerationMps2,
-                retrograde: false, samples: PinnedDepartureSamples,
-                fixedThrustDirection: ray, gravity: _gravity);
+                retrograde: false, samples: geometry.Samples,
+                fixedThrustDirection: ray, gravity: geometry.Gravity);
 
             _model.ComputeState(_model.Sun, entryJd,
                 out Vector3d sunAtEntry, out Vector3d sunVelocityAtEntry);
-            FiniteBurnArc.SimulateBackward(_model, _gravity, _model.Sun, entryJd,
-                entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
-                geometry.AccelerationMps2, retrograde: true, brakeSeconds, BrakeSamples,
-                out Vector3d brakeLocalStartPosition,
-                out Vector3d brakeLocalStartVelocity, brakeDirection);
+            Vector3d brakeLocalStartPosition;
+            Vector3d brakeLocalStartVelocity;
+            if (geometry.Gravity != null)
+            {
+                FiniteBurnArc.SimulateBackward(_model, geometry.Gravity, _model.Sun,
+                    entryJd, entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
+                    geometry.AccelerationMps2, retrograde: true, brakeSeconds,
+                    geometry.BrakeSamplesCount,
+                    out brakeLocalStartPosition, out brakeLocalStartVelocity, brakeDirection);
+            }
+            else
+            {
+                FiniteBurnArc.SimulateBackward(_model.Sun,
+                    entryPosition - sunAtEntry, entryVelocity - sunVelocityAtEntry,
+                    geometry.AccelerationMps2, retrograde: true, brakeSeconds,
+                    geometry.BrakeSamplesCount,
+                    out brakeLocalStartPosition, out brakeLocalStartVelocity, brakeDirection);
+            }
 
             _model.ComputeState(_model.Sun, brakeStartJd,
                 out Vector3d sunAtBrakeStart, out Vector3d sunVelocityAtBrakeStart);
@@ -4895,7 +5037,7 @@ namespace TimeToExplore.Simulation
             int jacobianAge = int.MaxValue;
             string stall = null;
 
-            for (int iteration = 0; iteration < BurnOnlyIterations; iteration++)
+            for (int iteration = 0; iteration < geometry.Iterations; iteration++)
             {
                 if (!EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1,
                         rayTangent2, seed.BrakeDirection, brakeTangent1, brakeTangent2,
@@ -4920,8 +5062,8 @@ namespace TimeToExplore.Simulation
                               $"{velocity:E2} m/s, burn {x[2]:F0} s, " +
                               $"brake {x[5]:F0} s");
 
-                if (position <= BurnOnlyTargetPositionM
-                    && velocity <= BurnOnlyTargetVelocityMps)
+                if (position <= geometry.TargetPositionM
+                    && velocity <= geometry.TargetVelocityMps)
                 {
                     solution = current;
                     return true;
@@ -5023,8 +5165,8 @@ namespace TimeToExplore.Simulation
 
             // The gate is the planner's own. Accept the best point if it is
             // inside it; a failure names the residual it reached.
-            if (bestPosition <= BurnOnlyPositionGateM
-                && bestVelocity <= BurnOnlyVelocityGateMps)
+            if (bestPosition <= geometry.GatePositionM
+                && bestVelocity <= geometry.GateVelocityMps)
             {
                 Array.Copy(best, x, x.Length);
                 if (EvaluateBurnOnlySeam(geometry, ship, seed.Ray, rayTangent1, rayTangent2,
@@ -5910,7 +6052,8 @@ namespace TimeToExplore.Simulation
         /// at 1e-5 m/s, and a metre or a millimetre per second here means the
         /// brake missed the capture entry by orders of magnitude.
         /// </summary>
-        private static bool BurnChainIsClosed(List<PlanArc> arcs, out string reason)
+        private static bool BurnChainIsClosed(List<PlanArc> arcs,
+            double positionGateM, double velocityGateMps, out string reason)
         {
             reason = null;
             for (int i = 0; i < arcs.Count - 1; i++)
@@ -5923,7 +6066,8 @@ namespace TimeToExplore.Simulation
                                        + right.EntryImpulseVectorMps
                                        - right.Path.VelocityAt(0.0)).Magnitude;
 
-                if (positionStep <= 1e3 && velocityStep <= 1.0) continue;
+                if (positionStep <= positionGateM && velocityStep <= velocityGateMps)
+                    continue;
 
                 string seam = left.Phase == FlightPhase.Capture
                               && right.Phase == FlightPhase.Coast
@@ -6632,17 +6776,29 @@ namespace TimeToExplore.Simulation
         /// <summary>The fixed part of a burn-only crossing: the departure and
         /// arrival bodies, the capture chain the supplied date chose, the level,
         /// and the solved departure climb whose ceiling state is the burn's
-        /// start.</summary>
+        /// start. A **probe** is a ranking build: it integrates the two-body
+        /// field at a fraction of the samples and stops at a looser gate, so the
+        /// full-blast grid costs a fraction of the certified solve. The reported
+        /// plan is always the certified build.</summary>
         private readonly struct BurnOnlyGeometry
         {
             public BurnOnlyGeometry(BodyRuntime departureBody, BodyRuntime target,
-                TransferConic chain, double accelerationMps2, DepartureClimb climb)
+                TransferConic chain, double accelerationMps2, DepartureClimb climb,
+                bool probe = false, IGravityField gravity = null)
             {
                 DepartureBody = departureBody;
                 Target = target;
                 Chain = chain;
                 AccelerationMps2 = accelerationMps2;
                 Climb = climb;
+                Samples = probe ? 32 : PinnedDepartureSamples;
+                BrakeSamplesCount = probe ? 64 : BrakeSamples;
+                Iterations = probe ? 16 : BurnOnlyIterations;
+                TargetPositionM = probe ? 5_000.0 : BurnOnlyTargetPositionM;
+                TargetVelocityMps = probe ? 5.0 : BurnOnlyTargetVelocityMps;
+                GatePositionM = probe ? 50_000.0 : BurnOnlyPositionGateM;
+                GateVelocityMps = probe ? 50.0 : BurnOnlyVelocityGateMps;
+                Gravity = probe ? null : gravity;
             }
 
             public BodyRuntime DepartureBody { get; }
@@ -6650,6 +6806,14 @@ namespace TimeToExplore.Simulation
             public TransferConic Chain { get; }
             public double AccelerationMps2 { get; }
             public DepartureClimb Climb { get; }
+            public int Samples { get; }
+            public int BrakeSamplesCount { get; }
+            public int Iterations { get; }
+            public double TargetPositionM { get; }
+            public double TargetVelocityMps { get; }
+            public double GatePositionM { get; }
+            public double GateVelocityMps { get; }
+            public IGravityField Gravity { get; }
         }
 
         /// <summary>The fixed part of a short-coast crossing: the burn-only

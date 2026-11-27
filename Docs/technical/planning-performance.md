@@ -4,7 +4,7 @@ title: Planning performance
 description: The two-tier planning model — a fast search-only gravity model in front of the unchanged full-field plan and flight — the 5% thrust screen, the floor and retimed-plan caches, the latest-wins background planner (retimes, route plans, and the slider's prefetched neighbours), the warm-started pin, and Begin flying the fresh preview.
 tags: [technical, performance, planning, navigation, async]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The problem
@@ -1535,3 +1535,34 @@ the newly feasible reverses. The search itself is faster; a phase whose duration
 changed is compared with a different build. The 25% threshold still guards the
 search cost, and the search's own line is the **4–7 ms** rank-only choice, which
 is far inside it.
+
+## Step 7: the full-blast grid (2026-11-27)
+
+The nav minimum now searches five escape excesses and certifies the winner
+([ADR-025](/decisions/adr-025-full-blast-route.md)). The search is cheap by
+construction: each candidate is one fixed-date seam solve on the two-body field
+at 32/64 samples and a 50 km / 50 m/s gate, and only the winner is rebuilt with
+the summed field and the 1 km / 1 m/s gate. The grid therefore costs five probes
+plus one or two certified builds, not five certified crossings.
+
+**Release harness, same machine and epoch, median of three.** The comparison is
+the plain .NET 10 column in [the Unity 7
+upgrade](/technical/unity-7-coreclr.md), because the committed
+`planning-benchmark-baseline.json` is the Unity run.
+
+| Route | Plot before | Plot after | Change |
+|---|---:|---:|---:|
+| Earth → Mars | 536 ms | 936 ms | +75% |
+| Earth → Venus | 425 ms | 813 ms | +91% |
+| Venus → Earth | 1,640 ms | 11,472 ms | basin change |
+| Uranus → Earth | 616 ms | 1,399 ms | basin change |
+
+The extra ~400 ms on the clean routes is the coast floor's own build (about
+500 ms, unchanged) plus the grid's five probes and the confirmed winner. The
+two reverse routes are not like-for-like: the harness now certifies a 13.99853-day
+Venus floor where the earlier table found 6.62749, and a 63.06636-day Uranus
+floor against 64.15472; the near-floor basin is scatter, and the full-blast
+search runs on the floor it is given. The Editor pays its usual ~4× difference;
+the first plot of a route is still the dominant cost, and a repeat plot at the
+same date is a cache hit. The full `tools/bench.sh` re-record is the close-out
+step.

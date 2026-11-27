@@ -1740,15 +1740,14 @@ namespace TimeToExplore.Tests.EditMode
 
         /// <summary>
         /// <see cref="TripPlanner.PlanFastest"/> is the nav computer's minimum.
-        /// Since the split, the coast floor is much shorter than the zero-coast
-        /// crossing (Mars 0.3 g: 7.17 d against 16.49 d), so the coast floor is
-        /// the minimum and the burn-only crossing is **dominated**: it survives as
-        /// a research entry point and as the short coast's seed, not as the
-        /// fastest plan. The comparison is the two plans', not an assumption.
+        /// Since [ADR-025] the full-blast crossing beats the coast floor at Mars,
+        /// so the minimum is the **seven-arc no-coast** crossing; the coast
+        /// floor is the slower plan and remains the window's slow-end anchor.
+        /// The comparison is the two plans', not an assumption.
         /// </summary>
         [Category("deep")]
         [Test]
-        public void PlanFastestReturnsTheCoastFloorWhenTheBurnOnlyCrossingIsLonger()
+        public void PlanFastestReturnsTheFullBlastCrossingWhenItIsShorter()
         {
             _planner.BurnLevelG = 0.3;
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
@@ -1761,41 +1760,40 @@ namespace TimeToExplore.Tests.EditMode
             watch.Stop();
             PrintPlan(fastest);
 
-            TrajectoryPlan burnOnly = _planner.PlanBurnOnly(ship, "mars");
             TestContext.WriteLine($"coast {coast.FlightTimeDays:F5} d, fastest " +
-                                  $"{fastest.FlightTimeDays:F5} d, burn-only " +
-                                  $"{burnOnly.FlightTimeDays:F5} d " +
-                                  $"(feasible {burnOnly.IsFeasible})");
+                                  $"{fastest.FlightTimeDays:F5} d");
 
             Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
+            Assert.That(fastest.FlightTimeDays, Is.EqualTo(6.66965).Within(0.01));
             Assert.That(fastest.FlightTimeSeconds,
-                Is.EqualTo(coast.FlightTimeSeconds).Within(1.0),
-                "the coast floor is the fastest feasible plan");
-            Assert.That(fastest.FlightTimeDays, Is.EqualTo(7.16751).Within(0.05));
-            Assert.That(burnOnly.IsFeasible, Is.True, burnOnly.InfeasibleReason);
-            Assert.That(burnOnly.FlightTimeSeconds,
-                Is.GreaterThan(coast.FlightTimeSeconds),
-                "the zero-coast crossing is now the longer plan at Mars 0.3 g");
+                Is.LessThan(coast.FlightTimeSeconds),
+                "the full-blast crossing is the faster plan");
+            Assert.That(coast.FlightTimeDays, Is.EqualTo(7.16751).Within(0.01));
 
-            // The minimum is the coast shape: break → escape → departure burn →
-            // coast → approach → brake → capture.
-            Assert.That(fastest.Arcs.Count, Is.EqualTo(8));
+            // The minimum is the no-coast shape: break → escape → departure burn
+            // → brake → capture chain. There is no Cruise coast between the burns.
+            Assert.That(fastest.Arcs.Count, Is.EqualTo(7));
             Assert.That(fastest.Arcs[0].Phase, Is.EqualTo(FlightPhase.Departure));
             Assert.That(fastest.Arcs[0].Path, Is.InstanceOf<Quintic>());
             Assert.That(fastest.Arcs[1].Phase, Is.EqualTo(FlightPhase.Escape));
             Assert.That(fastest.Arcs[1].IsCoast, Is.True);
             Assert.That(fastest.Arcs[2].Phase, Is.EqualTo(FlightPhase.Cruise));
             Assert.That(fastest.Arcs[2].IsFiniteBurn, Is.True);
+            Assert.That(fastest.Arcs[3].Phase, Is.EqualTo(FlightPhase.Capture));
+            Assert.That(fastest.Arcs[3].IsFiniteBurn, Is.True);
             Assert.That(fastest.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
                                                 && arc.IsCoast),
-                Is.True, "the minimum cruises; it is not the zero-coast shape");
+                Is.False, "the minimum has no cruise coast");
+            Assert.That(fastest.DepartureVInfinityMps,
+                Is.EqualTo(26.29e3).Within(1.0e3),
+                "the grid's 1.0 step at 0.3 g");
 
             AssertChainCloses(fastest);
 
             TestContext.WriteLine(
                 $"fastest {fastest.FlightTimeDays:F5} d / " +
-                $"{fastest.DeltaVMps / 1000.0:F0} km/s against the burn-only " +
-                $"{burnOnly.FlightTimeDays:F5} d / {burnOnly.DeltaVMps / 1000.0:F0} km/s; " +
+                $"{fastest.DeltaVMps / 1000.0:F0} km/s against the coast floor " +
+                $"{coast.FlightTimeDays:F5} d / {coast.DeltaVMps / 1000.0:F0} km/s; " +
                 $"planned in {watch.Elapsed.TotalSeconds:F1} s");
         }
 
@@ -1861,51 +1859,60 @@ namespace TimeToExplore.Tests.EditMode
         }
 
         /// <summary>
-        /// Since the split, the coast floor is **below** the burn-only crossing's
-        /// own minimum (Mars 0.3 g: 7.17 d against 16.49 d), so the short-coast
-        /// gap is empty at the current epoch: there is no duration between a
-        /// shorter burn-only minimum and a later coast floor for the short coast
-        /// to fill. The family stays in the planner for a route whose burn-only
-        /// crossing still wins; this test records that the gap is closed here.
+        /// Since [ADR-025] the full-blast crossing is **below** the coast floor
+        /// (Mars 0.3 g: 6.67 d against 7.17 d), so the short-coast gap is real
+        /// and the branch fills it. At the minimum the plan is the no-coast
+        /// crossing itself; between the minimum and the floor it is the crossing
+        /// with a conic coast. The old test recorded an empty gap; this one
+        /// records the filled range.
         /// </summary>
         [Category("deep")]
         [TestCase("mercury", 1.0)]
         [TestCase("mars", 0.3)]
         [TestCase("jupiter", 0.3)]
-        public void TheShortCoastGapIsEmptyBecauseTheCoastFloorIsFaster(
+        public void TheShortCoastGapIsFilledBetweenTheFullBlastMinimumAndTheFloor(
             string targetId, double level)
         {
             _planner.BurnLevelG = level;
             ShipState ship = FlightFixture.ShipAt(_model, "gateway");
             TrajectoryPlan fastest = _planner.PlanFastest(ship, targetId);
             TrajectoryPlan coast = _planner.Plan(ship, targetId);
-            TrajectoryPlan burnOnly = _planner.PlanBurnOnly(ship, targetId);
             TestContext.WriteLine($"{targetId} {level} g: coast " +
                                   $"{coast.FlightTimeDays:F5} d, fastest " +
-                                  $"{fastest.FlightTimeDays:F5} d, burn-only " +
-                                  $"{burnOnly.FlightTimeDays:F5} d " +
-                                  $"(feasible {burnOnly.IsFeasible})");
+                                  $"{fastest.FlightTimeDays:F5} d");
 
             Assert.That(fastest.IsFeasible, Is.True, fastest.InfeasibleReason);
             Assert.That(coast.IsFeasible, Is.True, coast.InfeasibleReason);
             Assert.That(fastest.FlightTimeSeconds,
-                Is.EqualTo(coast.FlightTimeSeconds).Within(1.0),
-                "the minimum is the coast floor");
-            if (burnOnly.IsFeasible)
-            {
-                Assert.That(burnOnly.FlightTimeSeconds,
-                    Is.GreaterThan(coast.FlightTimeSeconds),
-                    "the burn-only crossing is longer, so there is no gap");
-            }
+                Is.LessThan(coast.FlightTimeSeconds),
+                "the full-blast crossing is the shorter plan");
 
-            // The minimum is a normal coast plan, not a short-coast shape.
-            Assert.That(fastest.Arcs.Count, Is.EqualTo(8));
-            Assert.That(fastest.Arcs[0].Path, Is.InstanceOf<Quintic>());
-            Assert.That(fastest.Arcs[3].Path, Is.InstanceOf<ConicArc>());
-            Assert.That(fastest.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
-                                                && arc.IsCoast),
-                Is.True);
-            AssertChainCloses(fastest);
+            // At the minimum the branch returns the crossing itself: no coast.
+            TrajectoryPlan atMinimum = _planner.PlanAtDuration(ship, targetId,
+                fastest.FlightTimeSeconds);
+            Assert.That(atMinimum.IsFeasible, Is.True, atMinimum.InfeasibleReason);
+            Assert.That(atMinimum.FlightTimeSeconds,
+                Is.EqualTo(fastest.FlightTimeSeconds).Within(2.0));
+            Assert.That(atMinimum.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
+                                                  && arc.IsCoast),
+                Is.False, "at the minimum the crossing has no coast");
+
+            // Between the two, the short coast builds with a conic coast.
+            double middle = fastest.FlightTimeSeconds
+                            + 0.5 * (coast.FlightTimeSeconds
+                                     - fastest.FlightTimeSeconds);
+            TrajectoryPlan shortCoast = _planner.PlanAtDuration(ship, targetId,
+                middle);
+            TestContext.WriteLine($"mid-gap {middle / JulianDate.SecondsPerDay:F5} d: " +
+                                  $"{shortCoast.FlightTimeDays:F5} d, " +
+                                  $"{shortCoast.Arcs.Count} arcs");
+            Assert.That(shortCoast.IsFeasible, Is.True, shortCoast.InfeasibleReason);
+            Assert.That(shortCoast.FlightTimeSeconds,
+                Is.EqualTo(middle).Within(1.0), "the total is the request");
+            Assert.That(shortCoast.Arcs.Any(arc => arc.Phase == FlightPhase.Cruise
+                                                   && arc.IsCoast),
+                Is.True, "the short coast carries a conic coast");
+            AssertChainCloses(shortCoast);
         }
 
         /// <summary>
@@ -2031,11 +2038,10 @@ namespace TimeToExplore.Tests.EditMode
         ///    falls as the trip lengthens.
         ///
         /// The answer is the same in every row: **the fast plans spend more
-        /// propellant, not less.** The burn-only crossing is no longer a faster
-        /// plan at these routes — the split's coast floor beats it on time — so
-        /// the fast/cheap trade now lives on the coast path itself: the floor
-        /// spends 1,070 km/s (112.9 t) at 7.17 d to Mars and a 21.5-day trip
-        /// spends 225.6 km/s (20 t).
+        /// propellant, not less.** The full-blast minimum is the fastest plan at
+        /// these routes, and it is the expensive one: Mars 0.3 g's 6.67-day
+        /// crossing is 1,538 km/s (166 t), the coast floor is 1,070 km/s
+        /// (112.9 t) at 7.17 d, and a 21.5-day trip is 225.6 km/s (20 t).
         /// </summary>
         [Category("deep")]
         [Test]

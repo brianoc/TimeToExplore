@@ -4,7 +4,7 @@ title: Testing and verification
 description: The automated checks agents and humans run before calling work done.
 tags: [technical, testing, unity, verification]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T08:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # One command
@@ -298,12 +298,15 @@ property.
 
 The flight core has its own anchors, measured from Gateway Station at the epoch
 with a 10 m/s² drive. The coast floors are the split-aware ones
-([ADR-022](/decisions/adr-022-departure-split.md)):
+([ADR-022](/decisions/adr-022-departure-split.md)); the window starts at the
+faster full-blast crossing ([ADR-025](/decisions/adr-025-full-blast-route.md)):
 
 | Quantity | Value |
 |---|---|
-| Gateway to Mars plan (coast floor, 0.3 g) | 7.16751 days, 1,070.1 km/s, 2.95 m/s² peak |
-| Gateway to Mercury plan (coast floor, 1 g) | 3.67616 days, 1,649.4 km/s, 9.70 m/s² peak |
+| Gateway to Mars full-blast minimum (0.3 g) | 6.66965 days, 1,538.1 km/s, 2.95 m/s² peak, seven arcs, no cruise coast |
+| Gateway to Mars coast floor (0.3 g) | 7.16751 days, 1,070.1 km/s, 2.95 m/s² peak |
+| Gateway to Mercury full-blast minimum (1 g) | 3.22822 days, 2,408.2 km/s, 9.70 m/s² peak |
+| Gateway to Mercury coast floor (1 g) | 3.67616 days, 1,649.4 km/s, 9.70 m/s² peak |
 | Gateway to Jupiter plan (coast floor, 0.3 g) | 13.58298 days, 2,133.8 km/s, 2.95 m/s² peak |
 | Mars parking orbit (conic) | 3,898 km radius, 3.315 km/s |
 | Jupiter parking orbit (gravity ceiling, quintic inside-sphere capture) | 177,965 km radius, 4.0 m/s², 26.7 km/s |
@@ -371,12 +374,12 @@ performance](/technical/planning-performance.md#the-runtime-divergence-is-a-prop
 
 | Quantity | Value |
 |---|---|
-| Trip-time window (Mars) | 7.17–21.50 days at 0.3 g on the coast path |
-| Trip-time window (Mercury) | 3.68–11.03 days at 1 g |
-| Trip-time window (Uranus) | 28.18–84.55 days at 1 g, 37.01–111.02 days at 0.3 g |
-| Trip-time window (Jupiter) | 13.58–40.75 days at 0.3 g |
-| Nav minimum | the split-aware coast floor at every measured route; the burn-only crossings are longer — Mars 0.3 g 16.48669 days, Mercury 1 g 13.86287 and Jupiter 0.3 g 22.55555 |
-| True floor, Mars at 0.3 g | 7.16751 days, peak 2.95 m/s², 1,070.1 km/s, eight arcs |
+| Trip-time window (Mars) | 6.67–21.50 days at 0.3 g: the full-blast minimum to three times the coast floor |
+| Trip-time window (Mercury) | 3.23–11.03 days at 1 g |
+| Trip-time window (Uranus) | 28.18–84.55 days at 1 g, 37.01–111.02 days at 0.3 g (coast floor, no full-blast win) |
+| Trip-time window (Jupiter) | 12.71–40.75 days at 0.3 g |
+| Nav minimum | the full-blast zero-coast crossing when it wins — Mars 0.3 g **6.66965 d / 1,538.1 km/s** at a 26.3 km/s excess, Mercury 1 g 3.22822 / 2,408.2, Venus 0.3 g 3.93440 / 841.6, Mars 1 g 3.71822 / 2,813.2, Jupiter 0.3 g 12.71122 / 3,053.5; Uranus 0.3 g keeps the 37.00540-day coast floor |
+| True floor, Mars at 0.3 g | 7.16751 days, peak 2.95 m/s², 1,070.1 km/s, eight arcs (the coast floor, not the window minimum) |
 | True floor, Mercury at 1 g | 3.67616 days, peak 9.70 m/s², 1,649.4 km/s, eight arcs |
 | True floor, Uranus at 1 g | 28.18209 days, peak 9.70 m/s², 2,483.4 km/s, eight arcs |
 | True floor, Uranus at 0.3 g | 37.00540 days, peak 2.95 m/s², 2,004.9 km/s, eight arcs |
@@ -802,22 +805,37 @@ The split changes returned plans, so the suite carries a dedicated gate
   exact and on the parking orbit, every seam closes, and the search is within
   its **50 ms** budget (measured 4–7 ms). It also pins the forced-sweep table,
   the flag-off step-1 anchors, the heliocentric plan and determinism.
-* `BurnCoastBurnTripPlannerTests` pins the split-aware floors, the 3× windows,
-  the new fixed-duration anchors, the three old sub-floor times as **buildable**,
-  the burn-only crossing as the **longer** plan, the empty short-coast gap, the
-  break's escape state and the propellant ordering. A request below the floor is
-  still refused.
+* `BurnCoastBurnTripPlannerTests` pins the split-aware floors, the 3× window
+  anchors, the fixed-duration anchors, the three old sub-floor times as
+  **buildable**, the full-blast minimums, the coast-floor fallback, the
+  short-coast step, the break's escape state and the propellant ordering. A
+  request below the floor is still refused.
 * `FlightSessionTests`, `FlightReportTests` and `WarmStartTests` fly the
-  coast-floor minimum, assert the cold and seeded builds agree at the fast end
+  full-blast minimum, assert the cold and seeded builds agree at the fast end
   (the Uranus 39.6 d step is the measured one), and hold the HUD's 64-step
-  window. `SolarSystemHudTests` and `BootstrapSmokeTests` pin the 7.17–21.50
+  window. `SolarSystemHudTests` and `BootstrapSmokeTests` pin the 6.67–21.50
   day Mars window through the real panel and frame loop.
 * `RouteBuildMetricsTests` prints the first plot's split and asserts the
-  `PlanFastest` coast floor is 7.16751 d at Mars 0.3 g.
-* `tools/bench.sh` was re-recorded for the new floors, the new window and the
-  two newly feasible reverse routes. The search's own cost is the 4–7 ms line;
-  a phase whose duration changed compares a different build, not a slower
-  search.
+  `PlanFastest` coast anchor is 7.16751 d at Mars 0.3 g.
+
+## The full-blast gate (2026-11-27)
+
+The nav minimum is the time-optimal zero-coast crossing
+([ADR-025](/decisions/adr-025-full-blast-route.md)):
+
+* `BurnCoastBurnTripPlannerTests` pins Gateway → Mars 0.3 g at
+  **6.66965 d / 1,538.1 km/s** at a 26.3 km/s excess, seven arcs and no cruise
+  coast; Mercury 1 g 3.22822, Venus 0.3 g 3.93440, Mars 1 g 3.71822 and Jupiter
+  0.3 g 12.71122. Uranus 0.3 g returns the **37.00540-day coast floor**, which
+  proves the fallback. The full-blast seam closes inside 1 km / 1 m/s.
+* `FlightSessionTests` plots Mars and asserts the window is
+  **6.66965–21.50253 d**: the minimum is the full-blast crossing and the maximum
+  is still three times the **coast** floor. It flies the minimum through
+  `Begin` and asserts the no-coast arc order.
+* The short coast builds every duration from the minimum to the coast floor at
+  Mercury, Mars and Jupiter, including the first seconds above the minimum; the
+  branch retries the full-blast excesses when the split's climb does not fit.
+  The station window stays **54.36–163.09 d**.
 
 ## The station departure split gate (2026-11-26)
 

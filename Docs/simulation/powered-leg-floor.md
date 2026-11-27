@@ -4,7 +4,7 @@ title: Full-field burns and the powered-leg floor
 description: Fixed burns integrate the summed gravity field and hand over to the shaped ends inside a band, so a capture can enter hot and deep instead of falling in from the sphere of influence at a planted 5 km/s.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-24T04:15:13Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The problem
@@ -304,10 +304,13 @@ below and in the next section record the approach leg's own change on the
 pre-physical-departure profile (2026-11-18/20). The physical departure
 (2026-11-23) re-baselined every total, floor and window, and the departure climb
 split (2026-11-26) re-baselined the floors and windows again: the shipping
-coast floors are now the **split-aware** ones, **Mercury 1 g 3.67616 d, Mars
+coast floors are the **split-aware** ones, **Mercury 1 g 3.67616 d, Mars
 0.3 g 7.16751 d, Jupiter 0.3 g 13.58298 d, Uranus 1 g 28.18209 d and Uranus
 0.3 g 37.00540 d**
-([ADR-022](/decisions/adr-022-departure-split.md),
+([ADR-022](/decisions/adr-022-departure-split.md)), and the full-blast route
+(2026-11-27) made the nav minimum **Mercury 1 g 3.22822, Mars 0.3 g 6.66965,
+Jupiter 0.3 g 12.71122 d**
+([ADR-025](/decisions/adr-025-full-blast-route.md),
 [Testing and verification](/technical/testing.md#numerical-references-at-the-epoch)).
 Read the sections below as the measurement history of the approach leg and the
 floor search, not as current trip numbers.
@@ -603,9 +606,11 @@ departure climb split re-baselined the floors again
 **Mercury 1 g 3.67616, Mars 0.3 g 7.16751, Jupiter 0.3 g 13.58298, Uranus 1 g
 28.18209 and 0.3 g 37.00540 d**. Until the split the nav computer's minimum was
 the burn-only total where it won — Mercury 3.04470, Mars 6.49501, Jupiter
-12.54280 d at that time — so the slider's left end and its three-times upper end
-were shorter than those coast windows; the split inverts that, and `PlanFastest`
-now returns the coast floor. Every one of those floors is a
+12.54280 d at that time; the split inverted that and returned the coast floor,
+and the full-blast route ([ADR-025](/decisions/adr-025-full-blast-route.md))
+returned the minimum to the zero-coast crossing with a time-optimal climb:
+Mercury 1 g 3.22822, Mars 0.3 g 6.66965 and Jupiter 0.3 g 12.71122 d. Every one
+of those floors is a
 certified full-field plan: the
 returned duration is rebuilt with the summed field, every arc has its measured
 clearance and delta-v, and every seam is inside the 1 km / 1 m/s gate. Each of

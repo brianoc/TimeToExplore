@@ -4,7 +4,7 @@ title: Burn–coast–burn trips
 description: The shipped trip profile that burns hard, coasts fast, and brakes into orbit, built from the four existing arc ingredients.
 tags: [simulation, navigation, trajectory, propulsion, planning]
 status: accepted
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T10:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # The trip
@@ -207,24 +207,26 @@ profile.
    burn-level slider is the level the break, the departure burn, the brake, and
    the hybrid capture are planned at. Its floor is **0.05 g**: the profile is two
    real burns around a coast, so it has no zero-thrust version. The slider's
-   window is the profile's feasible range on the coast path from the split-aware
-   coast floor to **three times that floor** (see [the trip-time
+   window runs from the **full-blast minimum** — the time-optimal zero-coast
+   crossing ([ADR-025](/decisions/adr-025-full-blast-route.md)) — to **three
+   times the coast floor**, so only the fast end moves (see [the trip-time
    window](#the-trip-time-window)).
 
-The measured floors and windows at the epoch with the physical departure and the
-split-aware climb are **3.67616–11.02847 days** for Mercury at 1 g,
-**6.322–18.966** at 0.3 g, **4.23343–12.70028** for Mars at 1 g,
-**7.16751–21.50253** at 0.3 g, **9.194–27.582** for Jupiter at 1 g,
-**13.58298–40.74894** at 0.3 g, **28.18209–84.54626** for Uranus at 1 g and
-**37.00540–111.01619** at 0.3 g, and **4.20901–12.62702** for Venus at 0.3 g.
-The floor is much shorter than it was because the split chooses a large excess
-speed (the 16 km/s grid cap) at the fast end: a little excess at periapsis buys
-a much longer coast, and the longer coast shrinks both fixed burns by more than
-the break grows. The window is the old 3× rule applied to the new floor; the
-planner accepts much longer trips, in synodic bands, but they are outside the
-slider (see [ADR-022](/decisions/adr-022-departure-split.md)). The 90-day Mars
-plan in the table below is a valid direct build outside this window, as it was
-before.
+Measured at the epoch with the physical departure, the split-aware climb, and
+the full-blast search, the slider **starts** at **3.22822 days** to Mercury at
+1 g, **3.93440** to Venus at 0.3 g, **3.71822** to Mars at 1 g, **6.66965** to
+Mars at 0.3 g, and **12.71122** to Jupiter at 0.3 g. Uranus at 0.3 g keeps its
+coast floor, **37.00540 d**, because no full-blast crossing is shorter. The
+window **ends** at three times the **coast** floor, unchanged by the full-blast
+route: Mercury **11.02847** (1 g) and **18.966** (0.3 g), Mars **12.70028**
+(1 g) and **21.50253** (0.3 g), Venus **12.62702**, Jupiter **27.582** (1 g) and
+**40.74894** (0.3 g), and Uranus **84.54626** (1 g) and **111.01619** (0.3 g).
+The coast floor remains the fixed-duration anchor: its 16 km/s excess at the
+fast end is chosen by cost, not by time, and a little excess at periapsis buys a
+much longer coast. The planner accepts much longer trips, in synodic bands, but
+they are outside the slider (see
+[ADR-022](/decisions/adr-022-departure-split.md)). The 90-day Mars plan in the
+table below is a valid direct build outside this window, as it was before.
 
 # The physical departure
 
@@ -401,15 +403,17 @@ The profile's two burns can be placed **back to back**, with no coast between
 them: the departure burn ends where the brake begins, and the flip is a seam
 rather than a phase. That is the **burn-only crossing** — the brachistochrone
 with the coast taken out. It is the fastest shape this profile can fly at a
-given level, and the most expensive. Since the split, the coast floor is
-**shorter** than the burn-only crossing at every measured route, so the crossing
-is **dominated**: `Plan()` and `PlanFastest` both return the coast floor, and the
-burn-only solve survives as a research entry point and as the short coast's seed.
-It keeps the minimum-energy (parabolic) climb: its duration is an output, so
-there is no fixed time to trade an excess speed against
-([ADR-022](/decisions/adr-022-departure-split.md)). `Plan()` stays on the coast
-path; `PlanAtDuration` uses the short coast only for a duration the coast path
-refuses for being squeezed.
+given level, and the most expensive.
+
+The crossing's total is an **output**, so there is no requested duration to trade
+an excess speed against. It can still choose the climb: the **full-blast** route
+takes the excess that minimises its own total, and `PlanFastest` returns it when
+it beats the coast floor
+([ADR-025](/decisions/adr-025-full-blast-route.md)). The older drag on the
+crossing was the minimum-energy (parabolic) climb; that shape is now the longer
+plan at every measured route and survives as the research entry point and the
+short coast's seed. `Plan()` stays on the coast path, and `PlanAtDuration` uses
+the short coast for a duration the coast path refuses for being squeezed.
 
 The seam is solved as one system. The departure climb — the short break and the
 escape conic — is fixed by the crossing's available time; the departure burn
@@ -450,50 +454,53 @@ the date its chain was built at, within the loop's tolerance. Building the chain
 at the plan's own arrival date reproduces the same total, which is the
 self-consistency the tests assert.
 
-Measured at the epoch from Gateway to **Mercury at 1 g**, the moving-target loop
-settles on a total of **13.86287 days** (2,588.5 km/s, seven arcs): break →
-escape → departure burn → brake → the conic capture, with **no Cruise coast**.
-The rebuilt plan's worst seam is **58 m and 0.401 m/s** (the brake rebuilt
-forward against the chain's entry), inside the profile's 1 km / 1 m/s gate. The
-brake starts far outside Mercury's 114,658 km ceiling, so the fast case needs no
-planetocentric approach. It is the longer plan at the current epoch, so `Begin`
-at the 1 g minimum flies the 3.67616-day coast floor instead.
+Measured at the epoch from Gateway to **Mercury at 1 g**, the *parabolic*
+moving-target loop settles on a total of **13.86287 days** (2,588.5 km/s, seven
+arcs): break → escape → departure burn → brake → the conic capture, with **no
+Cruise coast**. The rebuilt plan's worst seam is **58 m and 0.401 m/s** (the
+brake rebuilt forward against the chain's entry), inside the profile's 1 km /
+1 m/s gate. The brake starts far outside Mercury's 114,658 km ceiling, so the
+fast case needs no planetocentric approach. It is the longer plan at the current
+epoch; the full-blast search takes a 48 km/s excess instead and reaches
+**3.22822 days**, so `Begin` at the 1 g minimum flies that crossing.
 
 ## The nav computer's minimum
 
-`TripPlanner.PlanFastest(ship, target)` builds the coast floor, then checks one
-fixed-date burn-only crossing at the floor's date. A crossing that cannot fit
-that date needs more time than the floor, so it cannot be the faster plan. Since
-the split the crossing always needs more time: it keeps the parabolic climb, and
-the floor's short climb wins on duration. The comparison is real, not assumed —
-a route whose burn-only crossing wins still returns it. `FlightSession`'s
-preview window uses the result for its minimum, and `Begin` flies that plan.
-Measured at the epoch from Gateway:
+`TripPlanner.PlanFastest(ship, target)` builds the coast floor, then searches the
+**full-blast** crossing on a five-point excess grid: `48 km/s × √level ×
+{0.6, 0.8, 1.0, 1.25, 1.6}`. Each grid point is one fixed-date crossing at the
+floor's arrival date, so the totals compare; the shortest is re-solved through
+the moving target so its chain belongs to the date it reaches. The search runs
+as a two-body probe at a looser gate and the winner is rebuilt certified
+([ADR-025](/decisions/adr-025-full-blast-route.md)), the same search-then-certify
+split the floor uses. `FlightSession`'s preview window uses the result for its
+minimum, and `Begin` flies that plan. Measured at the epoch from Gateway:
 
-| Target | Level | Burn-only total | Coast floor | Burn-only Δv | Floor Δv |
+| Target | Level | Full blast | Excess | Δv | Coast floor |
 |---|---|---:|---:|---:|---:|
-| Mercury | 1 g | 13.86287 d | **3.67616 d** | 2,588.5 km/s | 1,649.4 km/s |
-| Mercury | 0.3 g | 16.44442 d | **6.322 d** | 1,441.8 km/s | 956.6 km/s |
-| Mars | 1 g | 13.94010 d | **4.23343 d** | 2,647.6 km/s | 1,929.2 km/s |
-| Mars | 0.3 g | 16.48669 d | **7.16751 d** | 1,450.4 km/s | 1,070.1 km/s |
-| Venus | 0.3 g | 14.10909 d | **4.20901 d** | 1,425.7 km/s | 588.3 km/s |
-| Jupiter | 0.3 g | 22.55555 d | **13.58298 d** | 2,972.8 km/s | 2,133.8 km/s |
-| Uranus | 1 g | infeasible | **28.18209 d** | — | 2,483.4 km/s |
-| Uranus | 0.3 g | infeasible | **37.00540 d** | — | 2,004.9 km/s |
+| Mercury | 1 g | **3.22822 d** | 48 km/s | 2,408.2 km/s | 3.67616 d |
+| Venus | 0.3 g | **3.93440 d** | 26.3 km/s | 841.6 km/s | 4.20901 d |
+| Mars | 1 g | **3.71822 d** | 48 km/s | 2,813.2 km/s | 4.23343 d |
+| Mars | 0.3 g | **6.66965 d** | 26.3 km/s | 1,538.1 km/s | 7.16751 d |
+| Jupiter | 0.3 g | **12.71122 d** | 26.3 km/s | 3,053.5 km/s | 13.58298 d |
+| Uranus | 0.3 g | 37.00540 d | — | 2,004.9 km/s | 37.00540 d |
 
-The slider's right end is three times the minimum: Mercury **3.68–11.03 d**
-(1 g) and 6.32–18.97 (0.3 g), Mars **4.23–12.70** (1 g) and **7.17–21.50**
-(0.3 g), Venus **4.21–12.63**, Jupiter 9.19–27.58 and **13.58–40.75**, and
-Uranus **28.18–84.55** (1 g) and **37.01–111.02** (0.3 g).
+The full-blast plan is seven arcs and has **no cruise coast**. When no candidate
+is shorter or feasible, the coast floor is returned: Uranus at 0.3 g is the
+measured case. The slider's right end stays three times the **coast** floor —
+Mercury **11.03 d** (1 g) and 18.97 (0.3 g), Mars **12.70** (1 g) and **21.50**
+(0.3 g), Venus **12.63**, Jupiter 27.58 and **40.75**, and Uranus **84.55**
+(1 g) and **111.02** (0.3 g) — so only the left end moves.
 
 ## The gap
 
-The short coast fills a range between a **shorter burn-only minimum and a later
-coast floor**. The split inverts that: the coast floor is now the shorter plan,
-so the gap is **empty** at the current epoch and there is no duration between the
-two plans to fill. `PlanAtDuration` refuses below the floor and builds the coast
-above it. The branch stays in the planner for a route whose burn-only crossing
-still wins.
+The short coast fills the range between the **shorter full-blast minimum and the
+later coast floor**. The range is real: at Mars 0.3 g the full-blast minimum is
+6.66965 d and the coast floor 7.16751 d, and `PlanAtDuration` builds every
+duration across it as a short coast. When the split's 16 km/s climb is too long
+for the requested time — at Mercury 1 g a 3.45-day request cannot afford its
+0.64-day climb — the branch retries the full-blast grid's excesses and uses the
+first shorter climb that fits. The window therefore has no dead slider step.
 
 ## The short coast
 
@@ -514,26 +521,28 @@ the chain does not close — or when the break is over-thrust. A refusal from th
 coast's own geometry (no prograde short-way transfer) is a different answer and
 keeps its Lambert reason: the slow end is still the coast. `Plan()`, its floor
 search, and every fixed-duration anchor never take this branch, and a request
-below the burn-only minimum keeps the coast path's refusal. At the minimum
+below the full-blast minimum keeps the coast path's refusal. At the minimum
 itself the branch returns the **burn-only plan**: the coast is zero, and the
 moving-target loop's own two-second date tolerance is enough to leave a rebuilt
 brake marginally outside the chain gate, so the advertised minimum is returned
 as the plan it is.
 
-At the current epoch the branch is **dormant**: every measured route's burn-only
-crossing is longer than its coast floor, so there is no gap for it to fill and no
-duration that reaches it. The tests record that the gap is empty rather than
-deleting the branch; a future route or level whose burn-only crossing still wins
-takes it again. A request below the floor keeps the coast path's refusal, and a
-request above it is a normal coast plan.
+The branch is **active** at the current epoch: Mars 0.3 g's 6.67–7.17 d range is
+built as a short coast, and so are the equivalent ranges at Mercury and Jupiter.
+When the split's own climb cannot fit a duration just above the minimum, the
+branch rebuilds the seed with the full-blast grid's excesses and takes the first
+shorter climb; everything else about the solve is unchanged. It is still a
+fallback, not the default: a request above the coast floor is a normal coast
+plan, and a request the coast path builds is never sent here. The tests cover a
+duration at the minimum, across the gap, and at the coast floor.
 
 Two smaller consequences are deliberate. The crossing always ends on the
 **conic** capture chain (`AppendConicCapture`), so the `ARRIVAL` row does not
 change a burn-only plan's shape. And `FlightSession.Begin` solves its base plan
-with `PlanFastest`; since the minimum is the coast floor, beginning at it flies
-the coast plan the preview drew. A preview that sat at its minimum flies the
-fresh minimum, because the clock may have moved and the old number can sit a few
-seconds above the new minimum.
+with `PlanFastest`; since the minimum is now the full-blast crossing, beginning
+at it flies the no-coast plan the preview drew. A preview that sat at its
+minimum flies the fresh minimum, because the clock may have moved and the old
+number can sit a few seconds above the new minimum.
 
 The burn-only crossing's total is an output, so its climb uses the time left
 after the solved burn and brake; the plan reports whether the available-time cap
@@ -591,14 +600,13 @@ point, and the slider walks along it one buildable duration at a time.
 
 ## The answer
 
-**The fast plans use more propellant, not less.** The floor is the fastest plan
-the profile flies, and it is the expensive end: Mars 0.3 g's 7.17-day floor is
-**112.9 t**, and a 21.5-day trip at the window's right end is **20 t**. The
-burn-only crossing is no longer the faster plan — it is 16.49 days at 156.1 t —
-so the old "burn-only buys hours for fuel" comparison no longer exists at these
-routes. The trade the profile exposes is unchanged in shape: a coast minute is a
-minute of free travel, and thrusting through it is what makes the fast end
-expensive.
+**The fast plans use more propellant, not less.** The full-blast minimum is the
+fastest plan the profile flies, and it is the expensive end: Mars 0.3 g's
+6.67-day minimum is **166.3 t**, the coast floor's 7.17 days is **112.9 t**, and
+a 21.5-day trip at the window's right end is **20 t**. The full blast buys
+0.5 day over the coast floor for about 53 t. The trade the profile exposes is
+unchanged in shape: a coast minute is a minute of free travel, and thrusting
+through it is what makes the fast end expensive.
 
 The fuel readout is still a **readout, not a budget**: the ship has no finite
 tank, its mass does not change in flight, and no plan is refused for fuel. These
@@ -762,10 +770,14 @@ certified full-field plan; the editor's number is the one that ships:
 | Uranus | 0.3 g | **37.00540 d** | 2.95 m/s² | 2,004.9 km/s | 30.0 d | below the split-aware floor |
 
 The floors are the editor's certified full-field plans, each at the 16 km/s grid
-cap. The 3× windows are **3.68–11.03 d** (Mercury 1 g), **6.32–18.97** (Mercury
-0.3 g), **4.23–12.70** (Mars 1 g), **7.17–21.50** (Mars 0.3 g), **9.19–27.58**
-(Jupiter 1 g), **13.58–40.75** (Jupiter 0.3 g), **28.18–84.55** (Uranus 1 g) and
-**37.01–111.02** (Uranus 0.3 g). The near-floor basin is still noisy; the
+cap. They remain the fixed-duration anchors and the window's slow-end anchor; the
+slider itself now **starts** at the full-blast minimum
+([ADR-025](/decisions/adr-025-full-blast-route.md)): Mercury 1 g 3.22822 d,
+Venus 0.3 g 3.93440, Mars 1 g 3.71822, Mars 0.3 g 6.66965 and Jupiter 0.3 g
+12.71122. The right ends stay three times the **coast** floor: **11.03 d**
+(Mercury 1 g), **18.97** (Mercury 0.3 g), **12.70** (Mars 1 g), **21.50** (Mars
+0.3 g), **27.58** (Jupiter 1 g), **40.75** (Jupiter 0.3 g), **84.55** (Uranus
+1 g) and **111.02** (Uranus 0.3 g). The near-floor basin is still noisy; the
 certificate retry and the departure-solve restart keep the cold and seeded
 answers together. The divergence's measurement is in [planning
 performance](/technical/planning-performance.md#the-runtime-divergence-is-a-property-not-a-bug).
@@ -856,8 +868,9 @@ step.
 - **Default profile.** Burn–coast–burn is the only profile; the powered quintic
   cruise and the plain Lambert coast are retired.
 - **Control units.** A trip time, matching the existing slider. Time is the
-  simpler control, and its window is the profile's own feasible range.
-  The profile's right-hand end is probed from what the planner accepts,
+  simpler control, and its window runs from the full-blast minimum
+  ([ADR-025](/decisions/adr-025-full-blast-route.md)) to three times the
+  **coast** floor. The right-hand end is probed from what the planner accepts,
   not taken as three times the minimum: a long short-way transfer sweeps past
   180°, and a slow coast would need an acceleration rather than a brake.
 - **The physical departure.** The break is a short commanded-level burn to the

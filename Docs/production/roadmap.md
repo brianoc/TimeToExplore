@@ -4,7 +4,7 @@ title: Roadmap
 description: What exists in the prototype, what comes next, and the risks that could change the plan.
 tags: [production, roadmap, milestones]
 status: draft
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-26T12:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T11:00:00Z }
 ---
 
 # Current state — milestone 0
@@ -471,27 +471,28 @@ cargo mass in flight, docking, persistence, and ship selection.
 
 # Follow-ups from the departure climb split (2026-11-26)
 
-The split is [ADR-022](../decisions/adr-022-departure-split.md). These two were
-found while landing it and are deliberately left out of that plan. (The third,
-the station departure split, shipped on 2026-11-26 as
-[ADR-023](../decisions/adr-023-station-departure-split.md).)
+The split is [ADR-022](../decisions/adr-022-departure-split.md). These were
+found while landing it and are deliberately left out of that plan. The station
+departure split shipped on 2026-11-26 as
+[ADR-023](../decisions/adr-023-station-departure-split.md), and the full-blast
+minimum-time route shipped on 2026-11-27 as
+[ADR-025](../decisions/adr-025-full-blast-route.md).
 
 * **The reverse-route plot cost.** Venus → Earth now plots in about **10.2 s**
   and Uranus → Earth in about **39.0 s**, against the **0.4–0.5 s** refusals
   they returned before the split. Both are new capability, not regressions — the
   routes build where they used to be refused — but the first plot is slow and
   needs its own investigation before the reverse routes feel usable.
-* **The full-blast minimum-time route.** The burn-only crossing is the
-  planner's no-coast shape, but it keeps the minimum-energy parabolic climb
-  because its duration is an output, so it measures 16.49 d against the split
-  coast floor's 7.17 d. Give it the same climb choice with **time** as the
-  objective — a small `v∞` grid and the shortest feasible plan — so the slider's
-  left end is a full-blast route with no coast. At Gateway → Mars 0.3 g expect
-  about **6–6.5 d** (the kinematic no-coast bound is 6.0 d) at roughly
-  **1,500 km/s**, against the coast floor's 1,070. The burn-only seam solve is
-  the delicate part, so "nearly" is the target. Keep the 3× window anchored to
-  the **coast** floor (21.5 d) so only the left end moves; the time-optimal
-  `v∞` may also sit above the fuel grid's 16 km/s cap.
+* **The full-blast minimum-time route — shipped 2026-11-27 as
+  [ADR-025](../decisions/adr-025-full-blast-route.md).** The burn-only crossing
+  now takes the time-optimal escape excess from a five-point grid scaled by
+  √level, and `PlanFastest` returns it when it beats the coast floor. Gateway →
+  Mars 0.3 g is **6.66965 d / 1,538.1 km/s** at a 26.3 km/s excess, against the
+  coast floor's 7.16751 d / 1,070; Mercury 1 g 3.22822, Venus 0.3 g 3.93440 and
+  Jupiter 0.3 g 12.71122. The window's slow end stays three times the **coast**
+  floor (Mars 21.50253 d). The short coast fills the whole range from the
+  full-blast minimum to the floor, retrying the full-blast excesses when the
+  split's climb does not fit.
 
 
 # Risks
