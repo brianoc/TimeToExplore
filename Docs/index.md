@@ -54,6 +54,7 @@ bundle-relative paths that stay valid when a document moves.
 * [Selection and camera focus](/technical/selection-and-camera.md) — the opening Earth–Moon shot, click a body for its details, then plot a route or jump to it, and how the one orbit camera zooms, frames, and returns home.
 * [The system map (removed)](/technical/system-map.md) — a historical record of the top-down comparison layer removed on 2026-11-21; the current camera is in Selection and camera focus.
 * [Testing and verification](/technical/testing.md) — the check suite, how to pick the narrowest gate, the EditMode and PlayMode test matrices, and numerical reference values.
+* [Driving the Editor from the CLI](/technical/editor-automation.md) — the Pipeline package and the `unity` CLI: reading the open Editor's state, the edit and recompile loop, and the second instance a `check.sh` run adds.
 * [Working in a worktree](/technical/worktrees.md) — one agent, one branch, one worktree; setup, verification, merge hotspots, and cleanup.
 * [Data schema](/technical/data-schema.md) — the catalogue format, units, and generation pipeline.
 * [Planet appearance](/technical/planet-appearance.md) — the albedo maps, their import settings and attribution, the detail gates that swap a flat marker for the map and the rim-glow atmosphere shell, and why scattering waits.

@@ -4,7 +4,7 @@ title: Working in a worktree
 description: "Rule 1 in practice: one agent, one branch, one worktree, with setup, verification, merge hotspots, and cleanup."
 tags: [technical, process, git, worktrees, agents]
 status: active
-generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-21T00:00:00Z }
+generated: { by: opencode/deepseek-v4.1-flash, at: 2026-11-27T19:24:00Z }
 ---
 
 # Working in a worktree
@@ -29,6 +29,10 @@ edit rather than a revert afterwards.
 - Do not force-close or interfere with an editor running in another checkout,
   and do not run batch Unity against a project path another process has open.
   A worktree avoids that by construction: every worktree is a different path.
+- Worktrees still share one machine's Pipeline servers. A `check.sh` run in
+  another worktree is a second Editor instance, so a bare `unity command`
+  refuses to guess. Address the one you mean with `--project-path`; see
+  [Driving the Editor from the CLI](/technical/editor-automation.md).
 
 ## Setup
 
