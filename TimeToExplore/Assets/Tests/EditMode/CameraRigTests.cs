@@ -632,6 +632,102 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(_rig.IsFocused, Is.False);
         }
 
+        [Test]
+        public void TheFlightPoseSitsAboveAndBehindTheRoute()
+        {
+            var route = new Vector3d(1.0, 0.0, 0.0);
+            Assert.That(FlightFraming.Pose(route, out float yaw, out float pitch), Is.True);
+
+            Vector3 offset = OrbitCamera.Direction(yaw, pitch);
+            Vector3d offsetM = Vector3d.FromUnity(offset);
+
+            // The camera is above the ecliptic and behind the travel direction.
+            Assert.That(Mathf.Asin((float)offsetM.z) * Mathf.Rad2Deg,
+                Is.EqualTo(FlightFraming.ElevationDegrees).Within(0.01f));
+            Assert.That(offsetM.x, Is.LessThan(0.0), "behind the ship, not ahead of it");
+
+            // And 30° off the route's heading. The horizontal component points
+            // opposite the route, turned by the side angle.
+            var horizontal = new Vector3d(offsetM.x, offsetM.y, 0.0).Normalized;
+            float offAxis = Mathf.Acos(Mathf.Clamp(
+                (float)Vector3d.Dot(horizontal, -route), -1f, 1f)) * Mathf.Rad2Deg;
+            Assert.That(offAxis, Is.EqualTo(FlightFraming.SideDegrees).Within(0.01f));
+        }
+
+        [Test]
+        public void TheFlightPoseFollowsAnyHeading()
+        {
+            Vector3d route = new Vector3d(-1.0, 2.0, 0.5).Normalized;
+            Assert.That(FlightFraming.Pose(route, out float yaw, out float pitch), Is.True);
+
+            Vector3d cameraLook = Vector3d.FromUnity(
+                Quaternion.LookRotation(-OrbitCamera.Direction(yaw, pitch), Vector3.up)
+                * Vector3.forward);
+
+            // The view direction is the route turned 30° to the side and 20°
+            // down; the components are independent, so the dot product is the
+            // product of the two cosines.
+            float dot = (float)Vector3d.Dot(cameraLook, route);
+            Assert.That(dot, Is.EqualTo(
+                Mathf.Cos(FlightFraming.ElevationDegrees * Mathf.Deg2Rad)
+                * Mathf.Cos(FlightFraming.SideDegrees * Mathf.Deg2Rad)).Within(1e-4f));
+        }
+
+        [Test]
+        public void StartingAFlightEasesTheCameraIntoTheChasePose()
+        {
+            BodyRuntime earth = _model.Get("earth");
+            Vector3d shipM = earth.PositionM + new Vector3d(7.5e10, 0.0, 0.0);
+            Vector3d route = new Vector3d(1.0, 0.2, 0.0);
+
+            _rig.Orbit.YawDegrees = 37f;
+            _rig.Orbit.PitchDegrees = 10f;
+            _rig.Orbit.DistanceUnits = 1_000f;
+            _rig.Apply(shipM, 0f);
+
+            Assert.That(_rig.FrameFlight(route), Is.True);
+            Assert.That(_rig.IsFramingFlight, Is.True);
+            Assert.That(_rig.Auto, Is.False, "the flight owns the pose, not body following");
+
+            int frames = 0;
+            while (_rig.IsFramingFlight && frames < 300)
+            {
+                _rig.Apply(shipM, 1f / 60f);
+                frames++;
+            }
+
+            FlightFraming.Pose(route, out float expectedYaw, out float expectedPitch);
+            Assert.That(frames, Is.InRange(60, 80), "about a second of frames, not a snap");
+            Assert.That(_rig.Orbit.YawDegrees, Is.EqualTo(expectedYaw).Within(1e-3f));
+            Assert.That(_rig.Orbit.PitchDegrees, Is.EqualTo(expectedPitch).Within(1e-3f));
+            Assert.That(_rig.Orbit.DistanceUnits,
+                Is.EqualTo(FlightFraming.DistanceUnits).Within(1e-6f));
+            Assert.That(_rig.LookAtOffsetM.Magnitude, Is.EqualTo(0.0).Within(1e-6),
+                "the ship is the subject, so it sits at the centre");
+        }
+
+        [Test]
+        public void ADragOrAnArrivalTakesTheCameraBackFromTheChasePose()
+        {
+            Vector3d shipM = _model.Get("earth").PositionM;
+
+            _rig.FrameFlight(new Vector3d(1.0, 0.0, 0.0));
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput
+            {
+                RightPressed = true,
+                Delta = new Vector2(2f, 0f)
+            });
+            Assert.That(_rig.IsFramingFlight, Is.False, "a drag stops the chase move");
+            _rig.ApplyOrbitInput(new ShipCameraRig.OrbitInput { RightReleased = true });
+
+            _rig.FrameFlight(new Vector3d(1.0, 0.0, 0.0));
+            _rig.Apply(shipM, 1f / 60f);
+            _rig.Frame(_model.Get("mars"));
+            Assert.That(_rig.IsFramingFlight, Is.False,
+                "the arrival frame takes over from the chase");
+            Assert.That(_rig.AutoTarget, Is.SameAs(_model.Get("mars")));
+        }
+
         /// <summary>The pointer-side NDC a point projects to from a given pose.</summary>
         private static Vector2 NdcOf(Vector3 pointUnits, Vector3 cameraUnits,
             Quaternion rotation, float fieldOfViewDegrees, float aspect)

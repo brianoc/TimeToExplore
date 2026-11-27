@@ -7,10 +7,10 @@ namespace TimeToExplore.Tests.EditMode
 {
     /// <summary>
     /// The milestone-2 acceptance flight, run through the scene's frame loop
-    /// without a scene: advance the clock, cap the warp, advance the ship to the
-    /// clock, and clamp the clock to the ship. This is the same order of
-    /// operations SolarSystemBootstrap.Update uses, so it proves the Go To
-    /// button's flight, not just the planner.
+    /// without a scene: set the warp from the flight's own curve, advance the
+    /// clock, advance the ship to the clock, and clamp the clock to the ship.
+    /// This is the same order of operations SolarSystemBootstrap.Update uses,
+    /// so it proves the Go To button's flight, not just the planner.
     /// </summary>
     [Category("smoke")]
     public class SceneFlightTests
@@ -22,7 +22,6 @@ namespace TimeToExplore.Tests.EditMode
         private FlightSession _session;
         private SimulationClock _clock;
         private TrajectoryPlan _plan;
-        private int _requestedScaleIndex;
 
         [SetUp]
         public void SetUp()
@@ -34,16 +33,13 @@ namespace TimeToExplore.Tests.EditMode
 
             _session.PlaceAt("gateway", _clock.JulianDate);
             _plan = _session.Begin("mars", _clock.JulianDate);
-            _requestedScaleIndex = WarpPolicy.SuggestInitialScaleIndex(_plan);
-            _clock.SetScaleIndex(_requestedScaleIndex);
         }
 
         [Test]
         public void PressGoToOnMarsAndWatchTheShipDoIt()
         {
             var run = new Run();
-            run.Fly(_session, _clock, _model, _gravity, _requestedScaleIndex,
-                double.NaN, 20_000, stopOnArrival: true);
+            run.Fly(_session, _clock, _model, double.NaN, 20_000, stopOnArrival: true);
 
             TestContext.WriteLine(
                 $"arrival: {JulianDate.Format(_session.ArrivedJulianDate)}  " +
@@ -51,8 +47,8 @@ namespace TimeToExplore.Tests.EditMode
                 $"real {run.RealSeconds:F1} s over {run.Frames:N0} frames");
             TestContext.WriteLine(
                 $"peak substeps/frame {run.MaxSubsteps}, " +
-                $"warp {SolarSystemBootstrap.ScaleLabel(_requestedScaleIndex)} -> " +
-                $"{SolarSystemBootstrap.ScaleLabel(run.MinScaleIndex)}");
+                $"warp peak {SimulationClock.FormatScale(run.PeakScale)}, " +
+                $"final {SimulationClock.FormatScale(run.LastScale)}");
 
             foreach (PlanArc arc in _plan.Arcs)
                 TestContext.WriteLine($"  {arc.Phase}: {arc.DurationSeconds / 3600.0:F2} h, " +
@@ -72,13 +68,16 @@ namespace TimeToExplore.Tests.EditMode
             Assert.That(positionError, Is.LessThan(10_000.0), "matched within 10 km");
             Assert.That(velocityError, Is.LessThan(10.0), "matched within 10 m/s");
 
-            Assert.That(run.RealSeconds, Is.GreaterThan(5.0), "the trip is watchable, not instant");
-            Assert.That(run.RealSeconds, Is.LessThan(300.0), "and it does not take real days");
+            double target = FlightWarp.TargetRealSeconds(_plan.FlightTimeSeconds);
+            Assert.That(run.RealSeconds, Is.EqualTo(target).Within(Math.Max(2.0, 0.15 * target)),
+                "the trip takes the real time the curve asks for");
+            Assert.That(run.PeakScale, Is.GreaterThan(1_000.0),
+                "a week-long trip cruises far above real time");
+            Assert.That(run.LastScale, Is.LessThan(0.01 * run.PeakScale),
+                "and it is back near real time at the finish");
 
             Assert.That(run.MaxSubsteps, Is.LessThan(FlightSession.DefaultSubstepsPerFrame),
                 "the per-frame substep budget was never the limit");
-            Assert.That(run.MinScaleIndex, Is.LessThanOrEqualTo(3),
-                "the warp dropped near Mars, to 1,000× or below");
             Assert.That(run.ClockAheadFrames, Is.EqualTo(0),
                 "the world never ran ahead of the ship");
         }
@@ -87,8 +86,7 @@ namespace TimeToExplore.Tests.EditMode
         public void TheOrbitIsHeldAfterArrivalUnderTheFrameLoop()
         {
             var run = new Run();
-            run.Fly(_session, _clock, _model, _gravity, _requestedScaleIndex,
-                double.NaN, 20_000, stopOnArrival: true);
+            run.Fly(_session, _clock, _model, double.NaN, 20_000, stopOnArrival: true);
 
             Assert.That(_session.Status, Is.EqualTo(FlightStatus.Arrived), "arrive first");
 
@@ -98,7 +96,7 @@ namespace TimeToExplore.Tests.EditMode
             double stop = _session.ArrivedJulianDate + 3.0 * period / JulianDate.SecondsPerDay;
 
             var coast = new Run();
-            coast.Fly(_session, _clock, _model, _gravity, _requestedScaleIndex, stop, 20_000);
+            coast.Fly(_session, _clock, _model, stop, 20_000);
 
             _model.ComputeState(mars, _session.State.JulianDate,
                 out Vector3d marsPosition, out Vector3d marsVelocity);
@@ -147,11 +145,8 @@ namespace TimeToExplore.Tests.EditMode
         {
             _model.Update(_clock.JulianDate);
 
-            int allowed = WarpPolicy.ClampScaleIndex(
-                WarpPolicy.MaxFrameSeconds(_session.State, _clock.JulianDate,
-                    _model, _gravity, _session.Plan),
-                FrameSeconds, _requestedScaleIndex);
-            _clock.ScaleIndex = allowed;
+            _clock.SetScale(FlightWarp.ScaleAt(_plan.FlightTimeSeconds, _real));
+            _real += FrameSeconds;
 
             _clock.Advance((float)FrameSeconds);
 
@@ -162,22 +157,27 @@ namespace TimeToExplore.Tests.EditMode
             _model.Update(_clock.JulianDate);
         }
 
+        private double _real;
+
         /// <summary>The bootstrap's frame, counted, with the telemetry the
         /// acceptance report needs.</summary>
         private sealed class Run
         {
             public int Frames;
             public int MaxSubsteps;
-            public int MinScaleIndex = int.MaxValue;
             public int Collisions;
             public int ClockAheadFrames;
+            public double PeakScale = 1.0;
+            public double LastScale = 1.0;
 
             public double RealSeconds => Frames * FrameSeconds;
 
             public void Fly(FlightSession session, SimulationClock clock, SolarSystemModel model,
-                GravityField gravity, int requestedScaleIndex, double stopJulianDate, int maxFrames,
-                bool stopOnArrival = false)
+                double stopJulianDate, int maxFrames, bool stopOnArrival = false)
             {
+                double realElapsed = 0.0;
+                double flightSeconds = session.Plan != null ? session.Plan.FlightTimeSeconds : 0.0;
+
                 while (Frames < maxFrames)
                 {
                     if (session.Status == FlightStatus.Aborted ||
@@ -192,12 +192,16 @@ namespace TimeToExplore.Tests.EditMode
                     if (!double.IsNaN(stopJulianDate) && clock.JulianDate >= stopJulianDate) break;
 
                     model.Update(clock.JulianDate);
-                    int allowed = WarpPolicy.ClampScaleIndex(
-                        WarpPolicy.MaxFrameSeconds(session.State, clock.JulianDate,
-                            model, gravity, session.Plan),
-                        FrameSeconds, requestedScaleIndex);
-                    clock.ScaleIndex = allowed;
-                    if (allowed < MinScaleIndex) MinScaleIndex = allowed;
+
+                    // The curve only drives a live flight; after arrival the
+                    // clock is back at real time.
+                    double scale = session.Status == FlightStatus.Flying
+                        ? FlightWarp.ScaleAt(flightSeconds, realElapsed)
+                        : 1.0;
+                    clock.SetScale(scale);
+                    if (scale > PeakScale) PeakScale = scale;
+                    LastScale = scale;
+                    realElapsed += FrameSeconds;
 
                     clock.Advance((float)FrameSeconds);
                     FlightStep step = session.Advance(clock.JulianDate,

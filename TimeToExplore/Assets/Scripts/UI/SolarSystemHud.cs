@@ -120,7 +120,6 @@ namespace TimeToExplore.UI
         private Text _statusClock;
         private Text _statusDistance;
         private Text _statusNearest;
-        private Text _statusWarpNote;
         private Text _statusTarget;
         private Text _statusTargetOrbit;
         private Text _statusHelp;
@@ -475,16 +474,6 @@ namespace TimeToExplore.UI
                 : "Nearest body: —";
 
             float y = 98f;
-
-            bool hasNote = !string.IsNullOrEmpty(_owner.WarpNote);
-            if (_statusWarpNote.gameObject.activeSelf != hasNote)
-                _statusWarpNote.gameObject.SetActive(hasNote);
-            if (hasNote)
-            {
-                _statusWarpNote.text = "warp held by the flight policy  ·  " + _owner.WarpNote;
-                PlaceTopLeft(_statusWarpNote, 14f, y, PanelWidth - 28f, 16f);
-                y += 16f;
-            }
 
             bool hasTarget = selected != null;
             if (_statusTarget.gameObject.activeSelf != hasTarget)
@@ -1060,8 +1049,7 @@ namespace TimeToExplore.UI
             if (!_flightPanel.activeSelf) _flightPanel.SetActive(true);
             FlightSession flight = _owner.Flight;
             double now = _owner.Clock.JulianDate;
-            string warp = _owner.Clock.Label +
-                          (string.IsNullOrEmpty(_owner.WarpNote) ? "" : "  (" + _owner.WarpNote + ")");
+            string warp = _owner.Clock.Label;
 
             List<DetailRow> rows = FlightReport.Build(flight, _owner.Model, warp, now);
 
@@ -1418,9 +1406,6 @@ namespace TimeToExplore.UI
 
             _statusNearest = CreateText(parent, "StatusNearest", "", 12, TextColour);
             PlaceTopLeft(_statusNearest, left, 76f, width, 18f);
-
-            _statusWarpNote = CreateText(parent, "StatusWarpNote", "", 11, DimColour);
-            PlaceTopLeft(_statusWarpNote, left, 98f, width, 16f);
 
             _statusTarget = CreateText(parent, "StatusTarget", "", 12, TextColour);
             PlaceTopLeft(_statusTarget, left, 98f, width, 18f);

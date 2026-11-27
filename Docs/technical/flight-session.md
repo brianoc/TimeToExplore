@@ -27,9 +27,9 @@ for tests. Now the scene has a ship:
 * the flight panel shows the phase table, the countdown, the throttle, the
   delta-v, and either the impulsive burn total or the hybrid's fixed-and-trim
   split;
-* time warp drops by itself near a body and before each plan boundary, including
-  the periapsis and circularisation boundaries of a conic arrival, and on the
-  run in to a station's hold point;
+* time warp follows a continuous curve that starts and ends at real time and
+  cruises at a rate paced by the plan's own duration
+  ([ADR-027](/decisions/adr-027-continuous-warp-and-chase-camera.md));
 * after arrival the ship coasts in the parking orbit with the drive off — or
   holds at a station's 500 m hold point with its velocity matched — and the
   player gets the camera back — an orbit camera, not the old fixed view.
@@ -43,9 +43,9 @@ session to reach it.
 `SolarSystemBootstrap.Update` runs the same five steps every frame:
 
 1. `Model.Update(Clock.JulianDate)` — the orrery at the frame's start.
-2. `WarpPolicy.MaxFrameSeconds(...)` — how much simulated time one frame may
-   span at this state, then `ClampScaleIndex` against the player's request.
-3. `Clock.Advance(Time.deltaTime)` with the capped scale.
+2. `FlightWarp.ScaleAt(...)` — the scale for this real second of the flight,
+   or 1x when no flight is live or the player has taken the warp.
+3. `Clock.Advance(Time.deltaTime)` with that scale.
 4. `FlightSession.Advance(Clock.JulianDate, SubstepsPerFrame)` — integrate the
    ship, split at plan arc boundaries, stopping on the arrival date.
 5. If a flight is active and the session reached an earlier date than the clock
@@ -71,41 +71,24 @@ longer. That is what makes the arrival exact: the last leg's target is the
 arrival instant itself, and the integrator snaps its final step to a requested
 date.
 
-# The warp policy
+# The flight warp curve
 
-The player's 1–7 keys set a **ceiling**. Three ordinary physical limits may lower
-it, and a station plan adds two more; the smallest wins:
+The player's 1–7 keys still select a fixed scale, and a digit press takes the
+warp off the curve for the rest of that flight. Otherwise a live flight follows
+`FlightWarp`: the target real duration is
+`clamp(20 + 17 · ln(flight days / 6.7), 12, 60)` seconds, and the scale blends
+from 1x to the cruise rate and back over three real seconds at each end. The
+curve is a function of real elapsed time, so the integrated trip lands on the
+target and the clock is at 1x on the frame the flight ends.
 
-| Rule | Limit on one frame | Why |
-|---|---|---|
-| Clearance | 25% of the time to the nearest body's surface at the current relative speed | Do not cross a body between frames |
-| Local dynamics | 2% of `sqrt(r³/GM)` for the nearest body | Keep an orbit a curve, not a jump |
-| Plan events | 5% of the time to the next arc boundary or the arrival | Land the countdown on the event |
-| Station clearance | 25% of the time to the station's catalogue surface at the current relative speed | A station has no `Gm`, so the gravity field never makes it the nearest body |
-| Station hold | 5% of the time to the 500 m hold point | Do not jump over the last few hundred metres |
+The only limit on how much simulated time one frame may span is the
+**integration budget** of 2,000 RK4 substeps. If the budget runs out, step 5
+clamps the clock to the ship, so a trip whose warp is too much for the budget
+stretches in real time rather than skipping. There is no separate clearance,
+local-dynamics, event, or station cap; that policy is gone.
 
-The result is rounded down to the clock's power-of-ten scales, so the HUD always
-shows an honest scale. Measured caps at 60 fps:
-
-| State | Cap on one frame | Allowed scale |
-|---|---:|---:|
-| Deep space, 0.5 AU from Earth | 328,932 s | 1,000,000× |
-| Mid-cruise, 201,223 s to the boundary | 10,061 s | 100,000× |
-| Mars parking orbit, 3,898 km | 23.5 s | 1,000× |
-| Station approach, 200 km astern closing at 100 m/s | 99.8 s (field alone: 3,709 s) | 1,000× |
-| At the station's hold point | 1.0 s (floor) | 10× |
-| Final second before arrival | 1.0 s (floor) | 10× |
-
-The station caps are measured on a real Ares Junction → Gateway plan, sampled a
-day before departure so the event pacing is not binding; 2 × 10⁹ m away neither
-of them binds and the event cap's 130,059 s wins. They are released once the plan
-completes, so the clock is not pinned at the hold point after arrival.
-
-Go To also **raises** the warp, to the largest scale the trip can still be
-watched at: Gateway→Mars is about 7.17 days, so it starts at 10,000× (about
-62 s at that scale; the measured flight takes 131.8 s as the policy slows near
-Mars). The status panel says `warp held by the flight policy · auto from
-x1,000,000` whenever the cap is binding.
+The HUD prints the actual scale, so a flight reads as a number climbing from
+`1x` to its cruise rate and falling back.
 
 # Plot route, then Begin
 
@@ -633,8 +616,9 @@ plan, the old gap durations build as long-coast plans, and every slider duration
 above the floor builds with its requested total — the "no hole" sweep at Mercury
 1 g, Mars 0.3 g, and Jupiter 0.3 g. `LambertSolverTests`
 covers the solver itself.
-`WarpPolicyTests` covers the clearance, local-dynamics and plan-event caps, the
-two station caps and the scale rounding. `PlanPathTests` covers the arc boundaries. `FlightReportTests` covers the panel
+`FlightWarpTests` covers the target durations, the clamped ends, the 1x start and
+finish, the cruise plateau, and the integrated duration at four trip lengths.
+`PlanPathTests` covers the arc boundaries. `FlightReportTests` covers the panel
 rows, the preview and stale rows, the station **Match** and **hold point**
 labels, and the countdown format. `OrbitCameraTests` covers the pitch
 clamp, yaw wrap, zoom limits, the shortest turn, the slew rate, and the distance

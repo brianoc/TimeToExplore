@@ -128,8 +128,7 @@ Where a station sits decides how the trip **starts**, not how it ends:
 | Jovian Transfer Yard | No — 795.7 million km from Jupiter | the same heliocentric start |
 
 A station's catalogue `gm` is **0**, and its catalogue radius (1,000–1,750 m) is
-a **visual placeholder**: the renderer draws a cube 2–3.5 km across, and the
-warp policy uses the radius as the distance to the station's surface. It is never
+a **visual placeholder**: the renderer draws a cube 2–3.5 km across. It is never
 a physical body, never a parking orbit, and never a source of gravity. The
 station stays exactly on its computed Lagrange point; drift and stationkeeping
 are a later milestone.

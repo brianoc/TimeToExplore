@@ -57,73 +57,44 @@ this game it is below the noise floor, and ignoring it keeps the code readable.
 # Time acceleration
 
 The game cannot ask a player to watch a 15-day transit in real time. Time is
-accelerated by a multiplier, not by moving the ship.
+accelerated by a continuous multiplier, not by moving the ship.
 
-| Setting | 1 real second equals | 1 frame at 60 fps equals |
-|---:|---:|---:|
-| 1x | 1 s | 17 ms |
-| 10x | 10 s | 167 ms |
-| 100x | 1 min 40 s | 1.7 s |
-| 1,000x | 16 min 40 s | 16.7 s |
-| 10,000x | 2 h 47 m | 2.8 min |
-| 100,000x | 1 d 3 h 47 m | 27.8 min |
-| 1,000,000x | 11 d 13 h 47 m | 4.6 h |
+`SimulationClock.Scale` is the simulated seconds per real second. A flight
+follows [the flight warp curve](/decisions/adr-027-continuous-warp-and-chase-camera.md),
+which starts at 1x, rises to a cruise rate, and returns to 1x for the approach.
+The target real duration depends only on the plan's flight time:
 
-Reference transit times at 1 g continuous thrust (see
-[flight model](flight-model.md)):
+```text
+target seconds = clamp(20 + 17 · ln(flight days / 6.7), 12, 60)
+```
 
-| Route | Distance | Burn time | At 1,000x | At 100,000x |
-|---|---:|---:|---:|---:|
-| Earth–Moon | 0.0026 AU | 3.4 h | 12 s | 0.12 s |
-| Earth–Mars | ~0.78 AU | 2.5 d | 3.6 min | 2.2 s |
-| Earth–Jupiter | ~4.2 AU | 5.8 d | 8.4 min | 5.0 s |
-| Earth–Neptune | ~29 AU | 15.3 d | 22 min | 13 s |
+| Trip | Flight time | Target real time |
+|---|---:|---:|
+| Earth–Mars, fastest | 6.7 d | 20 s |
+| Earth–Mars, slow end | 21.5 d | 40 s |
+| Saturn, fastest | ~20 d | 39 s |
+| Saturn, slow end | ~60 d | 57 s |
+| Uranus, slow end | 111 d | 60 s (clamped) |
 
-The high end is for crossing the outer system, not for docking. The prototype
-lets the player change warp at any time with keys 1–7 and toggle pause with P.
+The shape in real time matters as much as the duration. Both ends blend between
+1x and the cruise rate over three real seconds with a smootherstep. The first
+second is close to real time, so the camera can ease into the chase pose before
+the system starts moving; the final seconds are real time for the approach,
+the brake, and the parking orbit. The cruise rate is chosen from the target and
+the ramps' half-area, so integrating the curve over the target duration advances
+the flight by its whole planned length.
 
-**Automatic drop:** warp now drops by itself when the ship is close to a body,
-when a planned burn is due, when a collision is possible, and on the run in to a
-station's hold point. The policy is below; warping through a moon at 1,000,000×
-is not a gameplay feature.
+The manual ladder remains for the player: number keys 1–7 set `1x` to
+`1,000,000x`, and `P` pauses. A number key takes the warp off the curve for the
+rest of that flight. A new flight gives the clock back to the curve. The HUD
+prints the actual scale, so the curve reads as a moving number.
 
-## Automatic warp drop
-
-The player's setting is a **ceiling**; the flight policy may lower it. Three
-ordinary limits set the most simulated time one frame may span. A station plan
-adds two more, because a station is a massless point target the gravity field
-never selects. The smallest wins:
-
-| Rule | Limit | Measured at 60 fps |
-|---|---|---|
-| Clearance | 25% of the time to the nearest body's surface at the current relative speed | — |
-| Local dynamics | 2% of `sqrt(r³/GM)` for the nearest body | Mars parking orbit: 23.5 s per frame, so 1,000× |
-| Plan events | 5% of the time to the next arc boundary or the arrival | mid-cruise: 10,061 s per frame, so 100,000× |
-| Station clearance | 25% of the time to the station's catalogue surface at the current relative speed | station plan only; the same quarter rule |
-| Station hold | 5% of the time to the 500 m hold point | station plan only, released once the plan completes |
-
-Measured on a real Ares Junction → Gateway plan, sampled a day before departure
-so the event pacing is not binding: 200 km astern closing at 100 m/s caps a
-frame at **99.8 s** where the gravity field alone allows 3,709 s; at the hold
-point the cap is the **1 s floor**; 2 × 10⁹ m away neither station cap binds and
-the event cap's 130,059 s wins. The station caps are released when the plan
-completes, so the clock is not pinned after arrival.
-
-Deep space, half an AU from Earth, allows 328,932 s per frame, which is above the
-top scale. The cap is rounded down to the clock's power-of-ten steps, and the HUD
-says `warp held by the flight policy` whenever it is binding. Pressing Go To also
-raises the warp to the scale that makes the trip take about 30 real seconds.
-
-The frame also has an **integration budget**: the ship may spend at most 2,000
-RK4 substeps per frame. If it runs out, the clock is clamped to the date the ship
-actually reached, so the world never runs ahead of the ship. In practice the warp
-cap keeps the budget slack: the Mars acceptance flight peaked at 63 substeps in a
-frame.
-
-Warping through a moon at 1,000,000× is no longer possible, and neither is
-arriving without seeing the final approach — or, at a station, the last few
-hundred metres to its hold point.
-
+**No proximity caps.** The old policy that dropped the warp near a body, a burn
+event, or a station hold point is gone. The one remaining limit is the
+flight's **integration budget**: the ship may spend at most 2,000 RK4 substeps
+per frame, and if it runs out the clock is clamped to the date the ship actually
+reached. The world therefore never runs ahead of the ship. A trip whose warp is
+more than the budget can cover simply takes longer in real time than its target.
 
 # Precision budget
 

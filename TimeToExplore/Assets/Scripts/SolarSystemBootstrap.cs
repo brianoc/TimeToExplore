@@ -44,11 +44,18 @@ namespace TimeToExplore
         /// <summary>Debug free flight. A flight owns the ship while it runs.</summary>
         public bool FreeFlight { get; private set; }
 
-        /// <summary>The scale the player asked for, before the warp policy caps it.</summary>
-        public int RequestedScaleIndex { get; private set; }
+        /// <summary>
+        /// The fixed scale the player chose with a number key, while
+        /// <see cref="WarpOverridden"/> says the flight's own curve is not in
+        /// charge. A new flight gives the clock back to the curve.
+        /// </summary>
+        public double ManualScale { get; private set; } = 1.0;
 
-        /// <summary>Set when the warp policy is holding the clock below the request.</summary>
-        public string WarpNote { get; private set; }
+        /// <summary>True once a number key has taken warp off the flight curve.</summary>
+        public bool WarpOverridden { get; private set; }
+
+        /// <summary>Real seconds since the current flight began, for the ramp-in.</summary>
+        private double _flightRealSeconds;
 
         /// <summary>RK4 substeps one frame may spend on the ship.</summary>
         public int SubstepsPerFrame = FlightSession.DefaultSubstepsPerFrame;
@@ -240,24 +247,17 @@ namespace TimeToExplore
 
             if (FreeFlight)
             {
-                Clock.ScaleIndex = RequestedScaleIndex;
+                Clock.SetScale(WarpOverridden ? ManualScale : 1.0);
                 Clock.Advance(deltaTime);
                 Model.Update(Clock.JulianDate);
                 return;
             }
 
-            // The orrery must be at the frame's start date before the warp
-            // decision, because the policy reads the nearest body's state.
+            // The orrery must be at the frame's start date before the ship
+            // advances, so the warp decision and the flight see one state.
             Model.Update(Clock.JulianDate);
 
-            int allowed = WarpPolicy.ClampScaleIndex(
-                WarpPolicy.MaxFrameSeconds(Flight.State, Clock.JulianDate, Model, _gravity, Flight.Plan),
-                deltaTime, RequestedScaleIndex);
-
-            Clock.ScaleIndex = allowed;
-            WarpNote = allowed < RequestedScaleIndex
-                ? $"auto from {ScaleLabel(RequestedScaleIndex)}"
-                : null;
+            UpdateWarp(deltaTime);
 
             Clock.Advance(deltaTime);
 
@@ -272,6 +272,32 @@ namespace TimeToExplore
                 Clock.JulianDate = step.ReachedJulianDate;
 
             Model.Update(Clock.JulianDate);
+        }
+
+        /// <summary>
+        /// Give the clock the scale for this frame. A manual choice holds until
+        /// the next flight; otherwise a live flight follows
+        /// <see cref="FlightWarp"/>, which starts and ends at real time. An idle
+        /// ship runs at real time, so the orrery is not accelerated by leftover
+        /// flight settings.
+        /// </summary>
+        private void UpdateWarp(float deltaTime)
+        {
+            if (WarpOverridden)
+            {
+                Clock.SetScale(ManualScale);
+                return;
+            }
+
+            TrajectoryPlan plan = Flight.Plan;
+            if (!Flight.IsFlying || plan == null)
+            {
+                Clock.SetScale(1.0);
+                return;
+            }
+
+            if (!Clock.Paused) _flightRealSeconds += System.Math.Max(0f, deltaTime);
+            Clock.SetScale(FlightWarp.ScaleAt(plan.FlightTimeSeconds, _flightRealSeconds));
         }
 
         private void LateUpdate()
@@ -295,20 +321,20 @@ namespace TimeToExplore
                 }
 
                 // Follow the destination until the player takes the camera.
-                if (Flight.IsActive && Rig != null && Flight.TargetId != null)
+                // A live flight owns the chase pose set when it began; only the
+                // arrival hands the view to the destination, so the camera
+                // settles on the parking orbit rather than the cruise shot.
+                bool flying = Flight.IsFlying;
+                if (_wasFlying && !flying && Flight.Status == FlightStatus.Arrived
+                    && Flight.TargetId != null && Rig != null)
                 {
                     BodyRuntime target = Model.Get(Flight.TargetId);
-                    if (target != null && Rig.AutoTarget != target) Rig.Frame(target);
+                    if (target != null)
+                    {
+                        Rig.Frame(target);
+                        Rig.RecalculateFramingDistance(ShipPositionM);
+                    }
                 }
-
-                // The framing distance is captured when the flight starts, so
-                // the cruise view does not keep winding in as the ship
-                // approaches. Re-capture it once on arrival, so the camera
-                // settles on the parking orbit instead of holding the cruise
-                // distance. Both moves ease; neither snaps.
-                bool flying = Flight.IsFlying;
-                if (_wasFlying && !flying && Flight.Status == FlightStatus.Arrived)
-                    Rig?.RecalculateFramingDistance(ShipPositionM);
                 _wasFlying = flying;
             }
 
@@ -353,7 +379,7 @@ namespace TimeToExplore
             if (keys.Home) Rig?.HomeToShip(ShipPositionM);
             if (keys.Pause) Clock.TogglePause();
 
-            if (keys.ScaleIndex >= 0 && keys.ScaleIndex < SimulationClock.TimeScales.Length)
+            if (keys.ScaleIndex >= 0 && keys.ScaleIndex < SimulationClock.ManualScales.Length)
                 SetScaleIndex(keys.ScaleIndex);
 
             if (keys.CycleTarget) CycleTarget(1);
@@ -375,15 +401,10 @@ namespace TimeToExplore
 
         public void SetScaleIndex(int index)
         {
-            RequestedScaleIndex = Mathf.Clamp(index, 0, SimulationClock.TimeScales.Length - 1);
-            Clock.SetScaleIndex(RequestedScaleIndex);
-        }
-
-        public static string ScaleLabel(int index)
-        {
-            index = Mathf.Clamp(index, 0, SimulationClock.TimeScales.Length - 1);
-            double scale = SimulationClock.TimeScales[index];
-            return scale == 1.0 ? "x1" : "x" + scale.ToString("N0");
+            index = Mathf.Clamp(index, 0, SimulationClock.ManualScales.Length - 1);
+            ManualScale = SimulationClock.ManualScales[index];
+            WarpOverridden = true;
+            Clock.SetScaleIndex(index);
         }
 
         private void BuildTargets()
@@ -431,8 +452,14 @@ namespace TimeToExplore
             if (Flight.Status == FlightStatus.Flying)
             {
                 ShowPlan(plan, body);
-                Rig?.Frame(body);
-                SetScaleIndex(WarpPolicy.SuggestInitialScaleIndex(plan));
+
+                // The flight starts in real time and eases into its chase pose
+                // while the warp curve rises. A manual warp choice from the
+                // previous flight does not carry over.
+                _flightRealSeconds = 0.0;
+                WarpOverridden = false;
+                Clock.SetScale(1.0);
+                Rig?.FrameFlight(body.PositionM - ShipPositionM);
             }
             else
             {
@@ -819,7 +846,8 @@ namespace TimeToExplore
             BodyRuntime earth = Model.Get("earth");
             if (earth != null) Rig?.SnapTo(ShipPositionM, earth);
 
-            RequestedScaleIndex = 0;
+            WarpOverridden = false;
+            ManualScale = 1.0;
             Clock.SetScaleIndex(0);
         }
 
